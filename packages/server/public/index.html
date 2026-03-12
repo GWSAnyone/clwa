@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLWA — Living World Demo</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <h1 class="app-title">CLWA <span class="app-subtitle">Living World Demo</span></h1>
+    <div class="header-status">
+      <span class="day-label">Day</span>
+      <span class="day-value" id="day-counter">1</span>
+      <span class="time-display" id="time-display" title="Current time of day">00:00</span>
+      <span class="time-period" id="time-period">night</span>
+      <span class="ws-indicator" id="ws-indicator" title="WebSocket disconnected"></span>
+    </div>
+  </header>
+
+  <!-- Main layout -->
+  <div class="app-layout">
+
+    <!-- Left sidebar: Map + Controls -->
+    <aside class="sidebar">
+
+      <section class="panel map-panel">
+        <h2 class="panel-title">World Map</h2>
+        <div id="locations-container"></div>
+      </section>
+
+      <section class="panel controls-panel">
+        <h2 class="panel-title">Controls</h2>
+        <div class="controls-grid">
+          <div class="control-group">
+            <select id="kill-select" class="control-select" aria-label="Select NPC to kill">
+              <option value="">Kill...</option>
+            </select>
+            <button class="btn btn-danger" id="btn-kill" disabled>Kill</button>
+          </div>
+          <div class="control-group">
+            <button class="btn btn-primary" id="btn-day">Advance Day</button>
+            <button class="btn btn-secondary" id="btn-tick">Tick</button>
+          </div>
+          <div class="control-group">
+            <button class="btn btn-auto" id="btn-auto">Auto: OFF</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Memory panel (shown when NPC selected) -->
+      <section class="panel memory-panel hidden" id="memory-panel">
+        <h2 class="panel-title">
+          Memories: <span id="memory-npc-name"></span>
+        </h2>
+        <div class="memory-list" id="memory-list"></div>
+      </section>
+
+    </aside>
+
+    <!-- Right main area: Chat + Timeline -->
+    <main class="main-area">
+
+      <section class="panel chat-panel">
+        <div class="chat-header">
+          <h2 class="panel-title">Chat</h2>
+          <div class="chat-target">
+            <span>Talking to:</span>
+            <select id="chat-select" class="control-select" aria-label="Select NPC to chat with">
+              <option value="">Select NPC...</option>
+            </select>
+          </div>
+        </div>
+        <div class="chat-messages" id="chat-messages" role="log" aria-live="polite"></div>
+        <form class="chat-input-row" id="chat-form">
+          <input
+            type="text"
+            id="chat-input"
+            class="chat-input"
+            placeholder="Type a message..."
+            autocomplete="off"
+            aria-label="Chat message"
+          >
+          <button type="submit" class="btn btn-primary" id="btn-send">Send</button>
+        </form>
+      </section>
+
+      <section class="panel timeline-panel">
+        <h2 class="panel-title">Event Timeline</h2>
+        <div class="timeline-list" id="timeline-list" role="log" aria-live="polite"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Toast container for reflections -->
+  <div class="toast-container" id="toast-container" aria-live="assertive"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

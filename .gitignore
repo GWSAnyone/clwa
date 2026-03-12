@@ -1,0 +1,8 @@
+node_modules/
+dist/
+bun.lock
+*.log
+.env
+packages/server/data/
+.serena/
+godot/.godot/

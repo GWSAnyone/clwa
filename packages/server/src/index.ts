@@ -1,0 +1,596 @@
+import { Agent, VectorMemory, BeliefManager, RelationshipGraph, DEFAULT_TRUST, DEFAULT_SENTIMENT } from '@clwa/engine';
+import { ConsequenceEngine } from '@clwa/engine';
+import { InMemoryEventStore } from '@clwa/engine';
+import { World } from '@clwa/engine';
+import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
+import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
+import { registerCrimeJusticeModule, CRIME_CG_RULES } from '@clwa/modules';
+import { broadcast } from './ws';
+import { startServer } from './server';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+
+// ─── Register World Modules ───
+registerCrimeJusticeModule();
+
+// ─── Persistence ───
+
+const SAVE_DIR = join(dirname(import.meta.dir), 'data');
+const SAVE_PATH = join(SAVE_DIR, 'save.json');
+
+interface SaveData {
+  version: 1;
+  savedAt: string;
+  world: ReturnType<World['toJSON']>;
+  events: ReturnType<InMemoryEventStore['toJSON']>;
+}
+
+function saveToDisk(world: World, eventStore: InMemoryEventStore): void {
+  const data: SaveData = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    world: world.toJSON(),
+    events: eventStore.toJSON(),
+  };
+  mkdirSync(SAVE_DIR, { recursive: true });
+  writeFileSync(SAVE_PATH, JSON.stringify(data, null, 2));
+  console.log(`  [Save] State saved to ${SAVE_PATH}`);
+}
+
+function loadFromDisk(): SaveData | null {
+  if (!existsSync(SAVE_PATH)) return null;
+  try {
+    const raw = readFileSync(SAVE_PATH, 'utf-8');
+    const data = JSON.parse(raw) as SaveData;
+    if (data.version !== 1) {
+      console.warn(`  [Save] Unknown save version ${data.version}, ignoring`);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.warn(`  [Save] Failed to load save: ${err}`);
+    return null;
+  }
+}
+
+// ─── Locations ───
+
+const LOCATIONS: LocationDef[] = [
+  {
+    id: 'tavern',
+    name: 'Silver Flagon Tavern',
+    connections: ['town-square'],
+    isPublic: true,
+  },
+  {
+    id: 'town-square',
+    name: 'Town Square',
+    connections: ['tavern', 'gate', 'market', 'temple', 'residential', 'courthouse'],
+    isPublic: true,
+  },
+  {
+    id: 'gate',
+    name: 'Town Gate',
+    connections: ['town-square'],
+    isPublic: true,
+  },
+  {
+    id: 'market',
+    name: 'Market Square',
+    connections: ['town-square', 'blacksmith'],
+    isPublic: true,
+  },
+  {
+    id: 'blacksmith',
+    name: 'Blacksmith',
+    connections: ['market'],
+    isPublic: false,
+  },
+  {
+    id: 'temple',
+    name: 'Temple of Dawn',
+    connections: ['town-square'],
+    isPublic: true,
+  },
+  {
+    id: 'residential',
+    name: 'Residential Lane',
+    connections: ['town-square'],
+    isPublic: false,
+  },
+  {
+    id: 'courthouse',
+    name: 'Courthouse',
+    connections: ['town-square'],
+    isPublic: true,
+  },
+];
+
+function buildLocationGraph(): LocationGraph {
+  const graph: LocationGraph = new Map();
+  for (const loc of LOCATIONS) {
+    graph.set(loc.id, loc);
+  }
+  return graph;
+}
+
+// ─── NPC Profiles ───
+
+const PROFILES: AgentProfile[] = [
+  {
+    id: 'ted',
+    name: 'Ted',
+    role: 'bartender',
+    background:
+      'Runs the Silver Flagon tavern for 15 years. Knows everyone in town. ' +
+      'Heard every story, served every drink. The tavern is his life.',
+    speechStyle:
+      'Wipes a mug while talking. Calls regulars by nicknames. Speaks in short warm bursts with a drawl.\n' +
+      'Example: "Aye, the usual? Coming right up, friend. ...Say, you look like you could use more than ale tonight."\n' +
+      'Example: "Hah! That reminds me of— well, nevermind. Another round?"',
+    bigFive: { openness: 0.5, conscientiousness: 0.6, extraversion: 0.8, agreeableness: 0.7, neuroticism: 0.3, honesty: 0.6 },
+    enneagram: { type: 9, wing: 8, coreFear: 'Losing connection with people and being alone', coreDesire: 'To keep peace and harmony around you', stressType: 6, growthType: 3 },
+    llm: { temperature: 0.7, maxTokens: 250 },
+    secret: 'You have been watering down the ale for months to cover gambling debts. Nobody has noticed yet.',
+    innerConflict: 'You want to be honest with your regulars but you cannot afford to stop. The guilt is eating at you.',
+  },
+  {
+    id: 'mark',
+    name: 'Mark',
+    role: 'merchant',
+    background:
+      'Traveling merchant who set up shop at the Market Square. Deals in exotic goods ' +
+      'and rare spices. Has connections in three kingdoms. Always looking for profit. ' +
+      'Frequently visits the tavern for gossip and the town square for customers.',
+    speechStyle:
+      'Weighs every word like a coin. Drops distant city names casually. Slightly condescending to those without money.\n' +
+      'Example: "Hmm. In Valdris they would pay triple for this. But for you... let us say, a fair price."\n' +
+      'Example: "Interesting. Very interesting. ...I may have something. Depends on what you can offer."',
+    bigFive: { openness: 0.5, conscientiousness: 0.3, extraversion: 0.7, agreeableness: 0.3, neuroticism: 0.6, honesty: 0.2 },
+    enneagram: { type: 3, wing: 2, coreFear: 'Being worthless or a failure', coreDesire: 'To be admired and seen as successful', stressType: 9, growthType: 6 },
+    llm: { temperature: 0.6, maxTokens: 200 },
+    secret: 'Some of the "exotic spices" you sell are actually common herbs from the next town over, marked up tenfold.',
+    innerConflict: 'You tell yourself it is just business, but Old Bess knows. She keeps hinting, smiling that knowing smile. One day she will talk, and everything will be over.',
+    motive: {
+      targetId: 'bess',
+      reason: 'Old Bess figured out your exotic spices are common herbs. She hinted she might tell everyone. If she talks, your reputation and livelihood are finished.',
+    },
+    shop: [
+      { id: 'spice_valdris', name: 'Valdris Fire Spice', price: 15, description: 'A pungent red spice from the eastern kingdoms. Or so Mark claims.' },
+      { id: 'map_region', name: 'Regional Map', price: 8, description: 'A hand-drawn map of the surrounding area. Mostly accurate.' },
+      { id: 'rope_silk', name: 'Silk Rope (30ft)', price: 12, description: 'Strong and lightweight. Good for climbing or binding.' },
+      { id: 'potion_minor', name: 'Minor Healing Tonic', price: 20, description: 'A small vial of herbal remedy. Tastes terrible, works adequately.' },
+      { id: 'lantern', name: 'Brass Lantern', price: 10, description: 'A sturdy lantern. Burns for 8 hours on one fill.' },
+    ],
+  },
+  {
+    id: 'elara',
+    name: 'Elara',
+    role: 'bard',
+    background:
+      'A traveling bard who performs at the Silver Flagon most evenings. ' +
+      'She collects stories and gossip from every corner of town. ' +
+      'Nothing escapes her sharp ears. Loves drama and intrigue. ' +
+      'Wanders between the tavern, town square, market, and temple.',
+    speechStyle:
+      'Theatrical, vivid imagery. Hums between sentences. Treats everything as a story unfolding.\n' +
+      'Example: "Ah, now THIS is a tale worth telling! *hums* ...But every tale has its dark chapter, no?"\n' +
+      'Example: "Mmm-hmm-hmm... You know, I once heard a song about a stranger just like you. It did not end well."',
+    bigFive: { openness: 0.9, conscientiousness: 0.3, extraversion: 0.9, agreeableness: 0.6, neuroticism: 0.5, honesty: 0.5 },
+    enneagram: { type: 3, wing: 4, coreFear: 'Being insignificant and forgotten', coreDesire: 'To be remarkable and leave a lasting impression', stressType: 9, growthType: 6 },
+    llm: { temperature: 0.9, maxTokens: 350 },
+    secret: 'You are not just a wandering bard — you are gathering information for a noble house in a distant city. Your songs are reports.',
+    innerConflict: 'You genuinely like these people now. Reporting on them feels like betrayal. But you owe your patron everything.',
+  },
+  {
+    id: 'garrett',
+    name: 'Garrett',
+    role: 'guard',
+    investigator: true,
+    background:
+      'Town guard stationed at the Town Gate. ' +
+      '10 years of service. Takes his duty seriously. Patrols the gate area and ' +
+      'only visits the tavern occasionally. Relies on townsfolk for news from inside.',
+    speechStyle:
+      'Formal, clipped military speech. Says "citizen" often. Sighs about duty and paperwork.\n' +
+      'Example: "State your business, citizen. ...No, I have not seen anything unusual. Just the usual trouble."\n' +
+      'Example: "*sigh* Another report to file. Right. Tell me exactly what you saw. Slowly."',
+    bigFive: { openness: 0.3, conscientiousness: 0.9, extraversion: 0.5, agreeableness: 0.4, neuroticism: 0.2, honesty: 0.7 },
+    enneagram: { type: 6, wing: 5, coreFear: 'Being without guidance or security', coreDesire: 'To have stability and support from authority', stressType: 3, growthType: 9 },
+    llm: { temperature: 0.5, maxTokens: 150 },
+    secret: 'Last winter you let a wanted fugitive pass through the gate because he bribed you. You have never told anyone.',
+    innerConflict: 'You pride yourself on duty and honor, but that one lapse haunts you. Every time someone questions your integrity, you overreact.',
+  },
+  {
+    id: 'aldric',
+    name: 'Father Aldric',
+    role: 'priest',
+    background:
+      'The elderly priest of the Temple of Dawn. Has served the town for 30 years. ' +
+      'Wise and patient, he counsels townsfolk in times of trouble. Believes in justice ' +
+      'and mercy in equal measure. Keeps records of births, deaths, and marriages.',
+    speechStyle:
+      'Gentle, deliberate. Uses parables. Begins with "My child" or "The Dawn teaches us". Never raises voice.\n' +
+      'Example: "My child... sit. The Dawn teaches us that even the longest night must end. Tell me what troubles you."\n' +
+      'Example: "Hmm. There is an old saying — the hammer that strikes too eagerly breaks itself. Perhaps patience is needed here."',
+    bigFive: { openness: 0.7, conscientiousness: 0.8, extraversion: 0.5, agreeableness: 0.9, neuroticism: 0.4, honesty: 0.9 },
+    enneagram: { type: 1, wing: 9, coreFear: 'Being corrupt or morally flawed', coreDesire: 'To be good, righteous, and have integrity', stressType: 4, growthType: 7 },
+    llm: { temperature: 0.65, maxTokens: 300 },
+    secret: 'You lost your faith years ago. You go through the motions of prayer but feel nothing. The Dawn does not answer.',
+    innerConflict: 'The townsfolk need you to be strong and certain. You cannot show doubt — it would destroy them. So you keep pretending.',
+  },
+  {
+    id: 'hilda',
+    name: 'Hilda',
+    role: 'blacksmith',
+    background:
+      'The town blacksmith. Strong-willed woman who inherited the forge from her father. ' +
+      'Makes weapons, tools, and horseshoes. Pragmatic and no-nonsense. ' +
+      'Knows the quality of every blade in town. Respects hard work above all.',
+    speechStyle:
+      'Blunt, short sentences. Says "aye". Loud from forge years. Impatient with small talk, loyal to friends.\n' +
+      'Example: "Aye. Good steel, that. ...What? No, I do not do discounts. You want cheap, go elsewhere."\n' +
+      'Example: "Hmph. Heard something happened at the square. None of my business. ...Is Ted alright though?"',
+    bigFive: { openness: 0.3, conscientiousness: 0.8, extraversion: 0.4, agreeableness: 0.3, neuroticism: 0.2, honesty: 0.7 },
+    enneagram: { type: 8, wing: 9, coreFear: 'Being controlled or vulnerable', coreDesire: 'To protect yourself and those you love', stressType: 5, growthType: 2 },
+    llm: { temperature: 0.55, maxTokens: 120 },
+    shop: [
+      { id: 'sword_iron', name: 'Iron Shortsword', price: 25, description: 'A reliable blade. Nothing fancy, but it will cut.' },
+      { id: 'axe_hand', name: 'Hand Axe', price: 18, description: 'Good for chopping wood or skulls. Hilda does not judge.' },
+      { id: 'shield_wood', name: 'Wooden Shield', price: 15, description: 'Reinforced oak with iron bands. Takes a beating.' },
+      { id: 'dagger_steel', name: 'Steel Dagger', price: 12, description: 'A sharp dagger. Discreet and deadly.' },
+      { id: 'horseshoes', name: 'Set of Horseshoes', price: 8, description: 'Quality horseshoes. Hilda takes pride in these.' },
+    ],
+    secret: 'Your father did not die of illness — he was killed in a bar fight that Ted broke up too late. You never blamed Ted openly.',
+    innerConflict: 'Ted is your closest friend. But sometimes when he laughs, you remember your father bleeding on the tavern floor.',
+    motive: {
+      targetId: 'ted',
+      reason: 'Your father bled out on the tavern floor while Ted watched and did nothing to help. Fifteen years of smiling at the man who let your father die.',
+    },
+  },
+  {
+    id: 'bess',
+    name: 'Old Bess',
+    role: 'herbalist',
+    background:
+      'An eccentric old herbalist who sells potions, remedies, and dried herbs ' +
+      'at the Market Square. Claims to read fortunes in tea leaves. ' +
+      'Knows every plant in the region. Some say she is a hedge witch. ' +
+      'Has lived in town longer than anyone can remember.',
+    speechStyle:
+      'Cryptic riddles. Cackles at own jokes. Calls everyone "dearie" or "love". Mutters to herself.\n' +
+      'Example: "Heh heh... dearie, the leaves told me you would come. They also told me something else, but... *mutters*"\n' +
+      'Example: "Oh love, you want a remedy? For what ails you... or for what is about to? Heh heh heh."',
+    bigFive: { openness: 0.8, conscientiousness: 0.4, extraversion: 0.3, agreeableness: 0.7, neuroticism: 0.6, honesty: 0.8 },
+    enneagram: { type: 5, wing: 4, coreFear: 'Being helpless or incompetent', coreDesire: 'To understand the world and be self-sufficient', stressType: 7, growthType: 8 },
+    llm: { temperature: 0.85, maxTokens: 280 },
+    shop: [
+      { id: 'herb_calm', name: 'Calming Herbs', price: 5, description: 'Dried lavender and chamomile. Good for nerves.' },
+      { id: 'potion_heal', name: 'Healing Poultice', price: 15, description: 'A thick paste that speeds wound healing. Smells of moss.' },
+      { id: 'tea_fortune', name: 'Fortune Tea Leaves', price: 10, description: 'Bess claims these reveal the future. Results may vary.' },
+      { id: 'antidote', name: 'Antidote Vial', price: 20, description: 'Cures most common poisons. Bess tested it. On what, she will not say.' },
+    ],
+    secret: 'You can actually see glimpses of the future in your tea leaves. It is not a trick. You saw the murder before it happened and said nothing.',
+    innerConflict: 'Could you have warned them? Would anyone have believed a crazy old woman? The guilt visits you every night.',
+  },
+  {
+    id: 'magistrate',
+    name: 'Magistrate Theron',
+    role: 'judge',
+    background:
+      'The town magistrate who presides over the Courthouse. A former scholar of law from the capital, ' +
+      'sent to this frontier town as punishment for questioning the king\'s tax reforms. ' +
+      'Despite resentment at his posting, he takes justice seriously. Weighs evidence carefully, ' +
+      'distrusts hearsay, and insists on testimony before passing judgment.',
+    speechStyle:
+      'Precise, formal diction. Pauses before judgments. Uses legal phrases. Never emotional in public.\n' +
+      'Example: "The court will hear the evidence. ...Proceed, but be precise — I have no patience for speculation."\n' +
+      'Example: "*adjusts spectacles* Interesting. And do you have a witness to corroborate this claim? No? Then it remains allegation."',
+    bigFive: { openness: 0.6, conscientiousness: 0.95, extraversion: 0.4, agreeableness: 0.4, neuroticism: 0.2, honesty: 0.9 },
+    enneagram: { type: 1, wing: 9, coreFear: 'Making an unjust ruling that condemns an innocent', coreDesire: 'To uphold true justice regardless of pressure', stressType: 4, growthType: 7 },
+    llm: { temperature: 0.5, maxTokens: 250 },
+    secret: 'You were exiled from the capital for publicly accusing a duke of corruption. You were right, but no one cared.',
+    innerConflict: 'You believe in the law absolutely, but this small town tests you — here, everyone knows everyone. Pure objectivity feels impossible.',
+  },
+];
+
+const NPC_LOCATIONS: { id: string; location: string }[] = [
+  { id: 'ted', location: 'Silver Flagon Tavern' },
+  { id: 'mark', location: 'Market Square' },
+  { id: 'elara', location: 'Silver Flagon Tavern' },
+  { id: 'garrett', location: 'Town Gate' },
+  { id: 'aldric', location: 'Temple of Dawn' },
+  { id: 'hilda', location: 'Blacksmith' },
+  { id: 'bess', location: 'Market Square' },
+  { id: 'magistrate', location: 'Courthouse' },
+];
+
+const MOBILE_NPCS = new Set(['elara', 'mark']);
+
+// ─── NPC Homes ───
+
+const NPC_HOMES: NpcHome[] = [
+  { npcId: 'ted', location: 'Silver Flagon Tavern' },
+  { npcId: 'mark', location: 'Residential Lane' },
+  { npcId: 'elara', location: 'Residential Lane' },
+  { npcId: 'garrett', location: 'Town Gate' },
+  { npcId: 'aldric', location: 'Temple of Dawn' },
+  { npcId: 'hilda', location: 'Blacksmith' },
+  { npcId: 'bess', location: 'Residential Lane' },
+  { npcId: 'magistrate', location: 'Courthouse' },
+];
+
+// ─── NPC Schedules ───
+
+const NPC_SCHEDULES: ScheduleEntry[] = [
+  { npcId: 'ted', period: 'morning',   location: 'Silver Flagon Tavern', activity: 'cleaning and preparing the tavern' },
+  { npcId: 'ted', period: 'afternoon', location: 'Silver Flagon Tavern', activity: 'serving drinks' },
+  { npcId: 'ted', period: 'evening',   location: 'Silver Flagon Tavern', activity: 'busy serving the evening crowd' },
+  { npcId: 'ted', period: 'night',     location: 'Silver Flagon Tavern', activity: 'sleeping upstairs' },
+  { npcId: 'mark', period: 'dawn',      location: 'Residential Lane',       activity: 'waking up, getting ready for the day' },
+  { npcId: 'mark', period: 'morning',   location: 'Market Square',          activity: 'trading goods' },
+  { npcId: 'mark', period: 'afternoon', location: 'Blacksmith',             activity: 'picking up supplies from the blacksmith' },
+  { npcId: 'mark', period: 'evening',   location: 'Silver Flagon Tavern',   activity: 'drinking and looking for gossip' },
+  { npcId: 'mark', period: 'night',     location: 'Residential Lane',       activity: 'sleeping' },
+  { npcId: 'elara', period: 'dawn',      location: 'Residential Lane',      activity: 'humming and stretching, chatting with neighbors' },
+  { npcId: 'elara', period: 'morning',   location: 'Town Square',           activity: 'people-watching and collecting stories' },
+  { npcId: 'elara', period: 'afternoon', location: 'Market Square',         activity: 'performing for shoppers' },
+  { npcId: 'elara', period: 'evening',   location: 'Silver Flagon Tavern',  activity: 'performing songs and tales' },
+  { npcId: 'elara', period: 'night',     location: 'Residential Lane',      activity: 'sleeping' },
+  { npcId: 'garrett', period: 'dawn',      location: 'Town Gate',           activity: 'morning watch' },
+  { npcId: 'garrett', period: 'morning',   location: 'Town Gate',           activity: 'guarding the gate' },
+  { npcId: 'garrett', period: 'afternoon', location: 'Town Square',         activity: 'patrol through town' },
+  { npcId: 'garrett', period: 'evening',   location: 'Town Gate',           activity: 'evening watch' },
+  { npcId: 'garrett', period: 'night',     location: 'Town Gate',           activity: 'resting in guard quarters' },
+  { npcId: 'aldric', period: 'dawn',      location: 'Temple of Dawn',       activity: 'morning prayers and meditation' },
+  { npcId: 'aldric', period: 'morning',   location: 'Temple of Dawn',       activity: 'counseling townsfolk' },
+  { npcId: 'aldric', period: 'afternoon', location: 'Town Square',          activity: 'blessing passersby and offering counsel' },
+  { npcId: 'aldric', period: 'evening',   location: 'Temple of Dawn',       activity: 'evening vespers' },
+  { npcId: 'aldric', period: 'night',     location: 'Temple of Dawn',       activity: 'sleeping in the temple quarters' },
+  { npcId: 'hilda', period: 'dawn',      location: 'Blacksmith',            activity: 'stoking the forge' },
+  { npcId: 'hilda', period: 'morning',   location: 'Blacksmith',            activity: 'forging and hammering' },
+  { npcId: 'hilda', period: 'afternoon', location: 'Blacksmith',            activity: 'taking orders and working' },
+  { npcId: 'hilda', period: 'evening',   location: 'Silver Flagon Tavern',  activity: 'having a drink after work' },
+  { npcId: 'hilda', period: 'night',     location: 'Blacksmith',            activity: 'sleeping above the forge' },
+  { npcId: 'bess', period: 'dawn',      location: 'Residential Lane',       activity: 'brewing morning tea, muttering to herself' },
+  { npcId: 'bess', period: 'morning',   location: 'Market Square',          activity: 'selling remedies and reading fortunes' },
+  { npcId: 'bess', period: 'afternoon', location: 'Market Square',          activity: 'selling remedies' },
+  { npcId: 'bess', period: 'evening',   location: 'Temple of Dawn',         activity: 'praying and muttering to herself' },
+  { npcId: 'bess', period: 'night',     location: 'Residential Lane',       activity: 'sleeping' },
+  { npcId: 'magistrate', period: 'dawn',      location: 'Courthouse',              activity: 'reviewing case documents' },
+  { npcId: 'magistrate', period: 'morning',   location: 'Courthouse',              activity: 'holding court and hearing matters' },
+  { npcId: 'magistrate', period: 'afternoon', location: 'Town Square',             activity: 'taking a walk, observing the town' },
+  { npcId: 'magistrate', period: 'evening',   location: 'Silver Flagon Tavern',    activity: 'having a quiet drink alone' },
+  { npcId: 'magistrate', period: 'night',     location: 'Courthouse',              activity: 'sleeping in courthouse quarters' },
+];
+
+// ─── NPC Relationships ───
+
+interface RelDef {
+  from: string;
+  to: string;
+  type: RelationType;
+  note?: string;
+  sentiment?: number;
+  trust?: number;
+}
+
+const RELATIONSHIP_DEFS: RelDef[] = [
+  { from: 'ted', to: 'hilda',   type: 'friend',     note: 'old drinking buddies' },
+  { from: 'ted', to: 'elara',   type: 'colleague',   note: 'performs at his tavern' },
+  { from: 'ted', to: 'garrett', type: 'acquaintance', note: 'occasional tavern visitor' },
+  { from: 'ted', to: 'aldric',  type: 'acquaintance', note: 'comes for counsel sometimes' },
+  { from: 'ted', to: 'mark',    type: 'acquaintance', note: 'regular evening customer' },
+  { from: 'ted', to: 'bess',    type: 'acquaintance', note: 'buys remedies for hangovers' },
+  { from: 'mark', to: 'bess',   type: 'acquaintance', note: 'she knows too much about herbs', sentiment: -0.8, trust: 0.0 },
+  { from: 'mark', to: 'hilda',  type: 'colleague',   note: 'supplies her with materials' },
+  { from: 'mark', to: 'elara',  type: 'acquaintance', note: 'entertains at the tavern' },
+  { from: 'mark', to: 'garrett', type: 'acquaintance' },
+  { from: 'elara', to: 'ted',    type: 'friend',     note: 'her favorite stage' },
+  { from: 'elara', to: 'aldric', type: 'acquaintance', note: 'visits the temple for stories' },
+  { from: 'elara', to: 'bess',   type: 'acquaintance', note: 'fascinated by her riddles' },
+  { from: 'garrett', to: 'aldric', type: 'colleague', note: 'both serve the town' },
+  { from: 'garrett', to: 'hilda',  type: 'acquaintance', note: 'respects her work' },
+  { from: 'aldric', to: 'bess',    type: 'friend',   note: 'elderly companionship, share tea' },
+  { from: 'aldric', to: 'garrett', type: 'colleague', note: 'both protectors of the town' },
+  { from: 'hilda', to: 'ted',    type: 'friend',     note: 'old drinking buddies, but her father died in his tavern', sentiment: -0.1, trust: 0.4 },
+  { from: 'hilda', to: 'mark',   type: 'colleague',   note: 'trades materials' },
+  { from: 'bess', to: 'aldric',  type: 'friend',     note: 'share wisdom and tea' },
+  { from: 'bess', to: 'mark',    type: 'acquaintance', note: 'his spices smell like common weeds', sentiment: -0.2, trust: 0.2 },
+  { from: 'magistrate', to: 'garrett', type: 'colleague', note: 'law enforcement partnership' },
+  { from: 'magistrate', to: 'aldric',  type: 'colleague', note: 'both serve the town, mutual respect' },
+  { from: 'magistrate', to: 'ted',     type: 'acquaintance', note: 'evening tavern visitor' },
+  { from: 'garrett', to: 'magistrate', type: 'colleague', note: 'brings cases to the judge' },
+  { from: 'aldric', to: 'magistrate',  type: 'colleague', note: 'fellow pillars of the community' },
+];
+
+function buildRelationships(npcId: string, profiles: AgentProfile[]): RelationshipGraph {
+  const graph = new RelationshipGraph();
+  for (const def of RELATIONSHIP_DEFS) {
+    if (def.from !== npcId) continue;
+    const target = profiles.find((p) => p.id === def.to);
+    if (!target) continue;
+    graph.addRelationship({
+      targetId: def.to,
+      targetName: target.name,
+      type: def.type,
+      sentiment: def.sentiment ?? DEFAULT_SENTIMENT[def.type],
+      trust: def.trust ?? DEFAULT_TRUST[def.type],
+    });
+  }
+  return graph;
+}
+
+function makeState(location: string, npcId: string): AgentState {
+  return {
+    alive: true,
+    status: 'free' as const,
+    location,
+    mood: 0.3,
+    currentDay: 1,
+    knownFacts: [
+      '# The town has 8 locations: tavern, town square, gate, market, blacksmith, temple, residential lane, and courthouse',
+    ],
+    beliefs: new BeliefManager(),
+    relationships: buildRelationships(npcId, PROFILES),
+  };
+}
+
+// ─── Bootstrap ───
+
+const PORT = parseInt(process.env.PORT ?? '3000');
+
+async function main() {
+  console.log('=== CLWA Server — Starting ===');
+  console.log();
+
+  const savedData = loadFromDisk();
+  if (savedData) {
+    console.log(`  [Save] Found save from ${savedData.savedAt}`);
+  }
+
+  const eventStore = new InMemoryEventStore();
+  if (savedData) {
+    eventStore.loadFromJSON(savedData.events);
+    console.log(`  [+] Event Store — restored ${savedData.events.length} events`);
+  } else {
+    console.log('  [+] Event Store');
+  }
+
+  const locationGraph = buildLocationGraph();
+  console.log(`  [+] Location Graph — ${locationGraph.size} locations`);
+
+  const agents = new Map<string, Agent>();
+  const shouldResetMemory = !savedData;
+  for (const npc of NPC_LOCATIONS) {
+    const profile = PROFILES.find((p) => p.id === npc.id)!;
+    const memory = new VectorMemory(profile.id);
+    await memory.init(shouldResetMemory ? { reset: true } : undefined);
+    const agent = new Agent(profile, makeState(npc.location, npc.id), memory, {
+      reflection: { threshold: 30 },
+      onReflection: (name, text) => {
+        console.log(`  [Reflection] ${name}: "${text}"`);
+        broadcast({ type: 'reflection', data: { agentName: name, text } });
+      },
+    });
+    agents.set(profile.id, agent);
+    console.log(`  [+] ${profile.name} the ${profile.role} @ ${npc.location}`);
+  }
+
+  agents.get('mark')!.state.mood = -0.7;
+
+  const publicPlaces = new Set<string>();
+  for (const loc of locationGraph.values()) {
+    if (loc.isPublic) publicPlaces.add(loc.name);
+  }
+
+  let world: World;
+  const engine = new ConsequenceEngine(CRIME_CG_RULES, {
+    publicPlaces,
+    onEvent: (event) => {
+      eventStore.append(event);
+      broadcast({ type: 'event', data: event });
+      if (world) {
+        world.handleEventForGoals(event);
+      }
+    },
+  });
+  console.log(`  [+] Consequence engine — ${CRIME_CG_RULES.length} rules`);
+
+  world = new World(
+    agents,
+    eventStore,
+    engine,
+    { minConversationScore: 1 },
+    {
+      onLine: (line) => {
+        console.log(`    ${line.speakerName}: "${line.text}"`);
+        broadcast({ type: 'conversation:line', data: line });
+      },
+      onConversation: (result) => {
+        broadcast({ type: 'conversation:complete', data: result });
+      },
+      onTick: (result) => {
+        if (result.time) {
+          console.log(`  [Time] Tick ${result.tickNumber} — ${result.time.hour} (${result.time.period})`);
+        }
+        if (result.dayAdvanced) {
+          console.log(`  [Time] === Day ${result.gameDay} ===`);
+        }
+        broadcast({ type: 'tick', data: result });
+      },
+      onMovement: (movements) => {
+        for (const m of movements) {
+          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to}`);
+        }
+        broadcast({ type: 'movement', data: movements });
+      },
+      onGoalAction: (action) => {
+        console.log(`  [Goal] ${action.ownerName}: ${action.description}`);
+        broadcast({ type: 'goal:action', data: action });
+      },
+      onMurder: (killerId, victimId, killerName, victimName) => {
+        console.log(`  [MURDER] ${killerName} killed ${victimName}!`);
+        broadcast({ type: 'murder', data: { killerId, victimId, killerName, victimName } });
+      },
+      onLlmCall: (reason, target) => {
+        broadcast({ type: 'debug:llm', data: { reason, target } });
+      },
+      onCrimeScene: (scene) => {
+        broadcast({ type: 'crime:scene', data: {
+          id: scene.id,
+          locationId: scene.locationId,
+          crimeType: scene.crimeType,
+          pointCount: scene.points.length,
+        }});
+      },
+    },
+    locationGraph,
+    { mobileNpcs: MOBILE_NPCS, moveProbability: 0.3 },
+    NPC_SCHEDULES,
+    NPC_HOMES,
+  );
+  console.log('  [+] World orchestrator');
+  console.log(`  [+] NPC schedules: ${NPC_SCHEDULES.length} entries for ${new Set(NPC_SCHEDULES.map((s) => s.npcId)).size} NPCs`);
+  console.log(`  [+] Mobile NPCs: ${Array.from(MOBILE_NPCS).join(', ')}`);
+
+  if (savedData) {
+    world.loadState(savedData.world);
+    console.log(`  [Save] World state restored (tick ${savedData.world.tickCount}, ${Object.keys(savedData.world.agents).length} agents)`);
+  }
+
+  const server = startServer(world, eventStore, agents, { port: PORT }, {
+    onSave: () => saveToDisk(world, eventStore),
+  });
+  console.log();
+  console.log(`  HTTP:  http://localhost:${server.port}/api/agents`);
+  console.log(`  WS:    ws://localhost:${server.port}/ws`);
+  console.log();
+  console.log('  REST endpoints:');
+  console.log('    GET  /api/agents            — all NPCs');
+  console.log('    GET  /api/events            — event log');
+  console.log('    GET  /api/state             — world state');
+  console.log('    GET  /api/locations          — location graph');
+  console.log('    GET  /api/memories/:id       — agent memories');
+  console.log('    GET  /api/beliefs/:id        — agent beliefs');
+  console.log('    GET  /api/relationships/:id  — agent relationships');
+  console.log('    POST /api/kill/:id           — player kills NPC');
+  console.log('    POST /api/npc-kill/:kid/:vid — NPC kills NPC');
+  console.log('    POST /api/observe            — inject event');
+  console.log('    POST /api/day                — advance day');
+  console.log('    POST /api/tick               — world tick');
+  console.log('    POST /api/auto               — toggle auto-tick');
+  console.log('    POST /api/save               — save state to disk');
+  console.log();
+  console.log('  Server ready. Waiting for connections...');
+
+  const shutdown = () => {
+    console.log('\n  [Save] Shutting down — saving state...');
+    saveToDisk(world, eventStore);
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+main().catch(console.error);

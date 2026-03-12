@@ -1,0 +1,10 @@
+{
+  "name": "@clwa/engine",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.13.0",
+    "openai": "^4.85.0"
+  }
+}

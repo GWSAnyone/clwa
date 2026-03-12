@@ -1,0 +1,454 @@
+import type { Agent } from '@clwa/engine';
+import type { World } from '@clwa/engine';
+import type { IEventStore } from '@clwa/engine';
+import type { EventType } from '@clwa/engine';
+import type { LocationGraph } from '@clwa/engine';
+import { broadcast } from './ws';
+
+export interface RouteOptions {
+  onSave?: () => void;
+}
+
+/** Build all REST route handlers */
+export function handleRequest(
+  req: Request,
+  world: World,
+  eventStore: IEventStore,
+  agents: Map<string, Agent>,
+  options?: RouteOptions,
+): Response | Promise<Response> {
+  const url = new URL(req.url);
+  const path = url.pathname;
+  const method = req.method;
+
+  // CORS headers for all responses
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+
+  // Preflight
+  if (method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: cors });
+  }
+
+  // ─── GET /api/agents ───
+  if (method === 'GET' && path === '/api/agents') {
+    const list = Array.from(agents.entries()).map(([id, agent]) => ({
+      id,
+      name: agent.profile.name,
+      role: agent.profile.role,
+      location: agent.state.location,
+      alive: agent.state.alive,
+      mood: agent.state.mood,
+      currentDay: agent.state.currentDay,
+      reflection: agent.getReflectionStatus(),
+      background: agent.profile.background,
+      speechStyle: agent.profile.speechStyle,
+      beliefCount: agent.state.beliefs?.getAllBeliefs().length ?? 0,
+      relationshipCount: agent.state.relationships?.getAllRelationships().length ?? 0,
+    }));
+    return Response.json(list, { headers: cors });
+  }
+
+  // ─── GET /api/goals ───
+  if (method === 'GET' && path === '/api/goals') {
+    const goals = world.goalManager.getAllGoals().map((g) => ({
+      id: g.id,
+      type: g.type,
+      ownerId: g.ownerId,
+      ownerName: agents.get(g.ownerId)?.profile.name ?? g.ownerId,
+      priority: g.priority,
+      state: g.state,
+      currentStep: g.currentStep,
+      totalSteps: g.steps.length,
+      data: g.data,
+      createdAtTick: g.createdAtTick,
+    }));
+    return Response.json(goals, { headers: cors });
+  }
+
+  // ─── GET /api/locations ───
+  if (method === 'GET' && path === '/api/locations') {
+    const locations = Array.from(world.locations.values()).map((loc) => ({
+      id: loc.id,
+      name: loc.name,
+      connections: loc.connections,
+      isPublic: loc.isPublic,
+      npcs: Array.from(agents.entries())
+        .filter(([, a]) => a.state.location === loc.name)
+        .map(([id, a]) => ({ id, name: a.profile.name, role: a.profile.role, alive: a.state.alive })),
+    }));
+    return Response.json(locations, { headers: cors });
+  }
+
+  // ─── GET /api/time ───
+  if (method === 'GET' && path === '/api/time') {
+    const sm = world.scheduleManager;
+    const tickInDay = world.tickInDay;
+    return Response.json({
+      ...(sm ? sm.getTimeInfo(tickInDay) : { tickInDay, period: world.currentPeriod, hour: `${tickInDay.toString().padStart(2, '0')}:00` }),
+      gameDay: agents.values().next().value?.state.currentDay ?? 1,
+      totalTicks: world.currentTick,
+    }, { headers: cors });
+  }
+
+  // ─── GET /api/schedules ───
+  if (method === 'GET' && path === '/api/schedules') {
+    const sm = world.scheduleManager;
+    return Response.json({
+      entries: sm?.getAllEntries() ?? [],
+      tickInDay: world.tickInDay,
+      period: world.currentPeriod,
+    }, { headers: cors });
+  }
+
+  // ─── GET /api/events ───
+  if (method === 'GET' && path === '/api/events') {
+    const typeFilter = url.searchParams.get('type') as EventType | null;
+    const events = typeFilter
+      ? eventStore.query({ type: typeFilter })
+      : eventStore.getAll();
+
+    const mapped = events.map((e) => ({
+      ...e,
+      subjectName: agents.get(e.subject)?.profile.name ?? e.subject,
+      objectName: e.object ? (agents.get(e.object)?.profile.name ?? e.object) : null,
+    }));
+    return Response.json(mapped, { headers: cors });
+  }
+
+  // ─── GET /api/state ───
+  if (method === 'GET' && path === '/api/state') {
+    const dayParam = url.searchParams.get('day');
+    const state = dayParam
+      ? eventStore.getStateAtDay(parseInt(dayParam) || 1)
+      : eventStore.getState();
+
+    return Response.json({
+      currentDay: state.currentDay,
+      deadNpcs: Array.from(state.deadNpcs).map((id) => ({
+        id,
+        name: agents.get(id)?.profile.name ?? id,
+      })),
+      wantedSubjects: Array.from(state.wantedSubjects),
+      npcMoodShifts: Object.fromEntries(state.npcMoodShifts),
+      locationFacts: Object.fromEntries(state.locationFacts),
+      eventCount: eventStore.count,
+    }, { headers: cors });
+  }
+
+  // ─── GET /api/beliefs/:id ───
+  if (method === 'GET' && path.startsWith('/api/beliefs/')) {
+    const agentId = path.split('/').pop()!;
+    const agent = agents.get(agentId);
+    if (!agent) {
+      return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    }
+    return Response.json(agent.state.beliefs?.toJSON() ?? [], { headers: cors });
+  }
+
+  // ─── GET /api/relationships/:id ───
+  if (method === 'GET' && path.startsWith('/api/relationships/')) {
+    const agentId = path.split('/').pop()!;
+    const agent = agents.get(agentId);
+    if (!agent) {
+      return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    }
+    return Response.json(agent.state.relationships?.toJSON() ?? [], { headers: cors });
+  }
+
+  // ─── GET /api/memories/:id ───
+  if (method === 'GET' && path.startsWith('/api/memories/')) {
+    const agentId = path.split('/').pop()!;
+    const agent = agents.get(agentId);
+    if (!agent) {
+      return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    }
+    return agent.getMemories().then((mems) =>
+      Response.json(mems, { headers: cors }),
+    );
+  }
+
+  // ─── GET /api/shop/:id ───
+  if (method === 'GET' && path.startsWith('/api/shop/')) {
+    const agentId = path.split('/').pop()!;
+    const agent = agents.get(agentId);
+    if (!agent) {
+      return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    }
+    return Response.json({
+      npcName: agent.profile.name,
+      items: agent.profile.shop ?? [],
+    }, { headers: cors });
+  }
+
+  // ─── GET /api/journal ───
+  if (method === 'GET' && path === '/api/journal') {
+    const typeFilter = url.searchParams.get('type') as 'clue' | 'testimony' | 'observation' | null;
+    const entries = world.journal.getEntries(typeFilter ? { type: typeFilter } : undefined);
+    return Response.json(entries, { headers: cors });
+  }
+
+  // ─── GET /api/crime-scenes ───
+  if (method === 'GET' && path === '/api/crime-scenes') {
+    const allScenes: Array<{
+      id: string; locationId: string; crimeType: string;
+      pointCount: number; gameDay: number; active: boolean;
+      perpetrator?: string; victim?: string;
+    }> = [];
+    for (const [, scenes] of world.crimeScenes) {
+      for (const scene of scenes) {
+        allScenes.push({
+          id: scene.id,
+          locationId: scene.locationId,
+          crimeType: scene.crimeType,
+          pointCount: scene.points.length,
+          gameDay: scene.gameDay,
+          active: scene.active,
+          perpetrator: scene.perpetratorId ? agents.get(scene.perpetratorId)?.profile.name : undefined,
+          victim: scene.victimId ? agents.get(scene.victimId)?.profile.name : undefined,
+        });
+      }
+    }
+    return Response.json(allScenes, { headers: cors });
+  }
+
+  // ─── GET /api/crime-scene/:locationId ───
+  if (method === 'GET' && path.startsWith('/api/crime-scene/')) {
+    const locationId = decodeURIComponent(path.slice('/api/crime-scene/'.length));
+    const scenes = world.crimeScenes.get(locationId);
+    if (!scenes || scenes.length === 0) {
+      return Response.json({ error: 'No crime scene at this location' }, { status: 404, headers: cors });
+    }
+    const active = scenes.filter((s) => s.active);
+    const scene = active.length > 0 ? active[active.length - 1] : scenes[scenes.length - 1];
+    return Response.json({
+      id: scene.id,
+      locationId: scene.locationId,
+      crimeType: scene.crimeType,
+      gameDay: scene.gameDay,
+      active: scene.active,
+      points: scene.points,
+      perpetrator: scene.perpetratorId ? agents.get(scene.perpetratorId)?.profile.name : undefined,
+      victim: scene.victimId ? agents.get(scene.victimId)?.profile.name : undefined,
+    }, { headers: cors });
+  }
+
+  // ─── POST /api/examine/:locationId/:pointId ───
+  if (method === 'POST' && path.startsWith('/api/examine/')) {
+    const parts = path.slice('/api/examine/'.length).split('/');
+    if (parts.length < 2) {
+      return Response.json({ error: 'Usage: /api/examine/:locationId/:pointId' }, { status: 400, headers: cors });
+    }
+    const locationId = decodeURIComponent(parts[0]);
+    const pointId = parts[1];
+
+    const scenes = world.crimeScenes.get(locationId);
+    if (!scenes) {
+      return Response.json({ error: 'No crime scene at this location' }, { status: 404, headers: cors });
+    }
+
+    for (const scene of scenes) {
+      const point = scene.points.find((p) => p.id === pointId);
+      if (point) {
+        point.examined = true;
+
+        const relatedNpcs: string[] = [];
+        if (scene.victimId) relatedNpcs.push(scene.victimId);
+        if (scene.perpetratorId) relatedNpcs.push(scene.perpetratorId);
+        const journalEntry = world.journal.addClue(
+          point.clueText,
+          locationId,
+          scene.gameDay,
+          world.currentTick,
+          scene.id,
+          relatedNpcs,
+        );
+        broadcast({ type: 'journal:entry', data: journalEntry });
+
+        return Response.json({
+          clueText: point.clueText,
+          type: point.type,
+          description: point.description,
+          journalEntryId: journalEntry.id,
+        }, { headers: cors });
+      }
+    }
+    return Response.json({ error: 'Examination point not found' }, { status: 404, headers: cors });
+  }
+
+  // ─── POST /api/npc-kill/:killerId/:victimId ───
+  if (method === 'POST' && path.startsWith('/api/npc-kill/')) {
+    const parts = path.split('/');
+    const killerId = parts[3];
+    const victimId = parts[4];
+    return world.processKill(victimId, killerId).then(({ killEvent, results }) => {
+      broadcast({ type: 'event', data: killEvent });
+      return Response.json({
+        killEvent,
+        consequences: results.map((r) => ({
+          ruleId: r.rule.id,
+          targets: r.targets.map((id: string) => ({
+            id,
+            name: agents.get(id)?.profile.name ?? id,
+          })),
+          importance: r.rule.consequence.importance,
+        })),
+        eventCount: eventStore.count,
+      }, { headers: cors });
+    }).catch((err: Error) =>
+      Response.json({ error: err.message }, { status: 400, headers: cors }),
+    );
+  }
+
+  // ─── POST /api/kill/:id ───
+  if (method === 'POST' && path.startsWith('/api/kill/')) {
+    const victimId = path.split('/').pop()!;
+    return world.processKill(victimId).then(({ killEvent, results }) => {
+      broadcast({ type: 'event', data: killEvent });
+      return Response.json({
+        killEvent,
+        consequences: results.map((r) => ({
+          ruleId: r.rule.id,
+          targets: r.targets.map((id: string) => ({
+            id,
+            name: agents.get(id)?.profile.name ?? id,
+          })),
+          importance: r.rule.consequence.importance,
+        })),
+        eventCount: eventStore.count,
+      }, { headers: cors });
+    }).catch((err: Error) =>
+      Response.json({ error: err.message }, { status: 400, headers: cors }),
+    );
+  }
+
+  // ─── POST /api/observe ───
+  if (method === 'POST' && path === '/api/observe') {
+    return req.json().then(async (body: { agentId: string; text: string; importance: number }) => {
+      const agent = agents.get(body.agentId);
+      if (!agent) {
+        return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+      }
+      await agent.observe(body.text, body.importance);
+      return Response.json({
+        stored: true,
+        reflection: agent.getReflectionStatus(),
+      }, { headers: cors });
+    });
+  }
+
+  // ─── POST /api/day ───
+  if (method === 'POST' && path === '/api/day') {
+    return world.advanceDay().then(({ newDay, rumorResults }) =>
+      Response.json({
+        newDay,
+        rumors: rumorResults.map((r) => ({
+          ruleId: r.rule.id,
+          targets: r.targets.map((id: string) => ({
+            id,
+            name: agents.get(id)?.profile.name ?? id,
+          })),
+          location: r.event.location,
+        })),
+        eventCount: eventStore.count,
+      }, { headers: cors }),
+    );
+  }
+
+  // ─── POST /api/tick ───
+  if (method === 'POST' && path === '/api/tick') {
+    return world.tick().then((result) =>
+      Response.json(result, { headers: cors }),
+    ).catch((err: Error) =>
+      Response.json({ error: err.message }, { status: 409, headers: cors }),
+    );
+  }
+
+  // ─── POST /api/auto ───
+  if (method === 'POST' && path === '/api/auto') {
+    return req.json().then((body: { seconds?: number }) => {
+      if (world.isAutoTicking) {
+        world.stopAutoTick();
+        return Response.json({ autoTick: false }, { headers: cors });
+      }
+      const seconds = body.seconds ?? 15;
+      world.startAutoTick(seconds * 1000);
+      return Response.json({ autoTick: true, intervalSeconds: seconds }, { headers: cors });
+    });
+  }
+
+  // ─── POST /api/player/location ───
+  if (method === 'POST' && path === '/api/player/location') {
+    return req.json().then((body: { location?: string | null }) => {
+      world.playerLocation = body.location ?? null;
+      return Response.json({ playerLocation: world.playerLocation }, { headers: cors });
+    });
+  }
+
+  // ─── GET /api/player ───
+  if (method === 'GET' && path === '/api/player') {
+    return Response.json({ location: world.playerLocation }, { headers: cors });
+  }
+
+  // ─── POST /api/save ───
+  if (method === 'POST' && path === '/api/save') {
+    if (options?.onSave) {
+      options.onSave();
+      return Response.json({ saved: true }, { headers: cors });
+    }
+    return Response.json({ error: 'Save not configured' }, { status: 500, headers: cors });
+  }
+
+  // ─── GET /api/debug/mood/:id/:value ───
+  const moodMatch = path.match(/^\/api\/debug\/mood\/([^/]+)\/([-\d.]+)$/);
+  if (method === 'GET' && moodMatch) {
+    const agent = agents.get(moodMatch[1]);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    const oldMood = agent.state.mood;
+    agent.state.mood = Math.max(-1, Math.min(1, parseFloat(moodMatch[2])));
+    return Response.json({ id: moodMatch[1], name: agent.profile.name, oldMood, newMood: agent.state.mood }, { headers: cors });
+  }
+
+  // ─── GET /api/debug/move/:id/:location ───
+  const moveMatch = path.match(/^\/api\/debug\/move\/([^/]+)\/(.+)$/);
+  if (method === 'GET' && moveMatch) {
+    const agent = agents.get(moveMatch[1]);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    const oldLocation = agent.state.location;
+    agent.state.location = decodeURIComponent(moveMatch[2]);
+    return Response.json({ id: moveMatch[1], name: agent.profile.name, oldLocation, newLocation: agent.state.location }, { headers: cors });
+  }
+
+  // ─── GET /api/debug/sentiment/:id/:targetId/:value ───
+  const sentMatch = path.match(/^\/api\/debug\/sentiment\/([^/]+)\/([^/]+)\/([-\d.]+)$/);
+  if (method === 'GET' && sentMatch) {
+    const agent = agents.get(sentMatch[1]);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    const value = Math.max(-1, Math.min(1, parseFloat(sentMatch[3])));
+    agent.state.relationships?.adjustSentiment(sentMatch[2], value - (agent.state.relationships.getRelationship(sentMatch[2])?.sentiment ?? 0));
+    return Response.json({ id: sentMatch[1], target: sentMatch[2], sentiment: value }, { headers: cors });
+  }
+
+  // ─── GET /api/debug/volition/:id ───
+  const volMatch = path.match(/^\/api\/debug\/volition\/([^/]+)$/);
+  if (method === 'GET' && volMatch) {
+    const npcId = volMatch[1];
+    const agent = agents.get(npcId);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+
+    const results = world.debugVolition(npcId);
+    return Response.json({
+      npcId, name: agent.profile.name,
+      mood: agent.state.mood, location: agent.state.location,
+      tick: world.currentTick,
+      affordances: results.filter((r) => r.passed),
+      blocked: results.filter((r) => !r.passed).map((r) => r.id),
+    }, { headers: cors });
+  }
+
+  // ─── 404 ───
+  return Response.json({ error: 'Not found' }, { status: 404, headers: cors });
+}

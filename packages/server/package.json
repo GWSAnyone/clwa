@@ -1,0 +1,13 @@
+{
+  "name": "@clwa/server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@clwa/engine": "workspace:*",
+    "@clwa/modules": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10"
+  }
+}

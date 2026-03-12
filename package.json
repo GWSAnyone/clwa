@@ -1,0 +1,5 @@
+{
+  "name": "clwa-prototype",
+  "private": true,
+  "workspaces": ["packages/*"]
+}
