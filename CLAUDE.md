@@ -173,6 +173,9 @@ bun run packages/server/src/index.ts
 22. **Belief summarization**: verb mapping по eventType (НЕ хардкод "killed" для всех типов)
 23. **Profile flags**: `investigator: true` вместо хардкода `role === 'guard'` в prompt-building
 24. **Cover-up beliefs**: `source === 'cover_up'` (структурный Belief), НЕ legacy `tag`/`text` поля. Secret-directives фильтрует по source
+25. **Reactive finder lookup**: `REACTIVE_TARGET_FINDERS` регистрируются по `aff.id`, lookup в `findReactiveTarget` тоже по `aff.id`. `targetFinder` — ключ только для proactive `TARGET_FINDERS`
+26. **sourceEvent в events**: события из goal execution должны иметь `sourceEvent: 'goal_execution'` в payload, иначе reactive eval пропустит. Аналогично `'theft_discovery'` для THEFT_DISCOVERED
+27. **Name format в beliefs**: subject/object = plain name (`profile.name`), НЕ `"Name the role"`. Для matching использовать `matchesNpc()`/`matchesSuspect()` с `startsWith` (обратная совместимость с CE cascade)
 
 ## Дорожная карта
 - ✅ Веха 2: Деревня, движение, Goal System
@@ -188,7 +191,7 @@ bun run packages/server/src/index.ts
   - ✅ Слой 10: Architectural Audit (устранение text matching, semaphore safety, verb mapping)
   - ✅ Слой 11: Legacy cleanup + Package restructure (engine/modules/server)
   - ✅ Слой 12: Трёхуровневая модель решений (reflex/urge/thought)
-  - ⏳ Тестирование полного цикла crime → investigation → arrest → trial → sentence
+  - ✅ Слой 13: Reactive eval fix + name consistency (v0.5.2) — E2E цикл протестирован
   - ⏳ Trauma (постоянные сдвиги OCEAN+H)
   - ⏳ CG v2 (полные цепочки для всех типов)
 - ⏳ Веха 6+: Сторителлинг/квесты, фракции, Reputation
