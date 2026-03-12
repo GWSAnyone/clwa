@@ -470,7 +470,7 @@ export class World {
               location: crimeData.location,
               gameDay: this.getCurrentDay(),
               importance: crimeData.importance,
-              payload: crimeData.payload,
+              payload: { ...crimeData.payload, sourceEvent: 'goal_execution' },
             };
             this.eventStore.append(crimeEvent);
 
@@ -1161,6 +1161,7 @@ export class World {
           thiefName,
           victimName: owner.profile.name,
           originalTheftId: theft.id,
+          sourceEvent: 'theft_discovery',
         },
       };
       this.eventStore.append(discoveryEvent);
@@ -1185,7 +1186,7 @@ export class World {
 
     const killer = killerId ? this.agents.get(killerId) : null;
     const killerSubject = killerId ?? 'player';
-    const killerName = killer ? `${killer.profile.name} the ${killer.profile.role}` : 'the player';
+    const killerName = killer ? killer.profile.name : 'the player';
 
     victim.state.alive = false;
     victim.state.mood = -1;
@@ -1200,7 +1201,9 @@ export class World {
       importance: 9,
       payload: {
         killerName,
-        victimName: `${victim.profile.name} the ${victim.profile.role}`,
+        killerRole: killer?.profile.role,
+        victimName: victim.profile.name,
+        victimRole: victim.profile.role,
       },
     };
 

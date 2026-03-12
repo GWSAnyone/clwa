@@ -175,13 +175,16 @@ export interface GoalActionResult {
 function gatherEvidence(suspect: Agent, agents: Map<string, Agent>): string {
   const lines: string[] = [];
   const suspectName = suspect.profile.name;
+  const suspectId = suspect.profile.id;
+  const matchesSuspect = (field: string | null | undefined) =>
+    !!field && (field === suspectName || field === suspectId || field.startsWith(suspectName + ' '));
 
   for (const [, agent] of agents) {
     if (!agent.state.alive) continue;
     const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
     for (const b of beliefs) {
       if ((b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE' || b.eventType === 'WANTED_STATUS') &&
-          (b.subject === suspectName || b.object === suspectName)) {
+          (matchesSuspect(b.subject) || matchesSuspect(b.object))) {
         const sourceLabel = b.source === 'witness' || b.source === 'observation' ? 'eyewitness' :
           b.source === 'interrogation' ? 'testimony under questioning' :
           b.source === 'rumor' ? 'hearsay' : b.source;
@@ -689,7 +692,7 @@ export class GoalManager {
               id: crypto.randomUUID(),
               eventType: 'NPC_KILLED',
               subject: owner.profile.name,
-              object: `${target.profile.name} the ${target.profile.role}`,
+              object: target.profile.name,
               location: target.state.location,
               confidence: 1.0,
               source: 'witness',
@@ -905,7 +908,7 @@ export class GoalManager {
         }
 
         const victimAgent = activeScene.victimId ? agents.get(activeScene.victimId) : null;
-        const victimName = victimAgent ? `${victimAgent.profile.name} the ${victimAgent.profile.role}` : 'unknown victim';
+        const victimName = victimAgent ? victimAgent.profile.name : 'unknown victim';
         const crimeLabel = activeScene.crimeType === 'murder' ? 'murder' : activeScene.crimeType === 'robbery' ? 'theft' : 'attack';
 
         // Cross-reference: persons present × motive (negative sentiment toward victim)

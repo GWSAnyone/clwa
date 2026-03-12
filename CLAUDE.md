@@ -112,7 +112,8 @@ bun run packages/server/src/index.ts
 | GET | /api/memories/:id | Векторные воспоминания NPC |
 | GET | /api/goals | Все цели NPC |
 | POST | /api/tick | Один тик мира |
-| POST | /api/kill/:id | Убить NPC → каскад |
+| POST | /api/kill/:id | Игрок убивает NPC → каскад |
+| POST | /api/npc-kill/:killerId/:victimId | NPC убивает NPC → каскад (E2E тест) |
 | POST | /api/day | Advance day + слухи |
 | POST | /api/save | Сохранить состояние на диск |
 | POST | /api/auto | Toggle auto-tick |

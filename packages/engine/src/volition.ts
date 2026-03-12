@@ -171,7 +171,7 @@ export function evaluateReactiveVolition(
       const existing = existingGoalTypes(npcId);
       if (existing.includes(aff.goalType)) continue;
 
-      // Only react to events from CE cascade (have sourceRule), skip phantom rumors
+      // Only react to events from CE cascade (have sourceRule) or goal execution (have sourceEvent)
       if (!event.payload?.sourceRule && !event.payload?.sourceEvent) continue;
 
       // Check requirements (relaxed for reactive)

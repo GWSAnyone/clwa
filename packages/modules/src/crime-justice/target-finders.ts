@@ -3,6 +3,14 @@ import type { Belief } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
 import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole } from '@clwa/engine';
 
+// ─── Helpers ───
+
+/** Match belief subject/object against NPC (handles "Name the role" format from CE cascade) */
+function matchesNpc(name: string | null | undefined, agent: Agent): boolean {
+  if (!name) return false;
+  return name === agent.profile.name || name === agent.profile.id || name.startsWith(agent.profile.name + ' ');
+}
+
 // ─── Shared Target Finders ───
 
 function findStealTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
@@ -38,7 +46,7 @@ function findCrimeBeliefTarget(npcId: string, agent: Agent, ctx: AffordanceConte
   for (const belief of crimeBeliefs) {
     for (const [otherId, other] of ctx.agents) {
       if (otherId === npcId || !other.state.alive) continue;
-      if (belief.subject && (other.profile.name === belief.subject || other.profile.id === belief.subject)) {
+      if (belief.subject && matchesNpc(belief.subject, other)) {
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: { beliefId: belief.id, eventType: belief.eventType, victimName: belief.object, reason: `${belief.eventType === 'NPC_KILLED' ? 'murder' : 'crime'} of ${belief.object ?? 'someone'}` },
@@ -57,7 +65,7 @@ function findBlackmailTarget(npcId: string, agent: Agent, ctx: AffordanceContext
   for (const belief of secretBeliefs) {
     for (const [otherId, other] of ctx.agents) {
       if (otherId === npcId || !other.state.alive) continue;
-      if (belief.subject && other.profile.name === belief.subject) {
+      if (matchesNpc(belief.subject, other)) {
         return { targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location, extra: { secretBelief: belief.id } };
       }
     }
@@ -183,7 +191,7 @@ function findArrestTarget(npcId: string, agent: Agent, ctx: AffordanceContext, e
       const st = other.state.status ?? 'free';
       if (st !== 'free') continue; // can't arrest someone already detained/exiled
 
-      if (other.profile.name === belief.subject || other.profile.id === belief.subject) {
+      if (matchesNpc(belief.subject, other)) {
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
@@ -224,7 +232,7 @@ function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext):
     const otherBeliefs = other.state.beliefs?.getAllBeliefs() ?? [];
     const witnessOfMyCrime = otherBeliefs.find(
       (b: Belief) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
-        (b.subject === agent.profile.name || b.subject === agent.profile.id) &&
+        matchesNpc(b.subject, agent) &&
         b.confidence >= 0.3,
     );
     if (witnessOfMyCrime) {

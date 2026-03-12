@@ -340,7 +340,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     goalType: 'interrogate',
     goalPriority: 8,
     eventBoost: {
-      eventTypes: ['WANTED_STATUS', 'WITNESS_MEMORY', 'TESTIMONY_GIVEN'],
+      eventTypes: ['WANTED_STATUS', 'WITNESS_MEMORY'],
       boost: 0.4,
       role: 'guard',
     },

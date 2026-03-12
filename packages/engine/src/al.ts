@@ -384,9 +384,8 @@ function findReactiveTarget(
   ctx: AffordanceContext,
   event: WorldEvent,
 ): AffordanceTarget | null {
-  // Check reactive registry first (may have event-specific enrichment)
-  const key = aff.targetFinder ?? aff.id;
-  const finder = REACTIVE_TARGET_FINDERS.get(key);
+  // Check reactive registry first (registered by affordance id, not targetFinder)
+  const finder = REACTIVE_TARGET_FINDERS.get(aff.id);
   if (finder) return finder(npcId, agent, ctx, event, aff);
   // Fallback to generic role-based finder
   if (aff.targetRole) return findByRole(aff.targetRole, npcId, agent, ctx);
