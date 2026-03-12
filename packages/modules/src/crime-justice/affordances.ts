@@ -346,7 +346,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact', targetId: '$target', purpose: 'Interrogate {targetName} about the {crimeType:crime} involving {victimName:the victim}. Ask what they saw, when, and if they know who is responsible. Be thorough and firm.', importance: 6, beliefTransfer: true },
+      { action: 'interact', targetId: '$target', purpose: 'Interrogate {targetName} about the {crimeType:crime} involving {victimName:the victim}. Ask what they saw, when, and if they know who is responsible. Be thorough and firm.', importance: 6, beliefTransfer: true, evaluateSuspect: true },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },

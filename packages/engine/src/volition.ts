@@ -929,6 +929,7 @@ function resolveTemplates(
           importance: tmpl.importance ?? 5,
           beliefTransfer: tmpl.beliefTransfer,
           beliefTransferDirection: tmpl.beliefTransferDirection,
+          evaluateSuspect: tmpl.evaluateSuspect,
         });
         break;
       }

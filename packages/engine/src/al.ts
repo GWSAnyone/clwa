@@ -94,6 +94,8 @@ export interface StepTemplate {
   beliefTransfer?: boolean;
   /** Direction of belief transfer: 'target-to-owner' (default) or 'owner-to-target' (for testify) */
   beliefTransferDirection?: 'target-to-owner' | 'owner-to-target';
+  /** After interaction, evaluate if target is a suspect and update confidence based on guilt + H trait */
+  evaluateSuspect?: boolean;
 }
 
 export interface BeliefModifier {

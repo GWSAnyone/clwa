@@ -1,7 +1,18 @@
 import type { Agent } from './agent';
 import type { WorldEvent } from './cg-types';
-import type { LocationGraph, MovementResult } from './world-types';
+import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
 import { nextHop } from './pathfinding';
+
+// ─── Interrogation Outcome Constants ───
+
+/** H trait threshold: above = honest (poor liar), below = deceptive */
+const HONESTY_THRESHOLD = 0.6;
+/** Confidence set when honest guilty suspect is interrogated (quasi-confession) */
+const CONFESSION_CONFIDENCE = 0.85;
+/** Confidence boost when deceptive guilty suspect is interrogated (nervous tells) */
+const NERVOUS_BOOST = 0.15;
+/** Confidence drop when innocent suspect provides alibi */
+const ALIBI_DROP = 0.2;
 
 // ─── Step Primitives ───
 
@@ -24,6 +35,8 @@ export interface InteractStep {
   beliefTransfer?: boolean;
   /** Direction of belief transfer: 'target-to-owner' (default, for interrogate) or 'owner-to-target' (for testify) */
   beliefTransferDirection?: 'target-to-owner' | 'owner-to-target';
+  /** After interaction, evaluate if target is a suspect (deduction belief match) and update confidence based on guilt + H trait */
+  evaluateSuspect?: boolean;
 }
 
 /**
@@ -452,6 +465,13 @@ export class GoalManager {
               },
             });
           }
+        }
+
+        // ── Suspect evaluation (declarative flag from step template) ──
+        // If the step has evaluateSuspect, check if target matches a deduction belief
+        // and update confidence based on guilt + H trait.
+        if (step.evaluateSuspect && owner.state.beliefs && crimeScenes) {
+          evaluateInterrogationOutcome(owner, target, owner.state.currentDay, crimeScenes);
         }
 
         goal.currentStep++;
@@ -896,9 +916,9 @@ export class GoalManager {
           const person = agents.get(personId);
           if (!person) continue;
 
-          // Check if guard already has a strong belief about this person
+          // Check if guard already has a deduction belief about this person
           const existing = owner.state.beliefs?.getAllBeliefs().find(
-            (b) => b.subject === person.profile.name && b.confidence >= 0.5,
+            (b) => b.source === 'deduction' && b.subject === person.profile.name,
           );
           if (existing) continue;
 
@@ -1039,3 +1059,59 @@ export type InteractionRunner = (
   purpose: string,
   importance: number,
 ) => Promise<{ ownerLine: string; targetLine: string }>;
+
+// ─── Suspect Interrogation Outcome ───
+
+/**
+ * After a guard interrogates someone they suspect (deduction belief),
+ * evaluate the outcome based on guilt + suspect's H trait.
+ *
+ * - Guilty + honest (H >= threshold): quasi-confession → high confidence
+ * - Guilty + dishonest (H < threshold): denial but nervous → moderate boost
+ * - Innocent: credible alibi → confidence drops
+ *
+ * PM = instinct: H trait determines lying ability, not LLM.
+ * Structured: guilt checked via perpetratorId, not text matching.
+ */
+function evaluateInterrogationOutcome(
+  owner: Agent,
+  suspect: Agent,
+  currentDay: number,
+  crimeScenes: Map<string, CrimeScene[]>,
+): void {
+  if (!owner.state.beliefs) return;
+
+  // Find deduction belief about this suspect
+  const deduction = owner.state.beliefs.getAllBeliefs().find(
+    (b) => b.source === 'deduction' && b.subject === suspect.profile.name,
+  );
+  if (!deduction) return; // Not a suspect — just a witness interrogation
+
+  const isGuilty = checkGuilt(suspect.profile.id, crimeScenes);
+  const honesty = suspect.profile.bigFive.honesty;
+
+  if (isGuilty) {
+    if (honesty >= HONESTY_THRESHOLD) {
+      deduction.confidence = CONFESSION_CONFIDENCE;
+      console.log(`  [Interrogate] ${suspect.profile.name} (H=${honesty.toFixed(2)}) shows guilt — quasi-confession → conf ${deduction.confidence}`);
+    } else {
+      deduction.confidence = Math.min(1, deduction.confidence + NERVOUS_BOOST);
+      console.log(`  [Interrogate] ${suspect.profile.name} (H=${honesty.toFixed(2)}) denies but nervous → conf ${deduction.confidence.toFixed(2)}`);
+    }
+  } else {
+    deduction.confidence = Math.max(0.1, deduction.confidence - ALIBI_DROP);
+    console.log(`  [Interrogate] ${suspect.profile.name} provides credible alibi → conf ${deduction.confidence.toFixed(2)}`);
+  }
+
+  deduction.lastUpdated = currentDay;
+}
+
+/** Check if suspect is the perpetrator of any active crime scene */
+function checkGuilt(suspectId: string, crimeScenes: Map<string, CrimeScene[]>): boolean {
+  for (const scenes of crimeScenes.values()) {
+    for (const scene of scenes) {
+      if (scene.active && scene.perpetratorId === suspectId) return true;
+    }
+  }
+  return false;
+}
