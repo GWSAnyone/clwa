@@ -1,4 +1,4 @@
-export type BeliefSource = 'witness' | 'body_discovery' | 'rumor' | 'testimony' | 'interrogation' | 'observation' | 'cover_up' | 'deduction';
+export type BeliefSource = 'witness' | 'body_discovery' | 'rumor' | 'testimony' | 'interrogation' | 'observation' | 'cover_up' | 'deduction' | 'evidence';
 
 export interface Belief {
   id: string;
@@ -32,6 +32,7 @@ export const SOURCE_CONFIDENCE: Record<BeliefSource, number> = {
   observation: 0.8,
   cover_up: 0.95,
   deduction: 0.5,
+  evidence: 0.5,
 };
 
 export class BeliefManager {

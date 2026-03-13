@@ -140,6 +140,18 @@ export type { IntentResult } from './intent';
 // ─── Interaction ───
 export { createInteractionRunner } from './interaction';
 
+// ─── Evidence Layer ───
+export { EvidenceLayer, EVIDENCE_RULES, EVIDENCE_SOURCES } from './evidence';
+export type {
+  Evidence,
+  EvidenceCandidate,
+  EvidenceContext,
+  EvidenceJSON,
+  EvidenceRule,
+  EvidenceSourceFn,
+  EvidenceTemplate,
+} from './evidence';
+
 // ─── Crime Scene ───
 export { createCrimeScene, getPassiveNoticeText } from './crime-scene';
 

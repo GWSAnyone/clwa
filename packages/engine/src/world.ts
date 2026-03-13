@@ -26,6 +26,8 @@ import { evaluateAllVolition, evaluateReactiveVolition } from './volition';
 import { AFFORDANCE_REGISTRY, checkRequirements, computeUtility } from './al';
 import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
+import { EvidenceLayer } from './evidence';
+import type { EvidenceContext } from './evidence';
 
 export interface WorldCallbacks {
   /** Called when an NPC-to-NPC conversation line is generated */
@@ -87,6 +89,8 @@ export class World {
   private affordanceCooldowns: Map<string, Map<string, number>> = new Map();
   /** Decision cooldowns: npcId → expiresAtTick (limits LLM decision frequency) */
   private decisionCooldowns: Map<string, number> = new Map();
+  /** Evidence Layer: structured discoverable facts at locations */
+  readonly evidence: EvidenceLayer = new EvidenceLayer();
 
   constructor(
     agents: Map<string, Agent>,
@@ -461,7 +465,7 @@ export class World {
         this.callbacks.onLlmCall?.(`Goal: ${goalType}`, agent?.profile.name);
         const action = await this.goalManager.processGoalTick(
           id, this.agents, this.locations, interactionRunner,
-          async (crimeData) => {
+          async (crimeData: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => {
             const crimeEvent: WorldEvent = {
               id: crypto.randomUUID(),
               type: crimeData.type as WorldEvent['type'],
@@ -488,6 +492,10 @@ export class World {
               this.markCrimeScene(crimeData.location, 'robbery', crimeData.subject, crimeData.object, sceneWitnesses);
             }
 
+            // Generate structured evidence at the scene
+            const elCtx: EvidenceContext = { event: crimeEvent, agents: this.agents, crimeScenes: this.crimeScenes };
+            this.evidence.generate(crimeEvent, elCtx);
+
             // Process through CE for cascading consequences
             const results = await this.engine.process(crimeEvent, { agents: this.agents });
             this.handleEventForGoals(crimeEvent);
@@ -496,6 +504,7 @@ export class World {
             }
           },
           this.crimeScenes,
+          this.evidence,
         );
         if (action) {
           goalActions.push(action);
@@ -1220,9 +1229,13 @@ export class World {
 
     // Create crime scene at the murder location
     const witnessIds = Array.from(this.agents.entries())
-      .filter(([id, a]) => id !== victimId && a.state.alive && a.state.location === victim.state.location)
+      .filter(([id, a]) => id !== victimId && id !== killerId && a.state.alive && a.state.location === victim.state.location)
       .map(([id]) => id);
     this.markCrimeScene(victim.state.location, 'murder', killerId, victimId, witnessIds);
+
+    // Generate structured evidence at the crime scene
+    const elCtx: EvidenceContext = { event: killEvent, agents: this.agents, crimeScenes: this.crimeScenes };
+    this.evidence.generate(killEvent, elCtx);
 
     // Process consequences — the engine's onEvent callback will call handleEventForGoals
     const results = await this.engine.process(killEvent, { agents: this.agents });
@@ -1353,6 +1366,7 @@ export class World {
       tickCount: this.tickCount,
       bodyDiscoveries: Array.from(this.bodyDiscoveries),
       crimeScenes,
+      evidence: this.evidence.toJSON(),
       journal: this.journal.toJSON(),
       goals: this.goalManager.toJSON(),
       topicEngine: this.topicEngine.toJSON(),
@@ -1375,6 +1389,11 @@ export class World {
           scenes.map((s) => ({ ...s, noticedBy: new Set(s.noticedBy) })),
         );
       }
+    }
+
+    // Restore evidence layer
+    if ((data as any).evidence) {
+      (this as any).evidence = EvidenceLayer.fromJSON((data as any).evidence);
     }
 
     // Restore topic engine state

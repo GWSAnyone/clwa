@@ -191,6 +191,32 @@ export function handleRequest(
     return Response.json(entries, { headers: cors });
   }
 
+  // ─── GET /api/evidence(/:locationId) ───
+  if (method === 'GET' && path.startsWith('/api/evidence')) {
+    const locPart = path.slice('/api/evidence'.length).replace(/^\//, '');
+    const locationId = locPart ? decodeURIComponent(locPart) : null;
+
+    const result: Array<{
+      id: string; eventType: string; category: string; location: string;
+      subjectName: string | null; objectName: string | null;
+      weight: number; active: boolean; discoveredBy: string[];
+      description: string;
+    }> = [];
+
+    if (locationId) {
+      for (const e of world.evidence.getAll(locationId)) {
+        result.push({ ...e, discoveredBy: [...e.discoveredBy] });
+      }
+    } else {
+      for (const [, evidenceList] of world.evidence.getAllEvidence()) {
+        for (const e of evidenceList) {
+          result.push({ ...e, discoveredBy: [...e.discoveredBy] });
+        }
+      }
+    }
+    return Response.json(result, { headers: cors });
+  }
+
   // ─── GET /api/crime-scenes ───
   if (method === 'GET' && path === '/api/crime-scenes') {
     const allScenes: Array<{
@@ -268,11 +294,29 @@ export function handleRequest(
         );
         broadcast({ type: 'journal:entry', data: journalEntry });
 
+        // Also discover any undiscovered EL evidence at this location for player
+        const discovered = world.evidence.getUndiscovered(locationId, 'player');
+        const evidenceEntries = [];
+        for (const e of discovered) {
+          world.evidence.discover(e.id, 'player');
+          const evEntry = world.journal.addClue(
+            e.description,
+            locationId,
+            e.gameDay,
+            world.currentTick,
+            undefined,
+            [e.subjectId, e.objectId].filter(Boolean) as string[],
+          );
+          broadcast({ type: 'journal:entry', data: evEntry });
+          evidenceEntries.push({ category: e.category, description: e.description, subjectName: e.subjectName });
+        }
+
         return Response.json({
           clueText: point.clueText,
           type: point.type,
           description: point.description,
           journalEntryId: journalEntry.id,
+          evidence: evidenceEntries,
         }, { headers: cors });
       }
     }

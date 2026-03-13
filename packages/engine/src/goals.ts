@@ -1,6 +1,7 @@
 import type { Agent } from './agent';
 import type { WorldEvent } from './cg-types';
 import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
+import type { EvidenceLayer } from './evidence';
 import { nextHop } from './pathfinding';
 
 // ─── Interrogation Outcome Constants ───
@@ -313,6 +314,7 @@ export class GoalManager {
     runInteraction: InteractionRunner,
     onCrimeEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>,
     crimeScenes?: Map<string, import('./world-types').CrimeScene[]>,
+    evidenceLayer?: EvidenceLayer,
   ): Promise<GoalActionResult | null> {
     const goal = this.getActiveGoal(ownerId);
     if (!goal) return null;
@@ -343,7 +345,7 @@ export class GoalManager {
     }
 
     const step = goal.steps[goal.currentStep];
-    return this.executeStep(goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes);
+    return this.executeStep(goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer);
   }
 
   private async executeStep(
@@ -356,6 +358,7 @@ export class GoalManager {
     runInteraction: InteractionRunner,
     onCrimeEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>,
     crimeScenes?: Map<string, import('./world-types').CrimeScene[]>,
+    evidenceLayer?: EvidenceLayer,
   ): Promise<GoalActionResult | null> {
     const baseResult = {
       goalId: goal.id,
@@ -834,10 +837,11 @@ export class GoalManager {
       }
 
       case 'destroy_evidence': {
-        // Find active crime scene at this location
-        // NOTE: crime scenes are managed by World, so we emit an event and let World handle it
+        // Destroy physical/trace evidence at this location via EL
+        const destroyed = evidenceLayer?.destroyAt(owner.state.location, ['trace']) ?? 0;
+
         await owner.observe(
-          `I destroyed evidence at ${owner.state.location}. I hope no one saw me.`,
+          `I destroyed evidence at ${owner.state.location}. ${destroyed > 0 ? `Removed ${destroyed} piece(s) of physical evidence.` : 'Nothing to destroy.'} I hope no one saw me.`,
           step.importance,
         );
 
@@ -899,63 +903,60 @@ export class GoalManager {
       }
 
       case 'examine_scene': {
-        // Guard examines crime scene → synthesizes suspicion beliefs from opportunity + motive
-        const scenes = crimeScenes?.get(owner.state.location) ?? [];
-        const activeScene = scenes.find((s) => s.active);
-        if (!activeScene) {
+        // Guard examines crime scene → discovers evidence via EL → creates/reinforces beliefs
+        const undiscovered = evidenceLayer?.getUndiscovered(owner.state.location, ownerId) ?? [];
+
+        if (undiscovered.length === 0) {
           goal.currentStep++;
-          return { ...baseResult, action: 'examine_scene', description: `${owner.profile.name}: no active crime scene here` };
+          return { ...baseResult, action: 'examine_scene', description: `${owner.profile.name}: no undiscovered evidence here` };
         }
 
-        const victimAgent = activeScene.victimId ? agents.get(activeScene.victimId) : null;
-        const victimName = victimAgent ? victimAgent.profile.name : 'unknown victim';
-        const crimeLabel = activeScene.crimeType === 'murder' ? 'murder' : activeScene.crimeType === 'robbery' ? 'theft' : 'attack';
-
-        // Cross-reference: persons present × motive (negative sentiment toward victim)
+        const currentDay = goal.createdAtTick ? Math.floor(goal.createdAtTick / 24) + 1 : 1;
         let suspectCount = 0;
-        for (const personId of activeScene.personsPresent) {
-          if (personId === activeScene.victimId) continue;
-          if (personId === ownerId) continue;
-          const person = agents.get(personId);
-          if (!person) continue;
 
-          // Check if guard already has a deduction belief about this person
-          const existing = owner.state.beliefs?.getAllBeliefs().find(
-            (b) => b.source === 'deduction' && b.subject === person.profile.name,
+        for (const e of undiscovered) {
+          evidenceLayer!.discover(e.id, ownerId);
+
+          if (!e.subjectName || !owner.state.beliefs) continue;
+
+          // Check if guard already has a belief about this subject for this event
+          const existing = owner.state.beliefs.getAllBeliefs().find(
+            (b) => (b.source === 'evidence' || b.source === 'deduction') &&
+              b.eventType === e.eventType && b.subject === e.subjectName,
           );
-          if (existing) continue;
 
-          // Base confidence from opportunity (was at scene)
-          let conf = 0.3;
-
-          // Motive boost: negative sentiment toward victim
-          if (activeScene.victimId && person.state.relationships) {
-            const rel = person.state.relationships.getRelationship(activeScene.victimId);
-            if (rel && rel.sentiment < -0.3) conf = 0.5;
-          }
-
-          // Create suspicion belief
-          if (owner.state.beliefs) {
+          if (existing) {
+            // Reinforce: accumulate weight
+            existing.confidence = Math.min(1, existing.confidence + e.weight);
+            existing.lastUpdated = currentDay;
+            console.log(`  [EL] ${owner.profile.name} reinforces suspicion of ${e.subjectName} (${e.category}): conf → ${existing.confidence.toFixed(2)}`);
+          } else {
+            // New belief from evidence
             owner.state.beliefs.addBelief({
               id: crypto.randomUUID(),
-              eventType: activeScene.crimeType === 'murder' ? 'NPC_KILLED'
-                : activeScene.crimeType === 'robbery' ? 'GOODS_STOLEN' : 'SELF_JUSTICE',
-              subject: person.profile.name,
-              object: victimName,
+              eventType: e.eventType,
+              subject: e.subjectName,
+              object: e.objectName ?? 'unknown',
               location: owner.state.location,
-              confidence: conf,
-              source: 'deduction',
+              confidence: e.weight,
+              source: 'evidence',
               sourceNpcId: null,
-              gameDay: goal.createdAtTick ? Math.floor(goal.createdAtTick / 24) + 1 : 1,
-              lastUpdated: goal.createdAtTick ? Math.floor(goal.createdAtTick / 24) + 1 : 1,
+              gameDay: currentDay,
+              lastUpdated: currentDay,
             });
             suspectCount++;
-            console.log(`  [Investigate] ${owner.profile.name} deduces: ${person.profile.name} is a suspect (conf: ${conf}) — opportunity${conf >= 0.5 ? ' + motive' : ''}`);
+            console.log(`  [EL] ${owner.profile.name} discovers: ${e.subjectName} — ${e.category} (conf: ${e.weight}) — "${e.description}"`);
           }
         }
 
+        const scenes = crimeScenes?.get(owner.state.location) ?? [];
+        const activeScene = scenes.find((s) => s.active);
+        const victimAgent = activeScene?.victimId ? agents.get(activeScene.victimId) : null;
+        const victimName = victimAgent?.profile.name ?? 'unknown victim';
+        const crimeLabel = activeScene?.crimeType === 'murder' ? 'murder' : activeScene?.crimeType === 'robbery' ? 'theft' : 'crime';
+
         await owner.observe(
-          `I examined the crime scene at ${owner.state.location}. ${suspectCount > 0 ? `Found ${suspectCount} person(s) of interest who were present when the ${crimeLabel} of ${victimName} occurred.` : `No clear suspects from the scene.`}`,
+          `I examined the crime scene at ${owner.state.location}. ${suspectCount > 0 ? `Found ${suspectCount} person(s) of interest connected to the ${crimeLabel} of ${victimName}.` : `Reinforced existing suspicions about the ${crimeLabel} of ${victimName}.`}`,
           step.importance,
         );
 
@@ -963,7 +964,7 @@ export class GoalManager {
         return {
           ...baseResult,
           action: 'examine_scene',
-          description: `${owner.profile.name} examined crime scene: ${suspectCount} suspect(s) identified`,
+          description: `${owner.profile.name} examined evidence: ${undiscovered.length} clue(s), ${suspectCount} new suspect(s)`,
         };
       }
 
