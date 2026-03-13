@@ -409,18 +409,9 @@ Criminal executes destroy_evidence at crime scene
 
 ## 4. Порядок работы
 
-### Сессия N+1: Suspect Interrogation + E2E Test
-1. **Suspect interrogation outcome** — код в engine/goals.ts (~30 строк)
-2. **checkGuilt helper** — проверка виновности по crime scenes (~10 строк)
-3. **End-to-end тест** — прогнать полную цепочку murder→sentence, починить баги
-4. **Вычистить debug logs** — убрать лишние console.log из engine/volition.ts
+### ~~Сессия N+1: Suspect Interrogation + E2E Test~~ ✅ (v0.5.1, v0.5.2)
 
-### Сессия N+2: Evidence Layer
-1. **evidence.ts** — Evidence interface, EvidenceRule[], EvidenceLayer class
-2. **Генерация** — engine/world.ts вызывает EL при crime events
-3. **Discovery** — переписать examine_scene на EL.discover()
-4. **Player examine** — обновить endpoint, journal entries из EL
-5. **BeliefSource: 'evidence'** — новый source type
+### ~~Сессия N+2: Evidence Layer~~ ✅ (v0.5.3)
 
 ### Сессия N+3: Godot + Polish
 1. Проверить Godot клиент с новыми фичами

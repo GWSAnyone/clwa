@@ -46,13 +46,8 @@
 | **Relationship System** | Социальные связи. Sentiment, trust, type, grief | ✅ v1 |
 | **Memory System** | Опыт. Vector memory (Qdrant), semantic recall | ✅ v1 |
 | **Schedule System** | Рутина. Time-based routines, daily life patterns | ✅ v1 |
+| **EL (Evidence Layer)** | Обнаруживаемые факты. Event → structured evidence → discoverable | ✅ v1 |
 | **Spatial System** | Топология. Locations, adjacency, pathfinding | ✅ basic |
-
-### Спроектированные (📋)
-
-| Подсистема | Назначение | Документация |
-|---|---|---|
-| **EL (Evidence Layer)** | Обнаруживаемые факты. Event → structured evidence на локациях | DEMO_PLAN.md §3 |
 
 ### Необходимые (🔮)
 
@@ -210,9 +205,9 @@ Belief mods: loneliness → social urgency, grief → comfort urgency
 
 - [x] Engine Core v1 (AL, PM, CG, Goals, Beliefs, Relationships, Memory)
 - [x] Crime & Justice module (partial)
-- [ ] Evidence Layer
-- [ ] Suspect interrogation
-- [ ] End-to-end judicial chain test
+- [x] Evidence Layer (v0.5.3)
+- [x] Suspect interrogation (v0.5.1)
+- [x] End-to-end judicial chain test (v0.5.2)
 - [ ] Godot demo (watch + examine crime scenes)
 - **Результат**: демка "живая деревня с преступлением и расследованием"
 

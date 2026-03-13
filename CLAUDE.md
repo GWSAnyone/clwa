@@ -26,17 +26,19 @@ bun run packages/server/src/index.ts
 - **Персистентность**: ✅ (save.json при SIGINT + POST /api/save)
 - **Трёхуровневая модель решений**: Рефлекс (>=0.7, bypass LLM) → Позыв (0.5-0.7, duty constraint) → Мысль (<0.5, полная свобода)
 
-## Три ключевые подсистемы
+## Пять подсистем
 
 **Тезис**: Система эмерджентного нарратива. Декларативные слои задают физику поведения. LLM свободно принимает решения в рамках возможного. Сюжет не программируется — он возникает.
 
 | Подсистема | Назначение | Статус |
 |---|---|---|
-| **CG (Consequence Graph)** | Действие → каскад последствий → state update | ✅ Работает |
-| **PM (Personality Model)** | OCEAN+H + Enneagram → характер как контекст для LLM | ✅ Реализована |
-| **AL (Affordance Layer)** | Декларативный реестр возможностей + фильтр доступности | ✅ Реализована |
+| **AL (Affordance Layer)** | Декларативный реестр возможностей + фильтр доступности | ✅ |
+| **PM (Personality Model)** | OCEAN+H + Enneagram → характер как контекст для LLM | ✅ |
+| **CG (Consequence Graph)** | Действие → каскад последствий → state update | ✅ |
+| **EL (Evidence Layer)** | Event → structured evidence на локациях → discoverable | ✅ |
+| **LLM** | Сознание — трёхуровневое (reflex/urge/thought) | ✅ |
 
-**Петля**: State → AL (что можно) → PM (кто ты, prose) → LLM (свободное решение) → CG (последствия) → State
+**Петля**: State → AL (что можно) → PM (кто ты, prose) → LLM (свободное решение) → CG (последствия) + EL (улики) → State
 
 **Принцип принятия решений**: AL фильтрует доступное, PM scores → описание инстинктов в промпте, LLM свободно решает как персонаж. Никаких numbered menus, никаких fallback на числа. PM = инстинкт, LLM = сознание.
 
@@ -52,17 +54,17 @@ bun run packages/server/src/index.ts
 
 | Слой | Пакет | Путь | Назначение |
 |---|---|---|---|
-| **Engine** | `@clwa/engine` | `engine/` | Подсистемы движка: Agent, Memory, Beliefs, Relationships, CG, EventStore, AL, Volition, Goals, World, Conversations, Schedule, Crime Scene, Journal, Topic Engine |
-| **Modules** | `@clwa/modules` | `modules/` | Мировой контент: affordance definitions, CG rules, target finders. Регистрируется при старте через `registerCrimeJusticeModule()` |
+| **Engine** | `@clwa/engine` | `engine/` | Подсистемы движка: Agent, Memory, Beliefs, Relationships, CG, EL, EventStore, AL, Volition, Goals, World, Conversations, Schedule, Crime Scene, Journal, Topic Engine |
+| **Modules** | `@clwa/modules` | `modules/` | Мировой контент: affordance definitions, CG rules, evidence rules, target finders. Регистрируется при старте через `registerCrimeJusticeModule()` |
 | **Server** | `@clwa/server` | `server/` | HTTP + WebSocket сервер (Bun.serve), REST API, NPC profiles/relationships/schedules, bootstrap, persistence |
 
-> **Принцип разделения**: Engine содержит пустые реестры (`AFFORDANCE_REGISTRY`, `TARGET_FINDERS`, `REQUIREMENT_CHECKERS`). Modules наполняет их данными при регистрации. Зависимость строго однонаправленная: `modules → engine`, `server → engine + modules`.
+> **Принцип разделения**: Engine содержит пустые реестры (`AFFORDANCE_REGISTRY`, `TARGET_FINDERS`, `REQUIREMENT_CHECKERS`, `EVIDENCE_RULES`, `EVIDENCE_SOURCES`). Modules наполняет их данными при регистрации. Зависимость строго однонаправленная: `modules → engine`, `server → engine + modules`.
 
 ## Ключевые файлы
 
 ### Engine (`packages/engine/src/`)
 - `agent.ts` — Agent class, buildSystemPrompt(), buildRoleDirective(), LLM Semaphore
-- `beliefs.ts` — BeliefManager (confidence/source/decay/dedup), BeliefSource includes 'observation', 'cover_up'
+- `beliefs.ts` — BeliefManager (confidence/source/decay/dedup), BeliefSource includes 'observation', 'cover_up', 'evidence'
 - `relationships.ts` — RelationshipGraph (sentiment/trust/grief)
 - `memory.ts` — VectorMemory (Qdrant + raw fetch embeddings)
 - `cg-types.ts` — EventType (17 типов: NPC_KILLED, GOODS_STOLEN, NPC_ARRESTED, NPC_SENTENCED, NPC_FLED, etc.)
@@ -71,7 +73,8 @@ bun run packages/server/src/index.ts
 - `volition.ts` — Трёхуровневая модель (reflex/urge/thought), LLM DO/WHY, parseDoWhy(), reactive evaluation
 - `goals.ts` — GoalManager, NpcGoal, 12 типов шагов (move_to, interact, announce, wait, steal_from, attack_npc, interact_present, arrest_npc, destroy_evidence, flee, sentence_npc, examine_scene)
 - `world.ts` — World.tick(), processKill(), checkTheftDiscoveries(), toJSON()/loadState()
-- `crime-scene.ts` — createCrimeScene(), templates (murder, robbery, assault)
+- `evidence.ts` — EvidenceLayer class, Evidence interface, EVIDENCE_RULES[], EVIDENCE_SOURCES Map (registry pattern)
+- `crime-scene.ts` — createCrimeScene(), templates (murder, robbery, assault) — атмосферные ExaminationPoints для player UI
 - `journal.ts` — PlayerJournal (clue, testimony, observation)
 - `secret-directives.ts` — buildSecretDirectives() (structured belief queries, no legacy tag/text fields)
 - `topic-engine.ts` — TopicEngine, 7 plugin topic sources (вкл. justiceTopics), anti-repeat
@@ -85,7 +88,9 @@ bun run packages/server/src/index.ts
 - `crime-justice/affordances.ts` — CRIME_AFFORDANCES (19 определений)
 - `crime-justice/target-finders.ts` — 14 finder-функций + registerCrimeTargetFinders()
 - `crime-justice/cg-rules.ts` — CRIME_CG_RULES (14 правил)
-- `crime-justice/index.ts` — registerCrimeJusticeModule() (заполняет реестры engine)
+- `crime-justice/evidence-rules.ts` — CRIME_EVIDENCE_RULES (NPC_KILLED: opportunity/motive/trace, GOODS_STOLEN: opportunity/trace)
+- `crime-justice/evidence-sources.ts` — 4 source strategies (personsPresent, negativeRelationship, perpetratorTrace, stolenGoodsTrace)
+- `crime-justice/index.ts` — registerCrimeJusticeModule() (заполняет реестры engine: affordances, target finders, evidence rules+sources)
 
 ### Server (`packages/server/src/`)
 - `index.ts` — Bootstrap, NPC profiles/schedules/relationships, persistence, registerCrimeJusticeModule() call
@@ -118,6 +123,8 @@ bun run packages/server/src/index.ts
 | POST | /api/save | Сохранить состояние на диск |
 | POST | /api/auto | Toggle auto-tick |
 | GET | /api/shop/:id | Товары NPC (если есть shop) |
+| GET | /api/evidence | Все evidence (structured facts) |
+| GET | /api/evidence/:locationId | Evidence на конкретной локации |
 | GET | /api/crime-scenes | Все места преступлений (обзор) |
 | GET | /api/crime-scene/:locationId | Детали crime scene + точки осмотра |
 | POST | /api/examine/:locationId/:pointId | Осмотреть точку → улика → journal |
@@ -176,6 +183,9 @@ bun run packages/server/src/index.ts
 25. **Reactive finder lookup**: `REACTIVE_TARGET_FINDERS` регистрируются по `aff.id`, lookup в `findReactiveTarget` тоже по `aff.id`. `targetFinder` — ключ только для proactive `TARGET_FINDERS`
 26. **sourceEvent в events**: события из goal execution должны иметь `sourceEvent: 'goal_execution'` в payload, иначе reactive eval пропустит. Аналогично `'theft_discovery'` для THEFT_DISCOVERED
 27. **Name format в beliefs**: subject/object = plain name (`profile.name`), НЕ `"Name the role"`. Для matching использовать `matchesNpc()`/`matchesSuspect()` с `startsWith` (обратная совместимость с CE cascade)
+28. **Evidence Layer registry**: `EVIDENCE_RULES[]` (декларативные правила) + `EVIDENCE_SOURCES` Map (source strategy функции). Engine пустые, modules заполняет. `category: string` — модули определяют свои категории, engine не интерпретирует
+29. **Evidence → Belief pipeline**: examine_scene → `EL.getUndiscovered()` → `discover()` → belief (`source: 'evidence'`). Веса accumulate: existing belief.confidence += evidence.weight. Не создавать дублей — проверять existing по eventType + subject
+30. **CrimeScene vs Evidence**: CrimeScene/ExaminationPoint = атмосфера для player UI. Evidence = structured data для deduction. Параллельные слои, не связаны напрямую. EL source `personsPresent` читает CrimeScene.personsPresent как вход
 
 ## Дорожная карта
 - ✅ Веха 2: Деревня, движение, Goal System
@@ -192,6 +202,7 @@ bun run packages/server/src/index.ts
   - ✅ Слой 11: Legacy cleanup + Package restructure (engine/modules/server)
   - ✅ Слой 12: Трёхуровневая модель решений (reflex/urge/thought)
   - ✅ Слой 13: Reactive eval fix + name consistency (v0.5.2) — E2E цикл протестирован
+  - ✅ Слой 14: Evidence Layer (v0.5.3) — пятая подсистема, declarative evidence rules, 4 source strategies, EL→Belief pipeline
   - ⏳ Trauma (постоянные сдвиги OCEAN+H)
   - ⏳ CG v2 (полные цепочки для всех типов)
 - ⏳ Веха 6+: Сторителлинг/квесты, фракции, Reputation
