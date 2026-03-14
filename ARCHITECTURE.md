@@ -3,7 +3,7 @@
 > **Цель:** Архитектура симуляции живого игрового мира с причинно-следственной историей, многоуровневыми агентами и LLM-диалогом
 > **Вдохновение:** Disco Elysium (процесс расследования важнее результата), Dwarf Fortress (глубина симуляции), Stanford Generative Agents (архитектура памяти), Shangri-La Frontier (необратимые события)
 > **Принцип вех:** Каждая веха — демонстрация возможностей технологии CLWA. Мы строим **возможности**, не сценарии — сценарии это конфигурации начальных условий + правил поверх песочницы
-> **Дата начала:** Март 2026 | **Последнее обновление:** 11 марта 2026
+> **Дата начала:** Март 2026 | **Последнее обновление:** 15 марта 2026
 
 ---
 
@@ -241,20 +241,20 @@ LLM отвечает свободно. Может последовать инс�
 | `vigilante` | crime | 8 | crimeBelief≥0.6, mood<-0.4, sentiment<-0.4 | A↓, H↓, E↑ | — |
 | `blackmail` | crime | 5 | mood<-0.3 | H↓, E↑, N↑ inhibit | — |
 | `confront` | social | 3 | crimeBelief≥0.5, sentiment<-0.2 | E↑, A↓, N↓, H↑ | — |
-| `report_crime` | duty | 2 | notGuard | C↑, H↑, N↑ inhibit | WITNESS_MEMORY, THEFT_DISCOVERED (+0.4) |
-| `investigate` | duty | 2 | isGuard | C↑, O↑ | WANTED_STATUS (+0.5) |
+| `report_crime` | duty | 2 | notGuard, witnessBelief | C↑, H↑, N↑ inhibit | WITNESS_MEMORY, THEFT_DISCOVERED (+0.4) |
+| `investigate` | duty | 2 | isInvestigator | C↑, O↑ | WANTED_STATUS (+0.5) |
 | `gossip` | social | 1 | notGuard | E↑, N↑ | RUMOR_SPREAD (+0.2) |
 | `grieve` | social | 1 | notGuard | N↑, A↑ | WITNESS_MEMORY, RUMOR_SPREAD (+0.3, relation) |
 | `lay_low` | social | 1 | notGuard | N↑, E↓ | WANTED_STATUS (+0.3, criminal only) |
 | `seek_forgiveness` | social | 1 | notGuard | A↑, H↑, N↑ | WANTED_STATUS (+0.3, criminal only) |
-| `interrogate` | duty | 2 | isGuard, crimeBelief≥0.3 | C↑, H↑, O↑ | WANTED_STATUS, TESTIMONY (+0.4) |
-| `arrest` | duty | 6 | isGuard, crimeBelief≥0.7 | C↑, A↓ | WANTED_STATUS (+0.6) |
+| `interrogate` | duty | 2 | isInvestigator, crimeBelief≥0.3 | C↑, H↑, O↑ | WANTED_STATUS, TESTIMONY (+0.4) |
+| `arrest` | duty | 6 | isInvestigator, crimeBelief≥0.7 | C↑, A↓ | WANTED_STATUS (+0.6) |
 | `testify` | duty | 1 | notGuard, witnessBelief | H↑, C↑, A↑ | WITNESS_MEMORY, BODY_DISCOVERED (+0.3) |
 | `demand_justice` | social | 2 | notGuard, crimeBelief≥0.3 | E↑, A↓, C↑ | RUMOR_SPREAD (+0.2, relation) |
 | `destroy_evidence` | crime | 4 | isCriminal, noGuard, noWitness, night/evening | H↓, N↑, C↓ | WANTED_STATUS (+0.4) |
 | `intimidate_witness` | crime | 5 | isCriminal, noGuard, night/evening | H↓, A↓, E↑ | WANTED_STATUS (+0.3) |
 | `flee_town` | crime | 3 | isCriminal, isWanted, mood<-0.5 | N↑, C↓ | NPC_ARRESTED (+0.5) |
-| `evaluate_case` | duty | 3 | role=judge, hasDetainedNpc | C↑, H↑ | NPC_ARRESTED (+0.5) |
+| `evaluate_case` | duty | 3 | canSentence, hasDetainedNpc | C↑, H↑ | NPC_ARRESTED (+0.5) |
 
 #### Механизмы стабильности
 
@@ -430,8 +430,8 @@ Interact step поддерживает `beliefTransferDirection`:
 - [x] **targetRole** — универсальный proximity-aware finder: `targetRole: 'guard'` вместо отдельных функций
 - [x] **examine_scene** — evidence synthesis: opportunity + motive → suspicion beliefs (source: 'deduction')
 - [x] **Body discovery at 0.6** — до goals/movement, NPC обнаруживают тела на своих позициях
-- [ ] **Suspect interrogation** — допрос подозреваемого (H trait → confession/denial → confidence change)
-- [ ] **Full judicial chain test** — murder → report → investigate → interrogate → arrest → trial → sentence
+- [x] **Suspect interrogation** (v0.5.1) — допрос подозреваемого (H trait → confession/denial → confidence change)
+- [x] **Full judicial chain test** (v0.5.2) — murder → report → investigate → interrogate → arrest → trial → sentence
 
 #### LLM Decision — формат DO/WHY
 
@@ -566,7 +566,7 @@ score = (relevance × 0.4) + (decayed_importance/10 × 0.4) + (freshness × 0.2)
 #### Beliefs (BeliefManager)
 
 Структурированные убеждения NPC о событиях:
-- `Belief`: eventType, subject (кто, null если неизвестно), object (жертва), confidence (0-1), source (witness/body_discovery/rumor/testimony/interrogation)
+- `Belief`: eventType, subject (кто, null если неизвестно), object (жертва), confidence (0-1), source (witness/body_discovery/rumor/testimony/interrogation/observation/cover_up/deduction/evidence/perpetrator)
 - Дедупликация: повторный belief усиливает confidence
 - Decay: confidence -0.02/день
 - Confidence по источнику: witness=0.95, body_discovery=0.7, testimony=0.6, rumor=0.4
@@ -595,7 +595,7 @@ System prompt агента собирается динамически:
 
 **Per-NPC LLM настройки** (`LlmPersonality`): temperature и maxTokens per-NPC. Garrett: 0.5/150, Elara: 0.9/350, Hilda: 0.55/120.
 
-**LLM Semaphore**: глобальный maxConcurrent=2, все LLM-вызовы через acquire()/release().
+**LLM Semaphore**: глобальный maxConcurrent=1 (GPU context switching), все LLM-вызовы через acquire()/release() в finally.
 
 ### 3.3 World (Тик, Цели, Расписание, Движение)
 
@@ -855,8 +855,13 @@ Silver Flagon Tavern, Town Square (хаб), Town Gate, Market Square, Blacksmith
 | 8 | **Crime & Punishment** | Large | ✅ | Расследование, арест, суд, приговор (exile/release), побег, NPC status machine |
 | 9 | **Topic Engine + Dialogue** | Medium | ✅ | 7 plugin topic sources (вкл. justice), grounded memory, structured importance |
 | 10 | **Архитектурный аудит** | Medium | ✅ | Устранение text matching, semaphore safety, target finder registry |
-| 11 | Trauma layer | Medium | ⏳ | Постоянные сдвиги OCEAN+H от травм |
-| 12 | Consequence Graph v2 | Large | ⏳ | Полные цепочки для всех типов преступлений |
+| 11 | Legacy cleanup + Package restructure | Medium | ✅ | engine/modules/server трёхуровневая архитектура |
+| 12 | Трёхуровневая модель решений | Medium | ✅ | reflex/urge/thought (volition.ts) |
+| 13 | Reactive eval fix + name consistency | Medium | ✅ | v0.5.2 — E2E цикл протестирован |
+| 14 | Evidence Layer | Large | ✅ | v0.5.3 — пятая подсистема, 4 source strategies |
+| 15 | Bugfixes + capability flags | Medium | ✅ | role→capabilities, self-targeting, arrest cycle, perpetrator source |
+| 16 | Trauma layer | Medium | ⏳ | Постоянные сдвиги OCEAN+H от травм |
+| 17 | Consequence Graph v2 | Large | ⏳ | Полные цепочки для всех типов преступлений |
 
 ### Каталог преступлений и возможностей NPC
 

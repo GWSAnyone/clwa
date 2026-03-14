@@ -1,4 +1,4 @@
-export type BeliefSource = 'witness' | 'body_discovery' | 'rumor' | 'testimony' | 'interrogation' | 'observation' | 'cover_up' | 'deduction' | 'evidence';
+export type BeliefSource = 'witness' | 'body_discovery' | 'rumor' | 'testimony' | 'interrogation' | 'observation' | 'cover_up' | 'deduction' | 'evidence' | 'perpetrator';
 
 export interface Belief {
   id: string;
@@ -33,6 +33,7 @@ export const SOURCE_CONFIDENCE: Record<BeliefSource, number> = {
   cover_up: 0.95,
   deduction: 0.5,
   evidence: 0.5,
+  perpetrator: 1.0,
 };
 
 export class BeliefManager {
@@ -48,7 +49,7 @@ export class BeliefManager {
         existing.source = belief.source;
         existing.sourceNpcId = belief.sourceNpcId;
       }
-      // Update subject if we now know who did it
+      // Update subject if we now have a specific suspect (replace null)
       if (belief.subject && !existing.subject) {
         existing.subject = belief.subject;
         existing.confidence = Math.max(existing.confidence, belief.confidence);
@@ -87,7 +88,7 @@ export class BeliefManager {
     const SOURCE_DECAY: Record<string, number> = {
       witness: 0.01, body_discovery: 0.01, observation: 0.015,
       testimony: 0.02, interrogation: 0.02, deduction: 0.03,
-      rumor: 0.04, cover_up: 0.01,
+      rumor: 0.04, cover_up: 0.01, perpetrator: 0.01,
     };
     for (const b of this.beliefs.values()) {
       const daysSince = currentDay - b.lastUpdated;

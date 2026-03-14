@@ -188,7 +188,7 @@ export class ConsequenceEngine {
         const affected = (event.payload?.affectedTargets as string[]) ?? [];
         return affected.filter((id) => {
           const agent = ctx.agents.get(id);
-          return agent && agent.state.alive && agent.profile.role === 'guard';
+          return agent && agent.state.alive && !!agent.profile.investigator;
         });
       }
 
@@ -213,7 +213,7 @@ export class ConsequenceEngine {
     const agent = ctx.agents.get(targetId);
     if (!agent?.state.beliefs) return;
 
-    const killer = (event.payload?.killerName as string) ?? event.subject;
+    const killer = (event.payload?.killerName as string) ?? null;
     const victim = event.object ? ctx.agents.get(event.object) : null;
     const victimName = (event.payload?.victimName as string)
       ?? (victim ? `${victim.profile.name} the ${victim.profile.role}` : null)
@@ -276,7 +276,7 @@ export class ConsequenceEngine {
     targetId: string,
     ctx: WorldContext,
   ): string {
-    const killer = event.payload?.killerName as string ?? event.subject;
+    const killer = (event.payload?.killerName as string) ?? 'someone unknown';
     // Prefer payload.victimName (carries through cascades correctly)
     // Fallback to deriving from event.object (works for NPC_KILLED, BODY_DISCOVERED)
     const victim = event.object ? ctx.agents.get(event.object) : null;
@@ -397,8 +397,8 @@ export class ConsequenceEngine {
           event: rumorEvent,
         });
 
-        // If target is a guard → WANTED_STATUS
-        if (target.profile.role === 'guard' && !existingWanted.has(targetId)) {
+        // If target is an investigator → WANTED_STATUS
+        if (target.profile.investigator && !existingWanted.has(targetId)) {
           const wantedText = `URGENT: As a guard, I received reports that ${criminalName} ${crimeWord} ${victimName} at ${crimeLocation}. I must investigate immediately.`;
           await target.observe(wantedText, 7);
           target.state.mood = Math.max(-1, target.state.mood - 0.1);

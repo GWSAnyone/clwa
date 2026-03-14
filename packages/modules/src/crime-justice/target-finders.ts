@@ -131,6 +131,7 @@ export function hasWitnessBelief(agent: Agent): boolean {
   return agent.state.beliefs.getAllBeliefs().some(
     (b: Belief) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
       (b.source === 'witness' || b.source === 'observation' || b.source === 'body_discovery') &&
+      b.subject !== agent.profile.name && b.subject !== agent.profile.id &&
       b.confidence >= 0.3,
   );
 }
@@ -225,7 +226,7 @@ function findCrimeSceneForCriminal(npcId: string, agent: Agent, ctx: AffordanceC
 function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
   // Find NPCs who have witness beliefs about this NPC's crime
   for (const [otherId, other] of ctx.agents) {
-    if (otherId === npcId || !other.state.alive || other.profile.role === 'guard') continue;
+    if (otherId === npcId || !other.state.alive || other.profile.investigator) continue;
     const st = other.state.status ?? 'free';
     if (st !== 'free') continue;
 
@@ -282,7 +283,7 @@ export function registerCrimeTargetFinders(): void {
   });
 
   REACTIVE_TARGET_FINDERS.set('investigate', (npcId, agent, _ctx, event) => {
-    if (agent.profile.role !== 'guard') return null;
+    if (!agent.profile.investigator) return null;
     const crimeLocation = (event.payload?.crimeLocation as string) ?? event.location;
     const killerName = (event.payload?.killerName as string) ?? 'an unknown assailant';
     const victimName = (event.payload?.victimName as string) ?? 'the victim';
@@ -327,12 +328,12 @@ export function registerCrimeTargetFinders(): void {
   });
 
   REACTIVE_TARGET_FINDERS.set('interrogate', (npcId, agent, ctx, event) => {
-    if (agent.profile.role !== 'guard') return null;
+    if (!agent.profile.investigator) return null;
     return findInterrogationTarget(npcId, agent, ctx, event);
   });
 
   REACTIVE_TARGET_FINDERS.set('arrest', (npcId, agent, ctx, event) => {
-    if (agent.profile.role !== 'guard') return null;
+    if (!agent.profile.investigator) return null;
     return findArrestTarget(npcId, agent, ctx, event);
   });
 
@@ -372,7 +373,7 @@ export function registerCrimeTargetFinders(): void {
   });
 
   REACTIVE_TARGET_FINDERS.set('evaluate_case', (_npcId, agent, ctx) => {
-    if (agent.profile.role !== 'judge') return null;
+    if (!agent.profile.canSentence) return null;
     return findDetainedTarget(ctx);
   });
 }

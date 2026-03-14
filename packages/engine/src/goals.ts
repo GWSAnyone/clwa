@@ -698,7 +698,7 @@ export class GoalManager {
               object: target.profile.name,
               location: target.state.location,
               confidence: 1.0,
-              source: 'witness',
+              source: 'perpetrator',
               sourceNpcId: null,
               gameDay: owner.state.currentDay,
               lastUpdated: owner.state.currentDay,
@@ -991,7 +991,8 @@ Based on this evidence, you must decide:
 Respond with exactly one word: EXILE or RELEASE`;
 
         const response = await owner.generateResponse(prompt, { maxTokens: 10 });
-        const verdict: 'exile' | 'release' = response.toLowerCase().includes('exile') ? 'exile' : 'release';
+        const firstWord = response.trim().split(/\s+/)[0].toUpperCase().replace(/[^A-Z]/g, '');
+        const verdict: 'exile' | 'release' = firstWord === 'EXILE' ? 'exile' : 'release';
 
         if (verdict === 'exile') {
           target.state.status = 'exiled';

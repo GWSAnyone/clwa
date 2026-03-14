@@ -208,7 +208,7 @@ Belief mods: loneliness → social urgency, grief → comfort urgency
 - [x] Evidence Layer (v0.5.3)
 - [x] Suspect interrogation (v0.5.1)
 - [x] End-to-end judicial chain test (v0.5.2)
-- [ ] Godot demo (watch + examine crime scenes)
+- [x] Godot demo (3D KayKit characters, navigation, map, notifications)
 - **Результат**: демка "живая деревня с преступлением и расследованием"
 
 ### Phase 2: Engine Foundation

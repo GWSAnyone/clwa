@@ -143,7 +143,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetRole: 'guard',
     category: 'duty',
     severity: 2,
-    requires: { notGuard: true },
+    requires: { notGuard: true, hasWitnessBelief: true },
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.2 },
       { trait: 'H', direction: 'high', multiplier: 0.2 },
@@ -164,7 +164,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact', targetId: '$target', purpose: '[CRIME killer={killerName:someone} victim={victimName:someone} location={crimeLocation:unknown location}] urgently report a crime you learned about. {killerName:someone} committed a crime at {crimeLocation:unknown location}. You need the guard to investigate immediately.', importance: 7, beliefTransfer: true, beliefTransferDirection: 'owner-to-target' },
+      { action: 'interact', targetId: '$target', purpose: '[CRIME killer={killerName:unknown} victim={victimName:someone} location={crimeLocation:unknown location}] urgently report a crime you learned about. {killerName:Someone} committed a crime at {crimeLocation:unknown location}. You need the guard to investigate immediately.', importance: 7, beliefTransfer: true, beliefTransferDirection: 'owner-to-target' },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },
@@ -174,7 +174,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetFinder: 'interrogation',
     category: 'duty',
     severity: 2,
-    requires: { isGuard: true },
+    requires: { isInvestigator: true },
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.3 },
       { trait: 'O', direction: 'high', multiplier: 0.1 },
@@ -324,7 +324,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetFinder: 'interrogation',
     category: 'duty',
     severity: 2,
-    requires: { isGuard: true, hasCrimeBelief: true, beliefConfidence: 0.3 },
+    requires: { isInvestigator: true, hasCrimeBelief: true, beliefConfidence: 0.3 },
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.3 },
       { trait: 'H', direction: 'high', multiplier: 0.2 },
@@ -357,7 +357,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     label: 'Arrest a criminal suspect',
     category: 'duty',
     severity: 6,
-    requires: { isGuard: true, hasCrimeBelief: true, beliefConfidence: 0.7 },
+    requires: { isInvestigator: true, hasCrimeBelief: true, beliefConfidence: 0.7 },
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.3 },
       { trait: 'A', direction: 'low', multiplier: 0.1 },

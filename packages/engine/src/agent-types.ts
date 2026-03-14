@@ -51,6 +51,10 @@ export interface AgentProfile {
   };
   /** NPC investigates crimes (guards, sheriffs, etc.) — gets ACTIVE DUTY directive */
   investigator?: boolean;
+  /** NPC presence at location deters crime attempts (guards, paladins, etc.) */
+  detersCrime?: boolean;
+  /** NPC can evaluate cases and pass judgment (judges, magistrates, elders) */
+  canSentence?: boolean;
   /** Shop inventory — NPC can sell these items */
   shop?: ShopItem[];
 }

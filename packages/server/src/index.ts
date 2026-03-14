@@ -187,6 +187,7 @@ const PROFILES: AgentProfile[] = [
     name: 'Garrett',
     role: 'guard',
     investigator: true,
+    detersCrime: true,
     background:
       'Town guard stationed at the Town Gate. ' +
       '10 years of service. Takes his duty seriously. Patrols the gate area and ' +
@@ -277,6 +278,7 @@ const PROFILES: AgentProfile[] = [
     id: 'magistrate',
     name: 'Magistrate Theron',
     role: 'judge',
+    canSentence: true,
     background:
       'The town magistrate who presides over the Courthouse. A former scholar of law from the capital, ' +
       'sent to this frontier town as punishment for questioning the king\'s tax reforms. ' +

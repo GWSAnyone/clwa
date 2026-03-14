@@ -41,6 +41,7 @@ export function handleRequest(
       role: agent.profile.role,
       location: agent.state.location,
       alive: agent.state.alive,
+      status: agent.state.status ?? 'free',
       mood: agent.state.mood,
       currentDay: agent.state.currentDay,
       reflection: agent.getReflectionStatus(),

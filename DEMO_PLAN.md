@@ -163,26 +163,24 @@ GET /api/debug/volition/garrett
 
 ### 2.3. Godot Client Readiness
 
-**Что уже есть в Godot**:
-- Изометрическая карта деревни с 8 локациями
-- NPC спрайты, движение между локациями
-- Диалоговая панель (player ↔ NPC разговоры)
-- Crime scene markers на карте
-- Examination panel (осмотр улик)
-- Journal panel (улики и записи)
-- Day/night overlay
-- Debug LLM overlay (что NPC думает)
+**Что уже есть в Godot** (v0.6):
+- ✅ Тайловая карта деревни (Kenney isometric → Tiled → YATI) с 8 зонами-полигонами
+- ✅ NPC Kenney sprites (Male_0–7), SPRITE_SCALE=1.4, движение между локациями
+- ✅ Диалоговая панель (player ↔ NPC разговоры)
+- ✅ Crime scene markers на карте (пульсирующий красный)
+- ✅ Examination panel с structured evidence (opportunity/motive/trace категории)
+- ✅ Journal panel (улики и записи)
+- ✅ Day/night overlay + vignette
+- ✅ Debug LLM overlay (что NPC думает)
+- ✅ Notification system: popup для murder, arrest, sentence, fled, theft, body discovered
+- ✅ NPC status indicators: detained (chains + label), exiled/fled (ghost), dead (X marker)
+- ✅ HUD event log: все типы событий с цветным BBCode
+- ✅ Sprint (Shift), SPEED=600/SPRINT_SPEED=1100
 
-**Что нужно проверить**:
-- WS события `crime:scene`, `journal:entry` — приходят ли при автоматическом расследовании?
-- Отображение NPC статусов (detained, exiled) — есть ли визуал?
-- Murder notification — есть ли popup/event при убийстве?
-- Investigation progress — видно ли игроку что guard расследует?
-
-**Что может понадобиться**:
-- Notification system: ключевые события как popup (body found, arrest, sentence)
-- NPC status indicator: visual для detained/wanted NPCs
-- Investigation timeline: простой UI показывающий прогресс расследования
+**Что осталось**:
+- [ ] Стены/крыши зданий (сейчас только пол)
+- [ ] Анимации ходьбы (Run спрайты есть)
+- [ ] Investigation timeline UI (прогресс расследования для игрока)
 
 ### 2.4. Player Participation
 
@@ -413,14 +411,63 @@ Criminal executes destroy_evidence at crime scene
 
 ### ~~Сессия N+2: Evidence Layer~~ ✅ (v0.5.3)
 
-### Сессия N+3: Godot + Polish
-1. Проверить Godot клиент с новыми фичами
-2. Добавить notifications для ключевых событий
-3. Добавить NPC status indicators (detained visual)
-4. Evidence UI: показать собранные улики
-5. Тестовый прогон как "игрок" — от начала до конца
+### ~~Сессия N+3: Godot + Polish~~ ✅ (v0.6)
 
-### Сессия N+4: Demo Ready
+1. ✅ Проверить Godot клиент с новыми фичами
+2. ✅ Добавить notifications для ключевых событий (notification_manager.gd)
+3. ✅ Добавить NPC status indicators (detained/exiled/fled visual в npc_marker.gd)
+4. ✅ Evidence UI: показать собранные улики (examine_panel.gd — structured evidence с категориями)
+5. ✅ Тайловая карта: Kenney isometric dungeon → Tiled → YATI → Godot TileMapLayer
+6. ✅ 8 зон с полигонами (Tiled Object Layer → CollisionPolygon2D), центроиды = LOCATION_POSITIONS
+7. ✅ Персонажи: Kenney Male sprites, SPRITE_SCALE=1.4, z_index=10
+8. ✅ Скорость: SPEED=600, SPRINT_SPEED=1100 (Shift)
+9. ✅ HUD: расширен для NPC_ARRESTED, NPC_SENTENCED, NPC_FLED, WITNESS_MEMORY, RUMOR_SPREAD, THEFT_DISCOVERED
+10. ✅ Server: status field в /api/agents
+
+**Осталось**:
+- [ ] Стены/крыши на тайлмапе (сейчас только пол)
+- [ ] Town Square зона в Tiled (единственная локация без полигона)
+
+### ~~Сессия N+4: NPC анимации + карта + визуал~~ ✅
+
+1. ✅ NPC анимация ходьбы (Run0-Run9 спрайты, 12 FPS, flip_h по направлению)
+2. ✅ Плавное перемещение NPC между локациями (Tween, NPC_WALK_SPEED=350)
+3. ✅ Случайное размещение NPC внутри зон (полигоны из Tiled, triangulation + barycentric sampling)
+4. ✅ NPC подходят друг к другу при разговоре (conversation:line → tween к собеседнику)
+5. ✅ NPC расходятся после разговора (conversation:complete → scatter)
+6. ✅ Карта на M: fog of war, explored/unexplored зоны, NPC last-known positions
+7. ✅ Спрайт-оффсеты подогнаны (offset -195, лейблы -62, highlight -2)
+
+### ~~Сессия N+5: 3D персонажи (KayKit)~~ ✅
+
+1. ✅ SubViewport архитектура: каждый персонаж рендерится в изолированном 3D мире (World3D.new())
+2. ✅ KayKit модели: 6 моделей (Knight, Barbarian, Mage, Rogue, Rogue_Hooded, Ranger)
+3. ✅ Анимации: загрузка из отдельных .glb (MovementBasic + General), 24 анимации на персонажа
+4. ✅ Idle/Walk/Run с зацикливанием (LOOP_LINEAR), кросс-фейд 0.3с между анимациями
+5. ✅ Изометрическая камера (30° elevation) совпадает с тайлмапом
+6. ✅ Shadow catcher plane (шейдер — невидимая плоскость, показывает только тень)
+7. ✅ Плавный поворот модели в направлении движения (lerp_angle)
+8. ✅ Изометрическая коррекция движения (Y * 0.5) и направления модели
+9. ✅ Скорость анимации синхронизирована с движением (Walk 1.4x, Run 1.2x)
+10. ✅ Исправлены все GDScript warnings (shadowing, unused vars, integer division, icon.svg)
+
+**Маппинг NPC → модели**:
+| NPC | Модель |
+|---|---|
+| Garrett (guard) | Knight |
+| Hilda (blacksmith) | Barbarian |
+| Ted (bartender) | Rogue |
+| Elara (bard) | Rogue_Hooded |
+| Mark (merchant) | Mage |
+| Aldric (priest) | Mage |
+| Bess (herbalist) | Ranger |
+| Theron (judge) | Knight |
+| Player | Knight |
+
+**Ключевые параметры**: Viewport 500x666, CAM_ORTHO_SIZE 3.5, sprite_scale 0.72, SPEED 300/SPRINT 550
+4. Убрать старый Sprite2D код
+
+### Сессия N+6: Demo Ready
 1. Настроить начальные условия для demo (Mark's motive, moods)
 2. Убедиться что murder происходит в разумное время
 3. Написать краткий "demo script" — что показывать и в каком порядке

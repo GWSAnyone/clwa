@@ -87,7 +87,7 @@ export async function evaluateAllVolition(
 
     // No affordances available → skip LLM call (NPC follows schedule)
     if (scored.length === 0) {
-      if (agent.profile.role === 'guard') {
+      if (agent.profile.investigator) {
         console.log(`  [AL:debug] ${agent.profile.name}: no affordances passed (beliefs: ${agent.state.beliefs?.getAllBeliefs().length ?? 0})`);
       }
       continue;

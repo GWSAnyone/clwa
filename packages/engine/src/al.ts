@@ -30,6 +30,8 @@ export interface AffordanceRequirement {
   notGuard?: boolean;
   /** NPC must be a guard */
   isGuard?: boolean;
+  /** NPC must have investigator flag */
+  isInvestigator?: boolean;
   /** NPC must have this role */
   role?: string;
   /** NPC must be the criminal (subject of NPC_KILLED/GOODS_STOLEN event matching their name) */
@@ -242,8 +244,9 @@ export function checkRequirements(
 ): AffordanceTarget | null {
   const req = aff.requires;
 
-  if (req.notGuard && agent.profile.role === 'guard') return null;
-  if (req.isGuard && agent.profile.role !== 'guard') return null;
+  if (req.notGuard && agent.profile.investigator) return null;
+  if (req.isGuard && !agent.profile.investigator) return null; // deprecated: use isInvestigator
+  if (req.isInvestigator && !agent.profile.investigator) return null;
   if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
   if (req.moodBelow !== undefined && agent.state.mood >= req.moodBelow) return null;
@@ -273,7 +276,7 @@ export function checkRequirements(
   if (req.noGuardNearby) {
     for (const [, other] of ctx.agents) {
       if (!other.state.alive) continue;
-      if (other.profile.role === 'guard' && other.state.location === target.targetLocation) return null;
+      if (other.profile.detersCrime && other.state.location === target.targetLocation) return null;
     }
   }
 
@@ -309,8 +312,9 @@ export function checkRequirementsReactive(
 ): AffordanceTarget | null {
   const req = aff.requires;
 
-  if (req.notGuard && agent.profile.role === 'guard') return null;
-  if (req.isGuard && agent.profile.role !== 'guard') return null;
+  if (req.notGuard && agent.profile.investigator) return null;
+  if (req.isGuard && !agent.profile.investigator) return null; // deprecated: use isInvestigator
+  if (req.isInvestigator && !agent.profile.investigator) return null;
   if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
   // mood intentionally skipped for reactive (event urgency overrides mood gate)
@@ -340,7 +344,7 @@ export function checkRequirementsReactive(
   if (req.noGuardNearby) {
     for (const [, other] of ctx.agents) {
       if (!other.state.alive) continue;
-      if (other.profile.role === 'guard' && other.state.location === target.targetLocation) return null;
+      if (other.profile.detersCrime && other.state.location === target.targetLocation) return null;
     }
   }
   if (req.maxWitnesses !== undefined) {

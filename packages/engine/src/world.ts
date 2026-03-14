@@ -188,7 +188,7 @@ export class World {
           const [criminalId, criminal] = criminalEntry;
           // All guards get negative sentiment toward criminal
           for (const [, agent] of this.agents) {
-            if (agent.profile.role === 'guard' && agent.state.relationships) {
+            if (agent.profile.investigator && agent.state.relationships) {
               agent.state.relationships.adjustSentiment(criminalId, -0.4);
               agent.state.relationships.adjustTrust(criminalId, -0.3);
             }
@@ -267,11 +267,31 @@ export class World {
       }
     }
 
-    // NPC sentenced → create beliefs
+    // NPC sentenced → clear justice goals + create beliefs
     if (event.type === 'NPC_SENTENCED') {
       const suspectName = (event.payload?.suspectName as string) ?? 'someone';
       const verdict = (event.payload?.verdict as string) ?? 'unknown';
       const affected = (event.payload?.affectedTargets as string[]) ?? [];
+
+      // Clear all justice-related goals — case is resolved
+      this.goalManager.completeGoalsByType('arrest');
+      this.goalManager.completeGoalsByType('interrogate');
+      this.goalManager.completeGoalsByType('investigate');
+      this.goalManager.completeGoalsByType('evaluate_case');
+
+      // On release: reduce guards' crime beliefs about suspect below arrest threshold
+      if (verdict === 'release') {
+        for (const [, agent] of this.agents) {
+          if (!agent.profile.investigator || !agent.state.beliefs) continue;
+          for (const b of agent.state.beliefs.getAllBeliefs()) {
+            if ((b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN') &&
+              (b.subject === suspectName || (b.subject != null && b.subject.startsWith(suspectName + ' ')))) {
+              if (b.confidence > 0.5) b.confidence = 0.5;
+            }
+          }
+        }
+      }
+
       for (const npcId of affected) {
         const agent = this.agents.get(npcId);
         agent?.state.beliefs?.addBelief({
@@ -289,8 +309,11 @@ export class World {
       }
     }
 
-    // NPC fled → create beliefs
+    // NPC fled → clear pursuit goals + create beliefs
     if (event.type === 'NPC_FLED') {
+      this.goalManager.completeGoalsByType('arrest');
+      this.goalManager.completeGoalsByType('interrogate');
+
       const fledName = (event.payload?.fledName as string) ?? 'someone';
       const affected = (event.payload?.affectedTargets as string[]) ?? [];
       for (const npcId of affected) {
@@ -870,9 +893,10 @@ export class World {
 
       const data = await res.json() as { output: Array<{ type: string; content?: string }> };
       const message = data.output.find((o: { type: string }) => o.type === 'message');
-      const answer = (message?.content ?? '').trim().toUpperCase();
+      const answer = (message?.content ?? '').trim();
+      const firstWord = answer.split(/\s+/)[0].toUpperCase().replace(/[^A-Z]/g, '');
       console.log(`  [Motive] LLM decision for ${killer.profile.name}: ${answer}`);
-      return answer.startsWith('YES');
+      return firstWord === 'YES';
     } catch (err) {
       console.error(`  [Motive] LLM call failed:`, err);
       return false;
@@ -917,10 +941,10 @@ export class World {
         // This NPC just discovered a body!
         this.bodyDiscoveries.add(key);
 
-        const victimName = `${dead.agent.profile.name} the ${dead.agent.profile.role}`;
+        const victimName = dead.agent.profile.name;
 
         // BODY_DISCOVERED represents what the discoverer knows:
-        // victim identity + location. NO killerName — they don't know who did it.
+        // victim identity + location. killerName unknown.
         const discoveryEvent: WorldEvent = {
           id: crypto.randomUUID(),
           type: 'BODY_DISCOVERED',
@@ -932,6 +956,7 @@ export class World {
           payload: {
             discoveredBy: agent.profile.name,
             victimName,
+            killerName: null,
           },
         };
 
@@ -975,7 +1000,7 @@ export class World {
         // If discoverer is alone (no WITNESS_MEMORY from cascade), create one directly
         // so that reactive AL can give them a report_crime goal
         const hasWitnessEvent = results.some((r) => r.event.type === 'WITNESS_MEMORY');
-        if (!hasWitnessEvent && agent.profile.role !== 'guard') {
+        if (!hasWitnessEvent && !agent.profile.investigator) {
           const directWitnessEvent: WorldEvent = {
             id: crypto.randomUUID(),
             type: 'WITNESS_MEMORY',
@@ -987,7 +1012,7 @@ export class World {
             payload: {
               affectedTargets: [id],
               victimName,
-              killerName: 'someone unknown',
+              killerName: null,
               sourceRule: 'body-discovery-to-witness',
             },
           };

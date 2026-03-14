@@ -387,6 +387,10 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
         const crimeWord = top.eventType === 'NPC_KILLED' ? 'murder' : top.eventType === 'GOODS_STOLEN' ? 'theft' : 'attack';
         const victim = top.object ?? 'a victim';
         sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}.\nYou scan every face for guilt. You interrupt conversations to ask questions. You stand taller, hand near your weapon. This is your top priority.`);
+      } else if (crimeBeliefs.some((b) => b.source === 'perpetrator')) {
+        // Killer's emotional state — guilt/paranoia (complements secret-directives)
+        const b = crimeBeliefs.find((b) => b.source === 'perpetrator')!;
+        sections.push(`## How you feel right now\nYour hands won't stop shaking. Every time someone mentions ${b.object}, your blood runs cold. You avoid eye contact. You feel the walls closing in.`);
       } else if (crimeBeliefs.some((b) => b.source === 'witness')) {
         const b = crimeBeliefs.find((b) => b.source === 'witness')!;
         sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${b.object}. Your hands tremble slightly. You start sentences and lose track of what you were saying. You do not want to talk about it but you cannot stop thinking about it.`);

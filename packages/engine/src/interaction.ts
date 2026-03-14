@@ -80,7 +80,7 @@ export function createInteractionRunner(
     eventStore.append(event);
 
     // Detect crime report → guard: create testimony belief + RUMOR_SPREAD event
-    if (options?.onExtraEvent && target.profile.role === 'guard') {
+    if (options?.onExtraEvent && target.profile.investigator) {
       const crimeData = parseCrimeTag(purpose);
       if (crimeData) {
         // Guard receives testimony belief from the reporter
@@ -89,7 +89,7 @@ export function createInteractionRunner(
           target.state.beliefs.addBelief({
             id: crypto.randomUUID(),
             eventType: 'NPC_KILLED',
-            subject: crimeData.killer === 'someone unknown' ? null : crimeData.killer,
+            subject: crimeData.killer === 'unknown' ? null : crimeData.killer,
             object: crimeData.victim,
             location: crimeData.location,
             confidence: Math.min(0.9, 0.5 + trustWeight * 0.4),
