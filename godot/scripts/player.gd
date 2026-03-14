@@ -1,20 +1,33 @@
 extends Node2D
-## Player character — WASD movement, isometric style, idle animation.
+## Player character — WASD movement with 3D KayKit model.
 
 signal interact_requested(npc_id: String)
 signal investigate_requested(location_id: String)
 
-const SPEED := 120.0
+const SPEED := 300.0
+const SPRINT_SPEED := 550.0
+const SPRITE_SCALE := 0.45
+const PLAYER_MODEL := "Knight.glb"
 
+var _char_view: CharacterViewport
 var _label: Label
 var _nearby_npc: String = ""
-var _nearby_crime_scene: String = ""  # location_id of nearby crime scene
-var _bob_time: float = 0.0
-var movement_locked := false  # set by main when dialog is open
+var _nearby_crime_scene: String = ""
+var _is_moving := false
+var movement_locked := false
 
 
 func _ready() -> void:
-	z_index = 1
+	z_index = 10
+
+	# 3D character viewport
+	_char_view = CharacterViewport.new()
+	add_child(_char_view)
+	_char_view.setup(PLAYER_MODEL)
+	# Slight blue tint to distinguish from NPCs
+	_char_view.set_modulate_color(Color(0.85, 0.9, 1.0))
+
+	# "You" label
 	_label = Label.new()
 	_label.text = "You"
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -26,11 +39,10 @@ func _ready() -> void:
 	_label.add_theme_constant_override("shadow_offset_x", 1)
 	_label.add_theme_constant_override("shadow_offset_y", 1)
 	add_child(_label)
-	queue_redraw()
 
 
 func _process(delta: float) -> void:
-	_bob_time += delta
+	_is_moving = false
 
 	if not movement_locked:
 		var dir := Vector2.ZERO
@@ -45,7 +57,20 @@ func _process(delta: float) -> void:
 
 		if dir != Vector2.ZERO:
 			dir = dir.normalized()
-			position += dir * SPEED * delta
+			var sprinting := Input.is_key_pressed(KEY_SHIFT)
+			var spd := SPRINT_SPEED if sprinting else SPEED
+			# Squish vertical for isometric feel (tiles are ~2:1 ratio)
+			position += Vector2(dir.x, dir.y * 0.5) * spd * delta
+			_is_moving = true
+			_char_view.face_direction(Vector2(dir.x, dir.y * 0.5))
+			if sprinting:
+				_char_view.play_animation("Run")
+				_char_view.set_anim_speed(1.2)
+			else:
+				_char_view.play_animation("Walk")
+				_char_view.set_anim_speed(1.4)
+		else:
+			_char_view.stop_animation()
 
 	queue_redraw()
 
@@ -62,48 +87,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
-	var bob := sin(_bob_time * 2.5) * 1.5
-
-	# Shadow
-	_draw_ellipse(Vector2(2, 4), 12, 6, Color(0, 0, 0, 0.35))
-
-	# Legs
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-6, 2 + bob), Vector2(6, 2 + bob),
-		Vector2(5, -12 + bob), Vector2(-5, -12 + bob)
-	]), Color(0.2, 0.2, 0.3))
-
-	# Torso
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(-7, -12 + bob), Vector2(7, -12 + bob),
-		Vector2(6, -28 + bob), Vector2(-6, -28 + bob)
-	]), Color(0.25, 0.45, 0.65))
-
-	# Arms
-	var arm_swing := sin(_bob_time * 2.5 + 1.0) * 2.0
-	draw_line(Vector2(-7, -22 + bob), Vector2(-11, -12 + bob + arm_swing), Color(0.2, 0.35, 0.5), 3.0)
-	draw_line(Vector2(7, -22 + bob), Vector2(11, -12 + bob - arm_swing), Color(0.2, 0.35, 0.5), 3.0)
-
-	# Head
-	draw_circle(Vector2(0, -34 + bob), 7, Color(0.88, 0.75, 0.62))
-
-	# Interact hint
+	# Interact hints
 	if _nearby_npc != "" and not movement_locked:
-		draw_string(ThemeDB.fallback_font, Vector2(-20, 20), "[E] Talk", HORIZONTAL_ALIGNMENT_CENTER, 40, 10, Color(1, 0.85, 0.3, 0.8))
+		draw_string(ThemeDB.fallback_font, Vector2(-20, 10), "[E] Talk", HORIZONTAL_ALIGNMENT_CENTER, 40, 11, Color(1, 0.85, 0.3, 0.9))
 	elif _nearby_crime_scene != "" and not movement_locked:
-		draw_string(ThemeDB.fallback_font, Vector2(-30, 20), "[E] Investigate", HORIZONTAL_ALIGNMENT_CENTER, 60, 10, Color(0.9, 0.35, 0.3, 0.8))
-
-	# Label bob
-	if _label:
-		_label.position.y = -62 + bob
-
-
-func _draw_ellipse(center: Vector2, rx: float, ry: float, color: Color) -> void:
-	var points := PackedVector2Array()
-	for i: int in range(16):
-		var angle := TAU * i / 16.0
-		points.append(center + Vector2(cos(angle) * rx, sin(angle) * ry))
-	draw_colored_polygon(points, color)
+		draw_string(ThemeDB.fallback_font, Vector2(-35, 10), "[E] Investigate", HORIZONTAL_ALIGNMENT_CENTER, 70, 11, Color(0.9, 0.35, 0.3, 0.9))
 
 
 func set_nearby_npc(npc_id: String) -> void:

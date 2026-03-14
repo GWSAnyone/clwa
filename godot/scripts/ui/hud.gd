@@ -90,26 +90,35 @@ func _on_event(event: Dictionary) -> void:
 	var event_type: String = event.get("type", "")
 	var text: String = ""
 
+	var subject: String = event.get("subject", "")
+
 	match event_type:
-		"KILL":
-			var subject: String = event.get("subject", "")
+		"KILL", "NPC_KILLED", "MURDER":
 			text = "[color=red]KILL — %s[/color]" % subject
 		"BODY_DISCOVERED":
-			var subject: String = event.get("subject", "")
 			text = "[color=orange]BODY FOUND — %s[/color]" % subject
 		"WANTED_STATUS":
-			var subject: String = event.get("subject", "")
 			text = "[color=red]WANTED — %s[/color]" % subject
+		"NPC_ARRESTED":
+			text = "[color=#e88030]ARRESTED — %s[/color]" % subject
+		"NPC_SENTENCED":
+			var verdict: String = event.get("verdict", "")
+			text = "[color=#9070c0]SENTENCED — %s (%s)[/color]" % [subject, verdict]
+		"NPC_FLED":
+			text = "[color=#c06060]FLED — %s[/color]" % subject
+		"WITNESS_MEMORY":
+			text = "[color=#8a8]WITNESS — %s[/color]" % subject
+		"RUMOR_SPREAD":
+			text = "[color=#888]RUMOR — %s[/color]" % subject
+		"THEFT_DISCOVERED":
+			text = "[color=#cc9930]THEFT — %s[/color]" % subject
 		"goal":
-			var subject: String = event.get("subject", "")
 			var desc: String = event.get("description", "")
 			text = "[color=#aa8]%s: %s[/color]" % [subject, desc]
 		"reflection":
-			var subject: String = event.get("subject", "")
 			var refl: String = event.get("text", "")
 			text = "[color=#a8a]%s reflects: %s[/color]" % [subject, refl]
 		_:
-			var subject: String = event.get("subject", "")
 			text = "[color=yellow]%s — %s[/color]" % [event_type, subject]
 
 	if text != "":

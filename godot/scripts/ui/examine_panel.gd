@@ -82,7 +82,7 @@ func _ready() -> void:
 
 func open_scene(location_id: String, scene_data: Dictionary) -> void:
 	_location_id = location_id
-	var crime_type: String = scene_data.get("crimeType", "crime")
+	var _crime_type: String = scene_data.get("crimeType", "crime")
 	var victim: String = scene_data.get("victim", "")
 
 	var title := "Crime Scene"
@@ -141,7 +141,22 @@ func _on_examine_point(point_id: String, btn: Button) -> void:
 	var result: Dictionary = await Backend.examine_point(_location_id, point_id)
 	if result.has("clueText"):
 		var clue: String = result.get("clueText", "")
-		_detail_label.text = "[color=#d4c89a][b]Clue found:[/b][/color] %s" % clue
+		var detail_text := "[color=#d4c89a][b]Clue found:[/b][/color] %s" % clue
+
+		# Show structured evidence if present
+		var evidence: Array = result.get("evidence", [])
+		if evidence.size() > 0:
+			detail_text += "\n\n[color=#b0a080][b]Evidence:[/b][/color]"
+			for ev: Dictionary in evidence:
+				var cat: String = ev.get("category", "")
+				var desc: String = ev.get("description", "")
+				var suspect: String = ev.get("subjectName", "")
+				var cat_color := _evidence_category_color(cat)
+				detail_text += "\n [color=%s][%s][/color] %s" % [cat_color, cat.to_upper(), desc]
+				if suspect != "":
+					detail_text += " [color=#cc9944](%s)[/color]" % suspect
+
+		_detail_label.text = detail_text
 		btn.text = "[Examined] %s" % result.get("description", btn.text)
 		btn.add_theme_color_override("font_color", Color(0.4, 0.4, 0.38))
 		btn.add_theme_color_override("font_disabled_color", Color(0.4, 0.4, 0.38))
@@ -150,6 +165,14 @@ func _on_examine_point(point_id: String, btn: Button) -> void:
 		btn.text = btn.text.replace("[...]", "[Examine]")
 		btn.disabled = false
 		_detail_label.text = "[color=#aa4444]Could not examine this.[/color]"
+
+
+func _evidence_category_color(category: String) -> String:
+	match category:
+		"opportunity": return "#cc9944"
+		"motive": return "#cc4444"
+		"trace": return "#44aa88"
+		_: return "#aaaaaa"
 
 
 func _on_close() -> void:

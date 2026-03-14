@@ -5,6 +5,7 @@ signal world_state_updated(data: Dictionary)
 signal event_received(event: Dictionary)
 signal tick_completed(tick_data: Dictionary)
 signal conversation_line(speaker: String, text: String)
+signal conversation_complete(initiator: String, responder: String, location: String)
 signal npc_moved(npc_id: String, from_loc: String, to_loc: String)
 signal chat_token(agent_id: String, token: String)
 signal chat_done(agent_id: String, full_reply: String)
@@ -100,7 +101,11 @@ func _handle_ws_message(text: String) -> void:
 					conversation_line.emit(speaker, line)
 
 		"conversation:complete":
-			pass
+			if raw_data is Dictionary:
+				var initiator: String = raw_data.get("initiator", "")
+				var responder: String = raw_data.get("responder", "")
+				var loc: String = raw_data.get("location", "")
+				conversation_complete.emit(initiator, responder, loc)
 
 		"tick":
 			if raw_data is Dictionary:
@@ -119,9 +124,9 @@ func _handle_ws_message(text: String) -> void:
 		"goal:action":
 			if raw_data is Dictionary:
 				var desc: String = raw_data.get("description", "")
-				var owner: String = raw_data.get("ownerName", "")
+				var npc_owner: String = raw_data.get("ownerName", "")
 				if desc != "":
-					event_received.emit({"type": "goal", "subject": owner, "description": desc})
+					event_received.emit({"type": "goal", "subject": npc_owner, "description": desc})
 
 		"state:update":
 			pass
