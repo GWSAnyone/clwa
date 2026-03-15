@@ -13,31 +13,40 @@
 
 ### 1. Structured Data — Never Text Matching
 Every piece of state is a typed field: `null`, enum literal, number, boolean.
-- Unknown = `null`. Never a placeholder string (`'someone'`, `'unknown'`). Placeholder text is OK only in human-visible prose, never in logic fields.
-- Role-based behavior = **capability flags** on profile (`investigator`, `detersCrime`, `canSentence`). The `role` string is for display/LLM prose only — never for `if/switch` logic.
-- LLM structured output = first-word extraction from constrained response. Never `response.includes()`.
-- **Self-check**: before every string comparison, ask: "Is there a typed field or flag for this?"
+- Unknown = `null`. Never a placeholder string. Placeholder text OK only in human-visible prose.
+- Role-based behavior = **capability flags** (`investigator`, `detersCrime`, `canSentence`). The `role` string is for display only.
+- LLM structured output = first-word extraction. Never `response.includes()`.
+- **Self-check**: before every string comparison, ask: "Is there a registry, flag, or typed field for this?" If the answer involves writing a specific string value from a module — it's a violation.
+
+**Anti-patterns I must NOT repeat:**
+- `?? 'BODY_DISCOVERED'` — fallback on hardcoded string. Correct: registry or throw.
+- `=== 'NPC_KILLED' || === 'GOODS_STOLEN'` — enumerating module event types. Correct: `isEventCategory(type, 'crime')`.
+- `role === 'guard'` — role string for logic. Correct: `profile.investigator`.
+- Classifying a violation as "acceptable" or "borderline" because it's a union type or "engine-level concept". **Default is VIOLATION** — only goal state machine, LLM API protocol, and template DSL ($target, $home) are truly engine-level string checks.
 
 ### 2. Engine = Universal Laws, Modules = Worlds Built on Those Laws
-Engine contains **empty registries**. Modules fill them with **data** at startup via registration functions. Engine never imports from modules.
-- New behavior = data record in a module (affordance definition + CG rules + EL rules + step templates). Zero code changes in engine.
-- Engine doesn't know about specific roles, crimes, social structures, or economy. It knows about affordances, beliefs, consequences, evidence, and goals — generic primitives.
-- This is how the engine scales: Crime & Justice today, Economy & Trade tomorrow, Politics next — same engine, different data modules.
+Engine contains **empty registries** (~25 in event-registry.ts). Modules fill them at startup. Engine never imports from modules.
+- New behavior = data record in a module. Zero code changes in engine.
+- Engine doesn't know specific roles, crimes, event types, verdict strings, status values, or scene types. All via registries.
+- **Test**: "If I add an Economy module with FRAUD/SMUGGLING events — does engine handle them without any engine code changes?" If no → violation.
 
 ### 3. PM = Instinct, LLM = Consciousness
-Personality Model computes utility scores → generates prose descriptions of urges. LLM freely decides — may follow instinct or transcend it (emergent character growth, the moment we didn't script).
-- **Reflex** (≥0.7): bypasses LLM, auto-goal. Like yanking hand from fire.
-- **Urge** (0.5-0.7): LLM decides but options constrained. Like hunger.
-- **Thought** (<0.5): full freedom. Like a fleeting idea.
+Personality Model computes utility scores → generates prose descriptions of urges. LLM freely decides — may follow instinct or transcend it.
+- **Reflex** (≥0.7): bypasses LLM, auto-goal.
+- **Urge** (0.5-0.7): LLM decides but constrained.
+- **Thought** (<0.5): full freedom.
 
 ### 4. Emergent Narrative
-We build **capabilities**, not scenarios. Scenarios are configurations of initial conditions + rules on top of the sandbox. Nobody hardcodes "Mark kills Bess" — personality + mood + relationship + opportunity converge organically.
+We build **capabilities**, not scenarios. Nobody hardcodes "Mark kills Bess" — personality + mood + relationship + opportunity converge organically.
 
-### 5. Bilateral Design (future direction)
-Every system should work identically for NPC and Player. NPC: AL generates options → LLM picks. Player: free input → Intent Layer parses → same validation → same CG/EL cascade. Same action pipeline, different input source.
+### 5. Bilateral Design (future)
+Every system works identically for NPC and Player. Same action pipeline, different input source.
 
 ### 6. Trace Dependencies Before Editing
-Before modifying any function: read it, find all callers (use `find_referencing_symbols`), understand the full data flow. A change in `addBelief()` affects every subsystem that creates beliefs. A change in event payload semantics cascades through CG rules, belief creation, memory text, and target finders.
+Before modifying any function: find all callers (`find_referencing_symbols`), understand the full data flow. Never edit blind.
+
+### 7. No Double Standards
+Do NOT rationalize keeping module knowledge in engine because "it's easier" or "it's just one string". Every violation sets a precedent. If it looks like a pattern you'd apply inconsistently — it IS a violation. Fix it or document it as explicit architectural debt with a concrete plan.
 
 ## Stack
 
@@ -51,26 +60,23 @@ bun install && bun run packages/server/src/index.ts  # → http://localhost:3000
 ## Architecture
 
 ```
-Engine  (packages/engine/)  — universal subsystems (AL, PM, CG, EL, Beliefs, Goals, Memory, Volition, World)
-Modules (packages/modules/) — world content (affordances, CG rules, EL rules, target finders)
-Server  (packages/server/)  — HTTP/WS, NPC profiles, bootstrap, persistence
+Engine  (packages/engine/)  — universal subsystems, ~25 empty registries
+Modules (packages/modules/) — world content via registration functions
+Server  (packages/server/)  — HTTP/WS, NPC profiles, bootstrap
 ```
 Dependencies: `modules → engine`, `server → engine + modules`. Engine **never** depends on modules.
 
-**Core loop**: State → AL (what's possible) → PM (who you are) → LLM (free decision) → CG (consequences) + EL (evidence) → new State
+## Engine Invariants
 
-## Engine Invariants (things that break if violated)
-
-1. **LLM semaphore**: `acquire()` → call → `release()` in **finally**. Concurrency = 1. Tick mutex.
-2. **Null semantics**: `belief.subject = null` means unknown suspect. `addBelief()` merges null → concrete when new info arrives. Never use strings as null-substitutes.
-3. **Event.subject ambiguity**: meaning varies by event type. Use typed payload fields (e.g. `killerName`, `discoveredBy`) as authoritative source, not `event.subject`.
-4. **Registry pattern**: engine exposes empty Maps/Arrays (`AFFORDANCE_REGISTRY`, `TARGET_FINDERS`, `EVIDENCE_RULES`, etc). Modules call registration functions at startup. Engine code never references module-specific IDs.
-5. **Capability flags on AgentProfile**: `investigator`, `detersCrime`, `canSentence`. Engine checks these — never `profile.role === 'guard'`. Role is prose.
-6. **Belief name format**: `subject`/`object` = plain `profile.name`. Never `"Name the role"`. Use `matchesNpc()` for fuzzy matching.
-7. **Goal lifecycle**: events must trigger goal cleanup (e.g. sentencing clears investigation goals). Without cleanup → infinite behavioral loops.
-8. **Reactive evaluation**: `sourceEvent` field in event payload is mandatory for reactive target finders to fire. Missing it = silent skip.
-9. **Save/persistence**: `toJSON()`/`loadState()` on World. Sets serialize as arrays. Beliefs, goals, relationships all persist.
+1. **LLM semaphore**: acquire() → call → release() in **finally**. Concurrency = 1. Tick mutex.
+2. **Null semantics**: null = unknown. addBelief() merges null → concrete. Never strings as null-substitutes.
+3. **Registry pattern**: engine has empty registries. Modules fill them. Engine never references module-specific IDs, event types, status strings, or verdict values.
+4. **Capability flags**: investigator/detersCrime/canSentence on profile. Never role strings for logic.
+5. **All types = string**: EventType, NpcStatus, BeliefSource — no unions. Modules define values via registries.
+6. **Step handlers**: engine handles move_to/interact/announce/wait. All other step types via STEP_HANDLERS registry.
+7. **handleEventForGoals**: async. All callers must await.
+8. **No fallback strings**: if registry returns null/undefined — skip, throw, or use generic behavior. Never `?? 'HARDCODED_STRING'`.
 
 ## Current Status
 
-Milestone 5: Crime & Justice module (15 layers ✅). Next: demo polish, then Engine Foundation (Intent Layer, bilateral design).
+v0.7.5. Engine decoupled from Crime & Justice module. 7 remaining violations tracked in Serena memory `clwa/engine-invariants`.

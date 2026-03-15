@@ -3,7 +3,7 @@
 > **Цель:** Архитектура симуляции живого игрового мира с причинно-следственной историей, многоуровневыми агентами и LLM-диалогом
 > **Вдохновение:** Disco Elysium (процесс расследования важнее результата), Dwarf Fortress (глубина симуляции), Stanford Generative Agents (архитектура памяти), Shangri-La Frontier (необратимые события)
 > **Принцип вех:** Каждая веха — демонстрация возможностей технологии CLWA. Мы строим **возможности**, не сценарии — сценарии это конфигурации начальных условий + правил поверх песочницы
-> **Дата начала:** Март 2026 | **Последнее обновление:** 15 марта 2026
+> **Дата начала:** Март 2026 | **Последнее обновление:** 16 марта 2026
 
 ---
 
@@ -860,8 +860,11 @@ Silver Flagon Tavern, Town Square (хаб), Town Gate, Market Square, Blacksmith
 | 13 | Reactive eval fix + name consistency | Medium | ✅ | v0.5.2 — E2E цикл протестирован |
 | 14 | Evidence Layer | Large | ✅ | v0.5.3 — пятая подсистема, 4 source strategies |
 | 15 | Bugfixes + capability flags | Medium | ✅ | role→capabilities, self-targeting, arrest cycle, perpetrator source |
-| 16 | Trauma layer | Medium | ⏳ | Постоянные сдвиги OCEAN+H от травм |
-| 17 | Consequence Graph v2 | Large | ⏳ | Полные цепочки для всех типов преступлений |
+| 16 | Engine decoupling v1 | Large | ✅ | Event registry system, step handlers → module, all types → string |
+| 17 | Engine decoupling v2 | Large | ✅ | Belief creators, memory text, mood shifts, goal mood, topic pools, action verbs, volition generic |
+| 18 | Engine decoupling v3 (remaining) | Medium | 🔨 | spreadRumors → module, crime-scene templates, interaction rumor type, schedule flag |
+| 19 | Trauma layer | Medium | ⏳ | Постоянные сдвиги OCEAN+H от травм |
+| 20 | Consequence Graph v2 | Large | ⏳ | Полные цепочки для всех типов преступлений |
 
 ### Каталог преступлений и возможностей NPC
 
