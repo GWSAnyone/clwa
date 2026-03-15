@@ -1,5 +1,5 @@
 import type { Agent } from './agent';
-import { getEventLabel, isDeathEvent } from './event-registry';
+import { getEventLabel, isDeathEvent, getRoleTopicPool } from './event-registry';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -154,7 +154,7 @@ const innerConflictTopics: TopicSource = (init, resp) => {
 
 /** Topics from role-specific daily life — grounded, concrete */
 const roleTopics: TopicSource = (init, _resp, ctx) => {
-  const pool = ROLE_TOPIC_POOL[init.profile.role];
+  const pool = getRoleTopicPool(init.profile.role);
   if (!pool) return [];
 
   // Filter out recently used for this pair
@@ -167,51 +167,8 @@ const roleTopics: TopicSource = (init, _resp, ctx) => {
 };
 
 /** Role-specific topic pools — declarative data */
-// Justice topics moved to modules/crime-justice/topic-sources.ts
-// Registered via topicEngine.registerSource() at module init
-
-const ROLE_TOPIC_POOL: Record<string, TopicProposal[]> = {
-  bartender: [
-    { subject: 'a regular who hasn\'t come in lately', tone: 'mildly concerned', weight: 2, initiatorHook: 'You haven\'t seen a regular customer in days. Ask if they know anything.', category: 'role:a regular who hasn\'t come in lately' },
-    { subject: 'the ale quality this week', tone: 'professional', weight: 2, initiatorHook: 'The latest batch turned out different. Mention it in passing.', category: 'role:the ale quality this week' },
-    { subject: 'something overheard last night', tone: 'gossipy, leaning in', weight: 2, initiatorHook: 'You overheard something interesting at the bar. Share it casually.', category: 'role:something overheard last night' },
-  ],
-  merchant: [
-    { subject: 'a tricky customer earlier today', tone: 'amused or exasperated', weight: 2, initiatorHook: 'A farmer tried to pay you in chickens this morning. Tell them about it.', category: 'role:a tricky customer earlier today' },
-    { subject: 'a missing shipment', tone: 'worried, business-like', weight: 2, initiatorHook: 'A crate you expected hasn\'t arrived. You\'re worried it was stolen on the road.', category: 'role:a missing shipment' },
-    { subject: 'whether people appreciate quality goods', tone: 'slightly bitter', weight: 2, initiatorHook: 'Nobody here understands what fine goods cost. Vent your frustration briefly.', category: 'role:whether people appreciate quality goods' },
-  ],
-  guard: [
-    { subject: 'suspicious footprints near the gate', tone: 'alert, dutiful', weight: 2, initiatorHook: 'You noticed something odd during patrol. Mention it.', category: 'role:suspicious footprints near the gate' },
-    { subject: 'how quiet the roads have been', tone: 'contemplative', weight: 2, initiatorHook: 'It\'s been unusually quiet. You\'re not sure if that\'s good or bad.', category: 'role:how quiet the roads have been' },
-    { subject: 'the paperwork piling up', tone: 'weary sigh', weight: 2, initiatorHook: 'Duty weighs on you today. Mention the administrative burden.', category: 'role:the paperwork piling up' },
-  ],
-  priest: [
-    { subject: 'a parishioner who came for counsel', tone: 'thoughtful, careful', weight: 2, initiatorHook: 'A young couple came to you yesterday with a disagreement. It made you think. Share a small detail.', category: 'role:a parishioner who came for counsel' },
-    { subject: 'the temple roof needing repair', tone: 'practical concern', weight: 2, initiatorHook: 'Rain leaked through the temple roof last night. You need help fixing it. Ask plainly.', category: 'role:the temple roof needing repair' },
-    { subject: 'a dream you had last night', tone: 'unsettled, reflective', weight: 2, initiatorHook: 'You had a strange dream and it won\'t leave you. Mention it briefly, wondering aloud.', category: 'role:a dream you had last night' },
-  ],
-  bard: [
-    { subject: 'a melody that keeps coming back', tone: 'playful, humming', weight: 2, initiatorHook: 'A tune is stuck in your head. Hum it and ask if they recognize it.', category: 'role:a melody that keeps coming back' },
-    { subject: 'an old man\'s story at the tavern', tone: 'theatrical, intrigued', weight: 2, initiatorHook: 'An old man told you something strange last night. Share the strangest part.', category: 'role:an old man\'s story at the tavern' },
-    { subject: 'whether anyone even listens anymore', tone: 'wistful, self-doubt', weight: 2, initiatorHook: 'You played your heart out and nobody clapped. It stung. Mention it lightly.', category: 'role:whether anyone even listens anymore' },
-  ],
-  blacksmith: [
-    { subject: 'a difficult piece you\'re working on', tone: 'focused, technical', weight: 2, initiatorHook: 'A commission is giving you trouble. Mention the challenge.', category: 'role:a difficult piece you\'re working on' },
-    { subject: 'the price of iron going up', tone: 'annoyed, matter-of-fact', weight: 2, initiatorHook: 'Materials are getting expensive. Grumble about it.', category: 'role:the price of iron going up' },
-    { subject: 'a blade you\'re proud of', tone: 'quiet pride', weight: 2, initiatorHook: 'You finished something exceptional. Mention it without boasting too much.', category: 'role:a blade you\'re proud of' },
-  ],
-  judge: [
-    { subject: 'a difficult case from the past', tone: 'thoughtful, burdened', weight: 2, initiatorHook: 'A case from years ago still troubles you. Mention a detail that keeps you awake.', category: 'role:a difficult case from the past' },
-    { subject: 'the quality of evidence in this town', tone: 'exasperated, precise', weight: 2, initiatorHook: 'People here rely on gossip instead of evidence. Express your frustration with proper procedure.', category: 'role:the quality of evidence in this town' },
-    { subject: 'the burden of judgment', tone: 'weary, philosophical', weight: 2, initiatorHook: 'Deciding someone\'s fate weighs on you. Share the weight without asking for sympathy.', category: 'role:the burden of judgment' },
-  ],
-  herbalist: [
-    { subject: 'a rare herb you found at dawn', tone: 'mysterious, pleased', weight: 2, initiatorHook: 'You found something unusual in the wild. Share the discovery.', category: 'role:a rare herb you found at dawn' },
-    { subject: 'someone who came for a remedy', tone: 'knowing, cryptic', weight: 2, initiatorHook: 'Someone visited you for help. Hint at what ailed them without breaking confidence.', category: 'role:someone who came for a remedy' },
-    { subject: 'the weather changing', tone: 'observant, portentous', weight: 2, initiatorHook: 'You\'ve noticed signs in the weather. Mention what it means for the herbs.', category: 'role:the weather changing' },
-  ],
-};
+// Role topic pools moved to server/index.ts via registerRoleTopicPool()
+// Each world module/server registers role-specific conversation topics
 
 /** Topics from current mood state */
 const moodTopics: TopicSource = (init, resp) => {

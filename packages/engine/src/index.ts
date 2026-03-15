@@ -181,6 +181,14 @@ export {
   registerActiveStatuses, registerAbsentStatuses, isStatusActive, isStatusAbsent,
   registerInteractPostHook, runInteractPostHooks,
   registerWitnessEventType, getWitnessEventType,
+  registerEventMoodShifts, getEventMoodShift,
+  registerGoalMoodBoost, getGoalMoodBoost,
+  registerBodyDiscoveryEventType, getBodyDiscoveryEventType,
+  registerRoleTopicPool, getRoleTopicPool,
+  registerRumorEventType, getRumorEventType,
+  registerBeliefCreator, getBeliefCreator,
+  registerMemoryTextBuilder, getMemoryTextBuilder,
+  registerDayAdvanceHandler, getDayAdvanceHandlers,
 } from './event-registry';
 export type { StepExecutionContext, StepHandlerFn, InteractionRunner as StepInteractionRunner } from './event-registry';
-export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate } from './event-registry';
+export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate, BeliefCreatorFn, MemoryTextBuilderFn, DayAdvanceHandlerFn } from './event-registry';

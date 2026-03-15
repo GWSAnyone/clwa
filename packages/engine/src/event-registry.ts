@@ -317,3 +317,106 @@ export function runInteractPostHooks(owner: Agent, target: Agent, step: GoalStep
     hook(owner, target, step, agents, crimeScenes);
   }
 }
+
+// ─── Mood Shifts per Event Type ───
+// Modules register how much mood changes when an NPC is affected by an event
+const EVENT_MOOD_SHIFTS: Map<string, number> = new Map();
+
+export function registerEventMoodShifts(shifts: Record<string, number>): void {
+  for (const [eventType, shift] of Object.entries(shifts)) {
+    EVENT_MOOD_SHIFTS.set(eventType, shift);
+  }
+}
+
+export function getEventMoodShift(eventType: string): number {
+  return EVENT_MOOD_SHIFTS.get(eventType) ?? 0;
+}
+
+// ─── Goal Completion Mood Boost ───
+// Modules register mood reward per goal type
+const GOAL_MOOD_BOOST: Map<string, number> = new Map();
+
+export function registerGoalMoodBoost(mapping: Record<string, number>): void {
+  for (const [goalType, boost] of Object.entries(mapping)) {
+    GOAL_MOOD_BOOST.set(goalType, boost);
+  }
+}
+
+export function getGoalMoodBoost(goalType: string): number {
+  return GOAL_MOOD_BOOST.get(goalType) ?? 0.05;
+}
+
+// ─── Body Discovery Event Type ───
+let BODY_DISCOVERY_EVENT_TYPE: string | null = null;
+
+export function registerBodyDiscoveryEventType(eventType: string): void {
+  BODY_DISCOVERY_EVENT_TYPE = eventType;
+}
+
+export function getBodyDiscoveryEventType(): string | null {
+  return BODY_DISCOVERY_EVENT_TYPE;
+}
+
+// ─── Role Topic Pool ───
+// Modules register role-specific conversation topic pools
+const ROLE_TOPIC_POOLS: Map<string, any[]> = new Map();
+
+export function registerRoleTopicPool(role: string, topics: any[]): void {
+  ROLE_TOPIC_POOLS.set(role, topics);
+}
+
+export function getRoleTopicPool(role: string): any[] {
+  return ROLE_TOPIC_POOLS.get(role) ?? [];
+}
+
+// ─── Rumor Event Type ───
+let RUMOR_EVENT_TYPE: string | null = null;
+
+export function registerRumorEventType(eventType: string): void {
+  RUMOR_EVENT_TYPE = eventType;
+}
+
+export function getRumorEventType(): string | null {
+  return RUMOR_EVENT_TYPE;
+}
+
+// ─── CG Belief Creators ───
+// Modules register how beliefs are created from CG consequence types
+export type BeliefCreatorFn = (agent: Agent, event: WorldEvent, rule: any, crimeEventType: string, killer: string | null, victimName: string | null) => void;
+
+const BELIEF_CREATORS: Map<string, BeliefCreatorFn> = new Map();
+
+export function registerBeliefCreator(consequenceType: string, creator: BeliefCreatorFn): void {
+  BELIEF_CREATORS.set(consequenceType, creator);
+}
+
+export function getBeliefCreator(consequenceType: string): BeliefCreatorFn | null {
+  return BELIEF_CREATORS.get(consequenceType) ?? null;
+}
+
+// ─── CG Memory Text Builders ───
+export type MemoryTextBuilderFn = (event: WorldEvent, killer: string, victimName: string) => string;
+
+const MEMORY_TEXT_BUILDERS: Map<string, MemoryTextBuilderFn> = new Map();
+
+export function registerMemoryTextBuilder(consequenceType: string, builder: MemoryTextBuilderFn): void {
+  MEMORY_TEXT_BUILDERS.set(consequenceType, builder);
+}
+
+export function getMemoryTextBuilder(consequenceType: string): MemoryTextBuilderFn | null {
+  return MEMORY_TEXT_BUILDERS.get(consequenceType) ?? null;
+}
+
+// ─── Day Advance Handlers ───
+// Modules register handlers that run during day advance (e.g., rumor spreading)
+export type DayAdvanceHandlerFn = (agents: Map<string, Agent>, eventStore: any, onEvent: (event: WorldEvent) => void) => Promise<void>;
+
+const DAY_ADVANCE_HANDLERS: DayAdvanceHandlerFn[] = [];
+
+export function registerDayAdvanceHandler(handler: DayAdvanceHandlerFn): void {
+  DAY_ADVANCE_HANDLERS.push(handler);
+}
+
+export function getDayAdvanceHandlers(): DayAdvanceHandlerFn[] {
+  return DAY_ADVANCE_HANDLERS;
+}

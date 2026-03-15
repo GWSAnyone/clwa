@@ -28,7 +28,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getWitnessEventType } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getWitnessEventType, getGoalMoodBoost, getBodyDiscoveryEventType } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -444,11 +444,7 @@ export class World {
           if (action.goalCompleted && action.goalType !== 'schedule') {
             const owner = this.agents.get(action.ownerId);
             if (owner?.state.alive) {
-              const GOAL_MOOD: Record<string, number> = {
-                report_crime: 0.1, investigate: 0.08, confront: 0.08,
-                gossip: 0.05, grief: 0.03, steal: 0.1, blackmail: 0.08,
-              };
-              const shift = GOAL_MOOD[action.goalType] ?? 0.05;
+              const shift = getGoalMoodBoost(action.goalType);
               owner.state.mood = Math.min(1, owner.state.mood + shift);
             }
           }
@@ -812,6 +808,9 @@ export class World {
    * Creates BODY_DISCOVERED event → cascades to WITNESS_MEMORY → existing rules handle rest.
    */
   private async checkBodyDiscovery(): Promise<void> {
+    const bodyDiscoveryType = getBodyDiscoveryEventType();
+    if (!bodyDiscoveryType) return; // no module registered body discovery events
+
     // Build location → dead NPCs map
     const deadByLocation = new Map<string, Array<{ id: string; agent: Agent }>>();
     for (const [id, agent] of this.agents) {
@@ -853,7 +852,7 @@ export class World {
         // victim identity + location. killerName unknown.
         const discoveryEvent: WorldEvent = {
           id: crypto.randomUUID(),
-          type: 'BODY_DISCOVERED',
+          type: bodyDiscoveryType!,
           subject: id,
           object: dead.id,
           location: agent.state.location,

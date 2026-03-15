@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { WorldEvent, ConsequenceRule, ConsequenceResult } from './cg-types';
-import { isEventCategory, getEventLabel } from './event-registry';
+import { isEventCategory, getEventLabel, getEventMoodShift, getBeliefCreator, getMemoryTextBuilder } from './event-registry';
 
 /** Default public places (fallback if none provided) */
 const DEFAULT_PUBLIC_PLACES = new Set([
@@ -11,13 +11,7 @@ const DEFAULT_PUBLIC_PLACES = new Set([
   'Temple of Dawn',
 ]);
 
-/** Mood shifts per consequence type */
-const MOOD_SHIFTS: Partial<Record<string, number>> = {
-  WITNESS_MEMORY: -0.4,
-  BODY_DISCOVERED: -0.35,
-  RUMOR_SPREAD: -0.15,
-  WANTED_STATUS: -0.1,
-};
+// Mood shifts per event type — registered via registerEventMoodShifts() by modules
 
 export interface WorldContext {
   agents: Map<string, Agent>;
@@ -93,7 +87,7 @@ export class ConsequenceEngine {
       this.onEvent?.(consequenceEvent);
 
       // Inject memory + mood shift into each target agent
-      const moodShift = MOOD_SHIFTS[rule.consequence.type] ?? 0;
+      const moodShift = getEventMoodShift(rule.consequence.type);
 
       for (const targetId of targets) {
         const agent = ctx.agents.get(targetId);
@@ -225,53 +219,10 @@ export class ConsequenceEngine {
     // Original crime event type propagated through cascade chain
     const crimeEventType = (event.payload?.originalEventType as string) ?? event.type;
 
-    switch (rule.consequence.type) {
-      case 'WITNESS_MEMORY': {
-        const isBodyDiscovery = rule.subjectUnknown === true;
-        agent.state.beliefs.addBelief({
-          id: crypto.randomUUID(),
-          eventType: crimeEventType,
-          subject: isBodyDiscovery ? null : killer,
-          object: victimName,
-          location: event.location,
-          confidence: isBodyDiscovery ? 0.7 : 0.95,
-          source: isBodyDiscovery ? 'body_discovery' : 'witness',
-          sourceNpcId: null,
-          gameDay: event.gameDay,
-          lastUpdated: event.gameDay,
-        });
-        break;
-      }
-      case 'RUMOR_SPREAD': {
-        agent.state.beliefs.addBelief({
-          id: crypto.randomUUID(),
-          eventType: crimeEventType,
-          subject: killer,
-          object: victimName,
-          location: event.location,
-          confidence: 0.4,
-          source: 'rumor',
-          sourceNpcId: (event.payload?.reportedBy as string) ?? null,
-          gameDay: event.gameDay,
-          lastUpdated: event.gameDay,
-        });
-        break;
-      }
-      case 'WANTED_STATUS': {
-        agent.state.beliefs.addBelief({
-          id: crypto.randomUUID(),
-          eventType: crimeEventType,
-          subject: killer,
-          object: victimName,
-          location: event.location,
-          confidence: 0.8,
-          source: 'testimony',
-          sourceNpcId: (event.payload?.reportedBy as string) ?? null,
-          gameDay: event.gameDay,
-          lastUpdated: event.gameDay,
-        });
-        break;
-      }
+    // Module-registered belief creators handle specific consequence types
+    const creator = getBeliefCreator(rule.consequence.type);
+    if (creator) {
+      creator(agent, event, rule, crimeEventType, killer, victimName);
     }
   }
 
@@ -283,30 +234,16 @@ export class ConsequenceEngine {
     ctx: WorldContext,
   ): string {
     const killer = (event.payload?.killerName as string) ?? 'someone unknown';
-    // Prefer payload.victimName (carries through cascades correctly)
-    // Fallback to deriving from event.object (works for NPC_KILLED, BODY_DISCOVERED)
     const victim = event.object ? ctx.agents.get(event.object) : null;
     const victimName = (event.payload?.victimName as string)
-      ?? (victim ? `${victim.profile.name} the ${victim.profile.role}` : null)
+      ?? (victim ? victim.profile.name : null)
       ?? event.object ?? 'someone';
 
-    switch (rule.consequence.type) {
-      case 'WITNESS_MEMORY':
-        // Body discovery → witness memory: discoverer does NOT know the killer
-        if (rule.subjectUnknown === true) {
-          return `I discovered the body of ${victimName} at ${event.location}! They appear to have been murdered — blood everywhere, signs of violence. I don't know who did this. I need to tell someone about this immediately.`;
-        }
-        return `I witnessed a horrifying murder: ${killer} killed ${victimName} right here at ${event.location}. Blood everywhere. I will never forget this.`;
+    // Module-registered memory text builders
+    const builder = getMemoryTextBuilder(rule.consequence.type);
+    if (builder) return builder(event, killer, victimName);
 
-      case 'RUMOR_SPREAD':
-        return `I heard a disturbing rumor: ${killer} murdered ${victimName} at ${event.location}. People in town are whispering about it everywhere.`;
-
-      case 'WANTED_STATUS':
-        return `URGENT: As a guard, I received confirmed reports that ${killer} murdered ${victimName} at ${event.location}. The killer is at large. I must find and apprehend them immediately. This is now my top priority.`;
-
-      default:
-        return `Something happened: ${event.type} involving ${killer}.`;
-    }
+    return `Something happened: ${event.type} involving ${killer}.`;
   }
 
   /**

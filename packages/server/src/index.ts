@@ -5,6 +5,7 @@ import { World } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerCrimeJusticeModule, CRIME_CG_RULES } from '@clwa/modules';
+import { registerRoleTopicPool } from '@clwa/engine';
 import { broadcast } from './ws';
 import { startServer } from './server';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
@@ -12,6 +13,47 @@ import { join, dirname } from 'path';
 
 // ─── Register World Modules ───
 registerCrimeJusticeModule();
+
+// ─── Register Role Topic Pools (world-specific conversation content) ───
+registerRoleTopicPool('bartender', [
+  { subject: 'a regular who hasn\'t come in lately', tone: 'mildly concerned', weight: 2, initiatorHook: 'You haven\'t seen a regular customer in days. Ask if they know anything.', category: 'role:bartender' },
+  { subject: 'the ale quality this week', tone: 'professional', weight: 2, initiatorHook: 'The latest batch turned out different. Mention it in passing.', category: 'role:bartender' },
+  { subject: 'something overheard last night', tone: 'gossipy, leaning in', weight: 2, initiatorHook: 'You overheard something interesting at the bar. Share it casually.', category: 'role:bartender' },
+]);
+registerRoleTopicPool('merchant', [
+  { subject: 'a tricky customer earlier today', tone: 'amused or exasperated', weight: 2, initiatorHook: 'A farmer tried to pay you in chickens. Tell them about it.', category: 'role:merchant' },
+  { subject: 'a missing shipment', tone: 'worried, business-like', weight: 2, initiatorHook: 'A crate you expected hasn\'t arrived. You\'re worried.', category: 'role:merchant' },
+  { subject: 'whether people appreciate quality goods', tone: 'slightly bitter', weight: 2, initiatorHook: 'Nobody here understands what fine goods cost.', category: 'role:merchant' },
+]);
+registerRoleTopicPool('guard', [
+  { subject: 'suspicious footprints near the gate', tone: 'alert, dutiful', weight: 2, initiatorHook: 'You noticed something odd during patrol.', category: 'role:guard' },
+  { subject: 'how quiet the roads have been', tone: 'contemplative', weight: 2, initiatorHook: 'It\'s been unusually quiet. Not sure if that\'s good.', category: 'role:guard' },
+  { subject: 'the paperwork piling up', tone: 'weary sigh', weight: 2, initiatorHook: 'Duty weighs on you today.', category: 'role:guard' },
+]);
+registerRoleTopicPool('priest', [
+  { subject: 'a parishioner who came for counsel', tone: 'thoughtful', weight: 2, initiatorHook: 'A young couple came with a disagreement. It made you think.', category: 'role:priest' },
+  { subject: 'the temple roof needing repair', tone: 'practical concern', weight: 2, initiatorHook: 'Rain leaked through the roof last night.', category: 'role:priest' },
+  { subject: 'a dream you had last night', tone: 'unsettled, reflective', weight: 2, initiatorHook: 'A strange dream won\'t leave you.', category: 'role:priest' },
+]);
+registerRoleTopicPool('bard', [
+  { subject: 'a melody that keeps coming back', tone: 'playful, humming', weight: 2, initiatorHook: 'A tune is stuck in your head.', category: 'role:bard' },
+  { subject: 'an old man\'s story at the tavern', tone: 'theatrical', weight: 2, initiatorHook: 'An old man told you something strange.', category: 'role:bard' },
+  { subject: 'whether anyone even listens anymore', tone: 'wistful', weight: 2, initiatorHook: 'You played your heart out and nobody clapped.', category: 'role:bard' },
+]);
+registerRoleTopicPool('blacksmith', [
+  { subject: 'a difficult piece you\'re working on', tone: 'focused', weight: 2, initiatorHook: 'A commission is giving you trouble.', category: 'role:blacksmith' },
+  { subject: 'the price of iron going up', tone: 'annoyed', weight: 2, initiatorHook: 'Materials are getting expensive.', category: 'role:blacksmith' },
+  { subject: 'a blade you\'re proud of', tone: 'quiet pride', weight: 2, initiatorHook: 'You finished something exceptional.', category: 'role:blacksmith' },
+]);
+registerRoleTopicPool('judge', [
+  { subject: 'a difficult case from the past', tone: 'thoughtful, burdened', weight: 2, initiatorHook: 'A case from years ago still troubles you.', category: 'role:judge' },
+  { subject: 'the burden of judgment', tone: 'weary, philosophical', weight: 2, initiatorHook: 'Deciding someone\'s fate weighs on you.', category: 'role:judge' },
+]);
+registerRoleTopicPool('herbalist', [
+  { subject: 'a rare herb you found at dawn', tone: 'mysterious, pleased', weight: 2, initiatorHook: 'You found something unusual in the wild.', category: 'role:herbalist' },
+  { subject: 'someone who came for a remedy', tone: 'knowing, cryptic', weight: 2, initiatorHook: 'Someone visited for help. Hint at what ailed them.', category: 'role:herbalist' },
+  { subject: 'the weather changing', tone: 'observant', weight: 2, initiatorHook: 'Signs in the weather mean something for the herbs.', category: 'role:herbalist' },
+]);
 
 // ─── Persistence ───
 
