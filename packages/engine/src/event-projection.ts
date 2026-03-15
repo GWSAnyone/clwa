@@ -1,5 +1,6 @@
 import type { WorldEvent } from './cg-types';
 import type { WorldState } from './event-types';
+import { isDeathEvent, isPursuitEvent } from './event-registry';
 
 /** Mood shifts per consequence type (mirrors engine.ts values) */
 const MOOD_SHIFTS: Record<string, number> = {
@@ -23,13 +24,13 @@ export function buildWorldState(events: WorldEvent[]): WorldState {
       state.currentDay = event.gameDay;
     }
 
-    // Track dead NPCs
-    if (event.type === 'NPC_KILLED' && event.object) {
+    // Track dead NPCs (death events registered by modules)
+    if (isDeathEvent(event.type) && event.object) {
       state.deadNpcs.add(event.object);
     }
 
-    // Track wanted subjects — prefer killerName from payload, fallback to subject
-    if (event.type === 'WANTED_STATUS') {
+    // Track wanted/pursued subjects (pursuit events registered by modules)
+    if (isPursuitEvent(event.type)) {
       const wanted = (event.payload?.killerName as string) ?? event.subject;
       state.wantedSubjects.add(wanted);
     }

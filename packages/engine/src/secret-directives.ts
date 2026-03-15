@@ -1,5 +1,6 @@
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
+import { isEventCategory } from './event-registry';
 
 /**
  * Build behavioral directives based on what an NPC secretly knows.
@@ -62,7 +63,7 @@ export function buildSecretDirectives(
     const witnessBeliefs = beliefs.getAllBeliefs()
       .filter((b) =>
         (b.source === 'witness' || b.source === 'body_discovery') &&
-        b.eventType === 'NPC_KILLED' &&
+        isEventCategory(b.eventType, 'crime') &&
         !coveredSubjects.has(b.subject),
       );
 

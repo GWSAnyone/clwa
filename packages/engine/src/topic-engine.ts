@@ -1,4 +1,5 @@
 import type { Agent } from './agent';
+import { isEventCategory, getEventLabel } from './event-registry';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -42,8 +43,7 @@ const beliefTopics: TopicSource = (init, resp) => {
     .filter(b => CRIME_TYPES.includes(b.eventType) && b.confidence >= 0.3) ?? [];
 
   for (const belief of initBeliefs) {
-    const crimeWord = belief.eventType === 'NPC_KILLED' ? 'murder'
-      : belief.eventType === 'GOODS_STOLEN' ? 'theft' : 'attack';
+    const crimeWord = getEventLabel(belief.eventType);
     const victim = belief.object ?? 'someone';
     const respKnows = respBeliefs.some(
       b => b.eventType === belief.eventType && b.object === belief.object,

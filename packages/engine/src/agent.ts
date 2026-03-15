@@ -3,6 +3,7 @@ import { ReflectionTracker } from './reflection';
 import type { ReflectionConfig } from './reflection';
 import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
+import { getEventLabel, isPursuitEvent } from './event-registry';
 
 interface LMStudioResponse {
   output: Array<{ type: string; content: string }>;
@@ -384,7 +385,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
       if (this.profile.investigator && crimeBeliefs.length > 0) {
         const top = crimeBeliefs.sort((a, b) => b.confidence - a.confidence)[0];
         const suspect = top.subject ?? 'an unknown perpetrator';
-        const crimeWord = top.eventType === 'NPC_KILLED' ? 'murder' : top.eventType === 'GOODS_STOLEN' ? 'theft' : 'attack';
+        const crimeWord = getEventLabel(top.eventType);
         const victim = top.object ?? 'a victim';
         sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}.\nYou scan every face for guilt. You interrupt conversations to ask questions. You stand taller, hand near your weapon. This is your top priority.`);
       } else if (crimeBeliefs.some((b) => b.source === 'perpetrator')) {
@@ -403,7 +404,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
 
       // Wanted NPC self-awareness
       const wantedBelief = beliefs.getAllBeliefs().find(
-        (b) => b.eventType === 'WANTED_STATUS' && b.subject === this.profile.name,
+        (b) => isPursuitEvent(b.eventType) && b.subject === this.profile.name,
       );
       if (wantedBelief) {
         sections.push(`## Your situation\nYou know people are looking for you. You are wanted for a crime. You feel the weight of guilt and fear. Every guard's glance makes your heart race.`);

@@ -161,3 +161,14 @@ export type { JournalEntry } from './journal';
 
 // ─── Secret Directives ───
 export { buildSecretDirectives } from './secret-directives';
+
+// ─── Event Registry ───
+export {
+  registerEventCategory, isEventCategory,
+  registerEventLabels, getEventLabel,
+  registerEventGoalCleanup, getGoalCleanupForEvent,
+  registerBeliefZeroingEvents, shouldZeroBeliefs,
+  registerEventSceneTypes, getSceneTypeForEvent,
+  registerDeathEvents, isDeathEvent, getDefaultDeathEvent,
+  registerPursuitEvents, isPursuitEvent,
+} from './event-registry';

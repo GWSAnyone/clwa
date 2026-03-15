@@ -3,6 +3,7 @@ import type { WorldEvent } from './cg-types';
 import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
 import type { EvidenceLayer } from './evidence';
 import { nextHop } from './pathfinding';
+import { isEventCategory, getEventLabel } from './event-registry';
 
 // ─── Interrogation Outcome Constants ───
 
@@ -184,12 +185,12 @@ function gatherEvidence(suspect: Agent, agents: Map<string, Agent>): string {
     if (!agent.state.alive) continue;
     const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
     for (const b of beliefs) {
-      if ((b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE' || b.eventType === 'WANTED_STATUS') &&
+      if ((isEventCategory(b.eventType, 'crime') || isEventCategory(b.eventType, 'justice_resolution')) &&
           (matchesSuspect(b.subject) || matchesSuspect(b.object))) {
         const sourceLabel = b.source === 'witness' || b.source === 'observation' ? 'eyewitness' :
           b.source === 'interrogation' ? 'testimony under questioning' :
           b.source === 'rumor' ? 'hearsay' : b.source;
-        lines.push(`- ${agent.profile.name} (${sourceLabel}, confidence ${Math.round(b.confidence * 100)}%): ${b.subject} committed ${b.eventType === 'NPC_KILLED' ? 'murder of' : 'crime against'} ${b.object ?? 'unknown'}`);
+        lines.push(`- ${agent.profile.name} (${sourceLabel}, confidence ${Math.round(b.confidence * 100)}%): ${b.subject} committed ${getEventLabel(b.eventType)} of ${b.object ?? 'unknown'}`);
       }
     }
   }
@@ -426,7 +427,7 @@ export class GoalManager {
 
           const senderBeliefs = sender.state.beliefs!.getAllBeliefs();
           const crimeBeliefs = senderBeliefs.filter(
-            (b) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
+            (b) => isEventCategory(b.eventType, 'crime') &&
               b.confidence >= 0.3,
           );
           for (const b of crimeBeliefs) {
@@ -518,7 +519,7 @@ export class GoalManager {
         // Belief transfer: reporter's crime beliefs → target (e.g. witness reports to guard)
         if (step.purpose.includes('[CRIME') && owner.state.beliefs && target.state.beliefs) {
           const ownerCrimeBeliefs = owner.state.beliefs.getAllBeliefs().filter(
-            (b) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
+            (b) => isEventCategory(b.eventType, 'crime') &&
               b.confidence >= 0.3,
           );
           for (const b of ownerCrimeBeliefs) {

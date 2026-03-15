@@ -28,6 +28,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
+import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent } from './event-registry';
 
 export interface WorldCallbacks {
   /** Called when an NPC-to-NPC conversation line is generated */
@@ -156,8 +157,30 @@ export class World {
       this.goalManager.addGoal(goal);
     }
 
-    // Rumor/witness of crime → sentiment toward criminal drops for affected NPCs
-    if (event.type === 'RUMOR_SPREAD' || event.type === 'WITNESS_MEMORY' || event.type === 'THEFT_DISCOVERED') {
+    // Registry-based goal cleanup: modules declare which goals to complete per event type
+    const goalsToClean = getGoalCleanupForEvent(event.type);
+    for (const goalType of goalsToClean) {
+      this.goalManager.completeGoalsByType(goalType);
+    }
+
+    // Registry-based belief zeroing: modules declare which events resolve a case
+    if (shouldZeroBeliefs(event.type)) {
+      const suspectId = event.object;
+      const suspect = suspectId ? this.agents.get(suspectId) : null;
+      if (suspect) {
+        for (const [, agent] of this.agents) {
+          if (!agent.profile.investigator || !agent.state.beliefs) continue;
+          for (const b of agent.state.beliefs.getAllBeliefs()) {
+            if (b.subject === suspect.profile.name || b.subject === suspect.profile.id) {
+              b.confidence = 0;
+            }
+          }
+        }
+      }
+    }
+
+    // Information spread → sentiment toward criminal drops for affected NPCs
+    if (isEventCategory(event.type, 'information_spread')) {
       const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);
       if (criminalName) {
         const criminalEntry = Array.from(this.agents.entries())
@@ -175,9 +198,8 @@ export class World {
       }
     }
 
-    // Once guard has WANTED_STATUS, all report_crime goals are redundant
+    // WANTED_STATUS: guard sentiment + criminal awareness
     if (event.type === 'WANTED_STATUS') {
-      this.goalManager.completeGoalsByType('report_crime');
 
       // Guard sentiment toward criminal drops (duty-based, independent of victim relationship)
       const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);
@@ -245,9 +267,8 @@ export class World {
       }
     }
 
-    // NPC arrested → complete investigation goals + create beliefs for all NPCs
+    // NPC arrested → create beliefs for all NPCs
     if (event.type === 'NPC_ARRESTED') {
-      this.goalManager.completeGoalsByType('investigate');
       const suspectName = (event.payload?.suspectName as string) ?? 'someone';
       const affected = (event.payload?.affectedTargets as string[]) ?? [];
       for (const npcId of affected) {
@@ -267,30 +288,11 @@ export class World {
       }
     }
 
-    // NPC sentenced → clear justice goals + create beliefs
+    // NPC sentenced → create beliefs (goal cleanup + belief zeroing handled by registry above)
     if (event.type === 'NPC_SENTENCED') {
       const suspectName = (event.payload?.suspectName as string) ?? 'someone';
       const verdict = (event.payload?.verdict as string) ?? 'unknown';
       const affected = (event.payload?.affectedTargets as string[]) ?? [];
-
-      // Clear all justice-related goals — case is resolved
-      this.goalManager.completeGoalsByType('arrest');
-      this.goalManager.completeGoalsByType('interrogate');
-      this.goalManager.completeGoalsByType('investigate');
-      this.goalManager.completeGoalsByType('evaluate_case');
-
-      // On release: reduce guards' crime beliefs about suspect below arrest threshold
-      if (verdict === 'release') {
-        for (const [, agent] of this.agents) {
-          if (!agent.profile.investigator || !agent.state.beliefs) continue;
-          for (const b of agent.state.beliefs.getAllBeliefs()) {
-            if ((b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN') &&
-              (b.subject === suspectName || (b.subject != null && b.subject.startsWith(suspectName + ' ')))) {
-              if (b.confidence > 0.5) b.confidence = 0.5;
-            }
-          }
-        }
-      }
 
       for (const npcId of affected) {
         const agent = this.agents.get(npcId);
@@ -309,11 +311,8 @@ export class World {
       }
     }
 
-    // NPC fled → clear pursuit goals + create beliefs
+    // NPC fled → create beliefs (goal cleanup handled by registry above)
     if (event.type === 'NPC_FLED') {
-      this.goalManager.completeGoalsByType('arrest');
-      this.goalManager.completeGoalsByType('interrogate');
-
       const fledName = (event.payload?.fledName as string) ?? 'someone';
       const affected = (event.payload?.affectedTargets as string[]) ?? [];
       for (const npcId of affected) {
@@ -505,14 +504,13 @@ export class World {
             const sceneWitnesses = Array.from(this.agents.entries())
               .filter(([id, a]) => id !== crimeData.object && a.state.alive && a.state.location === crimeData.location)
               .map(([id]) => id);
-            if (crimeData.type === 'NPC_KILLED') {
-              this.markCrimeScene(crimeData.location, 'murder', crimeData.subject, crimeData.object!, sceneWitnesses);
-              this.callbacks.onMurder?.(crimeData.subject, crimeData.object!,
+            const sceneType = getSceneTypeForEvent(crimeData.type);
+            if (sceneType) {
+              this.markCrimeScene(crimeData.location, sceneType, crimeData.subject, crimeData.object, sceneWitnesses, crimeData.type);
+            }
+            if (isDeathEvent(crimeData.type) && crimeData.object) {
+              this.callbacks.onMurder?.(crimeData.subject, crimeData.object,
                 crimeData.payload.killerName as string, crimeData.payload.victimName as string);
-            } else if (crimeData.type === 'SELF_JUSTICE') {
-              this.markCrimeScene(crimeData.location, 'assault', crimeData.subject, crimeData.object!, sceneWitnesses);
-            } else if (crimeData.type === 'GOODS_STOLEN') {
-              this.markCrimeScene(crimeData.location, 'robbery', crimeData.subject, crimeData.object, sceneWitnesses);
             }
 
             // Generate structured evidence at the scene
@@ -942,6 +940,10 @@ export class World {
         this.bodyDiscoveries.add(key);
 
         const victimName = dead.agent.profile.name;
+        // Find crime scene for this victim to get eventType
+        const victimScene = Array.from(this.crimeScenes.values()).flat()
+          .find(s => s.victimId === dead.id && s.active);
+        const deathEventType = victimScene?.eventType ?? victimScene?.crimeType;
 
         // BODY_DISCOVERED represents what the discoverer knows:
         // victim identity + location. killerName unknown.
@@ -966,10 +968,10 @@ export class World {
         const discoveryText = `I discovered the body of ${victimName} at ${agent.state.location}! They appear to have been murdered. I need to tell someone about this immediately.`;
         await agent.observe(discoveryText, 8);
         agent.state.mood = Math.max(-1, agent.state.mood - 0.35);
-        if (agent.state.beliefs) {
+        if (agent.state.beliefs && deathEventType) {
           agent.state.beliefs.addBelief({
             id: crypto.randomUUID(),
-            eventType: 'NPC_KILLED',
+            eventType: deathEventType,
             subject: null,
             object: victimName,
             location: agent.state.location,
@@ -1060,10 +1062,11 @@ export class World {
    */
   markCrimeScene(
     locationId: string,
-    crimeType: CrimeScene['crimeType'],
+    crimeType: string,
     perpetratorId?: string,
     victimId?: string,
     witnessIds?: string[],
+    eventType?: string,
   ): CrimeScene {
     const perpetrator = perpetratorId ? this.agents.get(perpetratorId) : undefined;
     const victim = victimId ? this.agents.get(victimId) : undefined;
@@ -1077,6 +1080,8 @@ export class World {
       victim,
       witnessIds,
     );
+
+    scene.eventType = eventType ?? crimeType;
 
     const existing = this.crimeScenes.get(locationId) ?? [];
     existing.push(scene);
@@ -1120,9 +1125,9 @@ export class World {
           // Add belief about the crime
           agent.state.beliefs?.addBelief({
             id: crypto.randomUUID(),
-            eventType: scene.crimeType === 'murder' ? 'NPC_KILLED' : scene.crimeType === 'robbery' ? 'GOODS_STOLEN' : 'SELF_JUSTICE',
-            subject: scene.perpetratorId ? (this.agents.get(scene.perpetratorId)?.profile.name ?? 'someone') : 'someone',
-            object: scene.victimId ? (this.agents.get(scene.victimId)?.profile.name ?? 'someone') : locationName,
+            eventType: scene.eventType ?? scene.crimeType,
+            subject: scene.perpetratorId ? (this.agents.get(scene.perpetratorId)?.profile.name ?? null) : null,
+            object: scene.victimId ? (this.agents.get(scene.victimId)?.profile.name ?? null) : null,
             location: locationName,
             confidence: 0.8,
             source: 'observation',
@@ -1211,8 +1216,9 @@ export class World {
   }
 
   /** Process a kill event through the consequence engine.
-   *  killerId is optional — defaults to 'player'. Pass NPC id for NPC-on-NPC kills. */
-  async processKill(victimId: string, killerId?: string): Promise<{ killEvent: WorldEvent; results: any[] }> {
+   *  killerId is optional — defaults to 'player'. Pass NPC id for NPC-on-NPC kills.
+   *  eventType is the event type string registered by modules (e.g. 'NPC_KILLED'). */
+  async processKill(victimId: string, killerId?: string, eventType?: string): Promise<{ killEvent: WorldEvent; results: any[] }> {
     const victim = this.agents.get(victimId);
     if (!victim || !victim.state.alive) {
       throw new Error(`Cannot kill ${victimId}: not found or already dead`);
@@ -1225,9 +1231,14 @@ export class World {
     victim.state.alive = false;
     victim.state.mood = -1;
 
+    const resolvedEventType = eventType ?? getDefaultDeathEvent();
+    if (!resolvedEventType) {
+      throw new Error('No death event type registered. Register via registerDeathEvents() in your module.');
+    }
+
     const killEvent: WorldEvent = {
       id: crypto.randomUUID(),
-      type: 'NPC_KILLED',
+      type: resolvedEventType,
       subject: killerSubject,
       object: victimId,
       location: victim.state.location,
@@ -1256,7 +1267,10 @@ export class World {
     const witnessIds = Array.from(this.agents.entries())
       .filter(([id, a]) => id !== victimId && id !== killerId && a.state.alive && a.state.location === victim.state.location)
       .map(([id]) => id);
-    this.markCrimeScene(victim.state.location, 'murder', killerId, victimId, witnessIds);
+    const killSceneType = getSceneTypeForEvent(resolvedEventType);
+    if (killSceneType) {
+      this.markCrimeScene(victim.state.location, killSceneType, killerId, victimId, witnessIds, resolvedEventType);
+    }
 
     // Generate structured evidence at the crime scene
     const elCtx: EvidenceContext = { event: killEvent, agents: this.agents, crimeScenes: this.crimeScenes };

@@ -1,7 +1,7 @@
 import type { Agent, AffordanceContext, AffordanceDefinition, AffordanceTarget } from '@clwa/engine';
 import type { Belief } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
-import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole } from '@clwa/engine';
+import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel } from '@clwa/engine';
 
 // ─── Helpers ───
 
@@ -40,7 +40,7 @@ function findCrimeBeliefTarget(npcId: string, agent: Agent, ctx: AffordanceConte
   if (!agent.state.beliefs) return null;
   const crimeBeliefs = agent.state.beliefs.getAllBeliefs().filter(
     (b: Belief) =>
-      (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
+      isEventCategory(b.eventType, 'crime') &&
       b.confidence >= minConfidence && b.subject !== agent.profile.name,
   );
   for (const belief of crimeBeliefs) {
@@ -95,7 +95,7 @@ export function isCriminalNpc(agent: Agent, ctx: AffordanceContext): boolean {
   // Check if any crime event has this NPC as subject
   const crimeBeliefs = agent.state.beliefs.getAllBeliefs();
   for (const b of crimeBeliefs) {
-    if ((b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
+    if (isEventCategory(b.eventType, 'crime') &&
         (b.subject === agent.profile.name || b.subject === agent.profile.id)) {
       return true;
     }
@@ -129,7 +129,7 @@ export function hasDetainedNpc(ctx: AffordanceContext): boolean {
 export function hasWitnessBelief(agent: Agent): boolean {
   if (!agent.state.beliefs) return false;
   return agent.state.beliefs.getAllBeliefs().some(
-    (b: Belief) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
+    (b: Belief) => isEventCategory(b.eventType, 'crime') &&
       (b.source === 'witness' || b.source === 'observation' || b.source === 'body_discovery') &&
       b.subject !== agent.profile.name && b.subject !== agent.profile.id &&
       b.confidence >= 0.3,
@@ -143,7 +143,7 @@ function findInterrogationTarget(npcId: string, agent: Agent, ctx: AffordanceCon
   if (!agent.state.beliefs) return null;
 
   const crimeBeliefs = agent.state.beliefs.getAllBeliefs().filter(
-    (b: Belief) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') && b.confidence >= 0.3,
+    (b: Belief) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
   );
   if (crimeBeliefs.length === 0) return null;
 
@@ -165,7 +165,7 @@ function findInterrogationTarget(npcId: string, agent: Agent, ctx: AffordanceCon
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
-            crimeType: belief.eventType === 'NPC_KILLED' ? 'murder' : belief.eventType === 'GOODS_STOLEN' ? 'theft' : 'attack',
+            crimeType: getEventLabel(belief.eventType),
             victimName: belief.object ?? 'someone',
             crimeLocation: belief.location,
           },
@@ -182,7 +182,7 @@ function findArrestTarget(npcId: string, agent: Agent, ctx: AffordanceContext, e
   if (!agent.state.beliefs) return null;
 
   const crimeBeliefs = agent.state.beliefs.getAllBeliefs().filter(
-    (b: Belief) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
+    (b: Belief) => isEventCategory(b.eventType, 'crime') &&
       b.confidence >= 0.7 && b.subject,
   );
 
@@ -212,7 +212,7 @@ function findCrimeSceneForCriminal(npcId: string, agent: Agent, ctx: AffordanceC
   // Criminal knows where the crime happened (from their own belief or memory)
   if (!agent.state.beliefs) return null;
   const ownCrime = agent.state.beliefs.getAllBeliefs().find(
-    (b: Belief) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
+    (b: Belief) => isEventCategory(b.eventType, 'crime') &&
       (b.subject === agent.profile.name || b.subject === agent.profile.id) && b.location,
   );
   if (!ownCrime) return null;
@@ -232,7 +232,7 @@ function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext):
 
     const otherBeliefs = other.state.beliefs?.getAllBeliefs() ?? [];
     const witnessOfMyCrime = otherBeliefs.find(
-      (b: Belief) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
+      (b: Belief) => isEventCategory(b.eventType, 'crime') &&
         matchesNpc(b.subject, agent) &&
         b.confidence >= 0.3,
     );

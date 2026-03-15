@@ -85,7 +85,9 @@ export interface ExaminationPoint {
 export interface CrimeScene {
   id: string;
   locationId: string;
-  crimeType: 'murder' | 'robbery' | 'assault';
+  crimeType: string;
+  /** EventType that triggered this scene (e.g. 'NPC_KILLED', 'GOODS_STOLEN') */
+  eventType?: string;
   /** Points the player can examine */
   points: ExaminationPoint[];
   /** When the crime happened */
@@ -107,7 +109,8 @@ export interface CrimeScene {
 export interface CrimeSceneJSON {
   id: string;
   locationId: string;
-  crimeType: 'murder' | 'robbery' | 'assault';
+  crimeType: string;
+  eventType?: string;
   points: ExaminationPoint[];
   gameDay: number;
   tick: number;

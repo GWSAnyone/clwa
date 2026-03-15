@@ -1,5 +1,6 @@
 import type { Agent } from './agent';
 import type { WorldEvent, ConsequenceRule, ConsequenceResult } from './cg-types';
+import { isEventCategory, getEventLabel } from './event-registry';
 
 /** Default public places (fallback if none provided) */
 const DEFAULT_PUBLIC_PLACES = new Set([
@@ -83,6 +84,8 @@ export class ConsequenceEngine {
           sourceRule: rule.id,
           affectedTargets: targets,
           ...event.payload,
+          // Propagate original event type through cascade chain
+          originalEventType: (event.payload?.originalEventType as string) ?? event.type,
         },
       };
 
@@ -217,14 +220,16 @@ export class ConsequenceEngine {
     const victim = event.object ? ctx.agents.get(event.object) : null;
     const victimName = (event.payload?.victimName as string)
       ?? (victim ? `${victim.profile.name} the ${victim.profile.role}` : null)
-      ?? event.object ?? 'someone';
+      ?? event.object ?? null;
+    // Original crime event type propagated through cascade chain
+    const crimeEventType = (event.payload?.originalEventType as string) ?? event.type;
 
     switch (rule.consequence.type) {
       case 'WITNESS_MEMORY': {
         const isBodyDiscovery = rule.id === 'body-discovery-to-witness';
         agent.state.beliefs.addBelief({
           id: crypto.randomUUID(),
-          eventType: 'NPC_KILLED',
+          eventType: crimeEventType,
           subject: isBodyDiscovery ? null : killer,
           object: victimName,
           location: event.location,
@@ -239,7 +244,7 @@ export class ConsequenceEngine {
       case 'RUMOR_SPREAD': {
         agent.state.beliefs.addBelief({
           id: crypto.randomUUID(),
-          eventType: 'NPC_KILLED',
+          eventType: crimeEventType,
           subject: killer,
           object: victimName,
           location: event.location,
@@ -254,7 +259,7 @@ export class ConsequenceEngine {
       case 'WANTED_STATUS': {
         agent.state.beliefs.addBelief({
           id: crypto.randomUUID(),
-          eventType: 'NPC_KILLED',
+          eventType: crimeEventType,
           subject: killer,
           object: victimName,
           location: event.location,
@@ -326,7 +331,7 @@ export class ConsequenceEngine {
       : new Set<string>();
 
     // Crime event types that NPCs can spread as rumors
-    const CRIME_TYPES = ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE'];
+    // Use event category registry instead of hardcoded crime types
 
     for (const [witnessId, witness] of ctx.agents) {
       if (!witness.state.alive) continue;
@@ -335,7 +340,7 @@ export class ConsequenceEngine {
 
       // Find crime beliefs with sufficient confidence
       const crimeBeliefs = witness.state.beliefs.getAllBeliefs().filter(
-        (b) => CRIME_TYPES.includes(b.eventType) && b.confidence >= 0.3,
+        (b) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
       );
       if (crimeBeliefs.length === 0) continue;
 
@@ -344,8 +349,7 @@ export class ConsequenceEngine {
       const criminalName = belief.subject ?? 'someone';
       const victimName = belief.object ?? 'someone';
       const crimeLocation = belief.location ?? witness.state.location;
-      const isMurder = belief.eventType === 'NPC_KILLED';
-      const isTheft = belief.eventType === 'GOODS_STOLEN';
+      const crimeLabel = getEventLabel(belief.eventType);
 
       for (const [targetId, target] of ctx.agents) {
         if (targetId === witnessId || !target.state.alive) continue;
@@ -355,15 +359,14 @@ export class ConsequenceEngine {
         // Check if target already has a belief about this crime
         if (target.state.beliefs) {
           const alreadyKnows = target.state.beliefs.getAllBeliefs().some(
-            (b) => CRIME_TYPES.includes(b.eventType) && b.object === victimName,
+            (b) => isEventCategory(b.eventType, 'crime') && b.object === victimName,
           );
           if (alreadyKnows) continue;
         }
 
         alreadySpreadTo.add(targetId);
 
-        const crimeWord = isMurder ? 'murdered' : isTheft ? 'robbed' : 'attacked';
-        const rumorText = `I heard a rumor: ${criminalName} ${crimeWord} ${victimName} at ${crimeLocation}. The townsfolk are alarmed.`;
+        const rumorText = `I heard a rumor: ${criminalName} committed ${crimeLabel} of ${victimName} at ${crimeLocation}. The townsfolk are alarmed.`;
         await target.observe(rumorText, 6);
         target.state.mood = Math.max(-1, target.state.mood - 0.15);
 
@@ -374,8 +377,7 @@ export class ConsequenceEngine {
           sourceRule: 'daily-rumor-spread',
           sourceEvent: belief.id,
         };
-        if (isMurder) payload.killerName = criminalName;
-        if (isTheft) payload.thiefName = criminalName;
+        payload.killerName = criminalName; // generic: perpetrator name, regardless of crime type
         payload.victimName = victimName;
         payload.crimeLocation = crimeLocation;
 

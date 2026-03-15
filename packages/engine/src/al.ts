@@ -3,6 +3,7 @@ import type { Belief } from './beliefs';
 import type { WorldEvent } from './cg-types';
 import type { LocationGraph } from './world-types';
 import type { TimePeriod } from './schedule';
+import { isEventCategory, getEventLabel } from './event-registry';
 import type { NpcFilter } from './goals';
 
 // ─── Affordance Data Model ───
@@ -220,15 +221,13 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
   const extra: Record<string, string> = {};
   const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
   const crimeBelief = beliefs.find(
-    (b: Belief) => (b.eventType === 'NPC_KILLED' || b.eventType === 'GOODS_STOLEN' || b.eventType === 'SELF_JUSTICE') &&
-      b.confidence >= 0.3,
+    (b: Belief) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
   );
   if (crimeBelief) {
     if (crimeBelief.subject) extra.killerName = crimeBelief.subject;
     if (crimeBelief.object) extra.victimName = crimeBelief.object;
     if (crimeBelief.location) extra.crimeLocation = crimeBelief.location;
-    extra.crimeType = crimeBelief.eventType === 'NPC_KILLED' ? 'murder'
-      : crimeBelief.eventType === 'GOODS_STOLEN' ? 'theft' : 'attack';
+    extra.crimeType = getEventLabel(crimeBelief.eventType);
   }
 
   return { targetId: best.id, targetName: best.name, targetLocation: best.location, extra };
