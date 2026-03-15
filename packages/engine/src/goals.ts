@@ -954,7 +954,7 @@ export class GoalManager {
         const activeScene = scenes.find((s) => s.active);
         const victimAgent = activeScene?.victimId ? agents.get(activeScene.victimId) : null;
         const victimName = victimAgent?.profile.name ?? 'unknown victim';
-        const crimeLabel = activeScene?.crimeType === 'murder' ? 'murder' : activeScene?.crimeType === 'robbery' ? 'theft' : 'crime';
+        const crimeLabel = activeScene?.crimeType ? getEventLabel(activeScene.eventType ?? activeScene.crimeType) : 'crime';
 
         await owner.observe(
           `I examined the crime scene at ${owner.state.location}. ${suspectCount > 0 ? `Found ${suspectCount} person(s) of interest connected to the ${crimeLabel} of ${victimName}.` : `Reinforced existing suspicions about the ${crimeLabel} of ${victimName}.`}`,
