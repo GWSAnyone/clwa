@@ -35,18 +35,12 @@ const URGE_THRESHOLD = 0.5;
 /** Base actions that are always available (non-duty) */
 const BASE_ACTIONS = new Set(['go', 'wait', 'announce']);
 
-/** Affordance IDs whose action word overlaps with "talk" — these are duty interactions */
-const DUTY_ACTION_IDS = new Set([
-  'interrogate', 'arrest', 'report_crime', 'testify',
-  'demand_justice', 'seek_forgiveness', 'intimidate_witness',
-  'blackmail', 'confront', 'evaluate_case',
-]);
+// Duty actions determined by isDuty flag on AffordanceDefinition (set by modules)
 
 // ─── Parsed LLM Intention ───
 
 export interface ParsedIntention {
-  action: 'go' | 'talk' | 'steal' | 'attack' | 'kill' | 'wait' | 'announce'
-    | 'investigate' | 'interrogate' | 'arrest' | 'report' | 'testify' | 'flee' | 'evaluate';
+  action: string; // engine: 'go', 'talk', 'wait', 'announce'. Modules register additional verbs via registerActionVerbs()
   target?: string;   // NPC name or location name
   detail?: string;   // topic for talk, message for announce
   why: string;       // reason from WHY line
@@ -392,7 +386,7 @@ function buildDecisionPrompt(
   const dutyTargetNames = new Set<string>();
   const dutyConstraintLines: string[] = [];
   for (const sa of scored) {
-    if (sa.score >= URGE_THRESHOLD && DUTY_ACTION_IDS.has(sa.definition.id)) {
+    if (sa.score >= URGE_THRESHOLD && sa.definition.isDuty) {
       dutyTargetNames.add(sa.target.targetName);
       dutyConstraintLines.push(
         `To interact with ${sa.target.targetName}, you must use '${sa.definition.id}' — your duty demands it.`,
@@ -410,37 +404,15 @@ function buildDecisionPrompt(
   actionLines.push('wait — stay and observe, do nothing');
   actionLines.push('announce message — say something to everyone at your location');
 
-  // Add special actions only if corresponding affordance passed requirements
-  const affordanceIds = new Set(scored.map((s) => s.definition.id));
-  if (affordanceIds.has('steal')) {
-    actionLines.push('steal NPC_NAME — steal from their shop');
-  }
-  if (affordanceIds.has('kill')) {
-    actionLines.push('kill NPC_NAME — eliminate someone permanently');
-  }
-  if (affordanceIds.has('vigilante') || affordanceIds.has('confront')) {
-    actionLines.push('attack NPC_NAME — confront someone physically');
-  }
-  if (affordanceIds.has('investigate')) {
-    actionLines.push('investigate — go investigate a crime scene');
-  }
-  if (affordanceIds.has('interrogate')) {
-    actionLines.push('interrogate NPC_NAME — formally question someone about a crime');
-  }
-  if (affordanceIds.has('arrest')) {
-    actionLines.push('arrest NPC_NAME — arrest a suspect');
-  }
-  if (affordanceIds.has('report_crime')) {
-    actionLines.push('report — report a crime to the guard');
-  }
-  if (affordanceIds.has('testify')) {
-    actionLines.push('testify — give testimony to the guard');
-  }
-  if (affordanceIds.has('flee_town')) {
-    actionLines.push('flee — flee the town');
-  }
-  if (affordanceIds.has('evaluate_case')) {
-    actionLines.push('evaluate — evaluate evidence for a detained suspect');
+  // Add module-registered action verbs from scored affordances
+  const addedVerbs = new Set<string>();
+  for (const sa of scored) {
+    const verb = sa.definition.actionVerb ?? sa.definition.id;
+    const desc = sa.definition.actionDescription;
+    if (desc && !addedVerbs.has(verb)) {
+      actionLines.push(`${verb} NPC_NAME — ${desc}`);
+      addedVerbs.add(verb);
+    }
   }
 
   // ── Build neighbor lines ──
@@ -575,30 +547,6 @@ export function parseDoWhy(
       return { action: 'talk', target: matched, detail: remainder || 'general conversation', why };
     }
 
-    case 'steal': {
-      if (!availableCrimeActions.has('steal')) return null;
-      const npcInput = parts.slice(1).join(' ');
-      const npc = matchName(npcInput, validNpcs);
-      if (!npc) return null;
-      return { action: 'steal', target: npc, why };
-    }
-
-    case 'attack': {
-      if (!availableCrimeActions.has('vigilante') && !availableCrimeActions.has('confront')) return null;
-      const npcInput = parts.slice(1).join(' ');
-      const npc = matchName(npcInput, validNpcs);
-      if (!npc) return null;
-      return { action: 'attack', target: npc, why };
-    }
-
-    case 'kill': {
-      if (!availableCrimeActions.has('kill')) return null;
-      const npcInput = parts.slice(1).join(' ');
-      const npc = matchName(npcInput, validNpcs);
-      if (!npc) return null;
-      return { action: 'kill', target: npc, why };
-    }
-
     case 'wait': {
       return { action: 'wait', why };
     }
@@ -609,38 +557,19 @@ export function parseDoWhy(
       return { action: 'announce', detail: message, why };
     }
 
-    // Duty/investigation actions
-    case 'investigate':
-      return { action: 'investigate', why };
-
-    case 'interrogate': {
+    default: {
+      // Module-registered action verbs — try to parse as verb [NPC_NAME]
+      const verbIds = getAffordanceIdsForVerb(verb);
+      if (verbIds.length === 0) return null;
+      // If verb has remaining parts, try to match NPC name
       const npcInput = parts.slice(1).join(' ');
-      const npc = matchName(npcInput, validNpcs);
-      if (!npc) return null;
-      return { action: 'interrogate', target: npc, why };
+      if (npcInput) {
+        const npc = matchName(npcInput, validNpcs);
+        if (npc) return { action: verb, target: npc, why };
+      }
+      // No target or no match — verb-only action
+      return { action: verb, why };
     }
-
-    case 'arrest': {
-      const npcInput = parts.slice(1).join(' ');
-      const npc = matchName(npcInput, validNpcs);
-      if (!npc) return null;
-      return { action: 'arrest', target: npc, why };
-    }
-
-    case 'report':
-      return { action: 'report', why };
-
-    case 'testify':
-      return { action: 'testify', why };
-
-    case 'flee':
-      return { action: 'flee', why };
-
-    case 'evaluate':
-      return { action: 'evaluate', why };
-
-    default:
-      return null;
   }
 }
 

@@ -260,17 +260,7 @@ const worldFactTopics: TopicSource = (init, _resp, ctx) => {
   }));
 };
 
-// ─── Engine-generic topic sources (registered via TOPIC_SOURCE_REGISTRY) ───
-// These are universal concepts (beliefs, relationships, mood, etc.), not module-specific.
-// Registered here at module load time so they're available when TopicEngine is constructed.
-TOPIC_SOURCE_REGISTRY.push(
-  beliefTopics,
-  relationshipTopics,
-  innerConflictTopics,
-  moodTopics,
-  worldFactTopics,
-  roleTopics,
-);
+// Engine-generic sources registered below (after TOPIC_SOURCE_REGISTRY declaration)
 
 
 // ─── Fallback ───────────────────────────────────────────────────
@@ -286,6 +276,16 @@ const FALLBACK_TOPIC: TopicProposal = {
 
 // ─── Topic Source Registry (modules push here before World init) ───
 export const TOPIC_SOURCE_REGISTRY: TopicSource[] = [];
+
+// Engine-generic topic sources (universal concepts, not module-specific)
+TOPIC_SOURCE_REGISTRY.push(
+  beliefTopics,
+  relationshipTopics,
+  innerConflictTopics,
+  moodTopics,
+  worldFactTopics,
+  roleTopics,
+);
 
 // ─── Topic Engine ───────────────────────────────────────────────
 

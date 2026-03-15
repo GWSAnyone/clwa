@@ -137,6 +137,12 @@ export interface AffordanceDefinition {
   beliefModifiers?: BeliefModifier[];
   /** If true, this affordance is suppressed when player is at the same location */
   suppressNearPlayer?: boolean;
+  /** If true, this is a duty action — blocks 'talk' in urge tier */
+  isDuty?: boolean;
+  /** Verb for LLM DO/WHY prompt (e.g. 'steal'). Defaults to id */
+  actionVerb?: string;
+  /** Description for LLM action list (e.g. 'steal from their shop') */
+  actionDescription?: string;
 }
 
 // ─── Mutable Registries (populated by modules at startup) ───

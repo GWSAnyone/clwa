@@ -136,7 +136,7 @@ export class World {
    * Feed an event into the goal system.
    * Called by the consequence engine callback and after direct events (kill, etc.)
    */
-  handleEventForGoals(event: WorldEvent): void {
+  async handleEventForGoals(event: WorldEvent): Promise<void> {
     // Reactive AL: evaluate affordances with event boost for affected NPCs
     const reactiveCtx: AffordanceContext = {
       agents: this.agents,
@@ -375,9 +375,9 @@ export class World {
       onLine: this.callbacks.onLine,
       onExtraEvent: async (event) => {
         const results = await this.engine.process(event, { agents: this.agents });
-        this.handleEventForGoals(event);
+        await this.handleEventForGoals(event);
         for (const r of results) {
-          this.handleEventForGoals(r.event);
+          await this.handleEventForGoals(r.event);
         }
       },
     });
@@ -423,9 +423,9 @@ export class World {
 
             // Process through CE for cascading consequences
             const results = await this.engine.process(crimeEvent, { agents: this.agents });
-            this.handleEventForGoals(crimeEvent);
+            await this.handleEventForGoals(crimeEvent);
             for (const r of results) {
-              this.handleEventForGoals(r.event);
+              await this.handleEventForGoals(r.event);
             }
           },
           this.crimeScenes,
@@ -898,9 +898,9 @@ export class World {
         const results = await this.engine.process(discoveryEvent, sharedCtx);
 
         // Feed into goal system
-        this.handleEventForGoals(discoveryEvent);
+        await this.handleEventForGoals(discoveryEvent);
         for (const r of results) {
-          this.handleEventForGoals(r.event);
+          await this.handleEventForGoals(r.event);
         }
 
         // If discoverer is alone (no WITNESS_MEMORY from cascade), create one directly
@@ -924,7 +924,7 @@ export class World {
             },
           };
           this.eventStore.append(directWitnessEvent);
-          this.handleEventForGoals(directWitnessEvent);
+          await this.handleEventForGoals(directWitnessEvent);
           console.log(`  [Discovery] ${agent.profile.name} is alone — creating direct witness event`);
         }
 
@@ -1111,9 +1111,9 @@ export class World {
       this.eventStore.append(discoveryEvent);
 
       const results = await this.engine.process(discoveryEvent, { agents: this.agents });
-      this.handleEventForGoals(discoveryEvent);
+      await this.handleEventForGoals(discoveryEvent);
       for (const r of results) {
-        this.handleEventForGoals(r.event);
+        await this.handleEventForGoals(r.event);
       }
 
       console.log(`  [Theft] ${owner.profile.name} discovered robbery at ${theft.location}!`);

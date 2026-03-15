@@ -4,6 +4,8 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // ─── Proactive (checked each tick) ───
   {
     id: 'steal',
+    actionVerb: 'steal',
+    actionDescription: 'steal from their shop',
     label: 'Steal from a nearby shop',
     category: 'crime',
     suppressNearPlayer: true,
@@ -33,6 +35,8 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   },
   {
     id: 'kill',
+    actionVerb: 'kill',
+    actionDescription: 'eliminate someone permanently',
     label: 'Silence the threat permanently — they know too much and must be stopped',
     category: 'crime',
     suppressNearPlayer: true,
@@ -63,6 +67,8 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   },
   {
     id: 'vigilante',
+    actionVerb: 'attack',
+    actionDescription: 'confront someone physically',
     label: 'Take justice into own hands',
     targetFinder: 'crime_belief',
     category: 'crime',
@@ -94,6 +100,9 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   },
   {
     id: 'blackmail',
+    isDuty: true,
+    actionVerb: 'blackmail',
+    actionDescription: 'blackmail someone with information',
     label: 'Leverage a secret for personal gain',
     category: 'crime',
     suppressNearPlayer: true,
@@ -117,6 +126,9 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   },
   {
     id: 'confront',
+    isDuty: true,
+    actionVerb: 'attack',
+    actionDescription: 'confront someone directly',
     label: 'Confront someone about their wrongdoing',
     targetFinder: 'crime_belief',
     category: 'social',
@@ -143,6 +155,9 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // ─── Reactive (boosted by CE events) ───
   {
     id: 'report_crime',
+    isDuty: true,
+    actionVerb: 'report',
+    actionDescription: 'report a crime to the guard',
     label: 'Report a crime to the guard',
     targetRole: 'guard',
     category: 'duty',
@@ -174,6 +189,9 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   },
   {
     id: 'investigate',
+    isDuty: true,
+    actionVerb: 'investigate',
+    actionDescription: 'investigate a crime scene',
     label: 'Investigate a crime scene',
     targetFinder: 'interrogation',
     category: 'duty',
@@ -293,6 +311,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   },
   {
     id: 'seek_forgiveness',
+    isDuty: true,
     label: 'Confess and seek forgiveness',
     targetRole: 'priest',
     category: 'social',
@@ -324,6 +343,9 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // Guard interrogates witnesses/suspects to gather evidence
   {
     id: 'interrogate',
+    isDuty: true,
+    actionVerb: 'interrogate',
+    actionDescription: 'formally question someone about a crime',
     label: 'Question someone about a crime',
     targetFinder: 'interrogation',
     category: 'duty',
@@ -358,6 +380,9 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // Guard arrests suspect with sufficient evidence
   {
     id: 'arrest',
+    isDuty: true,
+    actionVerb: 'arrest',
+    actionDescription: 'arrest a criminal suspect',
     label: 'Arrest a criminal suspect',
     category: 'duty',
     severity: 6,
@@ -390,6 +415,9 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // Civilian testifies to guard voluntarily
   {
     id: 'testify',
+    isDuty: true,
+    actionVerb: 'testify',
+    actionDescription: 'give testimony to the guard',
     label: 'Tell the guard what you witnessed',
     targetRole: 'guard',
     category: 'duty',
@@ -423,6 +451,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // Civilian demands justice publicly
   {
     id: 'demand_justice',
+    isDuty: true,
     label: 'Demand justice for a loved one',
     targetRole: 'guard',
     category: 'social',
@@ -486,6 +515,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // Criminal intimidates a witness to retract testimony
   {
     id: 'intimidate_witness',
+    isDuty: true,
     label: 'Threaten a witness into silence',
     targetFinder: 'witness_target',
     category: 'crime',
@@ -516,6 +546,8 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // Criminal flees town when cornered
   {
     id: 'flee_town',
+    actionVerb: 'flee',
+    actionDescription: 'flee the town',
     targetFinder: 'self_gate',
     label: 'Flee the town to escape justice',
     category: 'crime',
@@ -544,6 +576,9 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   // Judge evaluates evidence and decides whether to hold a trial
   {
     id: 'evaluate_case',
+    isDuty: true,
+    actionVerb: 'evaluate',
+    actionDescription: 'evaluate evidence for a detained suspect',
     label: 'Evaluate the evidence for a detained suspect',
     targetFinder: 'detained',
     category: 'duty',
