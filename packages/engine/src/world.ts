@@ -28,7 +28,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -50,15 +50,14 @@ export interface WorldCallbacks {
   onLlmCall?: (reason: string, target?: string) => void;
 }
 
-/** Check if NPC can act: alive AND free (not detained/exiled/fled) */
+/** Check if NPC can act: alive AND status is active (registered via registerActiveStatuses) */
 function isActive(agent: Agent): boolean {
-  return agent.state.alive && (agent.state.status ?? 'free') === 'free';
+  return agent.state.alive && isStatusActive(agent.state.status ?? 'free');
 }
 
-/** Check if NPC is physically present in the world (can witness, overhear, be seen) */
+/** Check if NPC is physically present in the world (status not absent) */
 function isPresent(agent: Agent): boolean {
-  const st = agent.state.status ?? 'free';
-  return agent.state.alive && st !== 'exiled' && st !== 'fled';
+  return agent.state.alive && !isStatusAbsent(agent.state.status ?? 'free');
 }
 
 export class World {

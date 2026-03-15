@@ -111,8 +111,10 @@ export function isPursuitEvent(eventType: string): boolean {
 import type { Agent } from './agent';
 import type { WorldEvent } from './cg-types';
 import type { GoalManager } from './goals';
-import type { CrimeScene } from './world-types';
+import type { NpcGoal, GoalStep, GoalActionResult } from './goals';
+import type { CrimeScene, LocationGraph } from './world-types';
 import type { ExaminationPoint } from './world-types';
+import type { EvidenceLayer } from './evidence';
 
 export interface EventHandlerContext {
   agents: Map<string, Agent>;
@@ -232,4 +234,58 @@ export function registerSourceTransferWeights(weights: Record<string, number>): 
 
 export function getSourceTransferWeight(source: string): number {
   return SOURCE_TRANSFER_WEIGHTS.get(source) ?? 0.6;
+}
+
+// ─── Step Handlers Registry ───
+// Modules register custom goal step handlers. Engine handles universal primitives
+// (move_to, interact, announce, wait). Everything else → registry.
+
+export type InteractionRunner = (initiator: Agent, target: Agent, purpose: string, importance: number) => Promise<{ ownerLine: string; targetLine: string }>;
+
+export interface StepExecutionContext {
+  goal: NpcGoal;
+  step: GoalStep;
+  ownerId: string;
+  owner: Agent;
+  agents: Map<string, Agent>;
+  locations: LocationGraph;
+  runInteraction: InteractionRunner;
+  onCrimeEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>;
+  crimeScenes?: Map<string, CrimeScene[]>;
+  evidenceLayer?: EvidenceLayer;
+  /** GoalManager for clearing goals (arrest → clear target goals, flee → clear own goals) */
+  goalManager: GoalManager;
+}
+
+export type StepHandlerFn = (ctx: StepExecutionContext) => Promise<GoalActionResult | null>;
+
+const STEP_HANDLERS: Map<string, StepHandlerFn> = new Map();
+
+export function registerStepHandler(action: string, handler: StepHandlerFn): void {
+  STEP_HANDLERS.set(action, handler);
+}
+
+export function getStepHandler(action: string): StepHandlerFn | null {
+  return STEP_HANDLERS.get(action) ?? null;
+}
+
+// ─── Status Categories ───
+// Modules register which statuses mean "active" (can act) vs "absent" (not in world)
+const ACTIVE_STATUSES: Set<string> = new Set(['free']); // default
+const ABSENT_STATUSES: Set<string> = new Set();
+
+export function registerActiveStatuses(statuses: string[]): void {
+  for (const s of statuses) ACTIVE_STATUSES.add(s);
+}
+
+export function registerAbsentStatuses(statuses: string[]): void {
+  for (const s of statuses) ABSENT_STATUSES.add(s);
+}
+
+export function isStatusActive(status: string): boolean {
+  return ACTIVE_STATUSES.has(status);
+}
+
+export function isStatusAbsent(status: string): boolean {
+  return ABSENT_STATUSES.has(status);
 }

@@ -2,6 +2,7 @@ import {
   AFFORDANCE_REGISTRY, EVIDENCE_RULES, REQUIREMENT_CHECKERS, TOPIC_SOURCE_REGISTRY,
   registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerBeliefZeroingEvents,
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
+  registerAbsentStatuses, registerStepHandler,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -9,6 +10,7 @@ import { CRIME_EVIDENCE_RULES } from './evidence-rules';
 import { registerCrimeEvidenceSources } from './evidence-sources';
 import { justiceTopics } from './topic-sources';
 import { registerCrimeEventHandlers } from './event-handlers';
+import { registerCrimeStepHandlers } from './step-handlers';
 export { CRIME_CG_RULES } from './cg-rules';
 export { CRIME_EVIDENCE_RULES } from './evidence-rules';
 export { isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -60,6 +62,7 @@ export function registerCrimeJusticeModule(): void {
 
   registerDeathEvents(['NPC_KILLED']);
   registerPursuitEvents(['WANTED_STATUS']);
+  registerAbsentStatuses(['exiled', 'fled']);
 
   // Topic sources for NPC conversations about justice events
   TOPIC_SOURCE_REGISTRY.push(justiceTopics);
@@ -80,4 +83,7 @@ export function registerCrimeJusticeModule(): void {
 
   // Event handlers for belief creation and state changes
   registerCrimeEventHandlers();
+
+  // Step handlers for module-specific goal actions
+  registerCrimeStepHandlers();
 }
