@@ -1,4 +1,7 @@
-export type BeliefSource = 'witness' | 'body_discovery' | 'rumor' | 'testimony' | 'interrogation' | 'observation' | 'cover_up' | 'deduction' | 'evidence' | 'perpetrator';
+import { getBeliefSourceLabel, getSourceTransferWeight } from './event-registry';
+
+// BeliefSource is a string — modules can add new sources via registry
+export type BeliefSource = string;
 
 export interface Belief {
   id: string;
@@ -132,10 +135,7 @@ export class BeliefManager {
       const certainty = b.confidence > 0.8 ? 'certain' : b.confidence > 0.5 ? 'believe' : 'heard rumor';
       const who = b.subject ?? 'someone unknown';
       const verb = verbMap[b.eventType] ?? 'did something to';
-      const how = b.source === 'witness' ? 'saw it happen'
-        : b.source === 'body_discovery' ? 'found the body'
-        : b.source === 'testimony' ? 'was told directly'
-        : 'heard a rumor';
+      const how = getBeliefSourceLabel(b.source);
       return `- You ${certainty}: ${who} ${verb} ${b.object} at ${b.location} (${how})`;
     }).join('\n');
   }

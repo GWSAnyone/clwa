@@ -186,12 +186,13 @@ export class ConsequenceEngine {
           .map(([id]) => id);
       }
 
-      // Check if any of the affected targets from the parent event is a guard
-      if (cond.op === 'is_guard') {
+      // Check if any affected targets have a specific capability flag
+      if (cond.op === 'is_guard' || cond.op === 'has_capability') {
+        const capFlag = (cond.value as string) ?? 'investigator'; // 'is_guard' defaults to investigator
         const affected = (event.payload?.affectedTargets as string[]) ?? [];
         return affected.filter((id) => {
           const agent = ctx.agents.get(id);
-          return agent && agent.state.alive && !!agent.profile.investigator;
+          return agent && agent.state.alive && !!(agent.profile as Record<string, unknown>)[capFlag];
         });
       }
 

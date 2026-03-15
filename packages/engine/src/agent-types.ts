@@ -66,8 +66,8 @@ export interface ShopItem {
   description: string;
 }
 
-/** NPC legal/movement status */
-export type NpcStatus = 'free' | 'detained' | 'exiled' | 'fled';
+/** NPC status — extensible string. Engine checks isActive()/isPresent() helpers. */
+export type NpcStatus = string;
 
 export interface AgentState {
   alive: boolean;

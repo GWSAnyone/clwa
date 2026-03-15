@@ -3,7 +3,7 @@ import type { WorldEvent } from './cg-types';
 import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
 import type { EvidenceLayer } from './evidence';
 import { nextHop } from './pathfinding';
-import { isEventCategory, getEventLabel } from './event-registry';
+import { isEventCategory, getEventLabel, getBeliefSourceLabel, getSourceTransferWeight } from './event-registry';
 
 // ─── Interrogation Outcome Constants ───
 
@@ -187,9 +187,7 @@ function gatherEvidence(suspect: Agent, agents: Map<string, Agent>): string {
     for (const b of beliefs) {
       if ((isEventCategory(b.eventType, 'crime') || isEventCategory(b.eventType, 'justice_resolution')) &&
           (matchesSuspect(b.subject) || matchesSuspect(b.object))) {
-        const sourceLabel = b.source === 'witness' || b.source === 'observation' ? 'eyewitness' :
-          b.source === 'interrogation' ? 'testimony under questioning' :
-          b.source === 'rumor' ? 'hearsay' : b.source;
+        const sourceLabel = getBeliefSourceLabel(b.source);
         lines.push(`- ${agent.profile.name} (${sourceLabel}, confidence ${Math.round(b.confidence * 100)}%): ${b.subject} committed ${getEventLabel(b.eventType)} of ${b.object ?? 'unknown'}`);
       }
     }
@@ -431,11 +429,7 @@ export class GoalManager {
               b.confidence >= 0.3,
           );
           for (const b of crimeBeliefs) {
-            const transferConfidence = b.source === 'witness' || b.source === 'observation'
-              ? b.confidence * 0.85
-              : b.source === 'rumor'
-              ? b.confidence * 0.5
-              : b.confidence * 0.7;
+            const transferConfidence = b.confidence * getSourceTransferWeight(b.source);
 
             const existing = receiver.state.beliefs!.getAllBeliefs().find(
               (eb) => eb.eventType === b.eventType && eb.subject === b.subject && eb.object === b.object,
@@ -523,9 +517,7 @@ export class GoalManager {
               b.confidence >= 0.3,
           );
           for (const b of ownerCrimeBeliefs) {
-            const transferConf = b.source === 'witness' ? b.confidence * 0.85
-              : b.source === 'body_discovery' ? b.confidence * 0.7
-              : b.confidence * 0.6;
+            const transferConf = b.confidence * getSourceTransferWeight(b.source);
             const existing = target.state.beliefs.getAllBeliefs().find(
               (eb) => eb.eventType === b.eventType && eb.object === b.object,
             );

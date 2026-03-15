@@ -185,3 +185,51 @@ export function registerRelationshipLabels(labels: Record<string, string>): void
 export function getRelationshipLabel(type: string): string {
   return RELATIONSHIP_LABELS.get(type) ?? type;
 }
+
+// ─── Belief Source Display Labels ───
+const BELIEF_SOURCE_LABELS: Map<string, string> = new Map([
+  ['witness', 'saw it happen'],
+  ['body_discovery', 'found the body'],
+  ['testimony', 'was told directly'],
+  ['interrogation', 'testimony under questioning'],
+  ['rumor', 'hearsay'],
+  ['observation', 'observed directly'],
+  ['evidence', 'physical evidence'],
+  ['deduction', 'deduced from clues'],
+  ['perpetrator', 'committed the act'],
+  ['cover_up', 'covering up'],
+]);
+
+export function registerBeliefSourceLabels(labels: Record<string, string>): void {
+  for (const [source, label] of Object.entries(labels)) {
+    BELIEF_SOURCE_LABELS.set(source, label);
+  }
+}
+
+export function getBeliefSourceLabel(source: string): string {
+  return BELIEF_SOURCE_LABELS.get(source) ?? source;
+}
+
+// ─── Belief Source Transfer Weights ───
+// When beliefs transfer between NPCs, confidence is multiplied by source weight
+const SOURCE_TRANSFER_WEIGHTS: Map<string, number> = new Map([
+  ['witness', 0.85],
+  ['observation', 0.85],
+  ['body_discovery', 0.7],
+  ['testimony', 0.7],
+  ['evidence', 0.8],
+  ['deduction', 0.6],
+  ['rumor', 0.5],
+  ['perpetrator', 0.0],  // perpetrator knowledge should not transfer
+  ['cover_up', 0.0],
+]);
+
+export function registerSourceTransferWeights(weights: Record<string, number>): void {
+  for (const [source, weight] of Object.entries(weights)) {
+    SOURCE_TRANSFER_WEIGHTS.set(source, weight);
+  }
+}
+
+export function getSourceTransferWeight(source: string): number {
+  return SOURCE_TRANSFER_WEIGHTS.get(source) ?? 0.6;
+}

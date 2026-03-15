@@ -301,8 +301,7 @@ export function registerCrimeTargetFinders(): void {
     const victimId = event.object;
     if (!victimId) return null;
     const rel = agent.state.relationships?.getRelationship(victimId);
-    if (!rel) return null;
-    if (rel.type !== 'friend' && rel.type !== 'family' && rel.type !== 'romantic' && rel.type !== 'mentor') return null;
+    if (!rel || rel.sentiment < 0.2) return null; // only close relationships
     const priest = findByRole('priest', npcId, agent, ctx);
     if (!priest) return null;
     const victimName = (event.payload?.victimName as string) ?? 'someone';

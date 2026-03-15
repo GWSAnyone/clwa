@@ -175,5 +175,7 @@ export {
   registerActionVerbs, getAffordanceIdsForVerb,
   registerCrimeSceneTemplate, getCrimeSceneTemplate,
   registerRelationshipLabels, getRelationshipLabel,
+  registerBeliefSourceLabels, getBeliefSourceLabel,
+  registerSourceTransferWeights, getSourceTransferWeight,
 } from './event-registry';
 export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate } from './event-registry';

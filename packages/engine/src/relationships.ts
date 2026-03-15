@@ -96,7 +96,8 @@ export class RelationshipGraph {
     if (rels.length === 0) return '';
 
     // Only include meaningful relationships (not bare acquaintances)
-    const meaningful = rels.filter((r) => r.type !== 'acquaintance' || Math.abs(r.sentiment) > 0.3);
+    // Include relationships with notable sentiment or non-default type
+    const meaningful = rels.filter((r) => Math.abs(r.sentiment) > 0.15 || r.trust > 0.5);
     if (meaningful.length === 0) return '';
 
     return meaningful.map((r) => {

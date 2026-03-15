@@ -1,24 +1,6 @@
-export type EventType =
-  | 'NPC_KILLED'
-  | 'WITNESS_MEMORY'
-  | 'BODY_DISCOVERED'
-  | 'RUMOR_SPREAD'
-  | 'WANTED_STATUS'
-  | 'NPC_CONVERSATION'
-  | 'TRADE'
-  | 'PLAYER_ACTION'
-  | 'GOODS_STOLEN'
-  | 'THEFT_DISCOVERED'
-  | 'SELF_JUSTICE'
-  // Investigation & punishment
-  | 'NPC_INTERROGATED'
-  | 'NPC_ARRESTED'
-  | 'NPC_SENTENCED'
-  | 'NPC_FLED'
-  | 'EVIDENCE_DESTROYED'
-  | 'WITNESS_INTIMIDATED'
-  | 'JUSTICE_DEMANDED'
-  | 'TRIAL_REQUESTED';
+// EventType is a string — modules define their event types via registries.
+// No hardcoded union — engine is content-agnostic.
+export type EventType = string;
 
 export interface WorldEvent {
   id: string;
@@ -48,7 +30,7 @@ export interface ConsequenceRule {
 
 export interface RuleCondition {
   field: string;          // e.g. "location", "importance"
-  op: 'eq' | 'gt' | 'lt' | 'has_witnesses' | 'is_public_place' | 'is_guard';
+  op: string; // 'eq', 'gt', 'lt', 'has_witnesses', 'is_public_place', 'has_capability', etc.
   value?: unknown;
 }
 
