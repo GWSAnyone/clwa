@@ -104,3 +104,32 @@ export function registerPursuitEvents(eventTypes: string[]): void {
 export function isPursuitEvent(eventType: string): boolean {
   return PURSUIT_EVENTS.has(eventType);
 }
+
+// ─── Event Handlers ───
+// Modules register handlers that execute when specific events fire in handleEventForGoals.
+// Each handler receives the event and a context with agents, goalManager, etc.
+import type { Agent } from './agent';
+import type { WorldEvent } from './cg-types';
+import type { GoalManager } from './goals';
+import type { CrimeScene } from './world-types';
+
+export interface EventHandlerContext {
+  agents: Map<string, Agent>;
+  goalManager: GoalManager;
+  crimeScenes: Map<string, CrimeScene[]>;
+  getCurrentDay: () => number;
+}
+
+export type EventHandlerFn = (event: WorldEvent, ctx: EventHandlerContext) => void | Promise<void>;
+
+const EVENT_HANDLERS: Map<string, EventHandlerFn[]> = new Map();
+
+export function registerEventHandler(eventType: string, handler: EventHandlerFn): void {
+  const handlers = EVENT_HANDLERS.get(eventType) ?? [];
+  handlers.push(handler);
+  EVENT_HANDLERS.set(eventType, handlers);
+}
+
+export function getEventHandlers(eventType: string): EventHandlerFn[] {
+  return EVENT_HANDLERS.get(eventType) ?? [];
+}

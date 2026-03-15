@@ -28,7 +28,8 @@ import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent } from './event-registry';
+import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
   /** Called when an NPC-to-NPC conversation line is generated */
@@ -198,39 +199,29 @@ export class World {
       }
     }
 
-    // WANTED_STATUS: guard sentiment + criminal awareness
-    if (event.type === 'WANTED_STATUS') {
+    // Module-registered event handlers (belief creation, state changes)
+    const handlers = getEventHandlers(event.type);
+    if (handlers.length > 0) {
+      const handlerCtx: EventHandlerContext = {
+        agents: this.agents,
+        goalManager: this.goalManager,
+        crimeScenes: this.crimeScenes,
+        getCurrentDay: () => this.getCurrentDay(),
+      };
+      for (const handler of handlers) {
+        await handler(event, handlerCtx);
+      }
+    }
 
-      // Guard sentiment toward criminal drops (duty-based, independent of victim relationship)
+    // WANTED_STATUS reactive: criminal gets reactive goals (lay_low, seek_forgiveness)
+    // This stays in engine because it uses evaluateReactiveVolition (engine function)
+    if (isEventCategory(event.type, 'information_spread') || isPursuitEvent(event.type)) {
       const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);
-      if (criminalName) {
+      if (criminalName && isPursuitEvent(event.type)) {
         const criminalEntry = Array.from(this.agents.entries())
           .find(([, a]) => a.profile.name === criminalName || a.profile.id === criminalName);
         if (criminalEntry) {
-          const [criminalId, criminal] = criminalEntry;
-          // All guards get negative sentiment toward criminal
-          for (const [, agent] of this.agents) {
-            if (agent.profile.investigator && agent.state.relationships) {
-              agent.state.relationships.adjustSentiment(criminalId, -0.4);
-              agent.state.relationships.adjustTrust(criminalId, -0.3);
-            }
-          }
-          // Criminal learns they're wanted: mood penalty + stress
-          criminal.state.mood = Math.max(-1, criminal.state.mood - 0.2);
-          criminal.state.beliefs?.addBelief({
-            id: crypto.randomUUID(),
-            eventType: 'WANTED_STATUS',
-            subject: criminal.profile.name,
-            object: criminal.profile.name,
-            location: criminal.state.location,
-            confidence: 0.9,
-            source: 'observation',
-            sourceNpcId: null,
-            gameDay: this.getCurrentDay(),
-            lastUpdated: this.getCurrentDay(),
-          });
-
-          // Evaluate reactive affordances for the criminal (lay_low / seek_forgiveness)
+          const [criminalId] = criminalEntry;
           const criminalEvent: WorldEvent = {
             ...event,
             payload: { ...event.payload, affectedTargets: [criminalId] },
@@ -243,92 +234,6 @@ export class World {
             this.goalManager.addGoal(goal);
           }
         }
-      }
-    }
-
-    // Evidence destroyed → degrade crime scene at that location
-    if (event.type === 'EVIDENCE_DESTROYED') {
-      const scenes = this.crimeScenes.get(event.location);
-      if (scenes) {
-        for (const scene of scenes) {
-          if (!scene.active) continue;
-          // Remove 1-2 random examination points
-          const removeCount = Math.min(scene.points.length, 1 + (Math.random() > 0.5 ? 1 : 0));
-          for (let i = 0; i < removeCount; i++) {
-            const idx = Math.floor(Math.random() * scene.points.length);
-            scene.points.splice(idx, 1);
-          }
-          // Deactivate if no points left
-          if (scene.points.length === 0) {
-            scene.active = false;
-          }
-          console.log(`  [Evidence] Crime scene at ${event.location}: ${removeCount} evidence point(s) destroyed (${scene.points.length} remaining)`);
-        }
-      }
-    }
-
-    // NPC arrested → create beliefs for all NPCs
-    if (event.type === 'NPC_ARRESTED') {
-      const suspectName = (event.payload?.suspectName as string) ?? 'someone';
-      const affected = (event.payload?.affectedTargets as string[]) ?? [];
-      for (const npcId of affected) {
-        const agent = this.agents.get(npcId);
-        agent?.state.beliefs?.addBelief({
-          id: crypto.randomUUID(),
-          eventType: 'NPC_ARRESTED',
-          subject: (event.payload?.guardName as string) ?? 'the guard',
-          object: suspectName,
-          location: event.location,
-          confidence: 0.8,
-          source: npcId === event.subject ? 'observation' : 'rumor',
-          sourceNpcId: null,
-          gameDay: this.getCurrentDay(),
-          lastUpdated: this.getCurrentDay(),
-        });
-      }
-    }
-
-    // NPC sentenced → create beliefs (goal cleanup + belief zeroing handled by registry above)
-    if (event.type === 'NPC_SENTENCED') {
-      const suspectName = (event.payload?.suspectName as string) ?? 'someone';
-      const verdict = (event.payload?.verdict as string) ?? 'unknown';
-      const affected = (event.payload?.affectedTargets as string[]) ?? [];
-
-      for (const npcId of affected) {
-        const agent = this.agents.get(npcId);
-        agent?.state.beliefs?.addBelief({
-          id: crypto.randomUUID(),
-          eventType: 'NPC_SENTENCED',
-          subject: (event.payload?.judgeName as string) ?? 'the magistrate',
-          object: `${suspectName} (${verdict})`,
-          location: event.location,
-          confidence: 0.9,
-          source: 'rumor',
-          sourceNpcId: null,
-          gameDay: this.getCurrentDay(),
-          lastUpdated: this.getCurrentDay(),
-        });
-      }
-    }
-
-    // NPC fled → create beliefs (goal cleanup handled by registry above)
-    if (event.type === 'NPC_FLED') {
-      const fledName = (event.payload?.fledName as string) ?? 'someone';
-      const affected = (event.payload?.affectedTargets as string[]) ?? [];
-      for (const npcId of affected) {
-        const agent = this.agents.get(npcId);
-        agent?.state.beliefs?.addBelief({
-          id: crypto.randomUUID(),
-          eventType: 'NPC_FLED',
-          subject: fledName,
-          object: fledName,
-          location: event.location,
-          confidence: 0.7,
-          source: 'rumor',
-          sourceNpcId: null,
-          gameDay: this.getCurrentDay(),
-          lastUpdated: this.getCurrentDay(),
-        });
       }
     }
   }
@@ -1145,7 +1050,7 @@ export class World {
   /** Check if shop owners discover they've been robbed */
   private async checkTheftDiscoveries(): Promise<void> {
     const theftEvents = this.eventStore.getAll()
-      .filter((e: WorldEvent) => e.type === 'GOODS_STOLEN');
+      .filter((e: WorldEvent) => isEventCategory(e.type, 'theft'));
 
     for (const theft of theftEvents) {
       const discoveryKey = `theft_discovered:${theft.id}`;
@@ -1174,9 +1079,9 @@ export class World {
       // Unless they were a witness (already handled by CE witness rule)
       owner.state.beliefs?.addBelief({
         id: crypto.randomUUID(),
-        eventType: 'GOODS_STOLEN',
-        subject: 'someone',
-        object: `${owner.profile.name}'s shop`,
+        eventType: theft.type,
+        subject: null,
+        object: owner.profile.name,
         location: theft.location,
         confidence: 1.0,
         source: 'observation',

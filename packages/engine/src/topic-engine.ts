@@ -36,11 +36,10 @@ export type TopicSource = (
 /** Topics from NPC beliefs about crimes/events */
 const beliefTopics: TopicSource = (init, resp) => {
   const proposals: TopicProposal[] = [];
-  const CRIME_TYPES = ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE'];
   const initBeliefs = init.state.beliefs?.getAllBeliefs()
-    .filter(b => CRIME_TYPES.includes(b.eventType) && b.confidence >= 0.3) ?? [];
+    .filter(b => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3) ?? [];
   const respBeliefs = resp.state.beliefs?.getAllBeliefs()
-    .filter(b => CRIME_TYPES.includes(b.eventType) && b.confidence >= 0.3) ?? [];
+    .filter(b => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3) ?? [];
 
   for (const belief of initBeliefs) {
     const crimeWord = getEventLabel(belief.eventType);
@@ -94,7 +93,7 @@ const relationshipTopics: TopicSource = (init, resp) => {
   // Grief — check if initiator has beliefs about someone's death + positive relationship
   const allRels = init.state.relationships?.getAllRelationships() ?? [];
   const deathBeliefs = init.state.beliefs?.getAllBeliefs()
-    .filter(b => b.eventType === 'NPC_KILLED' && b.object) ?? [];
+    .filter(b => isEventCategory(b.eventType, 'crime') && b.object) ?? [];
   for (const db of deathBeliefs) {
     const victimRel = allRels.find(r => r.targetName === db.object || r.targetId === db.object);
     if (victimRel && victimRel.sentiment > 0.2) {
@@ -158,66 +157,8 @@ const roleTopics: TopicSource = (init, _resp, ctx) => {
 };
 
 /** Role-specific topic pools — declarative data */
-/** Topics from arrests, trials, and justice events */
-const justiceTopics: TopicSource = (init, resp) => {
-  const proposals: TopicProposal[] = [];
-  const initBeliefs = init.state.beliefs?.getAllBeliefs() ?? [];
-  const respBeliefs = resp.state.beliefs?.getAllBeliefs() ?? [];
-
-  // Arrest beliefs
-  const arrestBeliefs = initBeliefs.filter(b => b.eventType === 'NPC_ARRESTED' && b.confidence >= 0.3);
-  for (const ab of arrestBeliefs) {
-    const suspectName = ab.object ?? 'someone';
-    const respKnows = respBeliefs.some(b => b.eventType === 'NPC_ARRESTED' && b.object === ab.object);
-    if (respKnows) {
-      proposals.push({
-        subject: `the arrest of ${suspectName}`,
-        tone: 'shocked, processing',
-        weight: 7,
-        initiatorHook: `${suspectName} was arrested. Share your reaction — is justice being served?`,
-        responderHook: `You also heard about the arrest. React with your own feelings about it.`,
-        category: 'justice',
-      });
-    } else {
-      proposals.push({
-        subject: `the arrest of ${suspectName}`,
-        tone: 'urgent, dramatic',
-        weight: 8,
-        initiatorHook: `You just heard that ${suspectName} was arrested! Break the news.`,
-        responderHook: `This is the first you're hearing of this. React with genuine surprise.`,
-        category: 'justice',
-      });
-    }
-  }
-
-  // Sentence beliefs
-  const sentenceBeliefs = initBeliefs.filter(b => b.eventType === 'NPC_SENTENCED' && b.confidence >= 0.3);
-  for (const sb of sentenceBeliefs) {
-    const suspectName = sb.object ?? 'someone';
-    proposals.push({
-      subject: `the sentencing of ${suspectName}`,
-      tone: 'solemn, reflective',
-      weight: 8,
-      initiatorHook: `${suspectName} has been sentenced. Share whether you think justice was done.`,
-      category: 'justice',
-    });
-  }
-
-  // Fled beliefs
-  const fledBeliefs = initBeliefs.filter(b => b.eventType === 'NPC_FLED' && b.confidence >= 0.3);
-  for (const fb of fledBeliefs) {
-    const fledName = fb.subject ?? 'someone';
-    proposals.push({
-      subject: `${fledName} fleeing town`,
-      tone: 'alarmed, speculative',
-      weight: 6,
-      initiatorHook: `${fledName} fled the town! What does this mean? Share your thoughts.`,
-      category: 'justice',
-    });
-  }
-
-  return proposals;
-};
+// Justice topics moved to modules/crime-justice/topic-sources.ts
+// Registered via topicEngine.registerSource() at module init
 
 const ROLE_TOPIC_POOL: Record<string, TopicProposal[]> = {
   bartender: [
@@ -313,13 +254,13 @@ const worldFactTopics: TopicSource = (init, _resp, ctx) => {
 
 const DEFAULT_SOURCES: TopicSource[] = [
   beliefTopics,
-  justiceTopics,
   relationshipTopics,
   innerConflictTopics,
   moodTopics,
   worldFactTopics,
   roleTopics, // lowest weight — fallback to daily life
 ];
+
 
 // ─── Fallback ───────────────────────────────────────────────────
 
@@ -331,10 +272,13 @@ const FALLBACK_TOPIC: TopicProposal = {
   category: 'idle',
 };
 
+// ─── Topic Source Registry (modules push here before World init) ───
+export const TOPIC_SOURCE_REGISTRY: TopicSource[] = [];
+
 // ─── Topic Engine ───────────────────────────────────────────────
 
 export class TopicEngine {
-  private sources: TopicSource[] = [...DEFAULT_SOURCES];
+  private sources: TopicSource[] = [...DEFAULT_SOURCES, ...TOPIC_SOURCE_REGISTRY];
   /** pairKey → last N topic categories */
   private topicHistory: Map<string, string[]> = new Map();
 

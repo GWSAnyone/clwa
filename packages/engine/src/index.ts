@@ -128,7 +128,7 @@ export { ConversationScheduler } from './scheduler';
 export type { ScoredPair } from './scheduler';
 
 // ─── Topic Engine ───
-export { TopicEngine } from './topic-engine';
+export { TopicEngine, TOPIC_SOURCE_REGISTRY } from './topic-engine';
 export type { TopicSource } from './topic-engine';
 export type { TopicContext, TopicProposal } from './topic-engine';
 
@@ -171,4 +171,6 @@ export {
   registerEventSceneTypes, getSceneTypeForEvent,
   registerDeathEvents, isDeathEvent, getDefaultDeathEvent,
   registerPursuitEvents, isPursuitEvent,
+  registerEventHandler, getEventHandlers,
 } from './event-registry';
+export type { EventHandlerContext, EventHandlerFn } from './event-registry';
