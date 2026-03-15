@@ -3,6 +3,7 @@ import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { ConversationResult, ConversationLine, WorldConfig } from './world-types';
 import type { TopicProposal } from './topic-engine';
+import { getRelationshipLabel } from './event-registry';
 import { buildSecretDirectives } from './secret-directives';
 
 /** Max tokens for a single NPC-NPC dialogue line */
@@ -118,12 +119,7 @@ function relationshipNote(from: Agent, to: Agent): string {
   const rel = from.state.relationships?.getRelationship(to.profile.id);
   if (!rel) return '';
 
-  const label = rel.type === 'friend' ? 'your friend'
-    : rel.type === 'colleague' ? 'your colleague'
-    : rel.type === 'family' ? 'your family member'
-    : rel.type === 'rival' ? 'your rival'
-    : rel.type === 'mentor' ? 'your mentor'
-    : '';
+  const label = getRelationshipLabel(rel.type);
 
   const feeling = rel.sentiment < -0.3 ? 'You have tension with them.'
     : rel.sentiment < -0.1 ? 'You feel uneasy around them.'

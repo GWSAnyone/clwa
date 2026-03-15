@@ -164,3 +164,24 @@ export function registerCrimeSceneTemplate(sceneType: string, template: CrimeSce
 export function getCrimeSceneTemplate(sceneType: string): CrimeSceneTemplate | null {
   return CRIME_SCENE_TEMPLATES.get(sceneType) ?? null;
 }
+
+// ─── Relationship Display Labels ───
+const RELATIONSHIP_LABELS: Map<string, string> = new Map([
+  ['friend', 'your friend'],
+  ['colleague', 'your colleague'],
+  ['family', 'your family member'],
+  ['rival', 'your rival'],
+  ['mentor', 'your mentor'],
+  ['romantic', 'a loved one'],
+  ['acquaintance', 'an acquaintance'],
+]);
+
+export function registerRelationshipLabels(labels: Record<string, string>): void {
+  for (const [type, label] of Object.entries(labels)) {
+    RELATIONSHIP_LABELS.set(type, label);
+  }
+}
+
+export function getRelationshipLabel(type: string): string {
+  return RELATIONSHIP_LABELS.get(type) ?? type;
+}

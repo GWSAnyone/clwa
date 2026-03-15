@@ -1,5 +1,5 @@
 import type { Agent } from './agent';
-import { isEventCategory, getEventLabel } from './event-registry';
+import { getEventLabel, isDeathEvent } from './event-registry';
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -40,10 +40,11 @@ export type TopicSource = (
 /** Topics from NPC beliefs about crimes/events */
 const beliefTopics: TopicSource = (init, resp) => {
   const proposals: TopicProposal[] = [];
+  // Any high-confidence belief is worth discussing (not just crime — works for economy, politics, etc.)
   const initBeliefs = init.state.beliefs?.getAllBeliefs()
-    .filter(b => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3) ?? [];
+    .filter(b => b.confidence >= 0.3 && b.object) ?? [];
   const respBeliefs = resp.state.beliefs?.getAllBeliefs()
-    .filter(b => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3) ?? [];
+    .filter(b => b.confidence >= 0.3 && b.object) ?? [];
 
   for (const belief of initBeliefs) {
     const crimeWord = getEventLabel(belief.eventType);
@@ -99,7 +100,7 @@ const relationshipTopics: TopicSource = (init, resp) => {
   // Grief — check if initiator has beliefs about someone's death + positive relationship
   const allRels = init.state.relationships?.getAllRelationships() ?? [];
   const deathBeliefs = init.state.beliefs?.getAllBeliefs()
-    .filter(b => isEventCategory(b.eventType, 'crime') && b.object) ?? [];
+    .filter(b => isDeathEvent(b.eventType) && b.object) ?? [];
   for (const db of deathBeliefs) {
     const victimRel = allRels.find(r => r.targetName === db.object || r.targetId === db.object);
     if (victimRel && victimRel.sentiment > 0.2) {
@@ -259,16 +260,17 @@ const worldFactTopics: TopicSource = (init, _resp, ctx) => {
   }));
 };
 
-// ─── Default Sources (order = evaluation order, weight = selection order) ───
-
-const DEFAULT_SOURCES: TopicSource[] = [
+// ─── Engine-generic topic sources (registered via TOPIC_SOURCE_REGISTRY) ───
+// These are universal concepts (beliefs, relationships, mood, etc.), not module-specific.
+// Registered here at module load time so they're available when TopicEngine is constructed.
+TOPIC_SOURCE_REGISTRY.push(
   beliefTopics,
   relationshipTopics,
   innerConflictTopics,
   moodTopics,
   worldFactTopics,
-  roleTopics, // lowest weight — fallback to daily life
-];
+  roleTopics,
+);
 
 
 // ─── Fallback ───────────────────────────────────────────────────
@@ -288,7 +290,7 @@ export const TOPIC_SOURCE_REGISTRY: TopicSource[] = [];
 // ─── Topic Engine ───────────────────────────────────────────────
 
 export class TopicEngine {
-  private sources: TopicSource[] = [...DEFAULT_SOURCES, ...TOPIC_SOURCE_REGISTRY];
+  private sources: TopicSource[] = [...TOPIC_SOURCE_REGISTRY];
   /** pairKey → last N topic categories */
   private topicHistory: Map<string, string[]> = new Map();
 

@@ -13,7 +13,7 @@ import {
   type ScoredAffordance,
   type StepTemplate,
 } from './al';
-import { getAffordanceIdsForVerb } from './event-registry';
+import { getAffordanceIdsForVerb, getRelationshipLabel } from './event-registry';
 
 // ─── Constants ───
 
@@ -164,8 +164,7 @@ export function evaluateReactiveVolition(
         const victimId = event.object;
         if (!victimId) continue;
         const rel = agent.state.relationships?.getRelationship(victimId);
-        if (!rel) continue;
-        if (rel.type !== 'friend' && rel.type !== 'family' && rel.type !== 'romantic' && rel.type !== 'mentor') continue;
+        if (!rel || rel.sentiment < 0.2) continue; // only close relationships trigger grief
       }
 
       // Dedup: don't create same goal type if already active
@@ -233,9 +232,10 @@ async function llmDecideAndBuild(
       return st !== 'exiled' && st !== 'fled';
     })
     .map(([, a]) => a.profile.name);
-  const crimeActions = new Set(scored.map((s) => s.definition.id).filter((id) =>
-    id === 'steal' || id === 'kill' || id === 'attack' || id === 'vigilante',
-  ));
+  const crimeActions = new Set(scored
+    .filter((s) => s.definition.suppressNearPlayer)
+    .map((s) => s.definition.id),
+  );
 
   const parsed = parseDoWhy(response, locationNames, npcNames, crimeActions);
   if (!parsed) {
@@ -964,11 +964,7 @@ function buildVarMap(target: AffordanceTarget): Record<string, string> {
   // Computed: relationshipDesc from relationship
   const rel = vars.relationship;
   if (rel) {
-    vars.relationshipDesc = rel === 'friend' ? 'a dear friend'
-      : rel === 'family' ? 'family'
-      : rel === 'romantic' ? 'a loved one'
-      : rel === 'mentor' ? 'a mentor'
-      : 'someone close';
+    vars.relationshipDesc = getRelationshipLabel(rel);
   }
   return vars;
 }

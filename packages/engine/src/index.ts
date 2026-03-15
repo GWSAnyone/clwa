@@ -174,5 +174,6 @@ export {
   registerEventHandler, getEventHandlers,
   registerActionVerbs, getAffordanceIdsForVerb,
   registerCrimeSceneTemplate, getCrimeSceneTemplate,
+  registerRelationshipLabels, getRelationshipLabel,
 } from './event-registry';
 export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate } from './event-registry';
