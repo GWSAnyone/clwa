@@ -1,5 +1,6 @@
 import type { Agent } from './agent';
 import type { WorldConfig } from './world-types';
+import { isEventCategory } from './event-registry';
 
 /** Pair key for cooldown tracking */
 function pairKey(a: string, b: string): string {
@@ -85,12 +86,11 @@ export class ConversationScheduler {
     let score = 1; // Base: NPCs in the same social space want to talk sometimes
 
     // Belief-based scoring: unshared crime knowledge = high conversation value
-    const CRIME_TYPES = ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE'];
     const beliefsA = agentA.state.beliefs?.getAllBeliefs().filter(
-      (b) => CRIME_TYPES.includes(b.eventType) && b.confidence >= 0.3,
+      (b) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
     ) ?? [];
     const beliefsB = agentB.state.beliefs?.getAllBeliefs().filter(
-      (b) => CRIME_TYPES.includes(b.eventType) && b.confidence >= 0.3,
+      (b) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
     ) ?? [];
 
     // A knows something B doesn't

@@ -18,8 +18,8 @@ export function buildSecretDirectives(
   const agentId = agent.profile.id;
 
   // 1. Own crimes — did this NPC commit a crime?
-  const ownCrimes = eventStore.query({ type: 'NPC_KILLED' })
-    .filter((e) => e.subject === agentId);
+  const ownCrimes = eventStore.getAll()
+    .filter((e) => isEventCategory(e.type, 'crime') && e.subject === agentId);
 
   if (ownCrimes.length > 0) {
     const crime = ownCrimes[ownCrimes.length - 1];

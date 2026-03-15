@@ -3,7 +3,7 @@ import { ReflectionTracker } from './reflection';
 import type { ReflectionConfig } from './reflection';
 import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
-import { getEventLabel, isPursuitEvent } from './event-registry';
+import { getEventLabel, isPursuitEvent, isEventCategory } from './event-registry';
 
 interface LMStudioResponse {
   output: Array<{ type: string; content: string }>;
@@ -377,9 +377,8 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
       }
 
       // Role-specific directives from beliefs (generic for all crime types)
-      const CRIME_TYPES = ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE'];
       const crimeBeliefs = beliefs.getAllBeliefs().filter(
-        (b) => CRIME_TYPES.includes(b.eventType) && b.confidence >= 0.3,
+        (b) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
       );
 
       if (this.profile.investigator && crimeBeliefs.length > 0) {

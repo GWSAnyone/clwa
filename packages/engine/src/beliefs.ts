@@ -1,4 +1,4 @@
-import { getBeliefSourceLabel, getSourceTransferWeight } from './event-registry';
+import { getBeliefSourceLabel, getSourceTransferWeight, getEventLabel } from './event-registry';
 
 // BeliefSource is a string — modules can add new sources via registry
 export type BeliefSource = string;
@@ -121,20 +121,10 @@ export class BeliefManager {
     const beliefs = this.getAllBeliefs().slice(0, maxBeliefs);
     if (beliefs.length === 0) return '';
 
-    const verbMap: Record<string, string> = {
-      NPC_KILLED: 'killed',
-      GOODS_STOLEN: 'stole from',
-      SELF_JUSTICE: 'attacked',
-      WANTED_STATUS: 'is wanted for crimes against',
-      NPC_ARRESTED: 'was arrested regarding',
-      NPC_SENTENCED: 'was sentenced regarding',
-      NPC_FLED: 'fled town after incident with',
-    };
-
     return beliefs.map((b) => {
       const certainty = b.confidence > 0.8 ? 'certain' : b.confidence > 0.5 ? 'believe' : 'heard rumor';
       const who = b.subject ?? 'someone unknown';
-      const verb = verbMap[b.eventType] ?? 'did something to';
+      const verb = getEventLabel(b.eventType);
       const how = getBeliefSourceLabel(b.source);
       return `- You ${certainty}: ${who} ${verb} ${b.object} at ${b.location} (${how})`;
     }).join('\n');

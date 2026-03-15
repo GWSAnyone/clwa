@@ -72,7 +72,7 @@ export interface TickResult {
 export interface ExaminationPoint {
   id: string;
   /** Type of evidence */
-  type: 'body' | 'bloodstain' | 'struggle' | 'weapon' | 'profession_clue' | 'stolen_goods' | 'damage';
+  type: string; // modules define examination point types
   /** What the player sees when examining */
   description: string;
   /** The clue revealed after examination (goes to player journal) */

@@ -88,7 +88,7 @@ export function createInteractionRunner(
           const trustWeight = target.state.relationships?.getTestimonyWeight(initiator.profile.id) ?? 0.3;
           target.state.beliefs.addBelief({
             id: crypto.randomUUID(),
-            eventType: 'NPC_KILLED',
+            eventType: crimeData.eventType ?? initiator.state.beliefs?.getAllBeliefs().find(b => b.confidence >= 0.3 && b.object)?.eventType ?? 'crime',
             subject: crimeData.killer,
             object: crimeData.victim,
             location: crimeData.location,
@@ -127,12 +127,16 @@ export function createInteractionRunner(
 }
 
 /** Parse structured [CRIME killer=... victim=... location=...] tag */
-function parseCrimeTag(purpose: string): { killer: string | null; victim: string | null; location: string | null } | null {
-  const match = purpose.match(/\[CRIME\s+killer=([^\]]+?)\s+victim=([^\]]+?)\s+location=([^\]]+?)\]/);
+function parseCrimeTag(purpose: string): { killer: string | null; victim: string | null; location: string | null; eventType: string | null } | null {
+  const match = purpose.match(/\[CRIME\s+(.+?)\]/);
   if (!match) return null;
-  // Treat empty/whitespace-only values as null (structural unknown)
   const clean = (s: string) => s.trim() || null;
-  return { killer: clean(match[1]), victim: clean(match[2]), location: clean(match[3]) };
+  // Parse key=value pairs from tag content
+  const fields: Record<string, string | null> = {};
+  for (const pair of match[1].matchAll(/(\w+)=(\S+)/g)) {
+    fields[pair[1]] = clean(pair[2]);
+  }
+  return { killer: fields.killer ?? null, victim: fields.victim ?? null, location: fields.location ?? null, eventType: fields.eventType ?? null };
 }
 
 /** Extract compact speech style reminder (first line only) */

@@ -402,7 +402,7 @@ export class ConsequenceEngine {
 
         // If target is an investigator → WANTED_STATUS
         if (target.profile.investigator && !existingWanted.has(targetId)) {
-          const wantedText = `URGENT: As a guard, I received reports that ${criminalName} ${crimeWord} ${victimName} at ${crimeLocation}. I must investigate immediately.`;
+          const wantedText = `URGENT: As a guard, I received reports that ${criminalName} committed ${crimeLabel} of ${victimName} at ${crimeLocation}. I must investigate immediately.`;
           await target.observe(wantedText, 7);
           target.state.mood = Math.max(-1, target.state.mood - 0.1);
 
@@ -413,8 +413,7 @@ export class ConsequenceEngine {
             sourceEvent: belief.id,
             victimName,
           };
-          if (isMurder) wantedPayload.killerName = criminalName;
-          if (isTheft) wantedPayload.thiefName = criminalName;
+          wantedPayload.killerName = criminalName;
 
           const wantedEvent: WorldEvent = {
             id: crypto.randomUUID(),
