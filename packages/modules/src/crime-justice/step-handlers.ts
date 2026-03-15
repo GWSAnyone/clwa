@@ -1,13 +1,13 @@
-import { registerStepHandler, getEventLabel } from '@clwa/engine';
-import type { StepExecutionContext, GoalActionResult } from '@clwa/engine';
-import { nextHop } from '@clwa/engine';
+import { registerStepHandler, getEventLabel, getBeliefSourceLabel, nextHop } from '@clwa/engine';
+import type { StepExecutionContext } from '@clwa/engine';
+import type { GoalActionResult } from '@clwa/engine';
 
 /** Gather evidence from all NPC beliefs about a suspect */
 function gatherEvidence(suspect: any, agents: Map<string, any>): string {
   const lines: string[] = [];
   const suspectName = suspect.profile.name;
   const suspectId = suspect.profile.id;
-  const matchesSuspect = (field: string | null | undefined) =>
+  const matchesSuspect = (field: string | null | undefined): boolean =>
     !!field && (field === suspectName || field === suspectId);
 
   for (const [, agent] of agents) {
@@ -15,7 +15,6 @@ function gatherEvidence(suspect: any, agents: Map<string, any>): string {
     const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
     for (const b of beliefs) {
       if (b.confidence >= 0.3 && (matchesSuspect(b.subject) || matchesSuspect(b.object))) {
-        const { getBeliefSourceLabel } = require('@clwa/engine');
         const sourceLabel = getBeliefSourceLabel(b.source);
         lines.push(`- ${agent.profile.name} (${sourceLabel}, confidence ${Math.round(b.confidence * 100)}%): ${b.subject} committed ${getEventLabel(b.eventType)} of ${b.object ?? 'unknown'}`);
       }

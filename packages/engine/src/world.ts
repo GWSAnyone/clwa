@@ -28,7 +28,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getWitnessEventType } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -905,11 +905,12 @@ export class World {
 
         // If discoverer is alone (no WITNESS_MEMORY from cascade), create one directly
         // so that reactive AL can give them a report_crime goal
-        const hasWitnessEvent = results.some((r) => r.event.type === 'WITNESS_MEMORY');
-        if (!hasWitnessEvent && !agent.profile.investigator) {
+        const hasWitnessEvent = results.some((r) => isEventCategory(r.event.type, 'witness_event'));
+        const witnessEventType = getWitnessEventType();
+        if (!hasWitnessEvent && !agent.profile.investigator && witnessEventType) {
           const directWitnessEvent: WorldEvent = {
             id: crypto.randomUUID(),
-            type: 'WITNESS_MEMORY',
+            type: witnessEventType,
             subject: id,
             object: dead.id,
             location: agent.state.location,

@@ -13,7 +13,7 @@ import {
   type ScoredAffordance,
   type StepTemplate,
 } from './al';
-import { getAffordanceIdsForVerb, getRelationshipLabel } from './event-registry';
+import { getAffordanceIdsForVerb, getRelationshipLabel, isEventCategory } from './event-registry';
 
 // ─── Constants ───
 
@@ -143,7 +143,7 @@ export function evaluateReactiveVolition(
   // Include event subject for discovery events (discoverer should react)
   // but NOT for crime events (killer should not get reactive report_crime goal)
   const reactors = new Set(affectedTargets);
-  if (event.subject && event.type === 'BODY_DISCOVERED') {
+  if (event.subject && isEventCategory(event.type, 'body_discovery')) {
     reactors.add(event.subject);
   }
 

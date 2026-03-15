@@ -3,6 +3,7 @@ import {
   registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerBeliefZeroingEvents,
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
   registerAbsentStatuses, registerStepHandler, registerInteractPostHook,
+  registerWitnessEventType,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -31,6 +32,8 @@ export function registerCrimeJusticeModule(): void {
 
   // Event registries — declare module-specific event metadata for engine
   registerEventCategory('crime', ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE']);
+  registerEventCategory('body_discovery', ['BODY_DISCOVERED']);
+  registerEventCategory('witness_event', ['WITNESS_MEMORY']);
   registerEventCategory('theft', ['GOODS_STOLEN']);
   registerEventCategory('information_spread', ['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED']);
   registerEventCategory('justice_resolution', ['NPC_SENTENCED', 'NPC_FLED']);
@@ -62,6 +65,7 @@ export function registerCrimeJusticeModule(): void {
 
   registerDeathEvents(['NPC_KILLED']);
   registerPursuitEvents(['WANTED_STATUS']);
+  registerWitnessEventType('WITNESS_MEMORY');
   registerAbsentStatuses(['exiled', 'fled']);
 
   // Topic sources for NPC conversations about justice events

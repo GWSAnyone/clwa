@@ -180,6 +180,7 @@ export {
   registerStepHandler, getStepHandler,
   registerActiveStatuses, registerAbsentStatuses, isStatusActive, isStatusAbsent,
   registerInteractPostHook, runInteractPostHooks,
+  registerWitnessEventType, getWitnessEventType,
 } from './event-registry';
 export type { StepExecutionContext, StepHandlerFn, InteractionRunner as StepInteractionRunner } from './event-registry';
 export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate } from './event-registry';

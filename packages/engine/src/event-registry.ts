@@ -300,6 +300,18 @@ export function registerInteractPostHook(hook: InteractPostHookFn): void {
   INTERACT_POST_HOOKS.push(hook);
 }
 
+// ─── Witness Event Type ───
+// What event type to create when a lone discoverer finds a body
+let WITNESS_EVENT_TYPE: string | null = null;
+
+export function registerWitnessEventType(eventType: string): void {
+  WITNESS_EVENT_TYPE = eventType;
+}
+
+export function getWitnessEventType(): string | null {
+  return WITNESS_EVENT_TYPE;
+}
+
 export function runInteractPostHooks(owner: Agent, target: Agent, step: GoalStep, agents: Map<string, Agent>, crimeScenes?: Map<string, CrimeScene[]>): void {
   for (const hook of INTERACT_POST_HOOKS) {
     hook(owner, target, step, agents, crimeScenes);

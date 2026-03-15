@@ -15,6 +15,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
       probability: 1.0,
     },
     maxChainDepth: 3,
+    tracksWitness: true,
   },
 
   // Rule 1b: Body discovered later → becomes witness memory → existing cascade handles rest
@@ -32,6 +33,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     },
     maxChainDepth: 3,
     subjectUnknown: true,
+    tracksWitness: true,
   },
 
   // Rule 2: Guard witnesses murder → immediate wanted status
@@ -96,6 +98,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
       probability: 1.0,
     },
     maxChainDepth: 3,
+    tracksWitness: true,
   },
 
   // Rule 6: Theft discovered by owner → rumor spreads (accusation)
@@ -128,6 +131,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
       probability: 1.0,
     },
     maxChainDepth: 3,
+    tracksWitness: true,
   },
 
   // ─── Investigation & Punishment Rules ─────────────────────────
@@ -190,6 +194,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
       probability: 1.0,
     },
     maxChainDepth: 3,
+    tracksWitness: true,
   },
 
   // Rule 12: Witness intimidated + other witnesses → witness memory (intimidation is a crime!)
@@ -206,6 +211,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
       probability: 1.0,
     },
     maxChainDepth: 3,
+    tracksWitness: true,
   },
 
   // Rule 13: Trial requested → rumor spreads (public interest)

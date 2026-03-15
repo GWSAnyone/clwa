@@ -138,8 +138,8 @@ export class ConsequenceEngine {
           agent.state.mood = Math.max(-1, Math.min(1, agent.state.mood + moodShift));
         }
 
-        // Track who got witness memory (for Fix #2)
-        if (rule.consequence.type === 'WITNESS_MEMORY') {
+        // Track witnesses (rules declare tracksWitness: true)
+        if (rule.tracksWitness) {
           ctx.witnessIds.add(targetId);
         }
       }

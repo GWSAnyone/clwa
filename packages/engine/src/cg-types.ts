@@ -26,6 +26,8 @@ export interface ConsequenceRule {
   maxChainDepth: number;
   /** If true, the subject of beliefs created from this rule's consequence should be null (discoverer doesn't know perpetrator) */
   subjectUnknown?: boolean;
+  /** If true, targets of this rule are tracked as witnesses (for body discovery dedup) */
+  tracksWitness?: boolean;
 }
 
 export interface RuleCondition {
