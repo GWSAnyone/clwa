@@ -289,3 +289,19 @@ export function isStatusActive(status: string): boolean {
 export function isStatusAbsent(status: string): boolean {
   return ABSENT_STATUSES.has(status);
 }
+
+// ─── Interact Post-Hooks ───
+// Modules register hooks that run after an interact step (e.g., suspect evaluation)
+export type InteractPostHookFn = (owner: Agent, target: Agent, step: GoalStep, agents: Map<string, Agent>, crimeScenes?: Map<string, CrimeScene[]>) => void;
+
+const INTERACT_POST_HOOKS: InteractPostHookFn[] = [];
+
+export function registerInteractPostHook(hook: InteractPostHookFn): void {
+  INTERACT_POST_HOOKS.push(hook);
+}
+
+export function runInteractPostHooks(owner: Agent, target: Agent, step: GoalStep, agents: Map<string, Agent>, crimeScenes?: Map<string, CrimeScene[]>): void {
+  for (const hook of INTERACT_POST_HOOKS) {
+    hook(owner, target, step, agents, crimeScenes);
+  }
+}

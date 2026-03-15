@@ -3,18 +3,7 @@ import type { WorldEvent } from './cg-types';
 import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
 import type { EvidenceLayer } from './evidence';
 import { nextHop } from './pathfinding';
-import { isEventCategory, getEventLabel, getBeliefSourceLabel, getSourceTransferWeight, getStepHandler } from './event-registry';
-
-// ─── Interrogation Outcome Constants ───
-
-/** H trait threshold: above = honest (poor liar), below = deceptive */
-const HONESTY_THRESHOLD = 0.6;
-/** Confidence set when honest guilty suspect is interrogated (quasi-confession) */
-const CONFESSION_CONFIDENCE = 0.85;
-/** Confidence boost when deceptive guilty suspect is interrogated (nervous tells) */
-const NERVOUS_BOOST = 0.15;
-/** Confidence drop when innocent suspect provides alibi */
-const ALIBI_DROP = 0.2;
+import { isEventCategory, getEventLabel, getBeliefSourceLabel, getSourceTransferWeight, getStepHandler, runInteractPostHooks } from './event-registry';
 
 // ─── Step Primitives ───
 
@@ -174,29 +163,6 @@ export interface GoalActionResult {
 // ─── Goal Manager ───
 
 /** Gather evidence about a detained NPC from all agents' beliefs */
-function gatherEvidence(suspect: Agent, agents: Map<string, Agent>): string {
-  const lines: string[] = [];
-  const suspectName = suspect.profile.name;
-  const suspectId = suspect.profile.id;
-  const matchesSuspect = (field: string | null | undefined) =>
-    !!field && (field === suspectName || field === suspectId || field.startsWith(suspectName + ' '));
-
-  for (const [, agent] of agents) {
-    if (!agent.state.alive) continue;
-    const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
-    for (const b of beliefs) {
-      if ((isEventCategory(b.eventType, 'crime') || isEventCategory(b.eventType, 'justice_resolution')) &&
-          (matchesSuspect(b.subject) || matchesSuspect(b.object))) {
-        const sourceLabel = getBeliefSourceLabel(b.source);
-        lines.push(`- ${agent.profile.name} (${sourceLabel}, confidence ${Math.round(b.confidence * 100)}%): ${b.subject} committed ${getEventLabel(b.eventType)} of ${b.object ?? 'unknown'}`);
-      }
-    }
-  }
-
-  if (lines.length === 0) return 'No evidence gathered against this suspect.';
-  return lines.join('\n');
-}
-
 export class GoalManager {
   private goals: Map<string, NpcGoal[]> = new Map(); // ownerId → goals
 
@@ -468,12 +434,8 @@ export class GoalManager {
           }
         }
 
-        // ── Suspect evaluation (declarative flag from step template) ──
-        // If the step has evaluateSuspect, check if target matches a deduction belief
-        // and update confidence based on guilt + H trait.
-        if (step.evaluateSuspect && owner.state.beliefs && crimeScenes) {
-          evaluateInterrogationOutcome(owner, target, owner.state.currentDay, crimeScenes);
-        }
+        // Module-registered post-interaction hooks (e.g., suspect evaluation)
+        runInteractPostHooks(owner, target, step, agents, crimeScenes);
 
         goal.currentStep++;
 
@@ -646,56 +608,3 @@ export type InteractionRunner = (
 
 // ─── Suspect Interrogation Outcome ───
 
-/**
- * After a guard interrogates someone they suspect (deduction belief),
- * evaluate the outcome based on guilt + suspect's H trait.
- *
- * - Guilty + honest (H >= threshold): quasi-confession → high confidence
- * - Guilty + dishonest (H < threshold): denial but nervous → moderate boost
- * - Innocent: credible alibi → confidence drops
- *
- * PM = instinct: H trait determines lying ability, not LLM.
- * Structured: guilt checked via perpetratorId, not text matching.
- */
-function evaluateInterrogationOutcome(
-  owner: Agent,
-  suspect: Agent,
-  currentDay: number,
-  crimeScenes: Map<string, CrimeScene[]>,
-): void {
-  if (!owner.state.beliefs) return;
-
-  // Find deduction belief about this suspect
-  const deduction = owner.state.beliefs.getAllBeliefs().find(
-    (b) => b.source === 'deduction' && b.subject === suspect.profile.name,
-  );
-  if (!deduction) return; // Not a suspect — just a witness interrogation
-
-  const isGuilty = checkGuilt(suspect.profile.id, crimeScenes);
-  const honesty = suspect.profile.bigFive.honesty;
-
-  if (isGuilty) {
-    if (honesty >= HONESTY_THRESHOLD) {
-      deduction.confidence = CONFESSION_CONFIDENCE;
-      console.log(`  [Interrogate] ${suspect.profile.name} (H=${honesty.toFixed(2)}) shows guilt — quasi-confession → conf ${deduction.confidence}`);
-    } else {
-      deduction.confidence = Math.min(1, deduction.confidence + NERVOUS_BOOST);
-      console.log(`  [Interrogate] ${suspect.profile.name} (H=${honesty.toFixed(2)}) denies but nervous → conf ${deduction.confidence.toFixed(2)}`);
-    }
-  } else {
-    deduction.confidence = Math.max(0.1, deduction.confidence - ALIBI_DROP);
-    console.log(`  [Interrogate] ${suspect.profile.name} provides credible alibi → conf ${deduction.confidence.toFixed(2)}`);
-  }
-
-  deduction.lastUpdated = currentDay;
-}
-
-/** Check if suspect is the perpetrator of any active crime scene */
-function checkGuilt(suspectId: string, crimeScenes: Map<string, CrimeScene[]>): boolean {
-  for (const scenes of crimeScenes.values()) {
-    for (const scene of scenes) {
-      if (scene.active && scene.perpetratorId === suspectId) return true;
-    }
-  }
-  return false;
-}

@@ -2,7 +2,7 @@ import {
   AFFORDANCE_REGISTRY, EVIDENCE_RULES, REQUIREMENT_CHECKERS, TOPIC_SOURCE_REGISTRY,
   registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerBeliefZeroingEvents,
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
-  registerAbsentStatuses, registerStepHandler,
+  registerAbsentStatuses, registerStepHandler, registerInteractPostHook,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -86,4 +86,30 @@ export function registerCrimeJusticeModule(): void {
 
   // Step handlers for module-specific goal actions
   registerCrimeStepHandlers();
+
+  // Interact post-hooks (suspect evaluation after interrogation)
+  registerInteractPostHook((owner, target, step, _agents, crimeScenes) => {
+    if (!step.evaluateSuspect || !owner.state.beliefs || !crimeScenes) return;
+    // Evaluate suspect: check guilt + honesty trait → update deduction belief confidence
+    const deductionBelief = owner.state.beliefs.getAllBeliefs().find(
+      (b: any) => b.source === 'deduction' && b.subject === target.profile.name,
+    );
+    if (!deductionBelief) return;
+
+    const isGuilty = Array.from(crimeScenes.values()).flat()
+      .some(s => s.active && s.perpetratorId === target.profile.id);
+    const honesty = target.profile.bigFive.honesty;
+    const currentDay = owner.state.currentDay;
+
+    if (isGuilty) {
+      if (honesty >= 0.6) {
+        deductionBelief.confidence = Math.min(1, 0.85);
+      } else {
+        deductionBelief.confidence = Math.min(1, deductionBelief.confidence + 0.15);
+      }
+    } else {
+      deductionBelief.confidence = Math.max(0.1, deductionBelief.confidence - 0.2);
+    }
+    deductionBelief.lastUpdated = currentDay;
+  });
 }
