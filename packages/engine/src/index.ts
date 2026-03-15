@@ -172,5 +172,7 @@ export {
   registerDeathEvents, isDeathEvent, getDefaultDeathEvent,
   registerPursuitEvents, isPursuitEvent,
   registerEventHandler, getEventHandlers,
+  registerActionVerbs, getAffordanceIdsForVerb,
+  registerCrimeSceneTemplate, getCrimeSceneTemplate,
 } from './event-registry';
-export type { EventHandlerContext, EventHandlerFn } from './event-registry';
+export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate } from './event-registry';

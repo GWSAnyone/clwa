@@ -89,7 +89,7 @@ export function createInteractionRunner(
           target.state.beliefs.addBelief({
             id: crypto.randomUUID(),
             eventType: 'NPC_KILLED',
-            subject: crimeData.killer === 'unknown' ? null : crimeData.killer,
+            subject: crimeData.killer,
             object: crimeData.victim,
             location: crimeData.location,
             confidence: Math.min(0.9, 0.5 + trustWeight * 0.4),
@@ -127,10 +127,12 @@ export function createInteractionRunner(
 }
 
 /** Parse structured [CRIME killer=... victim=... location=...] tag */
-function parseCrimeTag(purpose: string): { killer: string; victim: string; location: string } | null {
+function parseCrimeTag(purpose: string): { killer: string | null; victim: string | null; location: string | null } | null {
   const match = purpose.match(/\[CRIME\s+killer=([^\]]+?)\s+victim=([^\]]+?)\s+location=([^\]]+?)\]/);
   if (!match) return null;
-  return { killer: match[1], victim: match[2], location: match[3] };
+  // Treat empty/whitespace-only values as null (structural unknown)
+  const clean = (s: string) => s.trim() || null;
+  return { killer: clean(match[1]), victim: clean(match[2]), location: clean(match[3]) };
 }
 
 /** Extract compact speech style reminder (first line only) */

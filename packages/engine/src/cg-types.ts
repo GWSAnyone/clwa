@@ -42,6 +42,8 @@ export interface ConsequenceRule {
     probability: number;
   };
   maxChainDepth: number;
+  /** If true, the subject of beliefs created from this rule's consequence should be null (discoverer doesn't know perpetrator) */
+  subjectUnknown?: boolean;
 }
 
 export interface RuleCondition {

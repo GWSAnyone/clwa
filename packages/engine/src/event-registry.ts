@@ -112,6 +112,7 @@ import type { Agent } from './agent';
 import type { WorldEvent } from './cg-types';
 import type { GoalManager } from './goals';
 import type { CrimeScene } from './world-types';
+import type { ExaminationPoint } from './world-types';
 
 export interface EventHandlerContext {
   agents: Map<string, Agent>;
@@ -132,4 +133,34 @@ export function registerEventHandler(eventType: string, handler: EventHandlerFn)
 
 export function getEventHandlers(eventType: string): EventHandlerFn[] {
   return EVENT_HANDLERS.get(eventType) ?? [];
+}
+
+// ─── Action Verb → Affordance ID mapping ───
+// LLM outputs verbs (steal, kill, investigate). Modules map verbs to their affordance IDs.
+const ACTION_VERB_MAP: Map<string, string[]> = new Map();
+
+export function registerActionVerbs(mapping: Record<string, string[]>): void {
+  for (const [verb, ids] of Object.entries(mapping)) {
+    ACTION_VERB_MAP.set(verb, ids);
+  }
+}
+
+export function getAffordanceIdsForVerb(verb: string): string[] {
+  return ACTION_VERB_MAP.get(verb) ?? [];
+}
+
+// ─── Crime Scene Templates ───
+// Modules register examination point templates per scene type.
+export interface CrimeSceneTemplate {
+  points: Omit<ExaminationPoint, 'id' | 'examined'>[];
+}
+
+const CRIME_SCENE_TEMPLATES: Map<string, CrimeSceneTemplate> = new Map();
+
+export function registerCrimeSceneTemplate(sceneType: string, template: CrimeSceneTemplate): void {
+  CRIME_SCENE_TEMPLATES.set(sceneType, template);
+}
+
+export function getCrimeSceneTemplate(sceneType: string): CrimeSceneTemplate | null {
+  return CRIME_SCENE_TEMPLATES.get(sceneType) ?? null;
 }

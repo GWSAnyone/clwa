@@ -226,7 +226,7 @@ export class ConsequenceEngine {
 
     switch (rule.consequence.type) {
       case 'WITNESS_MEMORY': {
-        const isBodyDiscovery = rule.id === 'body-discovery-to-witness';
+        const isBodyDiscovery = rule.subjectUnknown === true;
         agent.state.beliefs.addBelief({
           id: crypto.randomUUID(),
           eventType: crimeEventType,
@@ -292,7 +292,7 @@ export class ConsequenceEngine {
     switch (rule.consequence.type) {
       case 'WITNESS_MEMORY':
         // Body discovery → witness memory: discoverer does NOT know the killer
-        if (rule.id === 'body-discovery-to-witness') {
+        if (rule.subjectUnknown === true) {
           return `I discovered the body of ${victimName} at ${event.location}! They appear to have been murdered — blood everywhere, signs of violence. I don't know who did this. I need to tell someone about this immediately.`;
         }
         return `I witnessed a horrifying murder: ${killer} killed ${victimName} right here at ${event.location}. Blood everywhere. I will never forget this.`;

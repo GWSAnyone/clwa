@@ -200,19 +200,9 @@ function estimateImportance(_lines: ConversationLine[], topic: TopicProposal): n
   // Base importance from topic weight
   let importance = Math.min(topic.weight, 7);
 
-  // Boost by structured category
-  if (topic.category === 'crime' || topic.category === 'justice') {
-    importance = Math.max(importance, 6);
-  } else if (topic.category === 'grief') {
-    importance = Math.max(importance, 5);
-  } else if (topic.category === 'mood' || topic.category === 'inner') {
-    importance = Math.max(importance, 4);
-  }
-
-  // Casual topics: cap at 3
-  if (topic.category.startsWith('role:') || topic.category === 'idle') {
-    importance = Math.min(importance, 3);
-  }
+  // Importance floor/cap from topic metadata (set by topic sources)
+  if (topic.minImportance) importance = Math.max(importance, topic.minImportance);
+  if (topic.maxImportance) importance = Math.min(importance, topic.maxImportance);
 
   return Math.max(2, Math.min(importance, 8));
 }

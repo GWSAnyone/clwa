@@ -16,6 +16,10 @@ export interface TopicProposal {
   responderHook?: string;
   /** Category for diversity tracking (e.g. "crime", "role", "mood") */
   category: string;
+  /** Minimum importance floor for conversation memory (optional) */
+  minImportance?: number;
+  /** Maximum importance cap for conversation memory (optional) */
+  maxImportance?: number;
 }
 
 export interface TopicContext {
@@ -56,6 +60,7 @@ const beliefTopics: TopicSource = (init, resp) => {
         initiatorHook: `You both know about the ${crimeWord}. Share your thoughts, fears, theories.`,
         responderHook: `You also know about this. React to what they say with your own feelings.`,
         category: 'crime',
+        minImportance: 6,
       });
     } else {
       proposals.push({
@@ -65,6 +70,7 @@ const beliefTopics: TopicSource = (init, resp) => {
         initiatorHook: `You need to tell them about the ${crimeWord}. Break the news.`,
         responderHook: `This is the first you're hearing of this. React with genuine shock.`,
         category: 'crime',
+        minImportance: 6,
       });
     }
   }
@@ -103,6 +109,7 @@ const relationshipTopics: TopicSource = (init, resp) => {
         weight: 6,
         initiatorHook: `The loss weighs on you. It comes up unexpectedly.`,
         category: 'grief',
+        minImportance: 5,
       });
       break; // one grief topic is enough
     }
@@ -116,6 +123,7 @@ const relationshipTopics: TopicSource = (init, resp) => {
       weight: 5,
       initiatorHook: `You trust ${resp.profile.name}. Let some of your worry show.`,
       category: 'mood',
+      minImportance: 4,
     });
   }
 
@@ -136,6 +144,7 @@ const innerConflictTopics: TopicSource = (init, resp) => {
       weight: 4,
       initiatorHook: `Your inner conflict weighs on you. You almost mention it but hold back. Just hints and half-sentences.`,
       category: 'inner',
+      minImportance: 4,
     }];
   }
 
@@ -151,9 +160,9 @@ const roleTopics: TopicSource = (init, _resp, ctx) => {
   const fresh = pool.filter(t =>
     !ctx.recentTopics.includes('role:' + t.subject),
   );
-  if (fresh.length === 0) return pool.map(t => ({ ...t, weight: 1 })); // all used → low weight re-pick
+  if (fresh.length === 0) return pool.map(t => ({ ...t, weight: 1, maxImportance: 3 }));
 
-  return fresh;
+  return fresh.map(t => ({ ...t, maxImportance: 3 }));
 };
 
 /** Role-specific topic pools — declarative data */
@@ -270,6 +279,7 @@ const FALLBACK_TOPIC: TopicProposal = {
   weight: 0,
   initiatorHook: 'Nothing particular on your mind. Just checking in, passing the time.',
   category: 'idle',
+  maxImportance: 3,
 };
 
 // ─── Topic Source Registry (modules push here before World init) ───

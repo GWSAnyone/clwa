@@ -13,6 +13,7 @@ import {
   type ScoredAffordance,
   type StepTemplate,
 } from './al';
+import { getAffordanceIdsForVerb } from './event-registry';
 
 // ─── Constants ───
 
@@ -745,94 +746,22 @@ function intentionToGoal(
       };
     }
 
-    case 'steal': {
-      // Find matching scored affordance and delegate to buildGoalFromAffordance
-      const stealAff = scored.find((s) => s.definition.id === 'steal');
-      if (!stealAff) return null;
-      const goal = buildGoalFromAffordance(stealAff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    case 'kill': {
-      const killAff = scored.find((s) => s.definition.id === 'kill');
-      if (!killAff) return null;
-      const goal = buildGoalFromAffordance(killAff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    case 'attack': {
-      // Could be vigilante or confront
-      const attackAff = scored.find((s) => s.definition.id === 'vigilante')
-        ?? scored.find((s) => s.definition.id === 'confront');
-      if (!attackAff) return null;
-      const goal = buildGoalFromAffordance(attackAff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    // Duty/investigation actions — delegate to matching affordance
-    case 'investigate': {
-      const aff = scored.find((s) => s.definition.id === 'investigate');
-      if (!aff) return null;
-      const goal = buildGoalFromAffordance(aff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    case 'interrogate': {
-      const aff = scored.find((s) => s.definition.id === 'interrogate');
-      if (!aff) return null;
-      const goal = buildGoalFromAffordance(aff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    case 'arrest': {
-      const aff = scored.find((s) => s.definition.id === 'arrest');
-      if (!aff) return null;
-      const goal = buildGoalFromAffordance(aff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    case 'report': {
-      const aff = scored.find((s) => s.definition.id === 'report_crime')
-        ?? scored.find((s) => s.definition.id === 'testify');
-      if (!aff) return null;
-      const goal = buildGoalFromAffordance(aff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    case 'testify': {
-      const aff = scored.find((s) => s.definition.id === 'testify')
-        ?? scored.find((s) => s.definition.id === 'report_crime');
-      if (!aff) return null;
-      const goal = buildGoalFromAffordance(aff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    case 'flee': {
-      const aff = scored.find((s) => s.definition.id === 'flee_town');
-      if (!aff) return null;
-      const goal = buildGoalFromAffordance(aff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    case 'evaluate': {
-      const aff = scored.find((s) => s.definition.id === 'evaluate_case');
-      if (!aff) return null;
-      const goal = buildGoalFromAffordance(aff, npcId, agent, ctx);
-      goal.data.reason = parsed.why;
-      return goal;
-    }
-
-    default:
+    default: {
+      // Module-registered action verbs → affordance IDs lookup
+      const affordanceIds = getAffordanceIdsForVerb(parsed.action);
+      if (affordanceIds.length > 0) {
+        const aff = affordanceIds.reduce<ScoredAffordance | null>(
+          (found, id) => found ?? scored.find((s) => s.definition.id === id) ?? null,
+          null,
+        );
+        if (aff) {
+          const goal = buildGoalFromAffordance(aff, npcId, agent, ctx);
+          goal.data.reason = parsed.why;
+          return goal;
+        }
+      }
       return null;
+    }
   }
 }
 

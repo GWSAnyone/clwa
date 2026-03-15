@@ -111,7 +111,7 @@ export interface BeliefModifier {
 export interface AffordanceDefinition {
   id: string;
   label: string;
-  category: 'crime' | 'social' | 'duty';
+  category: string;
   severity: number;                // 1-10, for witness reactions
   requires: AffordanceRequirement;
   weights: AffordanceWeight[];
@@ -135,6 +135,8 @@ export interface AffordanceDefinition {
   targetRole?: string;
   /** Situational modifiers: NPC's beliefs boost affordance score */
   beliefModifiers?: BeliefModifier[];
+  /** If true, this affordance is suppressed when player is at the same location */
+  suppressNearPlayer?: boolean;
 }
 
 // ─── Mutable Registries (populated by modules at startup) ───
@@ -249,7 +251,7 @@ export function checkRequirements(
   if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
   if (req.moodBelow !== undefined && agent.state.mood >= req.moodBelow) return null;
-  if (aff.category === 'crime' && ctx.playerLocation === agent.state.location) return null;
+  if (aff.suppressNearPlayer && ctx.playerLocation === agent.state.location) return null;
 
   // Module-provided requirement checks
   if (req.isCriminal) {
@@ -317,7 +319,7 @@ export function checkRequirementsReactive(
   if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
   // mood intentionally skipped for reactive (event urgency overrides mood gate)
-  if (aff.category === 'crime' && ctx.playerLocation === agent.state.location) return null;
+  if (aff.suppressNearPlayer && ctx.playerLocation === agent.state.location) return null;
 
   // Module-provided requirement checks
   if (req.isCriminal) {

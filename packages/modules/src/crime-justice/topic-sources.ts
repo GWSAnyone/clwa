@@ -19,6 +19,7 @@ export const justiceTopics: TopicSource = (init, resp) => {
         initiatorHook: `${suspectName} was arrested. Share your reaction — is justice being served?`,
         responderHook: `You also heard about the arrest. React with your own feelings about it.`,
         category: 'justice',
+        minImportance: 6,
       });
     } else {
       proposals.push({
@@ -28,6 +29,7 @@ export const justiceTopics: TopicSource = (init, resp) => {
         initiatorHook: `You just heard that ${suspectName} was arrested! Break the news.`,
         responderHook: `This is the first you're hearing of this. React with genuine surprise.`,
         category: 'justice',
+        minImportance: 6,
       });
     }
   }

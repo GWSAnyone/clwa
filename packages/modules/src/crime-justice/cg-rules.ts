@@ -31,6 +31,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
       probability: 1.0,
     },
     maxChainDepth: 3,
+    subjectUnknown: true,
   },
 
   // Rule 2: Guard witnesses murder → immediate wanted status

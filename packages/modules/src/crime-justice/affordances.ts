@@ -6,6 +6,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     id: 'steal',
     label: 'Steal from a nearby shop',
     category: 'crime',
+    suppressNearPlayer: true,
     severity: 4,
     requires: {
       noGuardNearby: true,
@@ -34,6 +35,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     id: 'kill',
     label: 'Silence the threat permanently — they know too much and must be stopped',
     category: 'crime',
+    suppressNearPlayer: true,
     severity: 10,
     requires: {
       period: ['night', 'evening'],
@@ -64,6 +66,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     label: 'Take justice into own hands',
     targetFinder: 'crime_belief',
     category: 'crime',
+    suppressNearPlayer: true,
     severity: 8,
     requires: {
       hasCrimeBelief: true,
@@ -93,6 +96,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     id: 'blackmail',
     label: 'Leverage a secret for personal gain',
     category: 'crime',
+    suppressNearPlayer: true,
     severity: 5,
     requires: { moodBelow: -0.3, notGuard: true },
     weights: [
@@ -164,7 +168,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact', targetId: '$target', purpose: '[CRIME killer={killerName:unknown} victim={victimName:someone} location={crimeLocation:unknown location}] urgently report a crime you learned about. {killerName:Someone} committed a crime at {crimeLocation:unknown location}. You need the guard to investigate immediately.', importance: 7, beliefTransfer: true, beliefTransferDirection: 'owner-to-target' },
+      { action: 'interact', targetId: '$target', purpose: '[CRIME killer={killerName:} victim={victimName:someone} location={crimeLocation:unknown location}] urgently report a crime you learned about. Someone committed a crime at {crimeLocation:unknown location}. You need the guard to investigate immediately.', importance: 7, beliefTransfer: true, beliefTransferDirection: 'owner-to-target' },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },
@@ -454,6 +458,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetFinder: 'crime_scene',
     label: 'Destroy evidence at the crime scene',
     category: 'crime',
+    suppressNearPlayer: true,
     severity: 4,
     requires: { isCriminal: true, noGuardNearby: true, maxWitnesses: 0, period: ['night', 'evening'] },
     weights: [
@@ -484,6 +489,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     label: 'Threaten a witness into silence',
     targetFinder: 'witness_target',
     category: 'crime',
+    suppressNearPlayer: true,
     severity: 5,
     requires: { isCriminal: true, noGuardNearby: true, period: ['night', 'evening'] },
     weights: [
@@ -513,6 +519,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetFinder: 'self_gate',
     label: 'Flee the town to escape justice',
     category: 'crime',
+    suppressNearPlayer: true,
     severity: 3,
     requires: { isCriminal: true, isWanted: true, moodBelow: -0.5 },
     weights: [
