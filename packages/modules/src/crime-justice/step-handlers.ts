@@ -130,7 +130,7 @@ export function registerCrimeStepHandlers(): void {
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const target = agents.get(step.targetId);
     if (!target || !target.state.alive) { goal.currentStep++; return { ...baseResult, action: 'arrest_npc', description: `${owner.profile.name}: target not available` }; }
-    if ((target.state.status ?? 'free') !== 'free') { goal.currentStep++; return { ...baseResult, action: 'arrest_npc', description: `${owner.profile.name}: ${target.profile.name} already ${target.state.status}` }; }
+    if (target.state.status) { goal.currentStep++; return { ...baseResult, action: 'arrest_npc', description: `${owner.profile.name}: ${target.profile.name} already ${target.state.status}` }; }
     if (owner.state.location !== target.state.location) {
       const pursuitTicks = (goal.waitTicks ?? 0) + 1;
       goal.waitTicks = pursuitTicks;
@@ -190,9 +190,22 @@ export function registerCrimeStepHandlers(): void {
     for (const e of undiscovered) {
       ctx.evidenceLayer!.discover(e.id, goal.ownerId);
       if (!e.subjectName || !owner.state.beliefs) continue;
-      const existing = owner.state.beliefs.getAllBeliefs().find((b: any) => (b.source === 'evidence' || b.source === 'deduction') && b.eventType === e.eventType && b.subject === e.subjectName);
-      if (existing) { existing.confidence = Math.min(1, existing.confidence + e.weight); existing.lastUpdated = currentDay; }
-      else { owner.state.beliefs.addBelief({ id: crypto.randomUUID(), eventType: e.eventType, subject: e.subjectName, object: e.objectName ?? null, location: owner.state.location, confidence: e.weight, source: 'evidence', sourceNpcId: null, gameDay: currentDay, lastUpdated: currentDay }); suspectCount++; }
+      // addBelief now deduplicates by (eventType, object, source).
+      // evidence beliefs coexist with observation/testimony beliefs as separate proof.
+      // Multiple evidence pieces about same suspect merge (cumulative physical proof).
+      owner.state.beliefs.addBelief({
+        id: crypto.randomUUID(),
+        eventType: e.eventType,
+        subject: e.subjectName,
+        object: e.objectName ?? null,
+        location: owner.state.location,
+        confidence: e.weight,
+        source: 'evidence',
+        sourceNpcId: null,
+        gameDay: currentDay,
+        lastUpdated: currentDay,
+      });
+      suspectCount++;
     }
     const scenes = ctx.crimeScenes?.get(owner.state.location) ?? [];
     const activeScene = scenes.find((s: any) => s.active);
@@ -207,7 +220,7 @@ export function registerCrimeStepHandlers(): void {
     const { goal, step, owner, agents } = ctx;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const target = agents.get(step.targetId);
-    if (!target || (target.state.status ?? 'free') !== 'detained') { goal.currentStep++; return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name}: no detained suspect` }; }
+    if (!target || target.state.status !== 'detained') { goal.currentStep++; return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name}: no detained suspect` }; }
     const evidenceSummary = gatherEvidence(target, agents);
     const prompt = `You are ${owner.profile.name}, the town magistrate. ${target.profile.name} the ${target.profile.role} has been arrested and brought before you.\n\nEvidence gathered:\n${evidenceSummary}\n\nBased on this evidence, you must decide:\n- If evidence is strong and clear: sentence to EXILE (banished from town)\n- If evidence is weak or contradictory: RELEASE (freed, insufficient proof)\n\nRespond with exactly one word: EXILE or RELEASE`;
     const response = await owner.generateResponse(prompt, { maxTokens: 10 });
@@ -220,7 +233,7 @@ export function registerCrimeStepHandlers(): void {
       await target.observe(`Magistrate ${owner.profile.name} sentenced me to exile. I must leave.`, step.importance);
       target.state.mood = -1;
     } else {
-      target.state.status = 'free';
+      target.state.status = undefined;
       await owner.observe(`I released ${target.profile.name}. Insufficient evidence.`, step.importance);
       await target.observe(`Magistrate ${owner.profile.name} released me. I am free.`, step.importance);
       target.state.mood = Math.min(1, target.state.mood + 0.3);

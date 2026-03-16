@@ -28,7 +28,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getWitnessEventType, getGoalMoodBoost, getBodyDiscoveryEventType } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getWitnessEventType, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -50,14 +50,14 @@ export interface WorldCallbacks {
   onLlmCall?: (reason: string, target?: string) => void;
 }
 
-/** Check if NPC can act: alive AND status is active (registered via registerActiveStatuses) */
+/** Check if NPC can act: alive AND no special status (null = default/free = active) */
 function isActive(agent: Agent): boolean {
-  return agent.state.alive && isStatusActive(agent.state.status ?? 'free');
+  return agent.state.alive && isStatusActive(agent.state.status);
 }
 
 /** Check if NPC is physically present in the world (status not absent) */
 function isPresent(agent: Agent): boolean {
-  return agent.state.alive && !isStatusAbsent(agent.state.status ?? 'free');
+  return agent.state.alive && !isStatusAbsent(agent.state.status);
 }
 
 export class World {
@@ -163,16 +163,18 @@ export class World {
       this.goalManager.completeGoalsByType(goalType);
     }
 
-    // Registry-based belief zeroing: modules declare which events resolve a case
+    // Registry-based belief zeroing: modules declare which events resolve a case.
+    // Reduces ALL NPCs' crime beliefs about the suspect — justice served, urgency drops.
+    // Investigators zeroed fully, others reduced to 0.2 (they remember, but no compulsion).
     if (shouldZeroBeliefs(event.type)) {
       const suspectId = event.object;
       const suspect = suspectId ? this.agents.get(suspectId) : null;
       if (suspect) {
         for (const [, agent] of this.agents) {
-          if (!agent.profile.investigator || !agent.state.beliefs) continue;
+          if (!agent.state.beliefs) continue;
           for (const b of agent.state.beliefs.getAllBeliefs()) {
             if (b.subject === suspect.profile.name || b.subject === suspect.profile.id) {
-              b.confidence = 0;
+              b.confidence = agent.profile.investigator ? 0 : Math.min(b.confidence, 0.2);
             }
           }
         }
@@ -435,13 +437,13 @@ export class World {
           goalActions.push(action);
           this.callbacks.onGoalAction?.(action);
 
-          // Clear schedule tracking when schedule goal completes
-          if (action.goalCompleted && action.goalType === 'schedule') {
+          // Clear schedule tracking when routine goal completes
+          if (action.goalCompleted && action.isRoutine) {
             this.scheduleManager?.clearScheduleGoal(action.ownerId);
           }
 
           // Goal completion mood feedback — sense of accomplishment or catharsis
-          if (action.goalCompleted && action.goalType !== 'schedule') {
+          if (action.goalCompleted && !action.isRoutine) {
             const owner = this.agents.get(action.ownerId);
             if (owner?.state.alive) {
               const shift = getGoalMoodBoost(action.goalType);
@@ -474,8 +476,24 @@ export class World {
     // 2.5. Check if NPCs notice crime scenes at their location
     await this.checkCrimeScenes();
 
-    // 2.7. Check theft discoveries — shop owners notice missing goods
-    await this.checkTheftDiscoveries();
+    // 2.7. Module-registered tick phase handlers (e.g., theft discovery)
+    const tickCtx = {
+      agents: this.agents,
+      eventStore: this.eventStore,
+      currentDay: this.getCurrentDay(),
+      tickCount: this.tickCount,
+      processEvent: async (event: WorldEvent) => {
+        const results = await this.engine.process(event, { agents: this.agents });
+        await this.handleEventForGoals(event);
+        for (const r of results) {
+          await this.handleEventForGoals(r.event);
+        }
+      },
+      discoveries: this.bodyDiscoveries,
+    };
+    for (const handler of getTickPhaseHandlers()) {
+      await handler(tickCtx);
+    }
 
     // 3. Casual conversations (skip NPCs with active goals)
     let conversation: ConversationResult | null = null;
@@ -951,13 +969,21 @@ export class World {
     // Reset daily conversation tracking
     this.scheduler.resetDailyCounts();
 
-    const rumorResults = await this.engine.spreadRumorsOnDayAdvance(
-      { agents: this.agents },
-      newDay,
-      this.eventStore,
-    );
+    // Run module-registered day advance handlers (e.g., rumor spreading)
+    const dayCtx = {
+      agents: this.agents,
+      currentDay: newDay,
+      eventStore: this.eventStore,
+      onEvent: this.callbacks.onTick ? (e: WorldEvent) => {
+        this.eventStore.append(e);
+      } : undefined,
+      publicPlaces: this.config.publicPlaces ?? new Set<string>(),
+    };
+    for (const handler of getDayAdvanceHandlers()) {
+      await handler(dayCtx);
+    }
 
-    return { newDay, rumorResults };
+    return { newDay, rumorResults: [] };
   }
 
   /**
@@ -1043,79 +1069,6 @@ export class World {
           console.log(`  [CrimeScene] ${agent.profile.name} noticed ${scene.crimeType} scene at ${locationName}`);
         }
       }
-    }
-  }
-
-  /** Check if shop owners discover they've been robbed */
-  private async checkTheftDiscoveries(): Promise<void> {
-    const theftEvents = this.eventStore.getAll()
-      .filter((e: WorldEvent) => isEventCategory(e.type, 'theft'));
-
-    for (const theft of theftEvents) {
-      const discoveryKey = `theft_discovered:${theft.id}`;
-      if (this.bodyDiscoveries.has(discoveryKey)) continue; // already discovered
-
-      const ownerId = theft.object;
-      if (!ownerId) continue;
-      const owner = this.agents.get(ownerId);
-      if (!owner || !owner.state.alive) continue;
-
-      // Owner discovers theft when at their shop location
-      if (owner.state.location !== theft.location) continue;
-
-      // Must be at least 1 tick after theft
-      if (this.tickCount <= (theft.payload?.tick as number ?? 0)) continue;
-
-      this.bodyDiscoveries.add(discoveryKey);
-
-      const thiefName = (theft.payload?.thiefName as string) ?? 'someone';
-      await owner.observe(
-        `I discovered that goods have been stolen from my shop! Things are missing and scattered. Someone robbed me!`,
-        7,
-      );
-
-      // Add belief — owner doesn't necessarily know WHO did it
-      // Unless they were a witness (already handled by CE witness rule)
-      owner.state.beliefs?.addBelief({
-        id: crypto.randomUUID(),
-        eventType: theft.type,
-        subject: null,
-        object: owner.profile.name,
-        location: theft.location,
-        confidence: 1.0,
-        source: 'observation',
-        sourceNpcId: null,
-        gameDay: this.getCurrentDay(),
-        lastUpdated: this.getCurrentDay(),
-      });
-
-      owner.state.mood = Math.max(-1, owner.state.mood - 0.3);
-
-      // Emit THEFT_DISCOVERED event for CE cascade
-      const discoveryEvent: WorldEvent = {
-        id: crypto.randomUUID(),
-        type: 'THEFT_DISCOVERED',
-        subject: ownerId,
-        object: theft.subject, // the thief
-        location: theft.location,
-        gameDay: this.getCurrentDay(),
-        importance: 6,
-        payload: {
-          thiefName,
-          victimName: owner.profile.name,
-          originalTheftId: theft.id,
-          sourceEvent: 'theft_discovery',
-        },
-      };
-      this.eventStore.append(discoveryEvent);
-
-      const results = await this.engine.process(discoveryEvent, { agents: this.agents });
-      await this.handleEventForGoals(discoveryEvent);
-      for (const r of results) {
-        await this.handleEventForGoals(r.event);
-      }
-
-      console.log(`  [Theft] ${owner.profile.name} discovered robbery at ${theft.location}!`);
     }
   }
 
@@ -1285,7 +1238,7 @@ export class World {
     for (const [id, agent] of this.agents) {
       agents[id] = {
         alive: agent.state.alive,
-        status: agent.state.status ?? 'free',
+        status: agent.state.status ?? null,
         location: agent.state.location,
         mood: agent.state.mood,
         currentDay: agent.state.currentDay,
@@ -1354,7 +1307,7 @@ export class World {
       const agent = this.agents.get(id);
       if (!agent) continue;
       agent.state.alive = saved.alive;
-      agent.state.status = (saved as any).status ?? 'free'; // backward compat
+      agent.state.status = (saved as any).status === 'free' ? undefined : ((saved as any).status ?? undefined);
       agent.state.location = saved.location;
       agent.state.mood = saved.mood;
       agent.state.currentDay = saved.currentDay;

@@ -41,7 +41,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     id: 'guard-witnessed-murder',
     trigger: 'WITNESS_MEMORY',
     conditions: [
-      { field: 'target', op: 'is_guard' },
+      { field: 'target', op: 'has_capability', value: 'investigator' },
     ],
     consequence: {
       type: 'WANTED_STATUS',
@@ -73,7 +73,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     id: 'guard-heard-rumor',
     trigger: 'RUMOR_SPREAD',
     conditions: [
-      { field: 'target', op: 'is_guard' },
+      { field: 'target', op: 'has_capability', value: 'investigator' },
     ],
     consequence: {
       type: 'WANTED_STATUS',

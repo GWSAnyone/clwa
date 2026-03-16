@@ -28,6 +28,8 @@ export interface InteractStep {
   beliefTransferDirection?: 'target-to-owner' | 'owner-to-target';
   /** After interaction, evaluate if target is a suspect (deduction belief match) and update confidence based on guilt + H trait */
   evaluateSuspect?: boolean;
+  /** If set, emit an event with this type after interaction (e.g. module-specific event types) */
+  emitEventType?: string;
 }
 
 /**
@@ -127,6 +129,7 @@ export interface NpcGoal {
   createdAtTick: number;
   homeLocation?: string;   // where to return after goal (optional)
   waitTicks?: number;      // how many ticks spent waiting for target (timeout at 3)
+  isRoutine?: boolean;     // true for schedule/routine goals — no mood boost on completion
 }
 
 // ─── Goal Action Result ───
@@ -156,6 +159,7 @@ export interface GoalActionResult {
     targetName: string;
   };
   goalCompleted?: boolean;
+  isRoutine?: boolean;     // true for schedule/routine goals — no mood boost on completion
 }
 
 // ─── Goal Trigger ───
@@ -306,6 +310,7 @@ export class GoalManager {
         action: 'completed',
         description: `${owner.profile.name} completed goal: ${goal.type}`,
         goalCompleted: true,
+        isRoutine: goal.isRoutine,
       };
     }
 
@@ -416,10 +421,10 @@ export class GoalManager {
             });
           }
 
-          // Emit NPC_INTERROGATED event
-          if (onCrimeEvent && crimeBeliefs.length > 0) {
+          // Emit event if step declares an event type (module-registered via emitEventType)
+          if (onCrimeEvent && step.emitEventType && crimeBeliefs.length > 0) {
             await onCrimeEvent({
-              type: 'NPC_INTERROGATED',
+              type: step.emitEventType,
               subject: goal.ownerId,
               object: step.targetId,
               location: owner.state.location,

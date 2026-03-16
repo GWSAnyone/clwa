@@ -1,8 +1,9 @@
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
-import type { InteractionRunner } from './goals';
+import type { InteractionRunner, GoalStep } from './goals';
 import type { ConversationLine } from './world-types';
+import { getInteractionResultHooks } from './event-registry';
 
 /**
  * Create an InteractionRunner that uses LLM for goal-driven conversations.
@@ -79,64 +80,20 @@ export function createInteractionRunner(
     };
     eventStore.append(event);
 
-    // Detect crime report → guard: create testimony belief + RUMOR_SPREAD event
-    if (options?.onExtraEvent && target.profile.investigator) {
-      const crimeData = parseCrimeTag(purpose);
-      if (crimeData) {
-        // Guard receives testimony belief from the reporter
-        if (target.state.beliefs) {
-          const trustWeight = target.state.relationships?.getTestimonyWeight(initiator.profile.id) ?? 0.3;
-          target.state.beliefs.addBelief({
-            id: crypto.randomUUID(),
-            eventType: crimeData.eventType ?? initiator.state.beliefs?.getAllBeliefs().find(b => b.confidence >= 0.3 && b.object)?.eventType ?? 'crime',
-            subject: crimeData.killer,
-            object: crimeData.victim,
-            location: crimeData.location,
-            confidence: Math.min(0.9, 0.5 + trustWeight * 0.4),
-            source: 'testimony',
-            sourceNpcId: initiator.profile.id,
-            gameDay: target.state.currentDay,
-            lastUpdated: target.state.currentDay,
-          });
-        }
-
-        const rumorEvent: WorldEvent = {
-          id: crypto.randomUUID(),
-          type: 'RUMOR_SPREAD',
-          subject: crimeData.killer,   // subject = the killer, not the reporter
-          object: target.profile.id,
-          location: target.state.location,
-          gameDay: target.state.currentDay,
-          importance: 7,
-          payload: {
-            killerName: crimeData.killer,
-            victimName: crimeData.victim,
-            crimeLocation: crimeData.location,
-            sourceEvent: event.id,
-            affectedTargets: [target.profile.id],
-            reportedBy: initiator.profile.name,
-          },
-        };
-        eventStore.append(rumorEvent);
-        await options.onExtraEvent(rumorEvent);
-      }
+    // Run module-registered interaction result hooks (e.g., crime report to guard)
+    for (const hook of getInteractionResultHooks()) {
+      await hook({
+        initiator,
+        target,
+        step: {} as GoalStep, // step context provided by caller if needed
+        purpose,
+        eventStore,
+        onExtraEvent: options?.onExtraEvent,
+      });
     }
 
     return { ownerLine, targetLine };
   };
-}
-
-/** Parse structured [CRIME killer=... victim=... location=...] tag */
-function parseCrimeTag(purpose: string): { killer: string | null; victim: string | null; location: string | null; eventType: string | null } | null {
-  const match = purpose.match(/\[CRIME\s+(.+?)\]/);
-  if (!match) return null;
-  const clean = (s: string) => s.trim() || null;
-  // Parse key=value pairs from tag content
-  const fields: Record<string, string | null> = {};
-  for (const pair of match[1].matchAll(/(\w+)=(\S+)/g)) {
-    fields[pair[1]] = clean(pair[2]);
-  }
-  return { killer: fields.killer ?? null, victim: fields.victim ?? null, location: fields.location ?? null, eventType: fields.eventType ?? null };
 }
 
 /** Extract compact speech style reminder (first line only) */
@@ -146,7 +103,9 @@ function speechReminder(agent: Agent): string {
 
 function buildPurposePrompt(initiator: Agent, target: Agent, purpose: string): string {
   const speech = speechReminder(initiator);
-  return `You are at ${initiator.state.location}. You approach ${target.profile.name} the ${target.profile.role}.
+  const beliefContext = initiator.state.beliefs?.summarizeForPrompt(2);
+  const beliefLine = beliefContext ? `\nWhat you know: ${beliefContext}` : '';
+  return `You are at ${initiator.state.location}. You approach ${target.profile.name} the ${target.profile.role}.${beliefLine}
 
 YOUR GOAL: ${purpose}
 
@@ -163,11 +122,13 @@ function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: str
     : `They seem to be trying to ${purpose}.`;
 
   const speech = speechReminder(target);
+  const beliefContext = target.state.beliefs?.summarizeForPrompt(2);
+  const beliefLine = beliefContext ? `\nWhat you already know: ${beliefContext}` : '';
   return `You are at ${target.state.location}. ${initiator.profile.name} the ${initiator.profile.role} approaches you and says:
 
 "${initiatorLine}"
 
-${contextDirective}
+${contextDirective}${beliefLine}
 
 (Your voice: ${speech})
 React in character. 1-3 sentences. You may include a brief action.`;

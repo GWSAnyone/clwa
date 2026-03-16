@@ -43,6 +43,8 @@ export interface AffordanceRequirement {
   hasDetainedNpc?: boolean;
   /** NPC must have a witness belief that someone else doesn't know about */
   hasWitnessBelief?: boolean;
+  /** NPC must NOT be a perpetrator of any crime (has no guilt-source beliefs) */
+  notPerpetrator?: boolean;
 }
 
 export type OceanHTrait = 'O' | 'C' | 'E' | 'A' | 'N' | 'H';
@@ -143,6 +145,9 @@ export interface AffordanceDefinition {
   actionVerb?: string;
   /** Description for LLM action list (e.g. 'steal from their shop') */
   actionDescription?: string;
+  /** If affordance passes requirements, score is at least this value.
+   *  Use to ensure critical affordances reach reflex tier (≥0.7) when conditions are met. */
+  minimumScore?: number;
 }
 
 // ─── Mutable Registries (populated by modules at startup) ───
@@ -208,7 +213,7 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
 
   for (const [otherId, other] of ctx.agents) {
     if (otherId === npcId || !other.state.alive) continue;
-    if ((other.state.status ?? 'free') !== 'free') continue;
+    if (other.state.status) continue; // any non-default status blocks targeting
     if (other.profile.role === role) {
       let distance: number;
       if (other.state.location === agent.state.location) {
@@ -274,6 +279,10 @@ export function checkRequirements(
   }
   if (req.hasWitnessBelief) {
     const checker = REQUIREMENT_CHECKERS.get('hasWitnessBelief');
+    if (!checker || !checker(agent, ctx)) return null;
+  }
+  if (req.notPerpetrator) {
+    const checker = REQUIREMENT_CHECKERS.get('notPerpetrator');
     if (!checker || !checker(agent, ctx)) return null;
   }
 
@@ -342,6 +351,10 @@ export function checkRequirementsReactive(
   }
   if (req.hasWitnessBelief) {
     const checker = REQUIREMENT_CHECKERS.get('hasWitnessBelief');
+    if (!checker || !checker(agent, ctx)) return null;
+  }
+  if (req.notPerpetrator) {
+    const checker = REQUIREMENT_CHECKERS.get('notPerpetrator');
     if (!checker || !checker(agent, ctx)) return null;
   }
 
@@ -442,5 +455,7 @@ export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: 
   }
 
   const rawScore = personalityScore + moodContribution + relationshipContribution + situationalContribution;
-  return Math.max(0, Math.min(1, rawScore));
+  const clamped = Math.max(0, Math.min(1, rawScore));
+  // minimumScore: if affordance passed requirements, ensure score is at least this value
+  return aff.minimumScore ? Math.max(clamped, aff.minimumScore) : clamped;
 }

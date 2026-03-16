@@ -3,7 +3,7 @@ import { ReflectionTracker } from './reflection';
 import type { ReflectionConfig } from './reflection';
 import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
-import { getEventLabel, isPursuitEvent, isEventCategory } from './event-registry';
+import { getEventLabel, isPursuitEvent, isEventCategory, isSourceCategory } from './event-registry';
 
 interface LMStudioResponse {
   output: Array<{ type: string; content: string }>;
@@ -387,16 +387,13 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
         const crimeWord = getEventLabel(top.eventType);
         const victim = top.object ?? 'a victim';
         sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}.\nYou scan every face for guilt. You interrupt conversations to ask questions. You stand taller, hand near your weapon. This is your top priority.`);
-      } else if (crimeBeliefs.some((b) => b.source === 'perpetrator')) {
+      } else if (crimeBeliefs.some((b) => isSourceCategory(b.source, 'guilt'))) {
         // Killer's emotional state — guilt/paranoia (complements secret-directives)
-        const b = crimeBeliefs.find((b) => b.source === 'perpetrator')!;
+        const b = crimeBeliefs.find((b) => isSourceCategory(b.source, 'guilt'))!;
         sections.push(`## How you feel right now\nYour hands won't stop shaking. Every time someone mentions ${b.object}, your blood runs cold. You avoid eye contact. You feel the walls closing in.`);
-      } else if (crimeBeliefs.some((b) => b.source === 'witness')) {
-        const b = crimeBeliefs.find((b) => b.source === 'witness')!;
+      } else if (crimeBeliefs.some((b) => isSourceCategory(b.source, 'direct_experience'))) {
+        const b = crimeBeliefs.find((b) => isSourceCategory(b.source, 'direct_experience'))!;
         sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${b.object}. Your hands tremble slightly. You start sentences and lose track of what you were saying. You do not want to talk about it but you cannot stop thinking about it.`);
-      } else if (crimeBeliefs.some((b) => b.source === 'body_discovery')) {
-        const b = crimeBeliefs.find((b) => b.source === 'body_discovery')!;
-        sections.push(`## How you feel right now\nThe image of ${b.object}'s body is burned into your mind. You keep glancing toward the door. Your voice catches when you try to speak normally.`);
       } else if (crimeBeliefs.length > 0) {
         sections.push(`## How you feel right now\nYou heard something terrible happened in town. You lower your voice when talking about it. You look over your shoulder more often. The unease sits in your stomach like a stone.`);
       }

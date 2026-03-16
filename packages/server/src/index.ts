@@ -5,7 +5,7 @@ import { World } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerCrimeJusticeModule, CRIME_CG_RULES } from '@clwa/modules';
-import { registerRoleTopicPool } from '@clwa/engine';
+import { registerRoleTopicPool, registerSecretDirectiveBuilder } from '@clwa/engine';
 import { broadcast } from './ws';
 import { startServer } from './server';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
@@ -54,6 +54,37 @@ registerRoleTopicPool('herbalist', [
   { subject: 'someone who came for a remedy', tone: 'knowing, cryptic', weight: 2, initiatorHook: 'Someone visited for help. Hint at what ailed them.', category: 'role:herbalist' },
   { subject: 'the weather changing', tone: 'observant', weight: 2, initiatorHook: 'Signs in the weather mean something for the herbs.', category: 'role:herbalist' },
 ]);
+
+// ─── Secret Directive Builders (player interaction effects) ───
+registerSecretDirectiveBuilder(({ agent, eventStore }) => {
+  const agentId = agent.profile.id;
+  const sections: string[] = [];
+
+  const threatMemories = eventStore.query({ type: 'PLAYER_ACTION' })
+    .filter((e) => e.object === agentId && (e.payload?.action === 'threaten'));
+  if (threatMemories.length > 0) {
+    sections.push(
+      `## HIDDEN: You have been threatened\n` +
+      `A stranger threatened you recently. You are afraid of them.\n` +
+      `- When talking to the stranger: be cautious, guarded, avoid provoking them.\n` +
+      `- You might comply with their requests out of fear, though you resent it.\n` +
+      `- If someone else asks about the threat: you might mention it nervously.`,
+    );
+  }
+
+  const bribeMemories = eventStore.query({ type: 'PLAYER_ACTION' })
+    .filter((e) => e.object === agentId && (e.payload?.action === 'bribe'));
+  if (bribeMemories.length > 0) {
+    sections.push(
+      `## HIDDEN: You were offered a bribe\n` +
+      `A stranger tried to bribe you. This makes you uncomfortable.\n` +
+      `- You feel conflicted — the offer is tempting but wrong.\n` +
+      `- If asked about shady dealings: you become evasive.`,
+    );
+  }
+
+  return sections;
+});
 
 // ─── Persistence ───
 
@@ -167,9 +198,10 @@ const PROFILES: AgentProfile[] = [
       'Runs the Silver Flagon tavern for 15 years. Knows everyone in town. ' +
       'Heard every story, served every drink. The tavern is his life.',
     speechStyle:
-      'Wipes a mug while talking. Calls regulars by nicknames. Speaks in short warm bursts with a drawl.\n' +
-      'Example: "Aye, the usual? Coming right up, friend. ...Say, you look like you could use more than ale tonight."\n' +
-      'Example: "Hah! That reminds me of— well, nevermind. Another round?"',
+      'Wipes a mug while talking. Calls regulars by nicknames. Warm drawl, trails off when nervous.\n' +
+      'Example (relaxed): "Aye, the usual? Coming right up, friend. ...Say, you look like you could use more than ale tonight."\n' +
+      'Example (deflecting): "Me? I just pour the drinks, friend. *wipes counter harder* Don\'t go mixin\' me up in..."\n' +
+      'Example (shaken): "Hah! That reminds me of— ...no. *sets mug down too hard* Nevermind. Forget I said anything."',
     bigFive: { openness: 0.5, conscientiousness: 0.6, extraversion: 0.8, agreeableness: 0.7, neuroticism: 0.3, honesty: 0.6 },
     enneagram: { type: 9, wing: 8, coreFear: 'Losing connection with people and being alone', coreDesire: 'To keep peace and harmony around you', stressType: 6, growthType: 3 },
     llm: { temperature: 0.7, maxTokens: 250 },
@@ -235,9 +267,11 @@ const PROFILES: AgentProfile[] = [
       '10 years of service. Takes his duty seriously. Patrols the gate area and ' +
       'only visits the tavern occasionally. Relies on townsfolk for news from inside.',
     speechStyle:
-      'Formal, clipped military speech. Says "citizen" often. Sighs about duty and paperwork.\n' +
-      'Example: "State your business, citizen. ...No, I have not seen anything unusual. Just the usual trouble."\n' +
-      'Example: "*sigh* Another report to file. Right. Tell me exactly what you saw. Slowly."',
+      'Clipped military tone. Short sentences, flat delivery. Emotion leaks through pauses and physical gestures, not words.\n' +
+      'Example (routine): "Quiet night. ...Too quiet. *adjusts halberd* Move along."\n' +
+      'Example (receiving report): "Tell me what you saw. All of it. *hand moves to weapon* Leave nothing out."\n' +
+      'Example (under pressure): "*long pause* ...Right. *exhales through nose* I will handle this. Personally."\n' +
+      'Example (frustrated): "Everyone talks. Nobody acts. *stares past you* Fine. I will go look myself."',
     bigFive: { openness: 0.3, conscientiousness: 0.9, extraversion: 0.5, agreeableness: 0.4, neuroticism: 0.2, honesty: 0.7 },
     enneagram: { type: 6, wing: 5, coreFear: 'Being without guidance or security', coreDesire: 'To have stability and support from authority', stressType: 3, growthType: 9 },
     llm: { temperature: 0.5, maxTokens: 150 },
@@ -468,7 +502,7 @@ function buildRelationships(npcId: string, profiles: AgentProfile[]): Relationsh
 function makeState(location: string, npcId: string): AgentState {
   return {
     alive: true,
-    status: 'free' as const,
+    status: undefined,
     location,
     mood: 0.3,
     currentDay: 1,
@@ -530,7 +564,6 @@ async function main() {
 
   let world: World;
   const engine = new ConsequenceEngine(CRIME_CG_RULES, {
-    publicPlaces,
     onEvent: (event) => {
       eventStore.append(event);
       broadcast({ type: 'event', data: event });
@@ -545,7 +578,7 @@ async function main() {
     agents,
     eventStore,
     engine,
-    { minConversationScore: 1 },
+    { minConversationScore: 1, publicPlaces },
     {
       onLine: (line) => {
         console.log(`    ${line.speakerName}: "${line.text}"`);

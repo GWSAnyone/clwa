@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
-import { isEventCategory } from './event-registry';
+import { isEventCategory, isSourceCategory, getSecretDirectiveBuilders } from './event-registry';
 
 /**
  * Build behavioral directives based on what an NPC secretly knows.
@@ -34,11 +34,11 @@ export function buildSecretDirectives(
     );
   }
 
-  // 2. Covering for someone — check beliefs with source='cover_up'
+  // 2. Covering for someone — check beliefs with concealment source category
   const beliefs = agent.state.beliefs;
   if (beliefs) {
     const coverBeliefs = beliefs.getAllBeliefs()
-      .filter((b) => b.source === 'cover_up');
+      .filter((b) => isSourceCategory(b.source, 'concealment'));
 
     for (const belief of coverBeliefs) {
       const coveredId = belief.subject;
@@ -58,11 +58,11 @@ export function buildSecretDirectives(
       );
     }
 
-    // 3. Witnessed a crime (not covering) — check witness beliefs
+    // 3. Witnessed a crime (not covering) — check direct experience beliefs
     const coveredSubjects = new Set(coverBeliefs.map((b) => b.subject));
     const witnessBeliefs = beliefs.getAllBeliefs()
       .filter((b) =>
-        (b.source === 'witness' || b.source === 'body_discovery') &&
+        isSourceCategory(b.source, 'direct_experience') &&
         isEventCategory(b.eventType, 'crime') &&
         !coveredSubjects.has(b.subject),
       );
@@ -87,31 +87,10 @@ export function buildSecretDirectives(
     }
   }
 
-  // 4. Threatened by player — check memories about threats
-  const threatMemories = eventStore.query({ type: 'PLAYER_ACTION' })
-    .filter((e) => e.object === agentId && (e.payload?.action === 'threaten'));
-
-  if (threatMemories.length > 0) {
-    sections.push(
-      `## HIDDEN: You have been threatened\n` +
-      `A stranger threatened you recently. You are afraid of them.\n` +
-      `- When talking to the stranger: be cautious, guarded, avoid provoking them.\n` +
-      `- You might comply with their requests out of fear, though you resent it.\n` +
-      `- If someone else asks about the threat: you might mention it nervously.`,
-    );
-  }
-
-  // 5. Bribed by player
-  const bribeMemories = eventStore.query({ type: 'PLAYER_ACTION' })
-    .filter((e) => e.object === agentId && (e.payload?.action === 'bribe'));
-
-  if (bribeMemories.length > 0) {
-    sections.push(
-      `## HIDDEN: You were offered a bribe\n` +
-      `A stranger tried to bribe you. This makes you uncomfortable.\n` +
-      `- You feel conflicted — the offer is tempting but wrong.\n` +
-      `- If asked about shady dealings: you become evasive.`,
-    );
+  // 4+. Module/server-registered secret directive builders
+  for (const builder of getSecretDirectiveBuilders()) {
+    const extra = builder({ agent, agents, eventStore });
+    sections.push(...extra);
   }
 
   if (sections.length === 0) return '';

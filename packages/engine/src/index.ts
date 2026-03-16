@@ -189,6 +189,11 @@ export {
   registerBeliefCreator, getBeliefCreator,
   registerMemoryTextBuilder, getMemoryTextBuilder,
   registerDayAdvanceHandler, getDayAdvanceHandlers,
+  registerSourceCategory, isSourceCategory,
+  registerInteractionResultHook, getInteractionResultHooks,
+  registerTickPhaseHandler, getTickPhaseHandlers,
+  registerSecretDirectiveBuilder, getSecretDirectiveBuilders,
 } from './event-registry';
+export type { TickPhaseContext, TickPhaseHandlerFn } from './event-registry';
 export type { StepExecutionContext, StepHandlerFn, InteractionRunner as StepInteractionRunner } from './event-registry';
-export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate, BeliefCreatorFn, MemoryTextBuilderFn, DayAdvanceHandlerFn } from './event-registry';
+export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate, BeliefCreatorFn, MemoryTextBuilderFn, DayAdvanceHandlerFn, DayAdvanceContext } from './event-registry';

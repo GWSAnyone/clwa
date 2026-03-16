@@ -140,6 +140,8 @@ export interface WorldConfig {
   lmStudioUrl: string;
   /** Model identifier */
   model: string;
+  /** Public gathering places where information spreads (used by day advance handlers) */
+  publicPlaces?: Set<string>;
 }
 
 export const DEFAULT_WORLD_CONFIG: WorldConfig = {

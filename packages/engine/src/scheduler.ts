@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { WorldConfig } from './world-types';
-import { isEventCategory } from './event-registry';
+import { isEventCategory, isStatusAbsent } from './event-registry';
 
 /** Pair key for cooldown tracking */
 function pairKey(a: string, b: string): string {
@@ -37,8 +37,7 @@ export class ConversationScheduler {
     const agentList = Array.from(agents.entries())
       .filter(([id, a]) => {
         if (!a.state.alive || excludeIds?.has(id)) return false;
-        const st = a.state.status ?? 'free';
-        return st !== 'exiled' && st !== 'fled';
+        return !isStatusAbsent(a.state.status);
       });
 
     // Generate all co-located pairs

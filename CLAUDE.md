@@ -60,7 +60,7 @@ bun install && bun run packages/server/src/index.ts  # → http://localhost:3000
 ## Architecture
 
 ```
-Engine  (packages/engine/)  — universal subsystems, ~25 empty registries
+Engine  (packages/engine/)  — universal subsystems, 30+ empty registries
 Modules (packages/modules/) — world content via registration functions
 Server  (packages/server/)  — HTTP/WS, NPC profiles, bootstrap
 ```
@@ -76,7 +76,11 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 6. **Step handlers**: engine handles move_to/interact/announce/wait. All other step types via STEP_HANDLERS registry.
 7. **handleEventForGoals**: async. All callers must await.
 8. **No fallback strings**: if registry returns null/undefined — skip, throw, or use generic behavior. Never `?? 'HARDCODED_STRING'`.
+9. **Status = null is free**: null/undefined status = default active. `isStatusAbsent()` checks registry. No `'free'` string in engine.
+10. **Source categories**: engine checks `isSourceCategory(source, 'guilt')` not `source === 'perpetrator'`. Module defines which sources belong to which semantic categories.
+11. **Day advance/tick handlers**: module logic (rumor spread, theft discovery) via DAY_ADVANCE_HANDLERS and TICK_PHASE_HANDLERS registries.
+12. **Secret directive builders**: behavioral prompts (threats, bribes) via SECRET_DIRECTIVE_BUILDERS registry. Server registers builders.
 
 ## Current Status
 
-v0.7.5. Engine decoupled from Crime & Justice module. 7 remaining violations tracked in Serena memory `clwa/engine-invariants`.
+v0.8.1. Engine content-agnostic. Full E2E chain stable: murder → exile in ~50 ticks via reflex mechanism (minimumScore on affordances).

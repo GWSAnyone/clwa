@@ -13,7 +13,7 @@ import {
   type ScoredAffordance,
   type StepTemplate,
 } from './al';
-import { getAffordanceIdsForVerb, getRelationshipLabel, isEventCategory } from './event-registry';
+import { getAffordanceIdsForVerb, getRelationshipLabel, isEventCategory, isStatusAbsent } from './event-registry';
 
 // ─── Constants ───
 
@@ -55,7 +55,7 @@ export async function evaluateAllVolition(
   const goals: NpcGoal[] = [];
 
   for (const [npcId, agent] of ctx.agents) {
-    if (!agent.state.alive || (agent.state.status ?? 'free') !== 'free') continue;
+    if (!agent.state.alive || !!agent.state.status) continue; // any non-default status blocks proactive volition
     if (ctx.hasActiveGoalAbove(npcId, 4)) continue;
 
     // Decision cooldown — don't re-evaluate too frequently
@@ -143,7 +143,7 @@ export function evaluateReactiveVolition(
 
   for (const npcId of reactors) {
     const agent = ctx.agents.get(npcId);
-    if (!agent || !agent.state.alive || (agent.state.status ?? 'free') !== 'free') continue;
+    if (!agent || !agent.state.alive || !!agent.state.status) continue;
 
     // Find reactive affordances matching this event
     for (const aff of AFFORDANCE_REGISTRY) {
@@ -222,8 +222,7 @@ async function llmDecideAndBuild(
   const npcNames = Array.from(ctx.agents.entries())
     .filter(([id, a]) => {
       if (id === npcId || !a.state.alive) return false;
-      const st = a.state.status ?? 'free';
-      return st !== 'exiled' && st !== 'fled';
+      return !isStatusAbsent(a.state.status);
     })
     .map(([, a]) => a.profile.name);
   const crimeActions = new Set(scored
@@ -338,10 +337,9 @@ function buildDecisionPrompt(
 
   for (const [otherId, other] of ctx.agents) {
     if (otherId === npcId || !other.state.alive) continue;
-    const st = other.state.status ?? 'free';
-    if (st === 'exiled' || st === 'fled') continue;
+    if (isStatusAbsent(other.state.status)) continue;
     if (other.state.location === agent.state.location) {
-      const statusTag = st === 'detained' ? ' [detained]' : '';
+      const statusTag = other.state.status ? ` [${other.state.status}]` : '';
       nearbyNpcs.push(`${other.profile.name} (${other.profile.role})${statusTag}`);
     }
   }
@@ -353,8 +351,7 @@ function buildDecisionPrompt(
       const npcsAt: string[] = [];
       for (const [otherId, other] of ctx.agents) {
         if (otherId === npcId || !other.state.alive) continue;
-        const ost = other.state.status ?? 'free';
-        if (ost === 'exiled' || ost === 'fled') continue;
+        if (isStatusAbsent(other.state.status)) continue;
         if (other.state.location === connName) {
           npcsAt.push(`${other.profile.name} (${other.profile.role})`);
         }
@@ -375,8 +372,7 @@ function buildDecisionPrompt(
   const aliveNpcNames = Array.from(ctx.agents.entries())
     .filter(([id, a]) => {
       if (id === npcId || !a.state.alive) return false;
-      const st = a.state.status ?? 'free';
-      return st !== 'exiled' && st !== 'fled';
+      return !isStatusAbsent(a.state.status);
     })
     .map(([, a]) => a.profile.name);
 

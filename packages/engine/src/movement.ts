@@ -1,5 +1,6 @@
 import type { Agent } from './agent';
 import type { LocationGraph, NpcMovementConfig, MovementResult } from './world-types';
+import { isStatusAbsent } from './event-registry';
 
 /** Find a LocationDef by its name in the graph (keyed by id) */
 function findByName(locations: LocationGraph, name: string) {
@@ -24,8 +25,7 @@ export function processMovement(
 
   for (const [id, agent] of agents) {
     if (!agent.state.alive) continue;
-    const st = agent.state.status ?? 'free';
-    if (st !== 'free') continue; // detained/exiled/fled NPCs don't move randomly
+    if (agent.state.status) continue; // any non-default status blocks random movement
     if (!config.mobileNpcs.has(id)) continue;
     if (excludeIds?.has(id)) continue;
     if (Math.random() > config.moveProbability) continue;

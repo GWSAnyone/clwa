@@ -103,6 +103,7 @@ export class ScheduleManager {
           period: entry.period,
         },
         createdAtTick: 0, // will be set by caller
+        isRoutine: true,
       };
 
       this.activeScheduleGoals.add(npcId);

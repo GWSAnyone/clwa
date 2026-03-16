@@ -133,7 +133,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetFinder: 'crime_belief',
     category: 'social',
     severity: 3,
-    requires: { hasCrimeBelief: true, beliefConfidence: 0.5, sentimentBelow: -0.2 },
+    requires: { hasCrimeBelief: true, beliefConfidence: 0.5, sentimentBelow: -0.2, notPerpetrator: true },
     weights: [
       { trait: 'E', direction: 'high', multiplier: 0.25 },
       { trait: 'A', direction: 'low', multiplier: 0.2 },
@@ -193,7 +193,8 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     actionVerb: 'investigate',
     actionDescription: 'investigate a crime scene',
     label: 'Investigate a crime scene',
-    targetFinder: 'interrogation',
+    targetFinder: 'investigate',
+    minimumScore: 0.7,
     category: 'duty',
     severity: 2,
     requires: { isInvestigator: true },
@@ -372,7 +373,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact', targetId: '$target', purpose: 'Interrogate {targetName} about the {crimeType:crime} involving {victimName:the victim}. Ask what they saw, when, and if they know who is responsible. Be thorough and firm.', importance: 6, beliefTransfer: true, evaluateSuspect: true },
+      { action: 'interact', targetId: '$target', purpose: 'Interrogate {targetName} about the {crimeType:crime} involving {victimName:the victim}. Ask what they saw, when, and if they know who is responsible. Be thorough and firm.', importance: 6, beliefTransfer: true, evaluateSuspect: true, emitEventType: 'NPC_INTERROGATED' },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },
@@ -387,6 +388,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'duty',
     severity: 6,
     requires: { isInvestigator: true, hasCrimeBelief: true, beliefConfidence: 0.7 },
+    minimumScore: 0.7,
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.3 },
       { trait: 'A', direction: 'low', multiplier: 0.1 },
@@ -456,7 +458,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetRole: 'guard',
     category: 'social',
     severity: 2,
-    requires: { notGuard: true, hasCrimeBelief: true, beliefConfidence: 0.3 },
+    requires: { notGuard: true, hasCrimeBelief: true, beliefConfidence: 0.3, notPerpetrator: true },
     weights: [
       { trait: 'E', direction: 'high', multiplier: 0.2 },
       { trait: 'A', direction: 'low', multiplier: 0.15 },
@@ -584,6 +586,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'duty',
     severity: 3,
     requires: { role: 'judge', hasDetainedNpc: true },
+    minimumScore: 0.7,
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.3 },
       { trait: 'H', direction: 'high', multiplier: 0.2 },

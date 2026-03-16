@@ -43,13 +43,14 @@ export class BeliefManager {
   private beliefs: Map<string, Belief> = new Map();
 
   addBelief(belief: Belief): void {
-    // Check for existing belief about same event+object — reinforce instead of duplicate
-    const existing = this.findExisting(belief.eventType, belief.object);
+    // Check for existing belief about same event+object+source — reinforce instead of duplicate.
+    // Different sources create separate beliefs (observation vs evidence vs testimony = coexist).
+    // Same source about same event+object = merge (two testimonies about same crime reinforce).
+    const existing = this.findExisting(belief.eventType, belief.object, belief.source);
     if (existing) {
-      // Take the higher confidence, update source if new is more direct
+      // Take the higher confidence, update sourceNpcId if new is more direct
       if (belief.confidence > existing.confidence) {
         existing.confidence = belief.confidence;
-        existing.source = belief.source;
         existing.sourceNpcId = belief.sourceNpcId;
       }
       // Update subject if we now have a specific suspect (replace null)
@@ -63,12 +64,23 @@ export class BeliefManager {
     this.beliefs.set(belief.id, belief);
   }
 
-  /** Find existing belief about same event type and object */
-  private findExisting(eventType: string, object: string): Belief | null {
+  /** Find existing belief about same event type, object, AND source */
+  private findExisting(eventType: string, object: string | null | undefined, source: string): Belief | null {
     for (const b of this.beliefs.values()) {
-      if (b.eventType === eventType && b.object === object) return b;
+      if (b.eventType === eventType && b.object === object && b.source === source) return b;
     }
     return null;
+  }
+
+  /** Get max confidence across ALL beliefs about a suspect for a given event category */
+  getMaxConfidenceFor(subject: string, eventTypeMatcher?: (eventType: string) => boolean): number {
+    let max = 0;
+    for (const b of this.beliefs.values()) {
+      if (b.subject !== subject) continue;
+      if (eventTypeMatcher && !eventTypeMatcher(b.eventType)) continue;
+      if (b.confidence > max) max = b.confidence;
+    }
+    return max;
   }
 
   queryBeliefs(filter: {

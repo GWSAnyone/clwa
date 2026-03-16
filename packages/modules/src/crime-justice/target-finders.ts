@@ -1,7 +1,7 @@
 import type { Agent, AffordanceContext, AffordanceDefinition, AffordanceTarget } from '@clwa/engine';
 import type { Belief } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
-import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel } from '@clwa/engine';
+import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel, isStatusAbsent, isSourceCategory } from '@clwa/engine';
 
 // ─── Helpers ───
 
@@ -120,16 +120,22 @@ export function isWantedNpc(agent: Agent, ctx: AffordanceContext): boolean {
 /** Check if any detained NPC exists */
 export function hasDetainedNpc(ctx: AffordanceContext): boolean {
   for (const [, agent] of ctx.agents) {
-    if ((agent.state.status ?? 'free') === 'detained') return true;
+    if (agent.state.status === 'detained') return true;
   }
   return false;
 }
 
-/** Check if NPC has a witness-source crime belief */
+/** Check if NPC has a witness-source crime belief (excludes perpetrators) */
 export function hasWitnessBelief(agent: Agent): boolean {
   if (!agent.state.beliefs) return false;
-  return agent.state.beliefs.getAllBeliefs().some(
+  const allBeliefs = agent.state.beliefs.getAllBeliefs();
+  // If NPC is the perpetrator of any crime, they cannot testify about it
+  const perpetratorEvents = new Set(
+    allBeliefs.filter((b: Belief) => isSourceCategory(b.source, 'guilt')).map((b: Belief) => b.eventType),
+  );
+  return allBeliefs.some(
     (b: Belief) => isEventCategory(b.eventType, 'crime') &&
+      !perpetratorEvents.has(b.eventType) &&
       (b.source === 'witness' || b.source === 'observation' || b.source === 'body_discovery') &&
       b.subject !== agent.profile.name && b.subject !== agent.profile.id &&
       b.confidence >= 0.3,
@@ -151,8 +157,7 @@ function findInterrogationTarget(npcId: string, agent: Agent, ctx: AffordanceCon
   for (const belief of crimeBeliefs) {
     for (const [otherId, other] of ctx.agents) {
       if (otherId === npcId || !other.state.alive) continue;
-      const st = other.state.status ?? 'free';
-      if (st === 'exiled' || st === 'fled') continue;
+      if (isStatusAbsent(other.state.status)) continue;
 
       // Check if this NPC has relevant beliefs about the same crime (match by eventType + victim)
       const otherBeliefs = other.state.beliefs?.getAllBeliefs() ?? [];
@@ -181,22 +186,33 @@ function findInterrogationTarget(npcId: string, agent: Agent, ctx: AffordanceCon
 function findArrestTarget(npcId: string, agent: Agent, ctx: AffordanceContext, event?: WorldEvent): AffordanceTarget | null {
   if (!agent.state.beliefs) return null;
 
+  // Find suspects: any named subject in a crime belief
   const crimeBeliefs = agent.state.beliefs.getAllBeliefs().filter(
-    (b: Belief) => isEventCategory(b.eventType, 'crime') &&
-      b.confidence >= 0.7 && b.subject,
+    (b: Belief) => isEventCategory(b.eventType, 'crime') && b.subject,
   );
+  // Deduplicate suspect names
+  const suspects = new Map<string, Belief>();
+  for (const b of crimeBeliefs) {
+    if (!suspects.has(b.subject!)) suspects.set(b.subject!, b);
+  }
 
-  for (const belief of crimeBeliefs) {
+  for (const [suspectName, belief] of suspects) {
+    // Aggregate confidence: max across ALL beliefs about this suspect
+    const aggConf = agent.state.beliefs.getMaxConfidenceFor(
+      suspectName,
+      (et) => isEventCategory(et, 'crime'),
+    );
+    if (aggConf < 0.7) continue;
+
     for (const [otherId, other] of ctx.agents) {
       if (otherId === npcId || !other.state.alive) continue;
-      const st = other.state.status ?? 'free';
-      if (st !== 'free') continue; // can't arrest someone already detained/exiled
+      if (other.state.status) continue; // can't arrest someone already detained/exiled
 
-      if (matchesNpc(belief.subject, other)) {
+      if (matchesNpc(suspectName, other)) {
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
-            crimeType: belief.eventType === 'NPC_KILLED' ? 'murder' : belief.eventType === 'SELF_JUSTICE' ? 'vigilante attack' : 'theft',
+            crimeType: getEventLabel(belief.eventType),
             victimName: belief.object ?? 'someone',
           },
         };
@@ -227,8 +243,7 @@ function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext):
   // Find NPCs who have witness beliefs about this NPC's crime
   for (const [otherId, other] of ctx.agents) {
     if (otherId === npcId || !other.state.alive || other.profile.investigator) continue;
-    const st = other.state.status ?? 'free';
-    if (st !== 'free') continue;
+    if (other.state.status) continue; // only free NPCs can be intimidated
 
     const otherBeliefs = other.state.beliefs?.getAllBeliefs() ?? [];
     const witnessOfMyCrime = otherBeliefs.find(
@@ -246,10 +261,35 @@ function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext):
   return null;
 }
 
+/** Find a crime scene to investigate — returns the crime location as target, with crimeLocation in extra */
+function findInvestigateTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
+  if (!agent.state.beliefs) return null;
+
+  const crimeBeliefs = agent.state.beliefs.getAllBeliefs().filter(
+    (b: Belief) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3 && b.location,
+  );
+  if (crimeBeliefs.length === 0) return null;
+
+  // Pick strongest crime belief with a known location
+  const belief = crimeBeliefs.sort((a: Belief, b: Belief) => b.confidence - a.confidence)[0];
+
+  return {
+    targetId: npcId, // self — the goal is about the location, not a person
+    targetName: agent.profile.name,
+    targetLocation: belief.location!,
+    extra: {
+      crimeType: getEventLabel(belief.eventType),
+      victimName: belief.object ?? 'someone',
+      crimeLocation: belief.location!,
+      killerName: belief.subject ?? 'an unknown assailant',
+    },
+  };
+}
+
 /** Find a detained NPC for the judge to evaluate */
 function findDetainedTarget(ctx: AffordanceContext): AffordanceTarget | null {
   for (const [id, agent] of ctx.agents) {
-    if ((agent.state.status ?? 'free') === 'detained') {
+    if (agent.state.status === 'detained') {
       return { targetId: id, targetName: agent.profile.name, targetLocation: agent.state.location };
     }
   }
@@ -265,6 +305,7 @@ export function registerCrimeTargetFinders(): void {
   TARGET_FINDERS.set('crime_belief', (npcId, agent, ctx, aff) => findCrimeBeliefTarget(npcId, agent, ctx, aff.requires.beliefConfidence ?? 0.5));
   TARGET_FINDERS.set('blackmail', findBlackmailTarget);
   TARGET_FINDERS.set('interrogation', (npcId, agent, ctx) => findInterrogationTarget(npcId, agent, ctx));
+  TARGET_FINDERS.set('investigate', (npcId, agent, ctx) => findInvestigateTarget(npcId, agent, ctx));
   TARGET_FINDERS.set('arrest', (npcId, agent, ctx) => findArrestTarget(npcId, agent, ctx));
   TARGET_FINDERS.set('gossip', findGossipTarget);
   TARGET_FINDERS.set('crime_scene', findCrimeSceneForCriminal);

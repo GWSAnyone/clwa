@@ -115,6 +115,7 @@ import type { NpcGoal, GoalStep, GoalActionResult } from './goals';
 import type { CrimeScene, LocationGraph } from './world-types';
 import type { ExaminationPoint } from './world-types';
 import type { EvidenceLayer } from './evidence';
+import type { IEventStore } from './event-types';
 
 export interface EventHandlerContext {
   agents: Map<string, Agent>;
@@ -155,6 +156,12 @@ export function getAffordanceIdsForVerb(verb: string): string[] {
 // Modules register examination point templates per scene type.
 export interface CrimeSceneTemplate {
   points: Omit<ExaminationPoint, 'id' | 'examined'>[];
+  /** Prose text for NPCs who passively notice this scene. {locationName} is interpolated. */
+  passiveNoticeText?: string;
+  /** Profession-based clues keyed by role string */
+  professionClues?: Record<string, { description: string; clueText: string }>;
+  /** If true, first 'body' type point gets personalized with victim name/role */
+  personalizeBody?: boolean;
 }
 
 const CRIME_SCENE_TEMPLATES: Map<string, CrimeSceneTemplate> = new Map();
@@ -271,7 +278,7 @@ export function getStepHandler(action: string): StepHandlerFn | null {
 
 // ─── Status Categories ───
 // Modules register which statuses mean "active" (can act) vs "absent" (not in world)
-const ACTIVE_STATUSES: Set<string> = new Set(['free']); // default
+const ACTIVE_STATUSES: Set<string> = new Set(); // null/undefined = active by default
 const ABSENT_STATUSES: Set<string> = new Set();
 
 export function registerActiveStatuses(statuses: string[]): void {
@@ -282,11 +289,13 @@ export function registerAbsentStatuses(statuses: string[]): void {
   for (const s of statuses) ABSENT_STATUSES.add(s);
 }
 
-export function isStatusActive(status: string): boolean {
+export function isStatusActive(status: string | null | undefined): boolean {
+  if (!status) return true; // null/undefined = default free state = active
   return ACTIVE_STATUSES.has(status);
 }
 
-export function isStatusAbsent(status: string): boolean {
+export function isStatusAbsent(status: string | null | undefined): boolean {
+  if (!status) return false; // null/undefined = default free state = not absent
   return ABSENT_STATUSES.has(status);
 }
 
@@ -298,6 +307,28 @@ const INTERACT_POST_HOOKS: InteractPostHookFn[] = [];
 
 export function registerInteractPostHook(hook: InteractPostHookFn): void {
   INTERACT_POST_HOOKS.push(hook);
+}
+
+// ─── Interaction Result Hooks ───
+// Modules register hooks that run after a goal-driven interaction completes.
+// Richer context than InteractPostHooks — includes purpose, eventStore, and event emission.
+export type InteractionResultHookFn = (ctx: {
+  initiator: Agent;
+  target: Agent;
+  step: GoalStep;
+  purpose: string;
+  eventStore: IEventStore;
+  onExtraEvent?: (e: WorldEvent) => Promise<void>;
+}) => Promise<void>;
+
+const INTERACTION_RESULT_HOOKS: InteractionResultHookFn[] = [];
+
+export function registerInteractionResultHook(hook: InteractionResultHookFn): void {
+  INTERACTION_RESULT_HOOKS.push(hook);
+}
+
+export function getInteractionResultHooks(): InteractionResultHookFn[] {
+  return INTERACTION_RESULT_HOOKS;
 }
 
 // ─── Witness Event Type ───
@@ -409,7 +440,15 @@ export function getMemoryTextBuilder(consequenceType: string): MemoryTextBuilder
 
 // ─── Day Advance Handlers ───
 // Modules register handlers that run during day advance (e.g., rumor spreading)
-export type DayAdvanceHandlerFn = (agents: Map<string, Agent>, eventStore: any, onEvent: (event: WorldEvent) => void) => Promise<void>;
+export interface DayAdvanceContext {
+  agents: Map<string, Agent>;
+  currentDay: number;
+  eventStore: IEventStore;
+  onEvent?: (event: WorldEvent) => void;
+  publicPlaces: Set<string>;
+}
+
+export type DayAdvanceHandlerFn = (ctx: DayAdvanceContext) => Promise<void>;
 
 const DAY_ADVANCE_HANDLERS: DayAdvanceHandlerFn[] = [];
 
@@ -419,4 +458,64 @@ export function registerDayAdvanceHandler(handler: DayAdvanceHandlerFn): void {
 
 export function getDayAdvanceHandlers(): DayAdvanceHandlerFn[] {
   return DAY_ADVANCE_HANDLERS;
+}
+
+// ─── Source Categories ───
+// Classify belief sources into semantic categories (e.g., 'guilt', 'direct_experience', 'concealment')
+// Engine uses categories for behavioral prompt building. Modules define which sources belong to which categories.
+
+const SOURCE_CATEGORIES = new Map<string, Set<string>>();
+
+export function registerSourceCategory(category: string, sources: string[]): void {
+  if (!SOURCE_CATEGORIES.has(category)) SOURCE_CATEGORIES.set(category, new Set());
+  const set = SOURCE_CATEGORIES.get(category)!;
+  for (const s of sources) set.add(s);
+}
+
+export function isSourceCategory(source: string | null | undefined, category: string): boolean {
+  if (!source) return false;
+  return SOURCE_CATEGORIES.get(category)?.has(source) ?? false;
+}
+
+// ─── Tick Phase Handlers ───
+// Modules register per-tick handlers for discovery checks (e.g., theft discovery).
+// Called during _tick at the appropriate phase.
+export interface TickPhaseContext {
+  agents: Map<string, Agent>;
+  eventStore: IEventStore;
+  currentDay: number;
+  tickCount: number;
+  processEvent: (event: WorldEvent) => Promise<void>;
+  discoveries: Set<string>;
+}
+
+export type TickPhaseHandlerFn = (ctx: TickPhaseContext) => Promise<void>;
+
+const TICK_PHASE_HANDLERS: TickPhaseHandlerFn[] = [];
+
+export function registerTickPhaseHandler(handler: TickPhaseHandlerFn): void {
+  TICK_PHASE_HANDLERS.push(handler);
+}
+
+export function getTickPhaseHandlers(): TickPhaseHandlerFn[] {
+  return TICK_PHASE_HANDLERS;
+}
+
+// ─── Secret Directive Builders ───
+// Modules/server register functions that produce secret behavioral prompt sections.
+// buildSecretDirectives calls all registered builders.
+export type SecretDirectiveBuilderFn = (ctx: {
+  agent: Agent;
+  agents: Map<string, Agent>;
+  eventStore: IEventStore;
+}) => string[];
+
+const SECRET_DIRECTIVE_BUILDERS: SecretDirectiveBuilderFn[] = [];
+
+export function registerSecretDirectiveBuilder(builder: SecretDirectiveBuilderFn): void {
+  SECRET_DIRECTIVE_BUILDERS.push(builder);
+}
+
+export function getSecretDirectiveBuilders(): SecretDirectiveBuilderFn[] {
+  return SECRET_DIRECTIVE_BUILDERS;
 }
