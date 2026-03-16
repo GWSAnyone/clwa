@@ -239,6 +239,10 @@ func post_save() -> Dictionary:
 	return await _http_post("/api/save")
 
 
+func post_auto(seconds: int = 8) -> Dictionary:
+	return await _http_post("/api/auto", {"seconds": seconds})
+
+
 func post_kill(npc_id: String) -> Dictionary:
 	return await _http_post("/api/kill/%s" % npc_id)
 

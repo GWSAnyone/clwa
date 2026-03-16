@@ -564,16 +564,16 @@ export function parseDoWhy(
 
     default: {
       // Module-registered action verbs — try to parse as verb [NPC_NAME]
-      const verbIds = getAffordanceIdsForVerb(verb);
+      const verbIds = getAffordanceIdsForVerb(action);
       if (verbIds.length === 0) return null;
       // If verb has remaining parts, try to match NPC name
       const npcInput = parts.slice(1).join(' ');
       if (npcInput) {
         const npc = matchName(npcInput, validNpcs);
-        if (npc) return { action: verb, target: npc, why };
+        if (npc) return { action, target: npc, why };
       }
       // No target or no match — verb-only action
-      return { action: verb, why };
+      return { action, why };
     }
   }
 }

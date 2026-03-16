@@ -382,7 +382,7 @@ export class World {
     const interactionRunner = createInteractionRunner(this.eventStore, {
       onLine: this.callbacks.onLine,
       onExtraEvent: async (event) => {
-        const results = await this.engine.process(event, { agents: this.agents });
+        const results = await this.engine.process(event, this.buildCgContext());
         await this.handleEventForGoals(event);
         for (const r of results) {
           await this.handleEventForGoals(r.event);
@@ -430,7 +430,7 @@ export class World {
             this.evidence.generate(crimeEvent, elCtx);
 
             // Process through CE for cascading consequences
-            const results = await this.engine.process(crimeEvent, { agents: this.agents });
+            const results = await this.engine.process(crimeEvent, this.buildCgContext());
             await this.handleEventForGoals(crimeEvent);
             for (const r of results) {
               await this.handleEventForGoals(r.event);
@@ -489,7 +489,7 @@ export class World {
       currentDay: this.getCurrentDay(),
       tickCount: this.tickCount,
       processEvent: async (event: WorldEvent) => {
-        const results = await this.engine.process(event, { agents: this.agents });
+        const results = await this.engine.process(event, this.buildCgContext());
         await this.handleEventForGoals(event);
         for (const r of results) {
           await this.handleEventForGoals(r.event);
@@ -849,7 +849,7 @@ export class World {
 
     // Shared context across all discoveries this tick — prevents duplicate WITNESS_MEMORY
     const sharedCtx: import('./cg-engine').WorldContext = {
-      agents: this.agents,
+      ...this.buildCgContext(),
       witnessIds: new Set(),
     };
 
@@ -1140,7 +1140,7 @@ export class World {
     this.evidence.generate(killEvent, elCtx);
 
     // Process consequences — the engine's onEvent callback will call handleEventForGoals
-    const results = await this.engine.process(killEvent, { agents: this.agents });
+    const results = await this.engine.process(killEvent, this.buildCgContext());
 
     // Also feed the kill event itself into goals
     this.handleEventForGoals(killEvent);
@@ -1184,6 +1184,11 @@ export class World {
 
   get currentTick(): number {
     return this.tickCount;
+  }
+
+  /** Build WorldContext for ConsequenceEngine.process() */
+  private buildCgContext(): import('./cg-engine').WorldContext {
+    return { agents: this.agents, publicPlaces: this.config.publicPlaces || new Set() };
   }
 
   private getCurrentDay(): number {

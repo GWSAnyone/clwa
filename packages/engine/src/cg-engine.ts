@@ -6,6 +6,8 @@ export interface WorldContext {
   agents: Map<string, Agent>;
   /** IDs of agents who already received WITNESS_MEMORY for the current event chain */
   witnessIds?: Set<string>;
+  /** Public gathering places (for is_public_place CG condition) */
+  publicPlaces?: Set<string>;
 }
 
 export interface EngineOptions {
@@ -155,7 +157,7 @@ export class ConsequenceEngine {
 
       // Fix #2: rumor targets exclude direct witnesses
       if (cond.op === 'is_public_place') {
-        if (!this.publicPlaces.has(event.location)) return [];
+        if (!ctx.publicPlaces?.has(event.location)) return [];
         return Array.from(ctx.agents.entries())
           .filter(([id, agent]) =>
             agent.state.alive &&

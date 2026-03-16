@@ -75,6 +75,7 @@ var _street_polygons: Dictionary = {}  # street_name -> PackedVector2Array (worl
 var _nav_region: NavigationRegion2D
 var _player: Node2D
 var _dialog_panel: PanelContainer
+var _chatting_with_npc: String = ""  # NPC id frozen during player conversation
 var _shop_panel: PanelContainer
 var _examine_panel: PanelContainer
 var _journal_panel: PanelContainer
@@ -376,6 +377,9 @@ func _place_npc_at_location(npc_id: String, location_id: String, instant: bool =
 
 
 func _tween_npc_to(npc_id: String, marker: Node2D, target_pos: Vector2, instant: bool = false, use_nav: bool = false) -> void:
+	# Don't move NPC while player is talking to them
+	if npc_id == _chatting_with_npc:
+		return
 	# Kill any existing tween for this NPC
 	if _npc_tweens.has(npc_id):
 		var old_tween: Tween = _npc_tweens[npc_id]
@@ -593,10 +597,12 @@ func _centroid(poly: PackedVector2Array) -> Vector2:
 func _on_interact_requested(npc_id: String) -> void:
 	var npc_name: String = NPC_NAMES.get(npc_id, npc_id)
 	print("[Main] Interacting with %s" % npc_name)
+	_chatting_with_npc = npc_id
 	_dialog_panel.open_dialog(npc_id, npc_name)
 
 
 func _on_dialog_closed() -> void:
+	_chatting_with_npc = ""
 	_player.movement_locked = false
 
 

@@ -52,7 +52,9 @@ func _ready() -> void:
 
 	_close_btn = Button.new()
 	_close_btn.text = "X"
-	_close_btn.custom_minimum_size = Vector2(30, 30)
+	_close_btn.custom_minimum_size = Vector2(36, 36)
+	_close_btn.focus_mode = Control.FOCUS_NONE  # don't steal focus from input field
+	_close_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_close_btn.pressed.connect(_on_close)
 	header.add_child(_close_btn)
 
@@ -98,6 +100,10 @@ func open_dialog(npc_id: String, npc_name: String) -> void:
 	_npc_name_label.text = npc_name
 	_chat_log.clear()
 	_chat_log.append_text("[color=gray]You approach %s...[/color]\n" % npc_name)
+	# Reset streaming state in case previous dialog was interrupted
+	_streaming = false
+	_send_btn.disabled = false
+	_input_field.editable = true
 	visible = true
 	_input_field.grab_focus()
 
@@ -196,6 +202,8 @@ func _on_close() -> void:
 	_talking_to = ""
 	_talking_to_name = ""
 	_streaming = false
+	_send_btn.disabled = false
+	_input_field.editable = true
 	_clear_actions()
 	closed.emit()
 

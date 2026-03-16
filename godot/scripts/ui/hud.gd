@@ -8,12 +8,22 @@ extends CanvasLayer
 @onready var _event_log: RichTextLabel = $EventLog
 
 var _tick_in_progress := false
+var _auto_ticking := false
+var _auto_btn: Button
 
 
 func _ready() -> void:
 	_tick_btn.pressed.connect(_on_tick)
 	_day_btn.pressed.connect(_on_day)
 	_save_btn.pressed.connect(_on_save)
+
+	# Auto-tick toggle button (added programmatically next to existing buttons)
+	_auto_btn = Button.new()
+	_auto_btn.text = "▶ Auto"
+	_auto_btn.custom_minimum_size = Vector2(80, 0)
+	_auto_btn.pressed.connect(_on_auto_toggle)
+	$Buttons.add_child(_auto_btn)
+	$Buttons.move_child(_auto_btn, 0)  # first position
 
 	Backend.connected.connect(func() -> void:
 		_status_label.text = "Connected"
@@ -76,6 +86,18 @@ func _on_save() -> void:
 	await Backend.post_save()
 	_save_btn.disabled = false
 	_append_log("[color=gray]State saved[/color]")
+
+
+func _on_auto_toggle() -> void:
+	_auto_btn.disabled = true
+	var result: Dictionary = await Backend.post_auto(8)
+	_auto_ticking = result.get("autoTick", false)
+	_auto_btn.text = "⏸ Pause" if _auto_ticking else "▶ Auto"
+	_auto_btn.disabled = false
+	# Hide manual tick/day buttons during auto-tick
+	_tick_btn.visible = not _auto_ticking
+	_day_btn.visible = not _auto_ticking
+	_append_log("[color=gray]Auto-tick %s[/color]" % ("started" if _auto_ticking else "stopped"))
 
 
 func _on_conversation_line(speaker: String, text: String) -> void:

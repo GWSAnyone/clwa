@@ -56,6 +56,13 @@ export class Agent {
   private model: string;
   private reflectionTracker: ReflectionTracker;
   private onReflection?: (agentName: string, text: string) => void;
+  /** Short-term conversation buffer for multi-turn player chat (last N exchanges) */
+  private _chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+  /** Clear conversation buffer (called when player starts talking to a different NPC) */
+  clearChatHistory(): void {
+    this._chatHistory = [];
+  }
 
   constructor(
     profile: AgentProfile,
@@ -136,16 +143,31 @@ export class Agent {
     const memories = await this.memory.recall(userMessage, this.state.currentDay, 5);
     const systemPrompt = this.buildSystemPrompt(memories, additionalContext);
 
+    // Add player message to conversation history
+    this._chatHistory.push({ role: 'user', content: userMessage });
+    // Keep last 6 exchanges (12 messages) to fit context window
+    if (this._chatHistory.length > 12) {
+      this._chatHistory = this._chatHistory.slice(-12);
+    }
+
     await llmSemaphore.acquire();
     let res: Response;
     try {
+      // Build conversation input with history for multi-turn continuity
+      const historyText = this._chatHistory.slice(0, -1) // all except current message (already appended)
+        .map((m) => m.role === 'user' ? `Player: "${m.content}"` : `You: "${m.content}"`)
+        .join('\n');
+      const inputWithHistory = historyText
+        ? `${historyText}\nPlayer: "${userMessage}"\nRespond naturally, continuing the conversation:`
+        : userMessage;
+
       res = await fetch(`${this.baseUrl}/api/v1/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: this.model,
           system_prompt: systemPrompt,
-          input: userMessage,
+          input: inputWithHistory,
           reasoning: 'off',
           temperature: this.llmConfig.temperature,
           max_output_tokens: this.llmConfig.maxTokens,
@@ -199,6 +221,9 @@ export class Agent {
     }
 
     if (!fullReply) fullReply = '...';
+
+    // Add NPC reply to conversation history for multi-turn continuity
+    this._chatHistory.push({ role: 'assistant', content: fullReply });
 
     const conversationText = `Player said: "${userMessage}". I replied: "${fullReply}"`;
     await this.memory.store(conversationText, 2, this.state.currentDay);
