@@ -63,8 +63,6 @@ export interface EventBoost {
   eventTypes: string[];
   /** Score bonus added (typically 0.3-0.5, pushes past auto threshold) */
   boost: number;
-  /** Only apply if NPC has this role */
-  role?: string;
   /** Only apply if NPC has a close relationship with the victim */
   requiresRelationToVictim?: boolean;
 }
@@ -148,6 +146,8 @@ export interface AffordanceDefinition {
   /** If affordance passes requirements, score is at least this value.
    *  Use to ensure critical affordances reach reflex tier (≥0.7) when conditions are met. */
   minimumScore?: number;
+  /** Per-affordance cooldown override (ticks). If set, overrides global affordanceCooldownTicks for this affordance. */
+  cooldownOverride?: number;
 }
 
 // ─── Mutable Registries (populated by modules at startup) ───
@@ -171,6 +171,9 @@ export interface AffordanceContext {
   cooldowns?: Map<string, Map<string, number>>;
   /** Decision cooldowns: npcId → expiresAtTick (limits LLM call frequency) */
   decisionCooldowns?: Map<string, number>;
+  /** Configurable cooldown values (from WorldConfig) */
+  affordanceCooldownTicks?: number;
+  decisionCooldownTicks?: number;
 }
 
 /** Target found for an affordance */

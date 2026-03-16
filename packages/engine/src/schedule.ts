@@ -2,22 +2,31 @@ import type { GoalStep, NpcGoal } from './goals';
 
 // ─── Time Constants ───
 
-export const TICKS_PER_DAY = 24;
+export const TICKS_PER_DAY = 96;
 
 export type TimePeriod = 'dawn' | 'morning' | 'afternoon' | 'evening' | 'night';
 
-/** Map tick-within-day (0-23) to a named period */
+/** Map tick-within-day to a named period (scaled for 96 ticks/day) */
 export function getTimePeriod(tickInDay: number): TimePeriod {
-  if (tickInDay >= 5 && tickInDay < 7) return 'dawn';
-  if (tickInDay >= 7 && tickInDay < 12) return 'morning';
-  if (tickInDay >= 12 && tickInDay < 17) return 'afternoon';
-  if (tickInDay >= 17 && tickInDay < 21) return 'evening';
-  return 'night'; // 21-4
+  // 96 ticks/day → 1 tick = 15 game minutes
+  // dawn: 5:00-7:00 → ticks 20-28
+  // morning: 7:00-12:00 → ticks 28-48
+  // afternoon: 12:00-17:00 → ticks 48-68
+  // evening: 17:00-21:00 → ticks 68-84
+  // night: 21:00-5:00 → ticks 84-96+0-20
+  if (tickInDay >= 20 && tickInDay < 28) return 'dawn';
+  if (tickInDay >= 28 && tickInDay < 48) return 'morning';
+  if (tickInDay >= 48 && tickInDay < 68) return 'afternoon';
+  if (tickInDay >= 68 && tickInDay < 84) return 'evening';
+  return 'night'; // 84-96+0-20
 }
 
-/** Get human-readable hour string from tick */
+/** Get human-readable hour string from tick (96 ticks = 24 hours) */
 export function tickToHour(tickInDay: number): string {
-  return `${tickInDay.toString().padStart(2, '0')}:00`;
+  const totalMinutes = tickInDay * 15; // 96 ticks × 15 min = 1440 min = 24 hours
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
 }
 
 // ─── Schedule Entry ───

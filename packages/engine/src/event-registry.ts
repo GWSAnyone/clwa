@@ -374,7 +374,7 @@ export function registerGoalMoodBoost(mapping: Record<string, number>): void {
 }
 
 export function getGoalMoodBoost(goalType: string): number {
-  return GOAL_MOOD_BOOST.get(goalType) ?? 0.05;
+  return GOAL_MOOD_BOOST.get(goalType) ?? 0;
 }
 
 // ─── Body Discovery Event Type ───

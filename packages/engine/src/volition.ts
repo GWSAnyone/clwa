@@ -17,11 +17,11 @@ import { getAffordanceIdsForVerb, getRelationshipLabel, isEventCategory, isStatu
 
 // ─── Constants ───
 
-/** Cooldown in ticks after an affordance fires */
-const AFFORDANCE_COOLDOWN = 6;
+/** Default cooldown in ticks after an affordance fires (overridden by ctx.affordanceCooldownTicks) */
+const DEFAULT_AFFORDANCE_COOLDOWN = 12;
 
-/** Cooldown in ticks between LLM decision calls per NPC */
-const DECISION_COOLDOWN = 3;
+/** Default cooldown in ticks between LLM decision calls per NPC (overridden by ctx.decisionCooldownTicks) */
+const DEFAULT_DECISION_COOLDOWN = 4;
 
 /** Score threshold — affordances below this are filtered out */
 const MIN_SCORE = 0.3;
@@ -99,21 +99,22 @@ export async function evaluateAllVolition(
       agent.state.currentMotive = top.definition.label;
       goals.push(goal);
       setDecisionCooldown(ctx, npcId, ctx.currentTick);
-      setAffordanceCooldown(ctx, npcId, top.definition.id, ctx.currentTick);
+      setAffordanceCooldown(ctx, npcId, top.definition.id, ctx.currentTick, top.definition);
       continue;
     }
 
     // ── Tier 2/3: URGE or THOUGHT — LLM decides ──
     const goal = await llmDecideAndBuild(scored, npcId, agent, ctx, onLlmCall);
 
-    // Record decision cooldown regardless of outcome
-    setDecisionCooldown(ctx, npcId, ctx.currentTick);
-
     if (goal) {
       goal.createdAtTick = ctx.currentTick;
       goals.push(goal);
-      // Record affordance cooldown
-      setAffordanceCooldown(ctx, npcId, goal.data?.affordanceId as string, ctx.currentTick);
+      setDecisionCooldown(ctx, npcId, ctx.currentTick);
+      const affDef = AFFORDANCE_REGISTRY.find(a => a.id === goal.data?.affordanceId);
+      setAffordanceCooldown(ctx, npcId, goal.data?.affordanceId as string, ctx.currentTick, affDef);
+    } else {
+      // NPC chose "wait" — apply extended cooldown (×3) so they don't re-evaluate every tick
+      setDecisionCooldownExtended(ctx, npcId, ctx.currentTick);
     }
   }
 
@@ -150,9 +151,6 @@ export function evaluateReactiveVolition(
       if (!aff.eventBoost) continue;
       if (!aff.eventBoost.eventTypes.includes(event.type)) continue;
 
-      // Role filter
-      if (aff.eventBoost.role && agent.profile.role !== aff.eventBoost.role) continue;
-
       // Relation to victim filter
       if (aff.eventBoost.requiresRelationToVictim) {
         const victimId = event.object;
@@ -161,9 +159,18 @@ export function evaluateReactiveVolition(
         if (!rel || rel.sentiment < 0.2) continue; // only close relationships trigger grief
       }
 
-      // Dedup: don't create same goal type if already active
+      // Don't create same goal type if already active
       const existing = existingGoalTypes(npcId);
       if (existing.includes(aff.goalType)) continue;
+
+      // Respect affordance cooldowns — same system as proactive, prevents reactive spam
+      if (ctx.cooldowns) {
+        const npcCooldowns = ctx.cooldowns.get(npcId);
+        if (npcCooldowns) {
+          const expires = npcCooldowns.get(aff.id);
+          if (expires !== undefined && ctx.currentTick < expires) continue;
+        }
+      }
 
       // Only react to events from CE cascade (have sourceRule) or goal execution (have sourceEvent)
       if (!event.payload?.sourceRule && !event.payload?.sourceEvent) continue;
@@ -189,6 +196,8 @@ export function evaluateReactiveVolition(
       // Set current motive on agent so all LLM calls carry emotional context
       agent.state.currentMotive = goal.data?.reason as string | undefined;
       goals.push(goal);
+      // Apply cooldown so reactive doesn't fire again for this affordance
+      setAffordanceCooldown(ctx, npcId, aff.id, ctx.currentTick, aff);
       break; // One reactive goal per NPC per event
     }
   }
@@ -398,7 +407,7 @@ function buildDecisionPrompt(
     actionLines.push('talk NPC_NAME topic — talk to someone about something');
   }
   actionLines.push('wait — stay and observe, do nothing');
-  actionLines.push('announce message — say something to everyone at your location');
+  actionLines.push('announce <your words> — say something to everyone at your location');
 
   // Add module-registered action verbs from scored affordances
   const addedVerbs = new Set<string>();
@@ -442,7 +451,7 @@ function buildDecisionPrompt(
     '',
     'Use EXACTLY the action words listed above. What do you do?',
     'DO: <action>',
-    'WHY: <reason in one sentence>',
+    'WHY: <reason in first person, one sentence>',
   ].filter((l) => l !== undefined).join('\n');
 
   return { system: systemParts, user: userParts };
@@ -919,17 +928,24 @@ function interpolate(template: string, vars: Record<string, string>): string {
 
 // ─── Cooldown Helpers ───
 
-function setAffordanceCooldown(ctx: AffordanceContext, npcId: string, affordanceId: string, currentTick: number): void {
+function setAffordanceCooldown(ctx: AffordanceContext, npcId: string, affordanceId: string, currentTick: number, aff?: AffordanceDefinition): void {
   if (!ctx.cooldowns || !affordanceId) return;
   let npcMap = ctx.cooldowns.get(npcId);
   if (!npcMap) {
     npcMap = new Map();
     ctx.cooldowns.set(npcId, npcMap);
   }
-  npcMap.set(affordanceId, currentTick + AFFORDANCE_COOLDOWN);
+  const cooldown = aff?.cooldownOverride ?? ctx.affordanceCooldownTicks ?? DEFAULT_AFFORDANCE_COOLDOWN;
+  npcMap.set(affordanceId, currentTick + cooldown);
 }
 
 function setDecisionCooldown(ctx: AffordanceContext, npcId: string, currentTick: number): void {
   if (!ctx.decisionCooldowns) return;
-  ctx.decisionCooldowns.set(npcId, currentTick + DECISION_COOLDOWN);
+  ctx.decisionCooldowns.set(npcId, currentTick + (ctx.decisionCooldownTicks ?? DEFAULT_DECISION_COOLDOWN));
+}
+
+function setDecisionCooldownExtended(ctx: AffordanceContext, npcId: string, currentTick: number): void {
+  if (!ctx.decisionCooldowns) return;
+  const base = ctx.decisionCooldownTicks ?? DEFAULT_DECISION_COOLDOWN;
+  ctx.decisionCooldowns.set(npcId, currentTick + base * 3);
 }

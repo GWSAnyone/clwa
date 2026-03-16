@@ -72,8 +72,9 @@ export class World {
   private movementConfig: NpcMovementConfig;
   private npcHomes: Map<string, string>; // npcId → home location name
   private callbacks: WorldCallbacks;
-  private tickCount: number = 0;
-  private autoTickTimer: ReturnType<typeof setInterval> | null = null;
+  private tickCount: number;
+  private autoTickTimer: ReturnType<typeof setTimeout> | null = null;
+  private autoTickInterval: number = 5000;
   /** Track which NPC has already discovered which body (to avoid repeats) */
   private bodyDiscoveries: Set<string> = new Set(); // "discoverer:victim"
   /** Active crime scenes at locations */
@@ -108,6 +109,7 @@ export class World {
     this.eventStore = eventStore;
     this.engine = engine;
     this.config = { ...DEFAULT_WORLD_CONFIG, ...config };
+    this.tickCount = this.config.startTick ?? 0;
     this.callbacks = callbacks ?? {};
     this.scheduler = new ConversationScheduler(this.config);
     this.locations = locations ?? new Map();
@@ -148,6 +150,8 @@ export class World {
       playerLocation: this.playerLocation ?? undefined,
       hasActiveGoal: (id) => this.goalManager.hasActiveGoal(id),
       hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
+      cooldowns: this.affordanceCooldowns,
+      affordanceCooldownTicks: this.config.affordanceCooldownTicks,
     };
     const reactiveGoals = evaluateReactiveVolition(
       event, reactiveCtx,
@@ -322,7 +326,7 @@ export class World {
         if (this.goalManager.hasActiveGoal(id)) continue;
         // mood < -0.3 → chance of night walk proportional to distress
         if (agent.state.mood < -0.3) {
-          const walkChance = Math.min(0.4, Math.abs(agent.state.mood) * 0.3);
+          const walkChance = Math.min(0.1, Math.abs(agent.state.mood) * 0.08);
           if (Math.random() < walkChance) {
             // Pick a random public location to wander to
             const publicLocations = Array.from(this.locations.values())
@@ -366,6 +370,8 @@ export class World {
       hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
       cooldowns: this.affordanceCooldowns,
       decisionCooldowns: this.decisionCooldowns,
+      affordanceCooldownTicks: this.config.affordanceCooldownTicks,
+      decisionCooldownTicks: this.config.decisionCooldownTicks,
     };
     const volitionGoals = await evaluateAllVolition(volitionCtx, this.callbacks.onLlmCall);
     for (const goal of volitionGoals) {
@@ -977,7 +983,7 @@ export class World {
       onEvent: this.callbacks.onTick ? (e: WorldEvent) => {
         this.eventStore.append(e);
       } : undefined,
-      publicPlaces: this.config.publicPlaces ?? new Set<string>(),
+      publicPlaces: this.config.publicPlaces || new Set<string>(),
     };
     for (const handler of getDayAdvanceHandlers()) {
       await handler(dayCtx);
@@ -1145,20 +1151,29 @@ export class World {
   /** Start auto-ticking at the given interval */
   startAutoTick(intervalMs: number): void {
     this.stopAutoTick();
-    this.autoTickTimer = setInterval(async () => {
+    this.autoTickInterval = intervalMs;
+    const loop = async () => {
+      if (!this.autoTickTimer) return; // stopped
       try {
         await this.tick();
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`[Auto-tick error]: ${msg}`);
+        if (!msg.includes('already in progress')) {
+          console.error(`[Auto-tick error]: ${msg}`);
+        }
       }
-    }, intervalMs);
+      // Schedule next tick AFTER current completes (tick-when-ready)
+      if (this.autoTickTimer) {
+        this.autoTickTimer = setTimeout(loop, this.autoTickInterval);
+      }
+    };
+    this.autoTickTimer = setTimeout(loop, intervalMs);
   }
 
   /** Stop auto-ticking */
   stopAutoTick(): void {
     if (this.autoTickTimer) {
-      clearInterval(this.autoTickTimer);
+      clearTimeout(this.autoTickTimer);
       this.autoTickTimer = null;
     }
   }
@@ -1195,6 +1210,8 @@ export class World {
       playerLocation: this.playerLocation ?? undefined,
       cooldowns: this.affordanceCooldowns,
       decisionCooldowns: this.decisionCooldowns,
+      affordanceCooldownTicks: this.config.affordanceCooldownTicks,
+      decisionCooldownTicks: this.config.decisionCooldownTicks,
       hasActiveGoal: (id) => this.goalManager.getActiveGoal(id) !== null,
       hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
     };

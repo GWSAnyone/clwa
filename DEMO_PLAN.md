@@ -467,11 +467,30 @@ Criminal executes destroy_evidence at crime scene
 **Ключевые параметры**: Viewport 500x666, CAM_ORTHO_SIZE 3.5, sprite_scale 0.72, SPEED 300/SPRINT 550
 4. Убрать старый Sprite2D код
 
-### Сессия N+6: Demo Ready
-1. Настроить начальные условия для demo (Mark's motive, moods)
-2. Убедиться что murder происходит в разумное время
-3. Написать краткий "demo script" — что показывать и в каком порядке
-4. Финальный тест
+### ~~Сессия N+6: E2E Stability + Dialogue Quality~~ ✅ (v0.8.1)
+
+1. ✅ addBelief source-level dedup (evidence coexists with observation/testimony)
+2. ✅ minimumScore on AffordanceDefinition (arrest, investigate, evaluate_case → reflex)
+3. ✅ Dedicated findInvestigateTarget (crime scene, not witness)
+4. ✅ [CRIME] tag parser multi-word fix
+5. ✅ Belief zeroing after NPC_SENTENCED for ALL NPCs + goal cleanup (testify/report)
+6. ✅ notPerpetrator requirement (blocks perpetrators from testify/report/confront/demand_justice)
+7. ✅ Beliefs in interaction prompts (summarizeForPrompt)
+8. ✅ Garrett/Ted speechStyle rewritten with diverse examples
+
+### ~~Сессия N+7: Tick System v2~~ ✅ (v0.8.2-dev)
+
+1. ✅ TICKS_PER_DAY: 24 → 96 (1 tick = 15 game minutes)
+2. ✅ Auto-tick: tick-when-ready pattern (setTimeout loop)
+3. ✅ Configurable cooldowns via WorldConfig (affordance=12, decision=4, conversation=16)
+4. ✅ Default interval 8s → 1 day ≈ 13 min real time
+
+### Сессия N+8: Demo Ready
+1. Настроить начальные условия + вторичные tension seeds
+2. Протестировать auto-tick с Godot клиентом
+3. Добавить локационные действия (order drink, browse wares, pray)
+4. Написать demo script
+5. Финальный тест (2-3 часа gameplay)
 
 ## 4. Демо-сценарий (как это выглядит)
 

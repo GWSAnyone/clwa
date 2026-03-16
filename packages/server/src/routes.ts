@@ -419,7 +419,7 @@ export function handleRequest(
         world.stopAutoTick();
         return Response.json({ autoTick: false }, { headers: cors });
       }
-      const seconds = body.seconds ?? 15;
+      const seconds = body.seconds ?? 8;
       world.startAutoTick(seconds * 1000);
       return Response.json({ autoTick: true, intervalSeconds: seconds }, { headers: cors });
     });

@@ -555,7 +555,7 @@ async function main() {
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npc.location}`);
   }
 
-  agents.get('mark')!.state.mood = -0.7;
+  agents.get('mark')!.state.mood = -0.35;
 
   const publicPlaces = new Set<string>();
   for (const loc of locationGraph.values()) {
@@ -578,7 +578,7 @@ async function main() {
     agents,
     eventStore,
     engine,
-    { minConversationScore: 1, publicPlaces },
+    { minConversationScore: 1, publicPlaces, pairCooldownTicks: 16, affordanceCooldownTicks: 12, decisionCooldownTicks: 4, startTick: 28 },
     {
       onLine: (line) => {
         console.log(`    ${line.speakerName}: "${line.text}"`);
@@ -623,7 +623,7 @@ async function main() {
       },
     },
     locationGraph,
-    { mobileNpcs: MOBILE_NPCS, moveProbability: 0.3 },
+    { mobileNpcs: MOBILE_NPCS, moveProbability: 0.08 },
     NPC_SCHEDULES,
     NPC_HOMES,
   );

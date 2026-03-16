@@ -25,7 +25,7 @@ Every piece of state is a typed field: `null`, enum literal, number, boolean.
 - Classifying a violation as "acceptable" or "borderline" because it's a union type or "engine-level concept". **Default is VIOLATION** — only goal state machine, LLM API protocol, and template DSL ($target, $home) are truly engine-level string checks.
 
 ### 2. Engine = Universal Laws, Modules = Worlds Built on Those Laws
-Engine contains **empty registries** (~25 in event-registry.ts). Modules fill them at startup. Engine never imports from modules.
+Engine contains **empty registries** (30+ in event-registry.ts). Modules fill them at startup. Engine never imports from modules.
 - New behavior = data record in a module. Zero code changes in engine.
 - Engine doesn't know specific roles, crimes, event types, verdict strings, status values, or scene types. All via registries.
 - **Test**: "If I add an Economy module with FRAUD/SMUGGLING events — does engine handle them without any engine code changes?" If no → violation.
@@ -80,7 +80,18 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 10. **Source categories**: engine checks `isSourceCategory(source, 'guilt')` not `source === 'perpetrator'`. Module defines which sources belong to which semantic categories.
 11. **Day advance/tick handlers**: module logic (rumor spread, theft discovery) via DAY_ADVANCE_HANDLERS and TICK_PHASE_HANDLERS registries.
 12. **Secret directive builders**: behavioral prompts (threats, bribes) via SECRET_DIRECTIVE_BUILDERS registry. Server registers builders.
+13. **minimumScore on affordances**: critical duties (arrest, investigate, evaluate_case) guarantee reflex tier (≥0.7) when conditions met. Bypasses LLM gambling.
+14. **Belief dedup by source**: addBelief key = (eventType, object, source). Different sources coexist. getMaxConfidenceFor() aggregates.
+15. **notPerpetrator requirement**: perpetrators blocked from testify, report_crime, demand_justice, confront via isSourceCategory('guilt').
+16. **Configurable cooldowns**: affordanceCooldownTicks, decisionCooldownTicks, pairCooldownTicks in WorldConfig. Not hardcoded.
+
+## Tick System
+
+- **TICKS_PER_DAY = 96** (1 tick = 15 game minutes). Periods: dawn(20-28), morning(28-48), afternoon(48-68), evening(68-84), night(84-96+0-20).
+- **Auto-tick**: tick-when-ready pattern (setTimeout loop, not setInterval). Default interval 8s → 1 day ≈ 13 min.
+- **Speed control**: `POST /api/auto { seconds: N }` to start, same endpoint to stop (toggle).
+- **Cooldowns**: affordance=12 ticks (3h game), decision=4 ticks (1h game), conversation pair=16 ticks (4h game). All configurable via WorldConfig.
 
 ## Current Status
 
-v0.8.1. Engine content-agnostic. Full E2E chain stable: murder → exile in ~50 ticks via reflex mechanism (minimumScore on affordances).
+v0.8.2-dev. Engine content-agnostic. 96 ticks/day with auto-tick. Full E2E chain: murder → exile stable via reflex mechanism.

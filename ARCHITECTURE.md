@@ -261,10 +261,15 @@ LLM отвечает свободно. Может последовать инс�
 | Механизм | Назначение |
 |---|---|
 | **Mood decay** | Настроение дрейфует к базелайну личности (f(N,E)) каждый день. Предотвращает doom spiral |
-| **Affordance cooldown** | 6 тиков между повторами одного affordance для одного NPC |
+| **Affordance cooldown** | 12 тиков (3h game) между повторами одного affordance (configurable via WorldConfig) |
+| **Decision cooldown** | 4 тика (1h game) между LLM-решениями одного NPC (configurable) |
+| **Conversation cooldown** | 16 тиков (4h game) между разговорами одной пары (configurable) |
 | **Goal completion → mood** | Завершение цели даёт mood boost (catharsis) |
 | **Belief decay по source** | witness/body: 1%/день, testimony: 2%/день, rumor: 4%/день |
 | **Sentiment cascade** | RUMOR_SPREAD → -0.15 к преступнику. WANTED_STATUS → guard -0.4 |
+| **Belief zeroing** | NPC_SENTENCED: investigators→0, others→0.2. Stops post-resolution loops |
+| **minimumScore** | Critical affordances (arrest, investigate, evaluate_case) guarantee reflex tier ≥0.7 |
+| **notPerpetrator** | Perpetrators blocked from testify, report_crime, demand_justice, confront |
 
 #### Declarative Step Templates
 
@@ -638,10 +643,12 @@ Guard получает цель: move → interact → announce → return (аг
 
 #### Schedule (ScheduleManager)
 
-- **TICKS_PER_DAY = 24** — 1 тик ≈ 1 час, 5 периодов: dawn (5-7), morning (7-12), afternoon (12-17), evening (17-21), night (21-5)
+- **TICKS_PER_DAY = 96** — 1 тик = 15 game minutes, 5 периодов: dawn (ticks 20-28), morning (28-48), afternoon (48-68), evening (68-84), night (84-96+0-20)
+- **Auto-tick**: tick-when-ready pattern (setTimeout loop), default interval 8s → 1 day ≈ 13 min real time
 - 34 записи расписания для 7 NPC
 - Schedule goals имеют priority 3 — уступают событийным
-- Автоматический advanceDay при обороте 24 тиков
+- Автоматический advanceDay при обороте 96 тиков
+- **Configurable cooldowns** via WorldConfig: affordance (12 ticks/3h), decision (4 ticks/1h), conversation pair (16 ticks/4h)
 - **Ночные прогулки**: mood < -0.3 → NPC бродит ночью (priority 2)
 
 #### Движение
@@ -862,9 +869,11 @@ Silver Flagon Tavern, Town Square (хаб), Town Gate, Market Square, Blacksmith
 | 15 | Bugfixes + capability flags | Medium | ✅ | role→capabilities, self-targeting, arrest cycle, perpetrator source |
 | 16 | Engine decoupling v1 | Large | ✅ | Event registry system, step handlers → module, all types → string |
 | 17 | Engine decoupling v2 | Large | ✅ | Belief creators, memory text, mood shifts, goal mood, topic pools, action verbs, volition generic |
-| 18 | Engine decoupling v3 (remaining) | Medium | 🔨 | spreadRumors → module, crime-scene templates, interaction rumor type, schedule flag |
-| 19 | Trauma layer | Medium | ⏳ | Постоянные сдвиги OCEAN+H от травм |
-| 20 | Consequence Graph v2 | Large | ⏳ | Полные цепочки для всех типов преступлений |
+| 18 | Engine decoupling v3 | Medium | ✅ | spreadRumors, crime-scene, interaction hooks, tick handlers, secret directive builders |
+| 19 | E2E stability + dialogue quality | Medium | ✅ | minimumScore, belief source dedup, notPerpetrator, beliefs in prompts, speechStyle |
+| 20 | Tick system v2 | Small | ✅ | TICKS_PER_DAY=96, auto-tick, configurable cooldowns |
+| 21 | Trauma layer | Medium | ⏳ | Постоянные сдвиги OCEAN+H от травм |
+| 22 | Consequence Graph v2 | Large | ⏳ | Полные цепочки для всех типов преступлений |
 
 ### Каталог преступлений и возможностей NPC
 
@@ -1043,7 +1052,7 @@ CLWA/
     │       ├── world.ts            # World.tick(), processKill(), isActive/isPresent
     │       ├── world-types.ts      # LocationDef, WorldConfig, TickResult, CrimeScene
     │       ├── interaction.ts      # InteractionRunner — LLM-driven goal conversations
-    │       ├── schedule.ts         # ScheduleManager, TICKS_PER_DAY=24
+    │       ├── schedule.ts         # ScheduleManager, TICKS_PER_DAY=96, auto-tick
     │       ├── secret-directives.ts # buildSecretDirectives()
     │       ├── intent.ts           # classifyIntent()
     │       ├── conversation.ts     # runConversation(), structured importance

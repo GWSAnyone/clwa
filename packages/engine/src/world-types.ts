@@ -132,7 +132,7 @@ export interface NpcHome {
 export interface WorldConfig {
   /** Minimum score for a pair to have a conversation (default: 2) */
   minConversationScore: number;
-  /** Cooldown in ticks before same pair can talk again (default: 3) */
+  /** Cooldown in ticks before same pair can talk again */
   pairCooldownTicks: number;
   /** Number of exchanges per conversation: 1 = each speaks once (default: 1) */
   exchangeCount: number;
@@ -142,17 +142,25 @@ export interface WorldConfig {
   model: string;
   /** Public gathering places where information spreads (used by day advance handlers) */
   publicPlaces?: Set<string>;
+  /** Cooldown in ticks before same NPC can use the same affordance again */
+  affordanceCooldownTicks?: number;
+  /** Cooldown in ticks before same NPC re-evaluates volition (LLM decision) */
+  decisionCooldownTicks?: number;
+  /** Starting tick (default 0). Set to 28 for morning start (07:00 with 96 ticks/day) */
+  startTick?: number;
 }
 
 export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   minConversationScore: 2,
-  pairCooldownTicks: 8,
+  pairCooldownTicks: 16,
   exchangeCount: 1,
   lmStudioUrl: 'http://localhost:1234',
   model: 'qwen/qwen3.5-9b',
+  affordanceCooldownTicks: 12,
+  decisionCooldownTicks: 4,
 };
 
 export const DEFAULT_MOVEMENT_CONFIG: NpcMovementConfig = {
   mobileNpcs: new Set(),
-  moveProbability: 0.3,
+  moveProbability: 0.08,
 };

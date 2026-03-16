@@ -160,6 +160,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     actionDescription: 'report a crime to the guard',
     label: 'Report a crime to the guard',
     targetRole: 'guard',
+    cooldownOverride: 48,
     category: 'duty',
     severity: 2,
     requires: { notGuard: true, hasWitnessBelief: true },
@@ -214,7 +215,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     eventBoost: {
       eventTypes: ['WANTED_STATUS'],
       boost: 0.5,
-      role: 'guard',
     },
     stepTemplates: [
       { action: 'move_to', location: '$extra.crimeLocation', skipIfAt: true },
@@ -317,7 +317,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetRole: 'priest',
     category: 'social',
     severity: 1,
-    requires: { notGuard: true },
+    requires: { notGuard: true, period: ['dawn', 'morning', 'afternoon'], moodBelow: -0.1 },
     weights: [
       { trait: 'A', direction: 'high', multiplier: 0.3 },
       { trait: 'H', direction: 'high', multiplier: 0.3 },
@@ -369,7 +369,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     eventBoost: {
       eventTypes: ['WANTED_STATUS', 'WITNESS_MEMORY'],
       boost: 0.4,
-      role: 'guard',
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
@@ -405,7 +404,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     eventBoost: {
       eventTypes: ['WANTED_STATUS'],
       boost: 0.6,
-      role: 'guard',
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
@@ -418,6 +416,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   {
     id: 'testify',
     isDuty: true,
+    cooldownOverride: 48,
     actionVerb: 'testify',
     actionDescription: 'give testimony to the guard',
     label: 'Tell the guard what you witnessed',

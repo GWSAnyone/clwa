@@ -367,6 +367,8 @@ export function registerCrimeJusticeModule(): void {
       ctx.eventStore.query({ type: 'WANTED_STATUS' }).map((e: any) => e.object).filter(Boolean),
     );
 
+    if (!ctx.publicPlaces || ctx.publicPlaces.size === 0) return;
+
     for (const [witnessId, witness] of ctx.agents) {
       if (!witness.state.alive) continue;
       if (!ctx.publicPlaces.has(witness.state.location)) continue;
