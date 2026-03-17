@@ -298,12 +298,18 @@ Belief mods: loneliness → social urgency, grief → comfort urgency
 
 **Решение**: IL извлекает structured meaning из речи → те же engine механизмы что NPC→NPC.
 
-- [ ] **Unified Actor Model** — Player = Agent (beliefs, relationships, mood, location)
-- [ ] **IL (Intent Layer)** — dialogue meaning extraction (claims, questions, requests, pressure)
-- [ ] **IL Effects** — claims → addBelief, requests → goals, pressure → mood/relationships
-- [ ] **Trust-based confidence** — player claims scaled by NPC trust → evolving trust
-- [ ] **Perception System** — centralized canSee/canHear, replaces scattered checks
-- [ ] **AL as validator** — player gameplay actions validated by affordance requirements
+- [x] **Unified Actor Model** — Player = Agent (isPlayer, beliefs, relationships, mood, location)
+- [x] **IL (Intent Layer)** — dialogue meaning extraction (claims, questions, requests, pressure)
+- [x] **IL Effects** — claims → addBelief, requests → goals, pressure → mood/relationships
+- [x] **Trust-based confidence** — player claims scaled by NPC trust. Trust shifts via interactions
+- [ ] **Trust evolution** — confirmed claims → trust up, refuted → trust down
+- [x] **Perception System** — canSee/canHear/getCoPresent/getWitnesses/isPlayerAt
+- [x] **AL as validator** — validatePlayerAction + createGoalFromRequest
+- [x] **Event type/source flags** — isTransferable/isInformationOnly/isPerpetrator/isFirsthand/isConcealment
+- [x] **isPlayer guards** — all NPC-only loops exclude player (volition, schedule, goals, targets, conversations)
+- [x] **Co-location validation** — server authoritative, polygon-based location detection in Godot
+- [x] **inPlayerChat freeze** — NPC frozen during player conversation
+- [x] **Case resolution** — crime scene deactivation + belief zeroing on NPC_SENTENCED
 - [ ] **NPC awareness** — NPCs approach player, form opinions, spread rumors about player
 - **Результат**: игрок влияет на мир через речь, NPC реагируют структурно
 

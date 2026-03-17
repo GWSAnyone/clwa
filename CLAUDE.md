@@ -20,7 +20,7 @@ Every piece of state is a typed field: `null`, enum literal, number, boolean.
 
 **Anti-patterns I must NOT repeat:**
 - `?? 'BODY_DISCOVERED'` — fallback on hardcoded string. Correct: registry or throw.
-- `=== 'NPC_KILLED' || === 'GOODS_STOLEN'` — enumerating module event types. Correct: `isEventCategory(type, 'crime')`.
+- `=== 'NPC_KILLED' || === 'GOODS_STOLEN'` — enumerating module event types. Correct: `isTransferable(type)` or other boolean flag.
 - `role === 'guard'` — role string for logic. Correct: `profile.investigator`.
 - Classifying a violation as "acceptable" or "borderline" because it's a union type or "engine-level concept". **Default is VIOLATION** — only goal state machine, LLM API protocol, and template DSL ($target, $home) are truly engine-level string checks.
 
@@ -39,8 +39,8 @@ Personality Model computes utility scores → generates prose descriptions of ur
 ### 4. Emergent Narrative
 We build **capabilities**, not scenarios. Nobody hardcodes "Mark kills Bess" — personality + mood + relationship + opportunity converge organically.
 
-### 5. Bilateral Design (future)
-Every system works identically for NPC and Player. Same action pipeline, different input source.
+### 5. Bilateral Design
+Every system works identically for NPC and Player. Player = Agent with `isPlayer` flag. Same beliefs, relationships, perception. `isPlayer` guards in all NPC-only loops (volition, schedule, movement, goal processing, conversation pairs, target finders).
 
 ### 6. Trace Dependencies Before Editing
 Before modifying any function: find all callers (`find_referencing_symbols`), understand the full data flow. Never edit blind.
@@ -77,17 +77,23 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 7. **handleEventForGoals**: async. All callers must await.
 8. **No fallback strings**: if registry returns null/undefined — skip, throw, or use generic behavior. Never `?? 'HARDCODED_STRING'`.
 9. **Status = null is free**: null/undefined status = default active. `isStatusAbsent()` checks registry. No `'free'` string in engine.
-10. **Source categories**: engine checks `isSourceCategory(source, 'guilt')` not `source === 'perpetrator'`. Module defines which sources belong to which semantic categories.
+10. **Source/event flags**: engine checks boolean flags — `isTransferable()`, `isInformationOnly()`, `isPerpetrator()`, `isFirsthand()`, `isConcealment()`. Modules register via `registerEventTypeFlags()` / `registerSourceFlags()`. Engine never checks category name strings.
 11. **Day advance/tick handlers**: module logic (rumor spread, theft discovery) via DAY_ADVANCE_HANDLERS and TICK_PHASE_HANDLERS registries.
 12. **Secret directive builders**: behavioral prompts (threats, bribes) via SECRET_DIRECTIVE_BUILDERS registry. Server registers builders.
 13. **minimumScore on affordances**: critical duties (arrest, investigate, evaluate_case) guarantee reflex tier (≥0.7) when conditions met. Bypasses LLM gambling.
 14. **Belief dedup by source**: addBelief key = (eventType, object, source). Different sources coexist. getMaxConfidenceFor() aggregates.
-15. **notPerpetrator requirement**: perpetrators blocked from testify, report_crime, demand_justice, confront via isSourceCategory('guilt').
+15. **notPerpetrator requirement**: perpetrators blocked from testify, report_crime, demand_justice, confront via `isPerpetrator(source)` flag. API kills also get perpetrator belief via NPC_KILLED event handler.
 16. **Configurable cooldowns**: affordanceCooldownTicks, decisionCooldownTicks, pairCooldownTicks in WorldConfig. Not hardcoded.
 17. **Player = Agent**: Player is a full Agent with `isPlayer` flag. Has beliefs, relationships, mood, location. World.tick() skips volition/schedule/movement for isPlayer. All other systems (beliefs, CG, EL, perception) treat player identically to NPC.
 18. **IL (Intent Layer)**: Player speech → `extractDialogueMeaning()` → `DialogueMeaning` → `applyDialogueMeaning()` → engine effects. Claims create beliefs via same `addBelief()` as NPC beliefTransfer. Confidence = claim.confidence * trust(NPC→Player).
 19. **Perception system**: `canSee()`, `canInteract()`, `canHear()`, `getCoPresent()`, `getWitnesses()` in perception.ts. Centralizes all visibility/awareness checks.
 20. **AL as validator**: `validatePlayerAction()` checks affordance requirements for player gameplay actions. AL for NPC = generator, AL for Player = validator.
+21. **isPlayer guards**: every `for (agent of agents)` loop must decide: include player or not. NPC-only: volition, schedule, night walks, goal processing, conversation pairs, target finders, LLM name lists. Bilateral (include player): body discovery, crime scene notice, overhear, perception, mood shifts.
+22. **inPlayerChat freeze**: NPC in active chat with player → `inPlayerChat=true` → tick skips movement/goals. Cleared in finally block. Transient — not persisted.
+23. **detained = absent**: `registerAbsentStatuses(['detained', 'exiled', 'fled'])`. Detained NPCs frozen — no goals, no movement, no conversations. Still targetable by evaluate_case (direct status check).
+24. **Case resolution**: NPC_SENTENCED → deactivate crime scenes (perpetratorId match) + mark bodies discovered + zero transferable beliefs (by suspect AND victim name). Prevents post-resolution investigate cycle.
+25. **Crime scene callbacks**: `personalizePoints()` and `additionalPoints()` on CrimeSceneTemplate — module callbacks, engine has zero domain-specific point logic.
+26. **Co-location validation**: server chat handler checks `playerAgent.location === npc.location` before IL. Server authoritative.
 
 ## Tick System
 
@@ -98,4 +104,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.9.0-dev. Player = Agent. IL extracts structured meaning from player speech. Perception system. AL validator. 96 ticks/day with auto-tick. Full E2E chain stable.
+v0.9.1-dev. Player = Agent with full bilateral design. IL dialogue meaning extraction. Perception system. AL validator. Event type/source flags (no category string matching in engine). Crime scene callbacks. Full E2E chain: player claim → investigate → arrest → trial(wait 4 ticks) → exile. Post-resolution cleanup prevents re-investigation.
