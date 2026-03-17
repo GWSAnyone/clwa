@@ -263,17 +263,23 @@ func _process(_delta: float) -> void:
 	_player.set_nearby_crime_scene(nearest_crime_scene)
 
 	# Detect player's current location and sync to server
-	var nearest_loc := ""
-	var nearest_loc_dist := LOCATION_DETECT_RADIUS
-	for loc_name: String in LOCATION_POSITIONS:
-		var loc_pos: Vector2 = LOCATION_POSITIONS[loc_name]
-		var dist := _player.position.distance_to(loc_pos)
-		if dist < nearest_loc_dist:
-			nearest_loc_dist = dist
-			nearest_loc = loc_name
-	if nearest_loc != _player_location:
-		_player_location = nearest_loc
-		Backend.update_player_location(nearest_loc)
+	# Primary: point-in-polygon test (accurate). Fallback: nearest centroid (for zones without polygon).
+	var detected_loc := ""
+	for loc_name: String in _zone_polygons:
+		if Geometry2D.is_point_in_polygon(_player.position, _zone_polygons[loc_name]):
+			detected_loc = loc_name
+			break
+	if detected_loc == "":
+		# Fallback: nearest centroid within radius
+		var nearest_dist := LOCATION_DETECT_RADIUS
+		for loc_name: String in LOCATION_POSITIONS:
+			var dist := _player.position.distance_to(LOCATION_POSITIONS[loc_name])
+			if dist < nearest_dist:
+				nearest_dist = dist
+				detected_loc = loc_name
+	if detected_loc != _player_location:
+		_player_location = detected_loc
+		Backend.update_player_location(detected_loc)
 
 	# Update map panel
 	if _map_panel:
