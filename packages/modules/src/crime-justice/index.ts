@@ -98,7 +98,7 @@ export function registerCrimeJusticeModule(): void {
   registerWitnessEventType('WITNESS_MEMORY');
   registerBodyDiscoveryEventType('BODY_DISCOVERED');
   registerRumorEventType('RUMOR_SPREAD');
-  registerAbsentStatuses(['exiled', 'fled']);
+  registerAbsentStatuses(['detained', 'exiled', 'fled']);
 
   // Source categories — classify belief sources for engine behavioral prompts
   registerSourceCategory('guilt', ['perpetrator']);

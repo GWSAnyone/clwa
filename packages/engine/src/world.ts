@@ -416,6 +416,7 @@ export class World {
         const agent = this.agents.get(id);
         if (agent?.profile.isPlayer) continue; // Player goals not executed by tick
         if (agent?.state.inPlayerChat) continue; // Frozen in conversation with player
+        if (agent && isStatusAbsent(agent.state.status)) continue; // Detained/exiled/fled NPCs don't act
         const goalType = this.goalManager.getActiveGoal(id)?.type ?? 'unknown';
         this.callbacks.onLlmCall?.(`Goal: ${goalType}`, agent?.profile.name);
         const action = await this.goalManager.processGoalTick(
