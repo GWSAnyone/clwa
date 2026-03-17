@@ -78,7 +78,7 @@ function findGossipTarget(npcId: string, agent: Agent, ctx: AffordanceContext): 
   for (const loc of ctx.locations.values()) {
     if (!loc.isPublic || loc.name === agent.state.location) continue;
     for (const [otherId, other] of ctx.agents) {
-      if (otherId === npcId || !other.state.alive) continue;
+      if (otherId === npcId || !other.state.alive || other.profile.isPlayer) continue;
       if (other.state.location === loc.name) {
         return { targetId: otherId, targetName: other.profile.name, targetLocation: loc.name };
       }
@@ -156,7 +156,7 @@ function findInterrogationTarget(npcId: string, agent: Agent, ctx: AffordanceCon
   // Find an NPC who might know something (anyone with beliefs about same crime, or at crime location)
   for (const belief of crimeBeliefs) {
     for (const [otherId, other] of ctx.agents) {
-      if (otherId === npcId || !other.state.alive) continue;
+      if (otherId === npcId || !other.state.alive || other.profile.isPlayer) continue;
       if (isStatusAbsent(other.state.status)) continue;
 
       // Check if this NPC has relevant beliefs about the same crime (match by eventType + victim)
@@ -242,7 +242,7 @@ function findCrimeSceneForCriminal(npcId: string, agent: Agent, ctx: AffordanceC
 function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
   // Find NPCs who have witness beliefs about this NPC's crime
   for (const [otherId, other] of ctx.agents) {
-    if (otherId === npcId || !other.state.alive || other.profile.investigator) continue;
+    if (otherId === npcId || !other.state.alive || other.profile.isPlayer || other.profile.investigator) continue;
     if (other.state.status) continue; // only free NPCs can be intimidated
 
     const otherBeliefs = other.state.beliefs?.getAllBeliefs() ?? [];

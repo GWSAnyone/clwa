@@ -292,7 +292,7 @@ async function llmDecideAndBuild(
   const locationNames = Array.from(ctx.locations.values()).map((l) => l.name);
   const npcNames = Array.from(ctx.agents.entries())
     .filter(([id, a]) => {
-      if (id === npcId || !a.state.alive) return false;
+      if (id === npcId || !a.state.alive || a.profile.isPlayer) return false;
       return !isStatusAbsent(a.state.status);
     })
     .map(([, a]) => a.profile.name);
@@ -442,7 +442,7 @@ function buildDecisionPrompt(
   const locationNames = Array.from(ctx.locations.values()).map((l) => l.name);
   const aliveNpcNames = Array.from(ctx.agents.entries())
     .filter(([id, a]) => {
-      if (id === npcId || !a.state.alive) return false;
+      if (id === npcId || !a.state.alive || a.profile.isPlayer) return false;
       return !isStatusAbsent(a.state.status);
     })
     .map(([, a]) => a.profile.name);
@@ -765,7 +765,7 @@ function intentionToGoal(
 function findNpcByName(name: string, excludeId: string, ctx: AffordanceContext): [string, Agent] | null {
   const lower = name.toLowerCase();
   for (const [id, agent] of ctx.agents) {
-    if (id === excludeId || !agent.state.alive) continue;
+    if (id === excludeId || !agent.state.alive || agent.profile.isPlayer) continue;
     if (agent.profile.name.toLowerCase() === lower) return [id, agent];
   }
   return null;
