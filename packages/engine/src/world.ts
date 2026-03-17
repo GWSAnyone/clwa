@@ -195,11 +195,39 @@ export class World {
       const suspectId = event.object;
       const suspect = suspectId ? this.agents.get(suspectId) : null;
       if (suspect) {
+        // Collect victim names from crime scenes linked to this suspect
+        const victimNames = new Set<string>();
+        for (const [, scenes] of this.crimeScenes) {
+          for (const scene of scenes) {
+            if (scene.perpetratorId === suspectId && scene.victimId) {
+              const victim = this.agents.get(scene.victimId);
+              if (victim) victimNames.add(victim.profile.name);
+            }
+          }
+        }
+        // Zero transferable beliefs: by suspect name OR by victim name (catches subject=null discoveries)
         for (const [, agent] of this.agents) {
           if (!agent.state.beliefs) continue;
           for (const b of agent.state.beliefs.getAllBeliefs()) {
-            if (b.subject === suspect.profile.name || b.subject === suspect.profile.id) {
-              b.confidence = 0; // Case resolved — zero all beliefs about suspect to prevent re-investigation
+            if (!isTransferable(b.eventType)) continue; // only crime-related beliefs
+            const aboutSuspect = b.subject === suspect.profile.name || b.subject === suspect.profile.id;
+            const aboutVictim = b.object != null && victimNames.has(b.object);
+            if (aboutSuspect || aboutVictim) {
+              b.confidence = 0;
+            }
+          }
+        }
+        // Deactivate crime scenes linked to this suspect + mark bodies discovered
+        // This prevents post-resolution body discoveries from restarting the cycle
+        for (const [, scenes] of this.crimeScenes) {
+          for (const scene of scenes) {
+            if (scene.perpetratorId !== suspectId) continue;
+            scene.active = false;
+            // Mark all agents as having discovered this victim's body
+            if (scene.victimId) {
+              for (const [agentId] of this.agents) {
+                this.bodyDiscoveries.add(`${agentId}:${scene.victimId}`);
+              }
             }
           }
         }
