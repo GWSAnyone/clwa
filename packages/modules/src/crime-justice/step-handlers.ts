@@ -239,7 +239,20 @@ export function registerCrimeStepHandlers(): void {
       target.state.mood = Math.min(1, target.state.mood + 0.3);
     }
     if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: 'NPC_SENTENCED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { judgeName: owner.profile.name, suspectName: target.profile.name, verdict, affectedTargets: Array.from(agents.keys()) } });
+      // Find victim from crime scenes linked to this suspect — needed for CG cascade payload
+      let victimName: string | null = null;
+      if (ctx.crimeScenes) {
+        for (const scenes of ctx.crimeScenes.values()) {
+          for (const scene of scenes) {
+            if (scene.perpetratorId === step.targetId && scene.victimId) {
+              victimName = agents.get(scene.victimId)?.profile.name ?? null;
+              break;
+            }
+          }
+          if (victimName) break;
+        }
+      }
+      await ctx.onCrimeEvent({ type: 'NPC_SENTENCED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { judgeName: owner.profile.name, suspectName: target.profile.name, killerName: target.profile.name, victimName, verdict, affectedTargets: Array.from(agents.keys()) } });
     }
     goal.currentStep++;
     return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name} ${verdict === 'exile' ? 'exiled' : 'released'} ${target.profile.name}` };

@@ -1,7 +1,7 @@
 import type { Agent, AffordanceContext, AffordanceDefinition, AffordanceTarget } from '@clwa/engine';
 import type { Belief } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
-import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel, isStatusAbsent, isSourceCategory } from '@clwa/engine';
+import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel, isStatusAbsent, isPerpetrator, isFirsthand } from '@clwa/engine';
 
 // ─── Helpers ───
 
@@ -131,12 +131,12 @@ export function hasWitnessBelief(agent: Agent): boolean {
   const allBeliefs = agent.state.beliefs.getAllBeliefs();
   // If NPC is the perpetrator of any crime, they cannot testify about it
   const perpetratorEvents = new Set(
-    allBeliefs.filter((b: Belief) => isSourceCategory(b.source, 'guilt')).map((b: Belief) => b.eventType),
+    allBeliefs.filter((b: Belief) => isPerpetrator(b.source)).map((b: Belief) => b.eventType),
   );
   return allBeliefs.some(
     (b: Belief) => isEventCategory(b.eventType, 'crime') &&
       !perpetratorEvents.has(b.eventType) &&
-      (b.source === 'witness' || b.source === 'observation' || b.source === 'body_discovery') &&
+      isFirsthand(b.source) &&
       b.subject !== agent.profile.name && b.subject !== agent.profile.id &&
       b.confidence >= 0.3,
   );
