@@ -35,7 +35,9 @@ export function handleRequest(
 
   // ─── GET /api/agents ───
   if (method === 'GET' && path === '/api/agents') {
-    const list = Array.from(agents.entries()).map(([id, agent]) => ({
+    const list = Array.from(agents.entries())
+      .filter(([, agent]) => !agent.profile.isPlayer)
+      .map(([id, agent]) => ({
       id,
       name: agent.profile.name,
       role: agent.profile.role,
@@ -428,14 +430,23 @@ export function handleRequest(
   // ─── POST /api/player/location ───
   if (method === 'POST' && path === '/api/player/location') {
     return req.json().then((body: { location?: string | null }) => {
-      world.playerLocation = body.location ?? null;
+      const player = world.playerAgent;
+      if (player && body.location) {
+        player.state.location = body.location;
+      }
       return Response.json({ playerLocation: world.playerLocation }, { headers: cors });
     });
   }
 
   // ─── GET /api/player ───
   if (method === 'GET' && path === '/api/player') {
-    return Response.json({ location: world.playerLocation }, { headers: cors });
+    const player = world.playerAgent;
+    return Response.json({
+      location: world.playerLocation,
+      mood: player?.state.mood,
+      alive: player?.state.alive,
+      beliefs: player?.state.beliefs?.getAllBeliefs().length ?? 0,
+    }, { headers: cors });
   }
 
   // ─── POST /api/save ───

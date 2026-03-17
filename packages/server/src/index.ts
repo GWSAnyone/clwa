@@ -5,7 +5,7 @@ import { World } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerCrimeJusticeModule, CRIME_CG_RULES } from '@clwa/modules';
-import { registerRoleTopicPool, registerSecretDirectiveBuilder } from '@clwa/engine';
+import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from '@clwa/engine';
 import { broadcast } from './ws';
 import { startServer } from './server';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
@@ -13,6 +13,7 @@ import { join, dirname } from 'path';
 
 // ─── Register World Modules ───
 registerCrimeJusticeModule();
+registerEventCategory('player_action', [PLAYER_ACTION_EVENT]);
 
 // ─── Register Role Topic Pools (world-specific conversation content) ───
 registerRoleTopicPool('bartender', [
@@ -56,28 +57,37 @@ registerRoleTopicPool('herbalist', [
 ]);
 
 // ─── Secret Directive Builders (player interaction effects) ───
-registerSecretDirectiveBuilder(({ agent, eventStore }) => {
+registerSecretDirectiveBuilder(({ agent, agents, eventStore }) => {
   const agentId = agent.profile.id;
   const sections: string[] = [];
+  // Resolve player name from agents map
+  let pName: string | null = null;
+  for (const a of agents.values()) {
+    if (a.profile.isPlayer) { pName = a.profile.name; break; }
+  }
+  if (!pName) {
+    console.error('  [SecretDirective] BUG: Player Agent not found in agents map');
+    return sections;
+  }
 
-  const threatMemories = eventStore.query({ type: 'PLAYER_ACTION' })
-    .filter((e) => e.object === agentId && (e.payload?.action === 'threaten'));
+  const threatMemories = eventStore.query({ type: PLAYER_ACTION_EVENT })
+    .filter((e) => e.object === agentId && (e.payload?.action === PLAYER_ACTIONS.THREATEN));
   if (threatMemories.length > 0) {
     sections.push(
       `## HIDDEN: You have been threatened\n` +
-      `A stranger threatened you recently. You are afraid of them.\n` +
-      `- When talking to the stranger: be cautious, guarded, avoid provoking them.\n` +
+      `${pName} threatened you recently. You are afraid of them.\n` +
+      `- When talking to ${pName}: be cautious, guarded, avoid provoking them.\n` +
       `- You might comply with their requests out of fear, though you resent it.\n` +
       `- If someone else asks about the threat: you might mention it nervously.`,
     );
   }
 
-  const bribeMemories = eventStore.query({ type: 'PLAYER_ACTION' })
-    .filter((e) => e.object === agentId && (e.payload?.action === 'bribe'));
+  const bribeMemories = eventStore.query({ type: PLAYER_ACTION_EVENT })
+    .filter((e) => e.object === agentId && (e.payload?.action === PLAYER_ACTIONS.BRIBE));
   if (bribeMemories.length > 0) {
     sections.push(
       `## HIDDEN: You were offered a bribe\n` +
-      `A stranger tried to bribe you. This makes you uncomfortable.\n` +
+      `${pName} tried to bribe you. This makes you uncomfortable.\n` +
       `- You feel conflicted — the offer is tempting but wrong.\n` +
       `- If asked about shady dealings: you become evasive.`,
     );
@@ -556,6 +566,56 @@ async function main() {
   }
 
   agents.get('mark')!.state.mood = -0.35;
+
+  // ─── Player Agent — full participant in the world ───
+  {
+    const playerProfile: AgentProfile = {
+      id: 'player',
+      name: 'Traveler',
+      role: 'traveler',
+      background: 'A mysterious traveler who arrived in town recently.',
+      speechStyle: '', // Not used — player types freely
+      bigFive: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5, honesty: 0.5 },
+      enneagram: { type: 5, wing: 6, coreFear: '', coreDesire: '', stressType: 7, growthType: 8 },
+      isPlayer: true,
+    };
+    const playerRelationships = new RelationshipGraph();
+    for (const p of PROFILES) {
+      playerRelationships.addRelationship({
+        targetId: p.id,
+        targetName: p.name,
+        type: 'acquaintance' as RelationType,
+        sentiment: 0.0,
+        trust: 0.3, // Stranger — low initial trust
+      });
+    }
+    // NPCs also get a relationship entry toward the player
+    for (const [, npcAgent] of agents) {
+      npcAgent.state.relationships?.addRelationship({
+        targetId: 'player',
+        targetName: 'Traveler',
+        type: 'acquaintance' as RelationType,
+        sentiment: 0.0,
+        trust: 0.3,
+      });
+    }
+    const playerMemory = new VectorMemory('player');
+    await playerMemory.init(shouldResetMemory ? { reset: true } : undefined);
+    const playerAgent = new Agent(playerProfile, {
+      alive: true,
+      status: undefined,
+      location: 'Town Square',
+      mood: 0.3,
+      currentDay: 1,
+      knownFacts: [
+        '# You are a traveler who just arrived in this small town. You know nothing about the locals yet.',
+      ],
+      beliefs: new BeliefManager(),
+      relationships: playerRelationships,
+    }, playerMemory);
+    agents.set('player', playerAgent);
+    console.log('  [+] Player Agent (Traveler) @ Town Square');
+  }
 
   const publicPlaces = new Set<string>();
   for (const loc of locationGraph.values()) {

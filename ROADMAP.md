@@ -53,88 +53,168 @@
 
 | Подсистема | Назначение | Зачем |
 |---|---|---|
-| **IL (Intent Layer)** | Мост между свободным вводом и structured actions | Player freedom, voice, bilateral |
-| **Perception System** | Что сущности могут видеть/слышать/знать | Стелс, подслушивание, информация |
+| **IL (Intent Layer)** | Извлечение structured meaning из речи игрока к NPC | Игрок влияет на мир через диалог |
+| **Perception System** | Что сущности могут видеть/слышать/знать | Стелс, подслушивание, awareness |
 | **Economy System** | Ценность, обмен, производство, спрос/предложение | Торговля, ремесло, деньги |
 
 ---
 
-## Intent Layer (IL) — ключевая подсистема
+## Intent Layer (IL) — слой речи
 
 ### Проблема
 
-Для NPC: AL генерирует варианты → LLM выбирает один → structured action.
-Для игрока: ???
+Сейчас, когда игрок говорит NPC — речь **не существует** для движка:
+- `classifyIntent` → broad category (`accuse`, `threaten`...), без КТО/ЧТО/ГДЕ/КОГДА
+- `applyIntentEffects` → хардкод mood shifts + текстовые observe-строки
+- NPC получает `"A stranger accused Mark"` как **текст**, а не belief
+- Движок не создаёт beliefs, не триггерит goals, не запускает CG
 
-Игрок НЕ ДОЛЖЕН выбирать из меню. Игрок должен мочь сказать/написать **что угодно**, а движок должен это понять, проверить и выполнить.
+Сравни с NPC→NPC: `beliefTransfer` копирует structured beliefs с source weight → Garrett получает `addBelief({eventType, subject, source: 'testimony', confidence})` → может расследовать → CG каскад.
 
-### Принцип
+**Речь игрока имеет НОЛЬ механического эффекта.** Игрок — призрак в мире.
 
-```
-NPC:    AL → PM → LLM → Action    (генерация решения)
-Player: Free input → IL → Action   (интерпретация решения)
-                          ↓
-                    Одинаковый путь:
-                    Action → Validation → Goal → CG/EL → State
-```
+### Что такое IL
 
-AL для NPC = **генератор** вариантов (что можно предложить LLM).
-AL для Player = **валидатор** намерений (можно ли то, что игрок хочет).
-
-Игрок не видит affordance list. Игрок видит мир и действует свободно. Движок проверяет: возможно ли это физически?
-
-### Как работает IL
+IL — это **dialogue meaning extractor**. Не command parser, не intent classifier. Полноценный извлечитель structured meaning из natural language.
 
 ```
-Player: "Эй, Гаррет, я видел Марка у тела Бесс прошлой ночью"
-  ↓
-IL (LLM parse): {
-  action: 'inform',
-  target: 'garrett',
-  content: { suspect: 'mark', event: 'NPC_KILLED', victim: 'bess', evidence: 'witness' }
+NPC→NPC: runInteraction → beliefTransfer → structured beliefs
+Player→NPC: speech → IL → DialogueMeaning → те же engine primitives
+```
+
+IL — инверсия chatStream:
+- chatStream: structured NPC state → LLM → natural text ДЛЯ игрока
+- IL: natural player text → LLM → structured meaning ДЛЯ движка
+
+### DialogueMeaning — что извлекает IL
+
+```typescript
+interface DialogueMeaning {
+  speechAct: SpeechAct;           // inform, question, request, accuse, threaten, trade...
+  claims?: Claim[];               // утверждения о мире (кто, что, где, когда)
+  questions?: Question[];         // вопросы (о ком, о чём)
+  requestedAction?: RequestedAction; // просьба к NPC (расследуй, арестуй)
+  emotionalPressure?: EmotionalPressure; // давление (угроза, лесть, шантаж)
+  tradeIntent?: TradeIntent;      // торговля
+  extractionConfidence: number;   // уверенность LLM в извлечении
 }
+
+interface Claim {
+  eventType?: string;     // из registry (NPC_KILLED, GOODS_STOLEN...)
+  subject?: string;       // КТО (NPC name → resolved to ID)
+  object?: string;        // КОГО/ЧТО
+  location?: string;      // ГДЕ (location name → resolved to ID)
+  timePeriod?: string;    // КОГДА (period name)
+  source: 'witnessed' | 'heard' | 'suspects' | 'deduced';
+  confidence: number;     // 0-1
+}
+
+interface RequestedAction {
+  action: string;         // affordance name (investigate, arrest, examine)
+  target?: string;        // NPC или location
+  urgency: number;        // 0-1
+}
+```
+
+### Как IL кормит движок
+
+```
+┌──────────────────────────────────┬───────────────────────────────────────────────┐
+│         DialogueMeaning          │            Engine Effect                       │
+├──────────────────────────────────┼───────────────────────────────────────────────┤
+│ claims[]                         │ addBelief(source:'testimony', conf*trust)     │
+│ questions[]                      │ gather NPC beliefs → chatStream context       │
+│ requestedAction                  │ evaluate affordance → create NPC goal         │
+│ emotionalPressure                │ mood shift + relationship + event store       │
+│ tradeIntent                     │ shop system                                    │
+└──────────────────────────────────┴───────────────────────────────────────────────┘
+```
+
+**Ключевое**: все эффекты идут через те же engine механизмы что и NPC→NPC:
+- Claims → `addBelief()` (тот же что в beliefTransfer)
+- Goals → `NpcGoal` (тот же что создаёт volition)
+- Events → `CG cascade` (тот же граф последствий)
+
+### Примеры
+
+```
+Игрок → Garrett: "Я видел как Mark убил Bess прошлой ночью"
   ↓
-Validation: player at same location as Garrett? Garrett alive? → yes
+IL: { claims: [{ eventType: 'NPC_KILLED', subject: 'mark', object: 'bess',
+       source: 'witnessed', confidence: 0.9 }] }
   ↓
-Execute: create belief in Garrett {subject: 'mark', eventType: 'NPC_KILLED', source: 'testimony'}
+Engine: Garrett.beliefs.addBelief({
+  eventType: 'NPC_KILLED', subject: 'Mark', object: 'Old Bess',
+  source: 'testimony', sourceNpcId: 'player',
+  confidence: 0.9 * trust(Garrett→Player)  // тот же trust scaling
+})
   ↓
-CG/EL cascade → Garrett now investigates Mark
+CG: belief triggers investigate affordance → Garrett creates goal
+  ↓
+Garrett расследует. Тот же E2E chain.
 ```
 
 ```
-Player: "Хочу отравить колодец"
+Игрок → Garrett: "Ты должен расследовать Market Square"
   ↓
-IL (LLM parse): { action: 'sabotage', target: 'well', method: 'poison' }
+IL: { requestedAction: { action: 'investigate', target: 'market', urgency: 0.7 } }
   ↓
-Validation: does player have poison? Is player at well? → no poison
-  ↓
-Response: "У тебя нет яда. Bess's herb shop might have something..."
-  (движок объясняет ПОЧЕМУ нельзя — constraint, не menu)
+Engine: has affordance 'investigate'? requirements met? trusts player?
+  → yes: create investigate goal for Garrett
+  → no: NPC explains why not (нет доказательств, не доверяет)
 ```
 
 ```
-Player (future voice): "Я тихо следую за Марком"
+Игрок → Ted: "Твой эль на вкус как вода"
   ↓
-Speech-to-text → text → IL → { action: 'follow', target: 'mark', mode: 'stealth' }
+IL: { claims: [{ subject: 'ted', topic: 'ale_quality' }],
+      emotionalPressure: { type: 'guilt', intensity: 0.5 } }
   ↓
-Same pipeline
+Engine: touches Ted's secret → secret directive activates → defensive response
 ```
+
+```
+Игрок → Hilda: "Что ты знаешь о Mark?"
+  ↓
+IL: { questions: [{ about: 'mark', topic: 'knowledge' }] }
+  ↓
+Engine: gather Hilda.beliefs where subject='mark' → inject into chatStream
+  ↓
+Hilda отвечает из СВОИХ structured beliefs, не галлюцинирует
+```
+
+### Confidence через trust
+
+Confidence claim'а игрока масштабируется доверием NPC к игроку:
+
+```
+effectiveConfidence = claim.confidence × trust(NPC → Player)
+```
+
+- Новый знакомый: trust 0.3 → "Mark убил Bess" → conf 0.27 (слабый belief)
+- Доверенный друг: trust 0.8 → "Mark убил Bess" → conf 0.72 (достаточно для расследования)
+- Ловили на лжи: trust 0.1 → "Mark убил Bess" → conf 0.09 (игнорирует)
+
+Trust эволюционирует:
+- Claim подтверждён позже → trust растёт
+- Claim опровергнут → trust падает
+- Repeated positive interaction → trust растёт
 
 ### Симметрия
 
 ```
-NPC "решает":  Engine → LLM → "DO: kill Bess" → parseDoWhy → structured action
-Player "хочет": Human → voice/text → "убить Бесс" → IL parse → structured action
-                                                                      ↓
-                                                               Same: validate → execute → CG → EL
+NPC→NPC: interaction → beliefTransfer → beliefs, conf * sourceWeight
+Player→NPC: speech → IL → DialogueMeaning → beliefs, conf * trust
+                                                        ↓
+                                              Same: addBelief → CG → EL
 ```
 
-**parseDoWhy** (volition.ts) и **IL parse** — это две стороны одной монеты. Обе преобразуют natural language → structured action. Различие: источник текста (LLM vs человек).
+**beliefTransfer** (goals.ts) и **IL** — две стороны одной монеты. Оба преобразуют коммуникацию → structured beliefs. Различие: источник (NPC knowledge vs player speech).
 
 ### Voice Integration (будущее)
 
 ```
-Microphone → Speech-to-text → IL → Action pipeline
+Microphone → Speech-to-text → IL → DialogueMeaning pipeline
 ```
 
 Voice — просто ещё один input method. IL не зависит от источника текста.
@@ -200,7 +280,7 @@ Belief mods: loneliness → social urgency, grief → comfort urgency
 
 ## Фазы развития
 
-### Phase 1: Proof of Concept ← СЕЙЧАС
+### Phase 1: Proof of Concept ✅
 > Доказать что эмерджентный нарратив работает.
 
 - [x] Engine Core v1 (AL, PM, CG, Goals, Beliefs, Relationships, Memory)
@@ -211,16 +291,29 @@ Belief mods: loneliness → social urgency, grief → comfort urgency
 - [x] Godot demo (3D KayKit characters, navigation, map, notifications)
 - **Результат**: демка "живая деревня с преступлением и расследованием"
 
-### Phase 2: Engine Foundation
-> Формализовать движок. Bilateral design. Player = Agent.
+### Phase 2: Player Integration ← СЕЙЧАС
+> Игрок становится реальной сущностью в мире. Речь игрока создаёт structured effects.
 
-- [ ] **Intent Layer (IL)** — free-form input → structured action
-- [ ] **Unified Actor Model** — Player = Agent (beliefs, relationships, mood, status)
-- [ ] **AL as validator** — player actions validated, not menu-driven
-- [ ] **Perception System** — what entities can sense (visibility, hearing range)
-- [ ] **Engine API formalization** — clear interfaces between subsystems
-- [ ] Все action paths bilateral (player action = NPC action = same CG/EL)
-- **Результат**: игрок может делать ВСЁ что может NPC, теми же системами
+**Проблема**: игрок — призрак. NPC обмениваются beliefs через beliefTransfer, создают goals, запускают CG каскады. Когда игрок говорит — это шум: broad categories + текстовые строки, которые движок игнорирует. Игрок не может влиять на мир через диалог.
+
+**Решение**: IL извлекает structured meaning из речи → те же engine механизмы что NPC→NPC.
+
+- [ ] **Unified Actor Model** — Player = Agent (beliefs, relationships, mood, location)
+- [ ] **IL (Intent Layer)** — dialogue meaning extraction (claims, questions, requests, pressure)
+- [ ] **IL Effects** — claims → addBelief, requests → goals, pressure → mood/relationships
+- [ ] **Trust-based confidence** — player claims scaled by NPC trust → evolving trust
+- [ ] **Perception System** — centralized canSee/canHear, replaces scattered checks
+- [ ] **AL as validator** — player gameplay actions validated by affordance requirements
+- [ ] **NPC awareness** — NPCs approach player, form opinions, spread rumors about player
+- **Результат**: игрок влияет на мир через речь, NPC реагируют структурно
+
+```
+Player speech → IL → DialogueMeaning → Engine effects → CG/EL cascade
+Player action → AL validate → Goal → Steps → CG/EL cascade
+NPC decision  → Volition → Goal → Steps → CG/EL cascade
+                                                  ↓
+                                            Same pipeline
+```
 
 ### Phase 3: World Expansion
 > Наполнить мир контентом через движок.

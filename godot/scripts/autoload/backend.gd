@@ -10,7 +10,7 @@ signal npc_moved(npc_id: String, from_loc: String, to_loc: String)
 signal chat_token(agent_id: String, token: String)
 signal chat_done(agent_id: String, full_reply: String)
 signal murder_occurred(killer_name: String, victim_name: String)
-signal intent_detected(agent_id: String, intent: String, target_npc: String)
+signal intent_detected(agent_id: String, intent: String, target_npc: String, trust: int, claims_created: int)
 signal shop_opened(agent_id: String, npc_name: String, items: Array)
 signal crime_scene_created(location_id: String, crime_type: String, point_count: int)
 signal debug_llm(reason: String, target: String)
@@ -144,7 +144,9 @@ func _handle_ws_message(text: String) -> void:
 				intent_detected.emit(
 					raw_data.get("agentId", ""),
 					raw_data.get("intent", "smalltalk"),
-					raw_data.get("targetNpc", "")
+					raw_data.get("targetNpc", ""),
+					raw_data.get("trust", 0),
+					raw_data.get("claimsCreated", 0)
 				)
 
 		"shop:open":

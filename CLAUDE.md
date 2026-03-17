@@ -84,6 +84,10 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 14. **Belief dedup by source**: addBelief key = (eventType, object, source). Different sources coexist. getMaxConfidenceFor() aggregates.
 15. **notPerpetrator requirement**: perpetrators blocked from testify, report_crime, demand_justice, confront via isSourceCategory('guilt').
 16. **Configurable cooldowns**: affordanceCooldownTicks, decisionCooldownTicks, pairCooldownTicks in WorldConfig. Not hardcoded.
+17. **Player = Agent**: Player is a full Agent with `isPlayer` flag. Has beliefs, relationships, mood, location. World.tick() skips volition/schedule/movement for isPlayer. All other systems (beliefs, CG, EL, perception) treat player identically to NPC.
+18. **IL (Intent Layer)**: Player speech → `extractDialogueMeaning()` → `DialogueMeaning` → `applyDialogueMeaning()` → engine effects. Claims create beliefs via same `addBelief()` as NPC beliefTransfer. Confidence = claim.confidence * trust(NPC→Player).
+19. **Perception system**: `canSee()`, `canInteract()`, `canHear()`, `getCoPresent()`, `getWitnesses()` in perception.ts. Centralizes all visibility/awareness checks.
+20. **AL as validator**: `validatePlayerAction()` checks affordance requirements for player gameplay actions. AL for NPC = generator, AL for Player = validator.
 
 ## Tick System
 
@@ -94,4 +98,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.8.2-dev. Engine content-agnostic. 96 ticks/day with auto-tick. Full E2E chain: murder → exile stable via reflex mechanism.
+v0.9.0-dev. Player = Agent. IL extracts structured meaning from player speech. Perception system. AL validator. 96 ticks/day with auto-tick. Full E2E chain stable.

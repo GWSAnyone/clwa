@@ -4,111 +4,14 @@ import type { ServerWebSocket } from 'bun';
 import type { Agent } from '@clwa/engine';
 import type { World } from '@clwa/engine';
 import type { IEventStore } from '@clwa/engine';
-import { classifyIntent, buildSecretDirectives } from '@clwa/engine';
-import type { IntentResult } from '@clwa/engine';
+import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, createGoalFromRequest } from '@clwa/engine';
+import type { ILContext, ILEffectContext } from '@clwa/engine';
 import { handleRequest } from './routes';
 import type { RouteOptions } from './routes';
 import { addClient, removeClient, broadcast, sendTo, clientCount } from './ws';
 import type { WSClientMessage } from './ws';
 
 const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'public');
-
-/** Apply mechanical effects based on classified player intent */
-function applyIntentEffects(
-  intent: IntentResult,
-  targetAgent: Agent,
-  agents: Map<string, Agent>,
-  eventStore: IEventStore,
-  world: World,
-): void {
-  const playerSubject = 'player';
-  const gameDay = targetAgent.state.currentDay;
-  const location = targetAgent.state.location;
-
-  switch (intent.intent) {
-    case 'threaten':
-      targetAgent.state.mood = Math.max(-1, targetAgent.state.mood - 0.15);
-      eventStore.append({
-        id: crypto.randomUUID(),
-        type: 'PLAYER_ACTION',
-        subject: playerSubject,
-        object: targetAgent.profile.id,
-        location,
-        gameDay,
-        importance: 5,
-        payload: { action: 'threaten', detail: intent.detail },
-      });
-      targetAgent.observe(
-        `A traveling stranger threatened me. ${intent.detail ?? ''}`,
-        5,
-      );
-      break;
-
-    case 'insult':
-      targetAgent.state.mood = Math.max(-1, targetAgent.state.mood - 0.08);
-      targetAgent.observe(
-        `A traveling stranger insulted me. ${intent.detail ?? ''}`,
-        3,
-      );
-      break;
-
-    case 'compliment':
-      targetAgent.state.mood = Math.min(1, targetAgent.state.mood + 0.08);
-      targetAgent.observe(
-        `A traveling stranger said something kind to me. ${intent.detail ?? ''}`,
-        2,
-      );
-      break;
-
-    case 'accuse': {
-      eventStore.append({
-        id: crypto.randomUUID(),
-        type: 'PLAYER_ACTION',
-        subject: playerSubject,
-        object: targetAgent.profile.id,
-        location,
-        gameDay,
-        importance: 7,
-        payload: { action: 'accuse', accusedNpc: intent.targetNpc, detail: intent.detail },
-      });
-      const accusationText = intent.targetNpc
-        ? `A traveling stranger accused ${intent.targetNpc} of wrongdoing in front of me. ${intent.detail ?? ''}`
-        : `A traveling stranger made an accusation to me. ${intent.detail ?? ''}`;
-      targetAgent.observe(accusationText, 6);
-      break;
-    }
-
-    case 'bribe':
-      eventStore.append({
-        id: crypto.randomUUID(),
-        type: 'PLAYER_ACTION',
-        subject: playerSubject,
-        object: targetAgent.profile.id,
-        location,
-        gameDay,
-        importance: 5,
-        payload: { action: 'bribe', detail: intent.detail },
-      });
-      targetAgent.observe(
-        `A traveling stranger tried to bribe me. ${intent.detail ?? ''}`,
-        5,
-      );
-      break;
-
-    case 'confide':
-      targetAgent.observe(
-        `A traveling stranger confided something personal to me. ${intent.detail ?? ''}`,
-        4,
-      );
-      break;
-
-    case 'trade':
-      break;
-
-    default:
-      break;
-  }
-}
 
 export interface ServerConfig {
   port: number;
@@ -164,12 +67,14 @@ export function startServer(
       },
 
       async message(ws: ServerWebSocket<unknown>, raw: string | Buffer) {
+        let chatAgentId: string | null = null; // track for finally cleanup
         try {
           const msg: WSClientMessage = JSON.parse(
             typeof raw === 'string' ? raw : raw.toString(),
           );
 
           if (msg.type === 'chat') {
+            chatAgentId = msg.agentId;
             const agent = agents.get(msg.agentId);
             if (!agent) {
               sendTo(ws, { type: 'chat:done', data: { agentId: msg.agentId, fullReply: '[Agent not found]' } });
@@ -180,20 +85,67 @@ export function startServer(
               return;
             }
 
-            agent.state.playerPresent = true;
+            // Co-location validation — server is authoritative
+            const playerAgent = world.playerAgent;
+            if (playerAgent && playerAgent.state.location !== agent.state.location) {
+              sendTo(ws, { type: 'chat:done', data: { agentId: msg.agentId, fullReply: `[${agent.profile.name} is not here.]` } });
+              return;
+            }
 
+            // Freeze NPC during conversation — tick skips movement/goals for this agent
+            agent.state.inPlayerChat = true;
+
+            // ── IL: Extract structured meaning from player speech ──
             const npcNames = Array.from(agents.values())
-              .filter((a) => a.state.alive)
-              .map((a) => a.profile.name);
-            broadcast({ type: 'debug:llm', data: { reason: 'Intent classify', target: agent.profile.name } });
-            const intent = await classifyIntent(msg.message, npcNames);
-            console.log(`  [Intent] ${intent.intent}${intent.targetNpc ? ` → ${intent.targetNpc}` : ''}`);
+              .filter((a) => a.state.alive && !a.profile.isPlayer)
+              .map((a) => `${a.profile.name} (${a.profile.role})`);
+            const locationNames = Array.from(world.locations.values()).map((l) => l.name);
 
-            applyIntentEffects(intent, agent, agents, eventStore, world);
+            const ilContext: ILContext = {
+              npcNames,
+              locationNames,
+              knownEventTypes: getAllRegisteredEventTypes(),
+              targetNpcName: agent.profile.name,
+            };
 
-            broadcast({ type: 'intent', data: { agentId: msg.agentId, ...intent } });
+            broadcast({ type: 'debug:llm', data: { reason: 'IL extract', target: agent.profile.name } });
+            const meaning = await extractDialogueMeaning(msg.message, ilContext);
+            console.log(`  [IL] ${meaning.speechAct}${meaning.claims ? ` claims:${meaning.claims.length}` : ''}${meaning.questions ? ` questions:${meaning.questions.length}` : ''}${meaning.requestedAction ? ` request:${meaning.requestedAction.action}` : ''} (conf:${meaning.extractionConfidence.toFixed(2)})`);
 
-            if (intent.intent === 'trade' && agent.profile.shop && agent.profile.shop.length > 0) {
+            // Apply IL effects to engine systems (beliefs, mood, relationships)
+            let ilAdditionalContext = '';
+            if (playerAgent) {
+              const effectCtx: ILEffectContext = {
+                targetAgent: agent,
+                playerAgent,
+                agents,
+                eventStore,
+                gameDay: agent.state.currentDay,
+                goalCreator: (npcId, action, target) => {
+                  const goal = createGoalFromRequest(npcId, action, world.buildAffordanceContext(), target);
+                  if (goal) {
+                    world.goalManager.addGoal(goal);
+                    return true;
+                  }
+                  return false;
+                },
+              };
+              ilAdditionalContext = applyDialogueMeaning(meaning, effectCtx);
+            }
+
+            // IL result → Godot WS event (includes trust + belief info for UI)
+            const npcTrust = agent.state.relationships?.getRelationship(playerAgent?.profile.id ?? '')?.trust ?? 0;
+            const claimsCreated = meaning.claims?.filter(c => c.eventType).length ?? 0;
+            broadcast({ type: 'intent', data: {
+              agentId: msg.agentId,
+              intent: meaning.speechAct,
+              targetNpc: meaning.claims?.[0]?.subject,
+              detail: meaning.requestedAction?.action,
+              trust: Math.round(npcTrust * 100),
+              claimsCreated,
+            } });
+
+            if (meaning.speechAct === 'trade' && agent.profile.shop && agent.profile.shop.length > 0) {
               sendTo(ws, { type: 'shop:open', data: {
                 agentId: msg.agentId,
                 npcName: agent.profile.name,
@@ -201,21 +153,25 @@ export function startServer(
               } });
             }
 
+            // Build NPC response with IL context + secret directives
             const secretDirectives = buildSecretDirectives(agent, agents, eventStore);
+            const fullContext = [secretDirectives, ilAdditionalContext].filter(Boolean).join('\n\n') || undefined;
 
             broadcast({ type: 'debug:llm', data: { reason: 'Player chat', target: agent.profile.name } });
             const fullReply = await agent.chatStream(msg.message, (token) => {
               sendTo(ws, { type: 'chat:token', data: { agentId: msg.agentId, token } });
-            }, secretDirectives || undefined);
+            }, fullContext);
 
             sendTo(ws, { type: 'chat:done', data: { agentId: msg.agentId, fullReply } });
 
-            const TESTIMONY_INTENTS = new Set(['ask_about_npc', 'accuse', 'confide']);
-            if (TESTIMONY_INTENTS.has(intent.intent) && fullReply) {
+            // Journal testimony for meaningful speech acts
+            const TESTIMONY_ACTS = new Set(['inform', 'accuse', 'confide', 'question']);
+            if (TESTIMONY_ACTS.has(meaning.speechAct) && fullReply) {
               const mentionedNpcs: string[] = [];
-              if (intent.targetNpc) {
+              const claimSubject = meaning.claims?.[0]?.subject;
+              if (claimSubject) {
                 for (const [id, a] of agents) {
-                  if (a.profile.name.toLowerCase() === intent.targetNpc.toLowerCase()) {
+                  if (a.profile.name.toLowerCase() === claimSubject.toLowerCase()) {
                     mentionedNpcs.push(id);
                     break;
                   }
@@ -241,7 +197,7 @@ export function startServer(
               if (otherAgent.state.location !== npcLocation) continue;
               if (Math.random() > 0.6) continue;
               otherAgent.observe(
-                `You were nearby and overheard a conversation between a traveling stranger and ${agent.profile.name}. The stranger said: "${msg.message}". ${agent.profile.name} answered: "${fullReply}"`,
+                `You were nearby and overheard a conversation between ${playerAgent!.profile.name} and ${agent.profile.name}. ${playerAgent!.profile.name} said: "${msg.message}". ${agent.profile.name} answered: "${fullReply}"`,
                 3,
               );
             }
@@ -249,6 +205,12 @@ export function startServer(
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
           console.error(`  [WS] Error: ${errMsg}`);
+        } finally {
+          // Always unfreeze NPC after chat completes (success or error)
+          if (chatAgentId) {
+            const chatAgent = agents.get(chatAgentId);
+            if (chatAgent) chatAgent.state.inPlayerChat = false;
+          }
         }
       },
     },

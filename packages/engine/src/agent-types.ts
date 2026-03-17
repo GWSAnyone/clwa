@@ -57,6 +57,8 @@ export interface AgentProfile {
   canSentence?: boolean;
   /** Shop inventory — NPC can sell these items */
   shop?: ShopItem[];
+  /** Player-controlled agent — skips volition, schedule, movement; includes beliefs, relationships, perception */
+  isPlayer?: boolean;
 }
 
 export interface ShopItem {
@@ -83,8 +85,8 @@ export interface AgentState {
   relationships?: import('./relationships').RelationshipGraph;
   /** Current activity from schedule (set by World each tick). Optional */
   currentActivity?: string;
-  /** Whether a player/traveler is present at the same location */
-  playerPresent?: boolean;
+  /** NPC is in active conversation with player — tick skips movement/goals for this agent */
+  inPlayerChat?: boolean;
   /** Current emotional motive from AL decision (WHY). Cleared on goal completion */
   currentMotive?: string;
 }

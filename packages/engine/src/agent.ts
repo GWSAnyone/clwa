@@ -3,7 +3,7 @@ import { ReflectionTracker } from './reflection';
 import type { ReflectionConfig } from './reflection';
 import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
-import { getEventLabel, isPursuitEvent, isEventCategory, isSourceCategory } from './event-registry';
+import { getEventLabel, isPursuitEvent, isTransferable, isPerpetrator, isFirsthand } from './event-registry';
 
 interface LMStudioResponse {
   output: Array<{ type: string; content: string }>;
@@ -365,7 +365,7 @@ ${motivationBlock}
 ${this.profile.speechStyle}
 
 ## Current state
-- Location: ${this.state.location}${this.state.currentActivity ? `\n- Activity: ${this.state.currentActivity}` : ''}${this.state.playerPresent ? `\n- A traveling stranger is present at your location. You may acknowledge them naturally.` : ''}
+- Location: ${this.state.location}${this.state.currentActivity ? `\n- Activity: ${this.state.currentActivity}` : ''}
 - Mood: ${this.moodDescription()}
 - Current day: ${this.state.currentDay}
 - Current facts: ${dynamicFacts}
@@ -403,7 +403,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
 
       // Role-specific directives from beliefs (generic for all crime types)
       const crimeBeliefs = beliefs.getAllBeliefs().filter(
-        (b) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
+        (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
       );
 
       if (this.profile.investigator && crimeBeliefs.length > 0) {
@@ -412,12 +412,12 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
         const crimeWord = getEventLabel(top.eventType);
         const victim = top.object ?? 'a victim';
         sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}.\nYou scan every face for guilt. You interrupt conversations to ask questions. You stand taller, hand near your weapon. This is your top priority.`);
-      } else if (crimeBeliefs.some((b) => isSourceCategory(b.source, 'guilt'))) {
+      } else if (crimeBeliefs.some((b) => isPerpetrator(b.source))) {
         // Killer's emotional state — guilt/paranoia (complements secret-directives)
-        const b = crimeBeliefs.find((b) => isSourceCategory(b.source, 'guilt'))!;
+        const b = crimeBeliefs.find((b) => isPerpetrator(b.source))!;
         sections.push(`## How you feel right now\nYour hands won't stop shaking. Every time someone mentions ${b.object}, your blood runs cold. You avoid eye contact. You feel the walls closing in.`);
-      } else if (crimeBeliefs.some((b) => isSourceCategory(b.source, 'direct_experience'))) {
-        const b = crimeBeliefs.find((b) => isSourceCategory(b.source, 'direct_experience'))!;
+      } else if (crimeBeliefs.some((b) => isFirsthand(b.source))) {
+        const b = crimeBeliefs.find((b) => isFirsthand(b.source))!;
         sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${b.object}. Your hands tremble slightly. You start sentences and lose track of what you were saying. You do not want to talk about it but you cannot stop thinking about it.`);
       } else if (crimeBeliefs.length > 0) {
         sections.push(`## How you feel right now\nYou heard something terrible happened in town. You lower your voice when talking about it. You look over your shoulder more often. The unease sits in your stomach like a stone.`);

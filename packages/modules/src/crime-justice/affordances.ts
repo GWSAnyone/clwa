@@ -219,7 +219,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     stepTemplates: [
       { action: 'move_to', location: '$extra.crimeLocation', skipIfAt: true },
       { action: 'examine_scene', importance: 7 },
-      { action: 'interact_present', purpose: 'interrogate about the crime involving {victimName:the victim} by {killerName:an unknown assailant}. Ask what they saw, who was involved, and any details they remember', importance: 5 },
+      { action: 'interact_present', purpose: 'interrogate about the crime involving {victimName:the victim} by {killerName:an unknown assailant}. Ask what they saw, who was involved, and any details they remember', importance: 5, beliefTransfer: true },
       { action: 'announce', message: 'Attention! I am investigating a crime involving {victimName:the victim}. If anyone has information about {killerName:an unknown assailant}, report to me immediately.', importance: 4 },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
@@ -249,7 +249,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact_present', purpose: 'share alarming news you just heard — a rumor about a terrible event. You are excited and scared to share what you know', importance: 4 },
+      { action: 'interact_present', purpose: 'share alarming news you just heard — a rumor about a terrible event. You are excited and scared to share what you know', importance: 4, beliefTransfer: true },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },

@@ -28,7 +28,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getWitnessEventType, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getWitnessEventType, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers, isInformationOnly, BELIEF_SOURCE } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -83,8 +83,8 @@ export class World {
   readonly journal: PlayerJournal = new PlayerJournal();
   /** Prevent concurrent tick execution */
   private tickInProgress = false;
-  /** Player location — null if player not in world */
-  playerLocation: string | null = null;
+  /** Cached reference to the player Agent (resolved once, updated if agents change) */
+  private _playerAgent: Agent | null = null;
   /** Topic engine for NPC-NPC conversations */
   readonly topicEngine: TopicEngine = new TopicEngine();
   /** Affordance cooldowns: npcId → affordanceId → expiresAtTick */
@@ -132,6 +132,27 @@ export class World {
 
     // Goal system
     this.goalManager = new GoalManager();
+  }
+
+  /** Resolve and cache the player Agent (isPlayer flag on profile) */
+  get playerAgent(): Agent | null {
+    if (!this._playerAgent) {
+      for (const agent of this.agents.values()) {
+        if (agent.profile.isPlayer) { this._playerAgent = agent; break; }
+      }
+    }
+    return this._playerAgent;
+  }
+
+  /** Player location derived from player Agent state — null if no player in world */
+  get playerLocation(): string | null {
+    return this.playerAgent?.state.location ?? null;
+  }
+
+  /** Check if player is at the given location */
+  isPlayerAt(location: string): boolean {
+    const pa = this.playerAgent;
+    return pa != null && pa.state.alive && pa.state.location === location;
   }
 
   /**
@@ -186,7 +207,7 @@ export class World {
     }
 
     // Information spread → sentiment toward criminal drops for affected NPCs
-    if (isEventCategory(event.type, 'information_spread')) {
+    if (isInformationOnly(event.type)) {
       const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);
       if (criminalName) {
         const criminalEntry = Array.from(this.agents.entries())
@@ -220,7 +241,7 @@ export class World {
 
     // WANTED_STATUS reactive: criminal gets reactive goals (lay_low, seek_forgiveness)
     // This stays in engine because it uses evaluateReactiveVolition (engine function)
-    if (isEventCategory(event.type, 'information_spread') || isPursuitEvent(event.type)) {
+    if (isInformationOnly(event.type) || isPursuitEvent(event.type)) {
       const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);
       if (criminalName && isPursuitEvent(event.type)) {
         const criminalEntry = Array.from(this.agents.entries())
@@ -272,12 +293,6 @@ export class World {
     const allMovements: MovementResult[] = [];
     const goalActions: GoalActionResult[] = [];
 
-    // Update player presence for all agents
-    for (const agent of this.agents.values()) {
-      agent.state.playerPresent = this.playerLocation != null
-        && agent.state.location === this.playerLocation;
-    }
-
     // 0. Auto advance day when a new day starts (tick rolls over to 0)
     let dayAdvanced = false;
     if (tickInDay === 0 && this.tickCount > 1) {
@@ -287,24 +302,28 @@ export class World {
     }
     const gameDay = this.getCurrentDay();
 
-    // 0.5. Check NPC schedules — create low-priority goals for NPCs not at scheduled location
+    // Helper: is this a non-player active NPC available for tick processing?
+    const isNpc = (agent: Agent): boolean =>
+      !agent.profile.isPlayer && !agent.state.inPlayerChat && isActive(agent);
+
+    // 0.5. Check NPC schedules — skip player (player moves freely)
     if (this.scheduleManager) {
-      // Update currentActivity on each agent for prompt context
+      // Update currentActivity on each NPC for prompt context
       for (const [id, agent] of this.agents) {
-        if (!isActive(agent)) continue;
+        if (!isNpc(agent)) continue;
         const entry = this.scheduleManager.getActiveEntry(id, tickInDay);
         agent.state.currentActivity = entry?.activity;
       }
 
       const npcLocations = new Map<string, string>();
       for (const [id, agent] of this.agents) {
-        if (isActive(agent)) {
+        if (isNpc(agent)) {
           npcLocations.set(id, agent.state.location);
         }
       }
 
       const scheduleGoals = this.scheduleManager.checkSchedules(
-        Array.from(this.agents.keys()).filter((id) => isActive(this.agents.get(id)!)),
+        Array.from(this.agents.keys()).filter((id) => isNpc(this.agents.get(id)!)),
         tickInDay,
         npcLocations,
         (id) => this.goalManager.hasActiveGoal(id),
@@ -319,10 +338,10 @@ export class World {
     // 0.6. Check for body discoveries BEFORE goals execute (NPC is still at location)
     await this.checkBodyDiscovery();
 
-    // 0.7. Night walks — depressed NPCs may wander instead of sleeping
+    // 0.7. Night walks — depressed NPCs may wander instead of sleeping (skip player)
     if (getTimePeriod(tickInDay) === 'night') {
       for (const [id, agent] of this.agents) {
-        if (!isActive(agent)) continue;
+        if (!isNpc(agent)) continue;
         if (this.goalManager.hasActiveGoal(id)) continue;
         // mood < -0.3 → chance of night walk proportional to distress
         if (agent.state.mood < -0.3) {
@@ -395,6 +414,7 @@ export class World {
       if (this.goalManager.hasActiveGoal(id)) {
         npcsWithGoals.add(id);
         const agent = this.agents.get(id);
+        if (agent?.state.inPlayerChat) continue; // Frozen in conversation with player
         const goalType = this.goalManager.getActiveGoal(id)?.type ?? 'unknown';
         this.callbacks.onLlmCall?.(`Goal: ${goalType}`, agent?.profile.name);
         const action = await this.goalManager.processGoalTick(
@@ -903,7 +923,7 @@ export class World {
             object: victimName,
             location: agent.state.location,
             confidence: 0.7,
-            source: 'body_discovery',
+            source: BELIEF_SOURCE.BODY_DISCOVERY,
             sourceNpcId: null,
             gameDay: this.getCurrentDay(),
             lastUpdated: this.getCurrentDay(),
@@ -928,8 +948,8 @@ export class World {
 
         // If discoverer is alone (no WITNESS_MEMORY from cascade), create one directly
         // so that reactive AL can give them a report_crime goal
-        const hasWitnessEvent = results.some((r) => isEventCategory(r.event.type, 'witness_event'));
         const witnessEventType = getWitnessEventType();
+        const hasWitnessEvent = witnessEventType ? results.some((r) => r.event.type === witnessEventType) : false;
         if (!hasWitnessEvent && !agent.profile.investigator && witnessEventType) {
           const directWitnessEvent: WorldEvent = {
             id: crypto.randomUUID(),
@@ -1066,7 +1086,7 @@ export class World {
             object: scene.victimId ? (this.agents.get(scene.victimId)?.profile.name ?? null) : null,
             location: locationName,
             confidence: 0.8,
-            source: 'observation',
+            source: BELIEF_SOURCE.OBSERVATION,
             sourceNpcId: null,
             gameDay: this.getCurrentDay(),
             lastUpdated: this.getCurrentDay(),
@@ -1088,8 +1108,9 @@ export class World {
     }
 
     const killer = killerId ? this.agents.get(killerId) : null;
-    const killerSubject = killerId ?? 'player';
-    const killerName = killer ? killer.profile.name : 'the player';
+    const playerAgent = this.playerAgent;
+    const killerSubject = killerId ?? playerAgent?.profile.id ?? 'unknown';
+    const killerName = killer ? killer.profile.name : (playerAgent?.profile.name ?? 'unknown');
 
     victim.state.alive = false;
     victim.state.mood = -1;
@@ -1184,6 +1205,25 @@ export class World {
 
   get currentTick(): number {
     return this.tickCount;
+  }
+
+  /** Build AffordanceContext for external use (IL goalCreator, debug, etc.) */
+  buildAffordanceContext(): AffordanceContext {
+    return {
+      agents: this.agents,
+      locations: this.locations,
+      npcHomes: this.npcHomes,
+      period: this.currentPeriod as AffordanceContext['period'],
+      gameDay: this.getCurrentDay(),
+      currentTick: this.tickCount,
+      playerLocation: this.playerLocation ?? undefined,
+      hasActiveGoal: (id) => this.goalManager.hasActiveGoal(id),
+      hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
+      cooldowns: this.affordanceCooldowns,
+      decisionCooldowns: this.decisionCooldowns,
+      affordanceCooldownTicks: this.config.affordanceCooldownTicks,
+      decisionCooldownTicks: this.config.decisionCooldownTicks,
+    };
   }
 
   /** Build WorldContext for ConsequenceEngine.process() */

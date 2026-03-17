@@ -3,7 +3,7 @@ import type { WorldEvent } from './cg-types';
 import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
 import type { EvidenceLayer } from './evidence';
 import { nextHop } from './pathfinding';
-import { isEventCategory, getEventLabel, getBeliefSourceLabel, getSourceTransferWeight, getStepHandler, runInteractPostHooks } from './event-registry';
+import { getEventLabel, getBeliefSourceLabel, getSourceTransferWeight, getStepHandler, runInteractPostHooks, isTransferable, BELIEF_SOURCE } from './event-registry';
 
 // ─── Step Primitives ───
 
@@ -41,6 +41,8 @@ export interface InteractPresentStep {
   purpose: string;         // LLM prompt purpose
   importance: number;
   filter?: NpcFilter;      // who to interact with
+  /** Transfer transferable beliefs from speaker to each listener */
+  beliefTransfer?: boolean;
 }
 
 /** Share information with all NPCs at current location (no LLM) */
@@ -396,7 +398,7 @@ export class GoalManager {
 
           const senderBeliefs = sender.state.beliefs!.getAllBeliefs();
           const crimeBeliefs = senderBeliefs.filter(
-            (b) => isEventCategory(b.eventType, 'crime') &&
+            (b) => isTransferable(b.eventType) &&
               b.confidence >= 0.3,
           );
           for (const b of crimeBeliefs) {
@@ -414,7 +416,7 @@ export class GoalManager {
               object: b.object,
               location: b.location,
               confidence: transferConfidence,
-              source: 'testimony',
+              source: BELIEF_SOURCE.TESTIMONY,
               sourceNpcId: senderId,
               gameDay: owner.state.currentDay,
               lastUpdated: owner.state.currentDay,
@@ -477,10 +479,10 @@ export class GoalManager {
         const [targetId, target] = candidates[0];
         const result = await runInteraction(owner, target, step.purpose, step.importance);
 
-        // Belief transfer: reporter's crime beliefs → target (e.g. witness reports to guard)
-        if (step.purpose.includes('[CRIME') && owner.state.beliefs && target.state.beliefs) {
+        // Belief transfer: reporter's transferable beliefs → target (e.g. witness reports to guard)
+        if (step.beliefTransfer && owner.state.beliefs && target.state.beliefs) {
           const ownerCrimeBeliefs = owner.state.beliefs.getAllBeliefs().filter(
-            (b) => isEventCategory(b.eventType, 'crime') &&
+            (b) => isTransferable(b.eventType) &&
               b.confidence >= 0.3,
           );
           for (const b of ownerCrimeBeliefs) {
@@ -496,7 +498,7 @@ export class GoalManager {
               object: b.object,
               location: b.location,
               confidence: transferConf,
-              source: 'testimony',
+              source: BELIEF_SOURCE.TESTIMONY,
               sourceNpcId: goal.ownerId,
               gameDay: owner.state.currentDay,
               lastUpdated: owner.state.currentDay,

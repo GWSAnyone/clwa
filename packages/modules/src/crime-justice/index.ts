@@ -1,6 +1,6 @@
 import {
   AFFORDANCE_REGISTRY, EVIDENCE_RULES, REQUIREMENT_CHECKERS, TOPIC_SOURCE_REGISTRY,
-  registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerBeliefZeroingEvents,
+  registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerBeliefZeroingEvents, registerEventTypeFlagsBatch, registerSourceFlags,
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
   registerAbsentStatuses, registerStepHandler, registerInteractPostHook,
   registerWitnessEventType, registerEventMoodShifts, registerGoalMoodBoost,
@@ -54,6 +54,19 @@ export function registerCrimeJusticeModule(): void {
   registerEventCategory('theft', ['GOODS_STOLEN']);
   registerEventCategory('information_spread', ['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED']);
   registerEventCategory('justice_resolution', ['NPC_SENTENCED', 'NPC_FLED']);
+
+  // Event type flags — engine checks boolean properties, not category names
+  registerEventTypeFlagsBatch(['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE'], { transferable: true });
+  registerEventTypeFlagsBatch(['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED'], { informationOnly: true });
+
+  // Source flags — engine checks boolean properties, not category names
+  registerSourceFlags('perpetrator', { perpetrator: true });
+  registerSourceFlags('observation', { firsthand: true });
+  registerSourceFlags('body_discovery', { firsthand: true });
+  registerSourceFlags('witness', { firsthand: true });
+  registerSourceFlags('evidence', { firsthand: true });
+  registerSourceFlags('destroy_evidence', { concealment: true });
+  registerSourceFlags('cover_up', { concealment: true });
 
   registerEventLabels({
     NPC_KILLED: 'murder',
@@ -110,8 +123,20 @@ export function registerCrimeJusticeModule(): void {
       { type: 'struggle', description: 'Furniture is overturned and objects scattered around the area.', clueText: 'Signs of a brief struggle. The victim may have tried to resist.' },
     ],
     passiveNoticeText: 'I noticed something terrible at {locationName} — blood on the floor and signs of violence. Something awful happened here.',
-    professionClues: PROFESSION_CLUES,
-    personalizeBody: true,
+    personalizePoints: (points, { victim }) => {
+      if (!victim) return;
+      const bodyPoint = points.find((p) => p.type === 'body');
+      if (bodyPoint) {
+        bodyPoint.description = `The body of ${victim.profile.name} the ${victim.profile.role} lies on the ground.`;
+        bodyPoint.clueText = `${victim.profile.name} was killed here. The attack seems sudden — no signs of an attempted escape.`;
+      }
+    },
+    additionalPoints: ({ perpetrator }) => {
+      if (!perpetrator) return [];
+      const profClue = PROFESSION_CLUES[perpetrator.profile.role];
+      if (!profClue) return [];
+      return [{ type: 'profession_clue', description: profClue.description, clueText: profClue.clueText }];
+    },
   });
   registerCrimeSceneTemplate('robbery', {
     points: [
@@ -120,7 +145,12 @@ export function registerCrimeJusticeModule(): void {
       { type: 'struggle', description: 'Items knocked off tables, a chair overturned.', clueText: 'Whoever did this was in a hurry, or met some resistance.' },
     ],
     passiveNoticeText: 'I noticed signs of a break-in at {locationName} — a broken lock and scattered goods. Someone was robbed.',
-    professionClues: PROFESSION_CLUES,
+    additionalPoints: ({ perpetrator }) => {
+      if (!perpetrator) return [];
+      const profClue = PROFESSION_CLUES[perpetrator.profile.role];
+      if (!profClue) return [];
+      return [{ type: 'profession_clue', description: profClue.description, clueText: profClue.clueText }];
+    },
   });
   registerCrimeSceneTemplate('assault', {
     points: [
@@ -128,7 +158,12 @@ export function registerCrimeJusticeModule(): void {
       { type: 'struggle', description: 'The area is disturbed — a scuffle clearly took place.', clueText: 'A fight happened here. From the marks, it was between two people.' },
     ],
     passiveNoticeText: 'I saw signs of a fight at {locationName} — blood spots and overturned furniture. Someone was attacked here.',
-    professionClues: PROFESSION_CLUES,
+    additionalPoints: ({ perpetrator }) => {
+      if (!perpetrator) return [];
+      const profClue = PROFESSION_CLUES[perpetrator.profile.role];
+      if (!profClue) return [];
+      return [{ type: 'profession_clue', description: profClue.description, clueText: profClue.clueText }];
+    },
   });
 
   registerEventMoodShifts({

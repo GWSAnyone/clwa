@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
-import { isEventCategory, isSourceCategory, getSecretDirectiveBuilders } from './event-registry';
+import { getSecretDirectiveBuilders, isTransferable, isConcealment, isFirsthand } from './event-registry';
 
 /**
  * Build behavioral directives based on what an NPC secretly knows.
@@ -19,7 +19,7 @@ export function buildSecretDirectives(
 
   // 1. Own crimes — did this NPC commit a crime?
   const ownCrimes = eventStore.getAll()
-    .filter((e) => isEventCategory(e.type, 'crime') && e.subject === agentId);
+    .filter((e) => isTransferable(e.type) && e.subject === agentId);
 
   if (ownCrimes.length > 0) {
     const crime = ownCrimes[ownCrimes.length - 1];
@@ -38,7 +38,7 @@ export function buildSecretDirectives(
   const beliefs = agent.state.beliefs;
   if (beliefs) {
     const coverBeliefs = beliefs.getAllBeliefs()
-      .filter((b) => isSourceCategory(b.source, 'concealment'));
+      .filter((b) => isConcealment(b.source));
 
     for (const belief of coverBeliefs) {
       const coveredId = belief.subject;
@@ -62,8 +62,8 @@ export function buildSecretDirectives(
     const coveredSubjects = new Set(coverBeliefs.map((b) => b.subject));
     const witnessBeliefs = beliefs.getAllBeliefs()
       .filter((b) =>
-        isSourceCategory(b.source, 'direct_experience') &&
-        isEventCategory(b.eventType, 'crime') &&
+        isFirsthand(b.source) &&
+        isTransferable(b.eventType) &&
         !coveredSubjects.has(b.subject),
       );
 

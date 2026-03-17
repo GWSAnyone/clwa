@@ -46,6 +46,7 @@ export {
   checkRequirements,
   checkRequirementsReactive,
   findByRole,
+  validatePlayerAction,
 } from './al';
 export type {
   AffordanceContext,
@@ -60,10 +61,14 @@ export type {
   ScoredAffordance,
   StepTemplate,
   TargetFinderFn,
+  ValidationResult,
 } from './al';
 
+// ─── Perception ───
+export { canSee, canInteract, canHear, getCoPresent, getWitnesses, getPlayerAgent, isPlayerAt, getNpcsAt } from './perception';
+
 // ─── Volition ───
-export { evaluateAllVolition, evaluateReactiveVolition, parseDoWhy } from './volition';
+export { evaluateAllVolition, evaluateReactiveVolition, parseDoWhy, createGoalFromRequest } from './volition';
 export type { ParsedIntention } from './volition';
 
 // ─── Goals ───
@@ -132,10 +137,14 @@ export { TopicEngine, TOPIC_SOURCE_REGISTRY } from './topic-engine';
 export type { TopicSource } from './topic-engine';
 export type { TopicContext, TopicProposal } from './topic-engine';
 
-// ─── Intent ───
+// ─── Intent (legacy — use IL instead) ───
 export { classifyIntent } from './intent';
 export type { IntentType } from './intent';
 export type { IntentResult } from './intent';
+
+// ─── IL (Intent Layer) — Dialogue Meaning Extraction ───
+export { extractDialogueMeaning, applyDialogueMeaning, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from './il';
+export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext } from './il';
 
 // ─── Interaction ───
 export { createInteractionRunner } from './interaction';
@@ -164,7 +173,10 @@ export { buildSecretDirectives } from './secret-directives';
 
 // ─── Event Registry ───
 export {
-  registerEventCategory, isEventCategory,
+  registerEventCategory, isEventCategory, getAllRegisteredEventTypes,
+  registerEventTypeFlags, registerEventTypeFlagsBatch, isTransferable, isInformationOnly,
+  registerSourceFlags, isPerpetrator, isFirsthand, isConcealment,
+  BELIEF_SOURCE,
   registerEventLabels, getEventLabel,
   registerEventGoalCleanup, getGoalCleanupForEvent,
   registerBeliefZeroingEvents, shouldZeroBeliefs,

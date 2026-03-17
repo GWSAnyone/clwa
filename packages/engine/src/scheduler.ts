@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { WorldConfig } from './world-types';
-import { isEventCategory, isStatusAbsent } from './event-registry';
+import { isStatusAbsent, isTransferable } from './event-registry';
 
 /** Pair key for cooldown tracking */
 function pairKey(a: string, b: string): string {
@@ -37,6 +37,7 @@ export class ConversationScheduler {
     const agentList = Array.from(agents.entries())
       .filter(([id, a]) => {
         if (!a.state.alive || excludeIds?.has(id)) return false;
+        if (a.profile.isPlayer) return false; // Player initiates conversations manually
         return !isStatusAbsent(a.state.status);
       });
 
@@ -86,10 +87,10 @@ export class ConversationScheduler {
 
     // Belief-based scoring: unshared crime knowledge = high conversation value
     const beliefsA = agentA.state.beliefs?.getAllBeliefs().filter(
-      (b) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
+      (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
     ) ?? [];
     const beliefsB = agentB.state.beliefs?.getAllBeliefs().filter(
-      (b) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
+      (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
     ) ?? [];
 
     // A knows something B doesn't

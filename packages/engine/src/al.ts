@@ -3,7 +3,7 @@ import type { Belief } from './beliefs';
 import type { WorldEvent } from './cg-types';
 import type { LocationGraph } from './world-types';
 import type { TimePeriod } from './schedule';
-import { isEventCategory, getEventLabel } from './event-registry';
+import { getEventLabel, isTransferable } from './event-registry';
 import type { NpcFilter } from './goals';
 
 // ─── Affordance Data Model ───
@@ -237,7 +237,7 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
   const extra: Record<string, string> = {};
   const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
   const crimeBelief = beliefs.find(
-    (b: Belief) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
+    (b: Belief) => isTransferable(b.eventType) && b.confidence >= 0.3,
   );
   if (crimeBelief) {
     if (crimeBelief.subject) extra.killerName = crimeBelief.subject;
@@ -461,4 +461,78 @@ export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: 
   const clamped = Math.max(0, Math.min(1, rawScore));
   // minimumScore: if affordance passed requirements, ensure score is at least this value
   return aff.minimumScore ? Math.max(clamped, aff.minimumScore) : clamped;
+}
+
+// ─── Player Action Validation ───
+
+export interface ValidationResult {
+  allowed: boolean;
+  /** Human-readable reason if not allowed */
+  reason?: string;
+  /** The matched affordance definition */
+  affordance?: AffordanceDefinition;
+  /** Resolved target */
+  target?: AffordanceTarget;
+}
+
+/**
+ * Validate whether a player can perform an action.
+ * Checks affordance requirements without personality/LLM scoring.
+ * AL for Player = validator (can you do this?), not generator (what should you do?).
+ */
+export function validatePlayerAction(
+  actionId: string,
+  playerId: string,
+  playerAgent: Agent,
+  ctx: AffordanceContext,
+  targetId?: string,
+): ValidationResult {
+  const aff = AFFORDANCE_REGISTRY.find((a) => a.id === actionId);
+  if (!aff) {
+    return { allowed: false, reason: `Unknown action: ${actionId}` };
+  }
+
+  // Check basic requirements (skip personality-based ones like mood/sentiment)
+  const req = aff.requires;
+  if (req.period && !req.period.includes(ctx.period)) {
+    return { allowed: false, reason: `Cannot ${actionId} during ${ctx.period}`, affordance: aff };
+  }
+  if (req.isInvestigator && !playerAgent.profile.investigator) {
+    return { allowed: false, reason: `Only investigators can ${actionId}`, affordance: aff };
+  }
+  if (req.canSentence && !playerAgent.profile.canSentence) {
+    return { allowed: false, reason: `Only judges can ${actionId}`, affordance: aff };
+  }
+
+  // Module requirement checks
+  for (const [key, checker] of REQUIREMENT_CHECKERS) {
+    if ((req as Record<string, unknown>)[key] && !checker(playerAgent, ctx)) {
+      return { allowed: false, reason: `Requirement not met: ${key}`, affordance: aff };
+    }
+  }
+
+  // If specific target provided, validate co-location
+  if (targetId) {
+    const target = ctx.agents.get(targetId);
+    if (!target) {
+      return { allowed: false, reason: `Target not found: ${targetId}`, affordance: aff };
+    }
+    if (!target.state.alive) {
+      return { allowed: false, reason: `${target.profile.name} is dead`, affordance: aff };
+    }
+    if (playerAgent.state.location !== target.state.location) {
+      return { allowed: false, reason: `${target.profile.name} is not here`, affordance: aff };
+    }
+    return {
+      allowed: true,
+      affordance: aff,
+      target: {
+        targetId,
+        targetName: target.profile.name,
+        targetLocation: target.state.location,
+      },
+    };
+  }
+
+  return { allowed: true, affordance: aff };
 }

@@ -26,26 +26,16 @@ export function createCrimeScene(
     examined: false,
   }));
 
-  // Personalize body description if template declares it and victim is known
-  if (template.personalizeBody && victim) {
-    const bodyPoint = points.find((p) => p.type === 'body');
-    if (bodyPoint) {
-      bodyPoint.description = `The body of ${victim.profile.name} the ${victim.profile.role} lies on the ground.`;
-      bodyPoint.clueText = `${victim.profile.name} was killed here. The attack seems sudden — no signs of an attempted escape.`;
-    }
+  // Module-defined personalization — template declares how to customize points
+  if (template.personalizePoints) {
+    template.personalizePoints(points, { victim, perpetrator });
   }
 
-  // Profession-specific clue from template
-  if (perpetrator && template.professionClues) {
-    const profClue = template.professionClues[perpetrator.profile.role];
-    if (profClue) {
-      points.push({
-        id: crypto.randomUUID(),
-        type: 'profession_clue',
-        description: profClue.description,
-        clueText: profClue.clueText,
-        examined: false,
-      });
+  // Module-defined additional points — template generates extras based on context
+  if (template.additionalPoints) {
+    const extras = template.additionalPoints({ victim, perpetrator });
+    for (const ep of extras) {
+      points.push({ ...ep, id: crypto.randomUUID(), examined: false });
     }
   }
 

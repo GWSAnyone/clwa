@@ -2,15 +2,80 @@
  * Event Registry — modules declare event metadata here.
  * Engine uses registries instead of hardcoding module-specific event types.
  *
- * Categories: modules group their events by semantic role.
+ * Flags: boolean properties on event types/sources (engine checks flags, not category names).
+ * Categories: modules group their events for internal use.
  * Labels: human-readable display names for event types.
  * Goal cleanup: which goal types to complete when an event fires.
  * Belief zeroing: which events should zero out investigator beliefs about a suspect.
  */
+import type { Agent } from './agent';
 
-// ─── Event Categories ───
-// Engine defines category NAMES it cares about. Modules register which eventTypes belong.
-// Engine categories: 'crime', 'information_spread', 'death', 'justice_resolution'
+// ─── Event Type Flags ───
+// Engine defines WHAT properties exist. Modules declare WHICH event types have them.
+// Same pattern as AgentProfile capability flags (investigator, detersCrime, canSentence).
+
+export interface EventTypeFlags {
+  /** Beliefs about these events should transfer between agents during interactions */
+  transferable?: boolean;
+  /** Purely informational events — skip reactive volition evaluation */
+  informationOnly?: boolean;
+}
+
+const EVENT_TYPE_FLAGS: Map<string, EventTypeFlags> = new Map();
+
+/** Register flags for event types. Modules call this to declare properties. */
+export function registerEventTypeFlags(eventType: string, flags: EventTypeFlags): void {
+  const existing = EVENT_TYPE_FLAGS.get(eventType) ?? {};
+  EVENT_TYPE_FLAGS.set(eventType, { ...existing, ...flags });
+}
+
+/** Batch register same flags for multiple event types */
+export function registerEventTypeFlagsBatch(eventTypes: string[], flags: EventTypeFlags): void {
+  for (const t of eventTypes) registerEventTypeFlags(t, flags);
+}
+
+/** Check if beliefs about this event type should transfer during interactions */
+export function isTransferable(eventType: string): boolean {
+  return EVENT_TYPE_FLAGS.get(eventType)?.transferable === true;
+}
+
+/** Check if this event type is purely informational (skip reactive volition) */
+export function isInformationOnly(eventType: string): boolean {
+  return EVENT_TYPE_FLAGS.get(eventType)?.informationOnly === true;
+}
+
+// ─── Source Flags ───
+// Same pattern: engine defines WHAT source properties exist, modules assign them.
+
+export interface SourceFlags {
+  /** Source indicates perpetrator involvement */
+  perpetrator?: boolean;
+  /** Source is from firsthand experience */
+  firsthand?: boolean;
+  /** Source involves hiding/covering up */
+  concealment?: boolean;
+}
+
+const SOURCE_FLAGS: Map<string, SourceFlags> = new Map();
+
+export function registerSourceFlags(source: string, flags: SourceFlags): void {
+  const existing = SOURCE_FLAGS.get(source) ?? {};
+  SOURCE_FLAGS.set(source, { ...existing, ...flags });
+}
+
+export function isPerpetrator(source: string | null | undefined): boolean {
+  return source != null && (SOURCE_FLAGS.get(source)?.perpetrator === true);
+}
+
+export function isFirsthand(source: string | null | undefined): boolean {
+  return source != null && (SOURCE_FLAGS.get(source)?.firsthand === true);
+}
+
+export function isConcealment(source: string | null | undefined): boolean {
+  return source != null && (SOURCE_FLAGS.get(source)?.concealment === true);
+}
+
+// ─── Event Categories (module-internal, NOT used by engine logic) ───
 const EVENT_CATEGORIES: Map<string, Set<string>> = new Map();
 
 export function registerEventCategory(category: string, eventTypes: string[]): void {
@@ -21,6 +86,15 @@ export function registerEventCategory(category: string, eventTypes: string[]): v
 
 export function isEventCategory(eventType: string, category: string): boolean {
   return EVENT_CATEGORIES.get(category)?.has(eventType) ?? false;
+}
+
+/** Get all registered event types across all categories (for IL context, prompts, etc.) */
+export function getAllRegisteredEventTypes(): string[] {
+  const all = new Set<string>();
+  for (const types of EVENT_CATEGORIES.values()) {
+    for (const t of types) all.add(t);
+  }
+  return Array.from(all);
 }
 
 // ─── Event Display Labels ───
@@ -158,10 +232,10 @@ export interface CrimeSceneTemplate {
   points: Omit<ExaminationPoint, 'id' | 'examined'>[];
   /** Prose text for NPCs who passively notice this scene. {locationName} is interpolated. */
   passiveNoticeText?: string;
-  /** Profession-based clues keyed by role string */
-  professionClues?: Record<string, { description: string; clueText: string }>;
-  /** If true, first 'body' type point gets personalized with victim name/role */
-  personalizeBody?: boolean;
+  /** Module callback: personalize points based on victim/perpetrator context */
+  personalizePoints?: (points: ExaminationPoint[], ctx: { victim?: Agent; perpetrator?: Agent }) => void;
+  /** Module callback: generate additional points based on context (e.g. profession clues) */
+  additionalPoints?: (ctx: { victim?: Agent; perpetrator?: Agent }) => Omit<ExaminationPoint, 'id' | 'examined'>[];
 }
 
 const CRIME_SCENE_TEMPLATES: Map<string, CrimeSceneTemplate> = new Map();
@@ -218,6 +292,16 @@ export function registerBeliefSourceLabels(labels: Record<string, string>): void
 export function getBeliefSourceLabel(source: string): string {
   return BELIEF_SOURCE_LABELS.get(source) ?? source;
 }
+
+// ─── Belief Source Constants ───
+// Engine-defined source type identifiers. Used when creating beliefs in engine code.
+export const BELIEF_SOURCE = {
+  TESTIMONY: 'testimony',
+  OBSERVATION: 'observation',
+  BODY_DISCOVERY: 'body_discovery',
+  EVIDENCE: 'evidence',
+  DEDUCTION: 'deduction',
+} as const;
 
 // ─── Belief Source Transfer Weights ───
 // When beliefs transfer between NPCs, confidence is multiplied by source weight

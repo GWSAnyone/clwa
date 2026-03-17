@@ -13,7 +13,7 @@ import {
   type ScoredAffordance,
   type StepTemplate,
 } from './al';
-import { getAffordanceIdsForVerb, getRelationshipLabel, isEventCategory, isStatusAbsent } from './event-registry';
+import { getAffordanceIdsForVerb, getRelationshipLabel, isStatusAbsent, getBodyDiscoveryEventType } from './event-registry';
 
 // ─── Constants ───
 
@@ -46,6 +46,64 @@ export interface ParsedIntention {
   why: string;       // reason from WHY line
 }
 
+// ─── Goal Creation from External Request (IL / player) ───
+
+/**
+ * Create a goal from an external request (e.g., player asking NPC to investigate).
+ * Uses the same pipeline as volition: find affordance → checkRequirements → buildSteps.
+ * Returns null if requirements not met or affordance not found.
+ */
+export function createGoalFromRequest(
+  npcId: string,
+  affordanceId: string,
+  ctx: AffordanceContext,
+  requestedTarget?: string,
+): NpcGoal | null {
+  const agent = ctx.agents.get(npcId);
+  if (!agent || !agent.state.alive || !!agent.state.status) return null;
+
+  const aff = AFFORDANCE_REGISTRY.find((a) => a.id === affordanceId);
+  if (!aff) return null;
+
+  // Validate requirements (same checkRequirements as volition)
+  const target = checkRequirements(aff, npcId, agent, ctx);
+  if (!target) return null;
+
+  // If caller specified a target, override location (e.g., "investigate the market")
+  if (requestedTarget) {
+    // Try to resolve as location name
+    for (const loc of ctx.locations.values()) {
+      if (loc.name.toLowerCase().includes(requestedTarget.toLowerCase())) {
+        target.targetLocation = loc.name;
+        break;
+      }
+    }
+  }
+
+  // Build proper steps using the same templates as volition
+  const steps = buildSteps(aff, npcId, agent, target, ctx);
+  const home = ctx.npcHomes.get(npcId) ?? agent.state.location;
+
+  return {
+    id: crypto.randomUUID(),
+    type: aff.goalType,
+    ownerId: npcId,
+    priority: Math.max(aff.goalPriority, 7), // Player request = at least priority 7
+    state: 'pending',
+    steps,
+    currentStep: 0,
+    data: {
+      affordanceId: aff.id,
+      targetId: target.targetId,
+      targetName: target.targetName,
+      requestedBy: Array.from(ctx.agents.values()).find(a => a.profile.isPlayer)?.profile.id,
+      ...target.extra,
+    },
+    createdAtTick: ctx.currentTick,
+    homeLocation: home,
+  };
+}
+
 // ─── Proactive Entry Point (each tick) ───
 
 export async function evaluateAllVolition(
@@ -55,6 +113,8 @@ export async function evaluateAllVolition(
   const goals: NpcGoal[] = [];
 
   for (const [npcId, agent] of ctx.agents) {
+    if (agent.profile.isPlayer) continue; // Player makes own decisions
+    if (agent.state.inPlayerChat) continue; // NPC frozen in conversation with player
     if (!agent.state.alive || !!agent.state.status) continue; // any non-default status blocks proactive volition
     if (ctx.hasActiveGoalAbove(npcId, 4)) continue;
 
@@ -138,7 +198,8 @@ export function evaluateReactiveVolition(
   // Include event subject for discovery events (discoverer should react)
   // but NOT for crime events (killer should not get reactive report_crime goal)
   const reactors = new Set(affectedTargets);
-  if (event.subject && isEventCategory(event.type, 'body_discovery')) {
+  const bodyDiscoveryType = getBodyDiscoveryEventType();
+  if (event.subject && bodyDiscoveryType && event.type === bodyDiscoveryType) {
     reactors.add(event.subject);
   }
 
@@ -802,6 +863,7 @@ function resolveTemplates(
           purpose: interpolate(tmpl.purpose ?? '', vars),
           importance: tmpl.importance ?? 5,
           filter: tmpl.filter,
+          beliefTransfer: tmpl.beliefTransfer,
         });
         break;
       }

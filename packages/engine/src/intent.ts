@@ -1,3 +1,7 @@
+/**
+ * @deprecated Use IL (il.ts) instead — extractDialogueMeaning() provides much richer extraction.
+ * This file kept for backward compatibility only.
+ */
 import { llmSemaphore } from './agent';
 
 export type IntentType =

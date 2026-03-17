@@ -37,40 +37,41 @@ export type TopicSource = (
 
 // ─── Built-in Topic Sources ─────────────────────────────────────
 
-/** Topics from NPC beliefs about crimes/events */
+/** Topics from NPC beliefs about significant events (crime, trade disputes, etc.) */
 const beliefTopics: TopicSource = (init, resp) => {
   const proposals: TopicProposal[] = [];
-  // Any high-confidence belief is worth discussing (not just crime — works for economy, politics, etc.)
+  // Any high-confidence belief with an object is worth discussing
   const initBeliefs = init.state.beliefs?.getAllBeliefs()
     .filter(b => b.confidence >= 0.3 && b.object) ?? [];
   const respBeliefs = resp.state.beliefs?.getAllBeliefs()
     .filter(b => b.confidence >= 0.3 && b.object) ?? [];
 
   for (const belief of initBeliefs) {
-    const crimeWord = getEventLabel(belief.eventType);
+    const eventLabel = getEventLabel(belief.eventType);
     const victim = belief.object ?? 'someone';
+    const topicCategory = `event:${belief.eventType}`; // derived from data, not hardcoded
     const respKnows = respBeliefs.some(
       b => b.eventType === belief.eventType && b.object === belief.object,
     );
 
     if (respKnows) {
       proposals.push({
-        subject: `the ${crimeWord} of ${victim}`,
+        subject: `the ${eventLabel} of ${victim}`,
         tone: 'grave, processing together',
         weight: 7,
-        initiatorHook: `You both know about the ${crimeWord}. Share your thoughts, fears, theories.`,
+        initiatorHook: `You both know about the ${eventLabel}. Share your thoughts, fears, theories.`,
         responderHook: `You also know about this. React to what they say with your own feelings.`,
-        category: 'crime',
+        category: topicCategory,
         minImportance: 6,
       });
     } else {
       proposals.push({
-        subject: `the ${crimeWord} of ${victim}`,
+        subject: `the ${eventLabel} of ${victim}`,
         tone: 'urgent, breaking the news',
         weight: 9,
-        initiatorHook: `You need to tell them about the ${crimeWord}. Break the news.`,
+        initiatorHook: `You need to tell them about the ${eventLabel}. Break the news.`,
         responderHook: `This is the first you're hearing of this. React with genuine shock.`,
-        category: 'crime',
+        category: topicCategory,
         minImportance: 6,
       });
     }
