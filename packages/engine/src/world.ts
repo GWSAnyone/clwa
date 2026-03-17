@@ -28,7 +28,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getWitnessEventType, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers, isInformationOnly, BELIEF_SOURCE } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers, isInformationOnly, BELIEF_SOURCE } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -947,30 +947,10 @@ export class World {
           await this.handleEventForGoals(r.event);
         }
 
-        // If discoverer is alone (no WITNESS_MEMORY from cascade), create one directly
-        // so that reactive AL can give them a report_crime goal
-        const witnessEventType = getWitnessEventType();
-        const hasWitnessEvent = witnessEventType ? results.some((r) => r.event.type === witnessEventType) : false;
-        if (!hasWitnessEvent && !agent.profile.investigator && witnessEventType) {
-          const directWitnessEvent: WorldEvent = {
-            id: crypto.randomUUID(),
-            type: witnessEventType,
-            subject: id,
-            object: dead.id,
-            location: agent.state.location,
-            gameDay: this.getCurrentDay(),
-            importance: 8,
-            payload: {
-              affectedTargets: [id],
-              victimName,
-              killerName: null,
-              sourceRule: 'body-discovery-to-witness',
-            },
-          };
-          this.eventStore.append(directWitnessEvent);
-          await this.handleEventForGoals(directWitnessEvent);
-          console.log(`  [Discovery] ${agent.profile.name} is alone — creating direct witness event`);
-        }
+        // No solo WITNESS_MEMORY needed — discoverer already has body_discovery belief (conf 0.7)
+        // which satisfies hasWitnessBelief for proactive AL (testify/report_crime).
+        // Creating WITNESS_MEMORY here caused bogus WANTED_STATUS via CG cascade
+        // (subject=discoverer instead of subject=suspect).
 
         console.log(`  [Discovery] ${agent.profile.name} found the body of ${victimName} at ${agent.state.location}`);
       }
