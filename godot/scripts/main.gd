@@ -64,7 +64,7 @@ var _name_to_id: Dictionary = {}
 
 const NPC_INTERACT_DISTANCE := 150.0
 const NPC_HIGHLIGHT_DISTANCE := 200.0
-const LOCATION_DETECT_RADIUS := 400.0
+const LOCATION_DETECT_RADIUS := 600.0
 const NPC_WALK_SPEED := 350.0  # pixels per second
 
 var _npc_nodes: Dictionary = {}
@@ -598,6 +598,11 @@ func _on_interact_requested(npc_id: String) -> void:
 	var npc_name: String = NPC_NAMES.get(npc_id, npc_id)
 	print("[Main] Interacting with %s" % npc_name)
 	_chatting_with_npc = npc_id
+	# Sync player location to NPC's location — ensures server co-location check passes
+	var npc_loc: String = _npc_locations.get(npc_id, "")
+	if npc_loc != "" and npc_loc != _player_location:
+		_player_location = npc_loc
+		Backend.update_player_location(npc_loc)
 	_dialog_panel.open_dialog(npc_id, npc_name)
 
 
