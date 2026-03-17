@@ -199,7 +199,7 @@ export class World {
           if (!agent.state.beliefs) continue;
           for (const b of agent.state.beliefs.getAllBeliefs()) {
             if (b.subject === suspect.profile.name || b.subject === suspect.profile.id) {
-              b.confidence = agent.profile.investigator ? 0 : Math.min(b.confidence, 0.2);
+              b.confidence = 0; // Case resolved — zero all beliefs about suspect to prevent re-investigation
             }
           }
         }

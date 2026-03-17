@@ -3,6 +3,31 @@ import type { EventHandlerContext } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
 
 export function registerCrimeEventHandlers(): void {
+  // NPC_KILLED: killer gets perpetrator belief (blocks testify/report/demand_justice via notPerpetrator)
+  registerEventHandler('NPC_KILLED', (event: WorldEvent, ctx: EventHandlerContext) => {
+    const killer = ctx.agents.get(event.subject);
+    if (!killer || !killer.state.beliefs) return;
+    // Only add if killer doesn't already have perpetrator belief (attack_npc step already added one)
+    const existing = killer.state.beliefs.getAllBeliefs().find(
+      (b) => b.eventType === event.type && b.source === 'perpetrator' && b.object === (event.payload?.victimName as string),
+    );
+    if (existing) return;
+    killer.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: event.type,
+      subject: killer.profile.name,
+      object: (event.payload?.victimName as string) ?? null,
+      location: event.location,
+      confidence: 1.0,
+      source: 'perpetrator',
+      sourceNpcId: null,
+      gameDay: ctx.getCurrentDay(),
+      lastUpdated: ctx.getCurrentDay(),
+    });
+    // Mood penalty if not already applied (API kills don't go through attack_npc)
+    killer.state.mood = Math.max(-1, killer.state.mood - 0.3);
+  });
+
   // WANTED_STATUS: investigator sentiment + criminal awareness
   registerEventHandler('WANTED_STATUS', (event: WorldEvent, ctx: EventHandlerContext) => {
     const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);

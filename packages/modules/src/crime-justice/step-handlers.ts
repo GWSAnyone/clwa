@@ -242,6 +242,6 @@ export function registerCrimeStepHandlers(): void {
       await ctx.onCrimeEvent({ type: 'NPC_SENTENCED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { judgeName: owner.profile.name, suspectName: target.profile.name, verdict, affectedTargets: Array.from(agents.keys()) } });
     }
     goal.currentStep++;
-    return { ...baseResult, action: 'sentence_npc', description: `Magistrate ${owner.profile.name} ${verdict === 'exile' ? 'exiled' : 'released'} ${target.profile.name}` };
+    return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name} ${verdict === 'exile' ? 'exiled' : 'released'} ${target.profile.name}` };
   });
 }

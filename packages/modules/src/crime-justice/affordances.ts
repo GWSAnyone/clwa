@@ -606,6 +606,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: 'Courthouse', skipIfAt: true },
+      { action: 'wait', ticks: 4 }, // Wait for testimony/evidence to arrive before sentencing
       { action: 'sentence_npc', targetId: '$target', importance: 9 },
     ],
   },
