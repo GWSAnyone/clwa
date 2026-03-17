@@ -414,6 +414,7 @@ export class World {
       if (this.goalManager.hasActiveGoal(id)) {
         npcsWithGoals.add(id);
         const agent = this.agents.get(id);
+        if (agent?.profile.isPlayer) continue; // Player goals not executed by tick
         if (agent?.state.inPlayerChat) continue; // Frozen in conversation with player
         const goalType = this.goalManager.getActiveGoal(id)?.type ?? 'unknown';
         this.callbacks.onLlmCall?.(`Goal: ${goalType}`, agent?.profile.name);
