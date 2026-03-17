@@ -206,6 +206,7 @@ export function evaluateReactiveVolition(
   for (const npcId of reactors) {
     const agent = ctx.agents.get(npcId);
     if (!agent || !agent.state.alive || !!agent.state.status) continue;
+    if (agent.profile.isPlayer) continue; // Player makes own decisions
 
     // Find reactive affordances matching this event
     for (const aff of AFFORDANCE_REGISTRY) {

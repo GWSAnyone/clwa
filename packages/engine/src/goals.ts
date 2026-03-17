@@ -593,6 +593,7 @@ export class GoalManager {
 
     return Array.from(agents.entries()).filter(([id, agent]) => {
       if (id === ownerId) return false;
+      if (agent.profile.isPlayer) return false; // Player not a valid NPC-NPC interaction target
       if (interactedSet.has(id)) return false;
       if (excludeIds.has(id)) return false;
       if (filter?.onlyAlive !== false && !agent.state.alive) return false;
