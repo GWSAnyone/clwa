@@ -117,6 +117,7 @@ export async function evaluateAllVolition(
     if (agent.state.inPlayerChat) continue; // NPC frozen in conversation with player
     if (!agent.state.alive || !!agent.state.status) continue; // any non-default status blocks proactive volition
     if (ctx.hasActiveGoalAbove(npcId, 4)) continue;
+    if (ctx.isArrestTarget?.(npcId)) continue; // someone is arresting this NPC — skip evaluation
 
     // Decision cooldown — don't re-evaluate too frequently
     if (ctx.decisionCooldowns) {

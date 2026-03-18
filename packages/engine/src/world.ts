@@ -462,6 +462,7 @@ export class World {
       decisionCooldowns: this.decisionCooldowns,
       affordanceCooldownTicks: this.config.affordanceCooldownTicks,
       decisionCooldownTicks: this.config.decisionCooldownTicks,
+      isArrestTarget: (npcId) => this.goalManager.isTargetOfGoalType(npcId, 'arrest'),
     };
     const volitionGoals = await evaluateAllVolition(volitionCtx, this.callbacks.onLlmCall);
     for (const goal of volitionGoals) {

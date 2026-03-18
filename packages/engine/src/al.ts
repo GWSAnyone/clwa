@@ -179,6 +179,8 @@ export interface AffordanceContext {
   /** Configurable cooldown values (from WorldConfig) */
   affordanceCooldownTicks?: number;
   decisionCooldownTicks?: number;
+  /** Check if NPC is target of someone else's arrest/pursuit goal */
+  isArrestTarget?: (npcId: string) => boolean;
 }
 
 /** Target found for an affordance */

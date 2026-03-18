@@ -221,6 +221,23 @@ export class GoalManager {
     return goals.some((g) => g.state !== 'completed' && g.state !== 'failed' && g.priority >= minPriority);
   }
 
+  /** Check if NPC is the target of someone else's goal of a specific type (e.g. arrest).
+   *  Checks step targetId fields in active/pending goals. */
+  isTargetOfGoalType(targetNpcId: string, goalType: string): boolean {
+    for (const [ownerId, ownerGoals] of this.goals) {
+      if (ownerId === targetNpcId) continue;
+      for (const goal of ownerGoals) {
+        if (goal.state === 'completed' || goal.state === 'failed') continue;
+        if (goal.type !== goalType) continue;
+        // Check if any step targets this NPC
+        for (const step of goal.steps) {
+          if ('targetId' in step && (step as { targetId?: string }).targetId === targetNpcId) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** Complete all pending/active goals of a given type (e.g. once crime is reported, no need to keep reporting) */
   completeGoalsByType(type: string): number {
     let count = 0;
