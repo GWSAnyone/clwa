@@ -4,6 +4,7 @@ import type { ReflectionConfig } from './reflection';
 import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
 import { getEventLabel, isPursuitEvent, isTransferable, isPerpetrator, isFirsthand } from './event-registry';
+import { DEFAULT_WORLD_CONFIG } from './world-types';
 
 interface LMStudioResponse {
   output: Array<{ type: string; content: string }>;
@@ -73,7 +74,7 @@ export class Agent {
     this.profile = profile;
     this.state = state;
     this.memory = memory;
-    this.model = options?.model ?? 'qwen/qwen3.5-9b';
+    this.model = options?.model ?? DEFAULT_WORLD_CONFIG.model;
     this.baseUrl = options?.lmStudioUrl ?? 'http://localhost:1234';
     this.reflectionTracker = new ReflectionTracker({
       lmStudioUrl: this.baseUrl,
@@ -106,8 +107,8 @@ export class Agent {
           model: this.model,
           system_prompt: systemPrompt,
           input: userMessage,
-          reasoning: 'off',
           temperature: this.llmConfig.temperature,
+          reasoning: 'off',
           max_output_tokens: this.llmConfig.maxTokens,
         }),
       });
@@ -168,8 +169,8 @@ export class Agent {
           model: this.model,
           system_prompt: systemPrompt,
           input: inputWithHistory,
-          reasoning: 'off',
           temperature: this.llmConfig.temperature,
+          reasoning: 'off',
           max_output_tokens: this.llmConfig.maxTokens,
           stream: true,
         }),

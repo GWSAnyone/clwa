@@ -102,6 +102,7 @@ export type {
   ConversationLine,
   ConversationResult,
   CrimeScene,
+  ApproachEvent,
   CrimeSceneJSON,
   ExaminationPoint,
   LocationDef,
@@ -137,10 +138,6 @@ export { TopicEngine, TOPIC_SOURCE_REGISTRY } from './topic-engine';
 export type { TopicSource } from './topic-engine';
 export type { TopicContext, TopicProposal } from './topic-engine';
 
-// ─── Intent (legacy — use IL instead) ───
-export { classifyIntent } from './intent';
-export type { IntentType } from './intent';
-export type { IntentResult } from './intent';
 
 // ─── IL (Intent Layer) — Dialogue Meaning Extraction ───
 export { extractDialogueMeaning, applyDialogueMeaning, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from './il';

@@ -17,6 +17,7 @@ import { llmSemaphore } from './agent';
 import type { Agent } from './agent';
 import type { IEventStore } from './event-store';
 import { getEventLabel, BELIEF_SOURCE } from './event-registry';
+import { DEFAULT_WORLD_CONFIG } from './world-types';
 
 /** Event type for player actions — must be registered by server/module at startup */
 export const PLAYER_ACTION_EVENT = 'PLAYER_ACTION';
@@ -111,7 +112,7 @@ export interface ILContext {
   targetNpcName: string;
   /** LLM base URL (default: http://127.0.0.1:1234) */
   llmBaseUrl?: string;
-  /** LLM model name (default: qwen/qwen3.5-9b) */
+  /** LLM model name (default: from DEFAULT_WORLD_CONFIG) */
   llmModel?: string;
 }
 
@@ -119,7 +120,7 @@ export interface ILContext {
 
 /**
  * Extract structured meaning from player speech using LLM.
- * This replaces classifyIntent with a much richer extraction.
+ * Inverse of chatStream: natural text → structured data for the engine.
  */
 export async function extractDialogueMeaning(
   playerMessage: string,
@@ -172,7 +173,7 @@ export async function extractDialogueMeaning(
   await llmSemaphore.acquire();
   try {
     const baseUrl = ctx.llmBaseUrl ?? 'http://127.0.0.1:1234';
-    const model = ctx.llmModel ?? 'qwen/qwen3.5-9b';
+    const model = ctx.llmModel ?? DEFAULT_WORLD_CONFIG.model;
     const res = await fetch(`${baseUrl}/api/v1/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

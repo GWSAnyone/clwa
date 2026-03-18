@@ -464,32 +464,50 @@ interface RelDef {
 }
 
 const RELATIONSHIP_DEFS: RelDef[] = [
-  { from: 'ted', to: 'hilda',   type: 'friend',     note: 'old drinking buddies' },
-  { from: 'ted', to: 'elara',   type: 'colleague',   note: 'performs at his tavern' },
-  { from: 'ted', to: 'garrett', type: 'acquaintance', note: 'occasional tavern visitor' },
-  { from: 'ted', to: 'aldric',  type: 'acquaintance', note: 'comes for counsel sometimes' },
-  { from: 'ted', to: 'mark',    type: 'acquaintance', note: 'regular evening customer' },
-  { from: 'ted', to: 'bess',    type: 'acquaintance', note: 'buys remedies for hangovers' },
-  { from: 'mark', to: 'bess',   type: 'acquaintance', note: 'she knows too much about herbs', sentiment: -0.8, trust: 0.0 },
-  { from: 'mark', to: 'hilda',  type: 'colleague',   note: 'supplies her with materials' },
-  { from: 'mark', to: 'elara',  type: 'acquaintance', note: 'entertains at the tavern' },
-  { from: 'mark', to: 'garrett', type: 'acquaintance' },
-  { from: 'elara', to: 'ted',    type: 'friend',     note: 'her favorite stage' },
-  { from: 'elara', to: 'aldric', type: 'acquaintance', note: 'visits the temple for stories' },
-  { from: 'elara', to: 'bess',   type: 'acquaintance', note: 'fascinated by her riddles' },
-  { from: 'garrett', to: 'aldric', type: 'colleague', note: 'both serve the town' },
+  // Ted — friendly bartender, but debts create friction with Mark
+  { from: 'ted', to: 'hilda',   type: 'friend',      note: 'old drinking buddies' },
+  { from: 'ted', to: 'elara',   type: 'colleague',    note: 'performs at his tavern' },
+  { from: 'ted', to: 'garrett', type: 'acquaintance',  note: 'occasional tavern visitor' },
+  { from: 'ted', to: 'aldric',  type: 'acquaintance',  note: 'comes for counsel sometimes' },
+  { from: 'ted', to: 'mark',    type: 'acquaintance',  note: 'owes Mark money from gambling debts', sentiment: -0.15, trust: 0.3 },
+  { from: 'ted', to: 'bess',    type: 'acquaintance',  note: 'buys remedies for hangovers' },
+
+  // Mark — paranoid merchant, hates Bess, resents paying Hilda, contempt for Ted
+  { from: 'mark', to: 'bess',   type: 'acquaintance',  note: 'she knows too much about herbs', sentiment: -0.7, trust: 0.0 },
+  { from: 'mark', to: 'hilda',  type: 'colleague',     note: 'resents paying full price for materials', sentiment: -0.15, trust: 0.3 },
+  { from: 'mark', to: 'elara',  type: 'acquaintance',  note: 'entertains at the tavern' },
+  { from: 'mark', to: 'garrett', type: 'acquaintance',  note: 'avoids the guard when possible', sentiment: -0.1 },
+  { from: 'mark', to: 'ted',    type: 'acquaintance',  note: 'Ted still owes him money', sentiment: -0.1, trust: 0.2 },
+
+  // Elara — spy, wary of Garrett who asks too many questions
+  { from: 'elara', to: 'ted',    type: 'friend',      note: 'her favorite stage' },
+  { from: 'elara', to: 'aldric', type: 'acquaintance',  note: 'visits the temple for stories' },
+  { from: 'elara', to: 'bess',   type: 'acquaintance',  note: 'fascinated by her riddles' },
+  { from: 'elara', to: 'garrett', type: 'acquaintance', note: 'he asks too many questions, she is wary', sentiment: -0.1, trust: 0.3 },
+
+  // Garrett — dutiful guard, slightly suspicious of Elara
+  { from: 'garrett', to: 'aldric', type: 'colleague',   note: 'both serve the town' },
   { from: 'garrett', to: 'hilda',  type: 'acquaintance', note: 'respects her work' },
-  { from: 'aldric', to: 'bess',    type: 'friend',   note: 'elderly companionship, share tea' },
-  { from: 'aldric', to: 'garrett', type: 'colleague', note: 'both protectors of the town' },
-  { from: 'hilda', to: 'ted',    type: 'friend',     note: 'old drinking buddies, but her father died in his tavern', sentiment: -0.1, trust: 0.4 },
-  { from: 'hilda', to: 'mark',   type: 'colleague',   note: 'trades materials' },
-  { from: 'bess', to: 'aldric',  type: 'friend',     note: 'share wisdom and tea' },
-  { from: 'bess', to: 'mark',    type: 'acquaintance', note: 'his spices smell like common weeds', sentiment: -0.2, trust: 0.2 },
+  { from: 'garrett', to: 'elara',  type: 'acquaintance', note: 'something about her does not add up', sentiment: -0.1, trust: 0.3 },
+  { from: 'garrett', to: 'magistrate', type: 'colleague', note: 'brings cases to the judge' },
+
+  // Aldric — crisis of faith, close to Bess
+  { from: 'aldric', to: 'bess',    type: 'friend',    note: 'elderly companionship, share tea' },
+  { from: 'aldric', to: 'garrett', type: 'colleague',  note: 'both protectors of the town' },
+  { from: 'aldric', to: 'magistrate', type: 'colleague', note: 'fellow pillars of the community' },
+
+  // Hilda — suppressed rage toward Ted, pragmatic with Mark
+  { from: 'hilda', to: 'ted',    type: 'friend',      note: 'old drinking buddies, but her father died in his tavern', sentiment: -0.2, trust: 0.4 },
+  { from: 'hilda', to: 'mark',   type: 'colleague',    note: 'trades materials, resents his haggling', sentiment: -0.1 },
+
+  // Bess — sees through Mark's lies, distrusts him
+  { from: 'bess', to: 'aldric',  type: 'friend',      note: 'share wisdom and tea' },
+  { from: 'bess', to: 'mark',    type: 'acquaintance', note: 'his spices smell like common weeds', sentiment: -0.3, trust: 0.1 },
+
+  // Theron — law, order, partnerships
   { from: 'magistrate', to: 'garrett', type: 'colleague', note: 'law enforcement partnership' },
   { from: 'magistrate', to: 'aldric',  type: 'colleague', note: 'both serve the town, mutual respect' },
   { from: 'magistrate', to: 'ted',     type: 'acquaintance', note: 'evening tavern visitor' },
-  { from: 'garrett', to: 'magistrate', type: 'colleague', note: 'brings cases to the judge' },
-  { from: 'aldric', to: 'magistrate',  type: 'colleague', note: 'fellow pillars of the community' },
 ];
 
 function buildRelationships(npcId: string, profiles: AgentProfile[]): RelationshipGraph {
@@ -509,12 +527,24 @@ function buildRelationships(npcId: string, profiles: AgentProfile[]): Relationsh
   return graph;
 }
 
+/** Starting moods derived from personality + situation. Creates varied tension landscape. */
+const STARTING_MOODS: Record<string, number> = {
+  ted: 0.15,          // debt anxiety, watered-down ale guilt
+  mark: -0.2,         // paranoid about Bess exposing his fraud
+  elara: 0.1,         // conflicted about spying on people she likes
+  garrett: 0.25,      // steady, slight guilt about the bribe
+  aldric: -0.1,       // crisis of faith, emptiness
+  hilda: 0.1,         // simmering resentment about father's death
+  bess: 0.1,          // anxious about her visions
+  magistrate: 0.15,   // frustrated by exile to this small town
+};
+
 function makeState(location: string, npcId: string): AgentState {
   return {
     alive: true,
     status: undefined,
     location,
-    mood: 0.3,
+    mood: STARTING_MOODS[npcId] ?? 0.2,
     currentDay: 1,
     knownFacts: [
       '# The town has 8 locations: tavern, town square, gate, market, blacksmith, temple, residential lane, and courthouse',
@@ -564,8 +594,6 @@ async function main() {
     agents.set(profile.id, agent);
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npc.location}`);
   }
-
-  agents.get('mark')!.state.mood = -0.35;
 
   // ─── Player Agent — full participant in the world ───
   {
@@ -623,6 +651,9 @@ async function main() {
   }
 
   let world: World;
+  /** NPC approach prompt context — injected into NPC system prompt when player chats after approach */
+  const approachContexts = new Map<string, string>();
+
   const engine = new ConsequenceEngine(CRIME_CG_RULES, {
     onEvent: (event) => {
       eventStore.append(event);
@@ -638,7 +669,7 @@ async function main() {
     agents,
     eventStore,
     engine,
-    { minConversationScore: 1, publicPlaces, pairCooldownTicks: 16, affordanceCooldownTicks: 12, decisionCooldownTicks: 4, startTick: 28 },
+    { minConversationScore: 1, publicPlaces, pairCooldownTicks: 16, affordanceCooldownTicks: 12, decisionCooldownTicks: 4, startTick: 28, moodBias: -0.02 },
     {
       onLine: (line) => {
         console.log(`    ${line.speakerName}: "${line.text}"`);
@@ -653,6 +684,14 @@ async function main() {
         }
         if (result.dayAdvanced) {
           console.log(`  [Time] === Day ${result.gameDay} ===`);
+        }
+        // Process NPC approach events
+        if (result.approaches) {
+          for (const approach of result.approaches) {
+            approachContexts.set(approach.npcId, approach.promptContext);
+            broadcast({ type: 'npc_approach', data: approach });
+            console.log(`  [Approach] ${approach.npcName} wants to talk to player`);
+          }
         }
         broadcast({ type: 'tick', data: result });
       },
@@ -698,7 +737,7 @@ async function main() {
 
   const server = startServer(world, eventStore, agents, { port: PORT }, {
     onSave: () => saveToDisk(world, eventStore),
-  });
+  }, approachContexts);
   console.log();
   console.log(`  HTTP:  http://localhost:${server.port}/api/agents`);
   console.log(`  WS:    ws://localhost:${server.port}/ws`);

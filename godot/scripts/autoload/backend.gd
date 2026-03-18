@@ -15,6 +15,7 @@ signal shop_opened(agent_id: String, npc_name: String, items: Array)
 signal crime_scene_created(location_id: String, crime_type: String, point_count: int)
 signal debug_llm(reason: String, target: String)
 signal journal_entry_added(entry: Dictionary)
+signal npc_approach(npc_id: String, npc_name: String, display_text: String, urgency: float)
 signal connected
 signal disconnected
 
@@ -175,6 +176,15 @@ func _handle_ws_message(text: String) -> void:
 		"journal:entry":
 			if raw_data is Dictionary:
 				journal_entry_added.emit(raw_data)
+
+		"npc_approach":
+			if raw_data is Dictionary:
+				npc_approach.emit(
+					raw_data.get("npcId", ""),
+					raw_data.get("npcName", ""),
+					raw_data.get("displayText", ""),
+					raw_data.get("urgency", 0.5)
+				)
 
 		"debug:llm":
 			if raw_data is Dictionary:

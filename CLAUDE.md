@@ -94,6 +94,9 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 24. **Case resolution**: NPC_SENTENCED → deactivate crime scenes (perpetratorId match) + mark bodies discovered + zero transferable beliefs (by suspect AND victim name). Prevents post-resolution investigate cycle.
 25. **Crime scene callbacks**: `personalizePoints()` and `additionalPoints()` on CrimeSceneTemplate — module callbacks, engine has zero domain-specific point logic.
 26. **Co-location validation**: server chat handler checks `playerAgent.location === npc.location` before IL. Server authoritative.
+27. **Trust evolution**: NPC_ARRESTED → NPCs who received player claims about suspect get trust +0.08. NPC_SENTENCED exile → trust +0.12, release → trust -0.15. Only NPCs with `sourceNpcId === playerId` beliefs affected. Module code in event-handlers.ts.
+28. **NPC approach**: Tick phase handler checks co-located NPCs for urgent firsthand beliefs. Pushes to `TickPhaseContext.approaches[]`. Max 1 per tick. Cooldown 32 ticks per NPC. Server stores `promptContext`, injects into NPC system prompt when player opens chat.
+29. **Player rumor topics**: TopicSource in TOPIC_SOURCE_REGISTRY. NPC-NPC conversations can include topics about player (claims shared, negative sentiment, positive trust). TopicContext extended with `playerAgent`.
 
 ## Tick System
 
@@ -104,4 +107,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.9.1-dev. Player = Agent with full bilateral design. IL dialogue meaning extraction. Perception system. AL validator. Event type/source flags (no category string matching in engine). Crime scene callbacks. Full E2E chain: player claim → investigate → arrest → trial(wait 4 ticks) → exile. Post-resolution cleanup prevents re-investigation.
+v0.9.2-dev. Trust evolution (confirmed/refuted claims → trust delta). NPC approach system (tick phase handler → WS notification → prompt injection). Player rumor topics (NPC-NPC discuss player). Full bilateral design, IL, perception, AL validator, event/source flags. E2E chain: player claim → investigate → arrest → trial → exile → trust update.

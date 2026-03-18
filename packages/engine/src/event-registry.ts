@@ -571,6 +571,8 @@ export interface TickPhaseContext {
   tickCount: number;
   processEvent: (event: WorldEvent) => Promise<void>;
   discoveries: Set<string>;
+  /** NPC approach events — tick phase handlers push to this array */
+  approaches: import('./world-types').ApproachEvent[];
 }
 
 export type TickPhaseHandlerFn = (ctx: TickPhaseContext) => Promise<void>;

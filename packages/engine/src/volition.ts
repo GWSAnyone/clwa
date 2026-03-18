@@ -2,6 +2,7 @@ import type { Agent } from './agent';
 import { llmSemaphore } from './agent';
 import type { WorldEvent } from './cg-types';
 import type { NpcGoal, GoalStep } from './goals';
+import { DEFAULT_WORLD_CONFIG } from './world-types';
 import {
   AFFORDANCE_REGISTRY,
   checkRequirements,
@@ -537,7 +538,7 @@ function instinctDescription(score: number, label: string, target: AffordanceTar
 
 // ─── LLM Call ───
 
-async function callLlm(agent: Agent, system: string, user: string): Promise<string | null> {
+async function callLlm(agent: Agent, system: string, user: string, model?: string): Promise<string | null> {
   const temperature = agent.profile.llm?.temperature ?? 0.7;
 
   await llmSemaphore.acquire();
@@ -546,11 +547,11 @@ async function callLlm(agent: Agent, system: string, user: string): Promise<stri
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'qwen/qwen3.5-9b',
+        model: model ?? DEFAULT_WORLD_CONFIG.model,
         system_prompt: system,
         input: user,
-        reasoning: 'off',
         temperature,
+        reasoning: 'off',
         max_output_tokens: 80,
       }),
     });

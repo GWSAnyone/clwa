@@ -1,6 +1,22 @@
-import { registerEventHandler } from '@clwa/engine';
+import { registerEventHandler, isTransferable } from '@clwa/engine';
 import type { EventHandlerContext } from '@clwa/engine';
-import type { WorldEvent } from '@clwa/engine';
+import type { WorldEvent, Belief, Agent } from '@clwa/engine';
+
+/** Find beliefs in an NPC that originated from the player about a specific suspect */
+function findPlayerClaimsAbout(agent: Agent, playerId: string, suspectName: string): Belief[] {
+  if (!agent.state.beliefs) return [];
+  return agent.state.beliefs.getAllBeliefs().filter(
+    (b) => b.sourceNpcId === playerId && b.subject === suspectName && isTransferable(b.eventType),
+  );
+}
+
+/** Find the player agent from agents map */
+function findPlayerAgent(agents: Map<string, Agent>): [string, Agent] | null {
+  for (const [id, agent] of agents) {
+    if (agent.profile.isPlayer) return [id, agent];
+  }
+  return null;
+}
 
 export function registerCrimeEventHandlers(): void {
   // NPC_KILLED: killer gets perpetrator belief (blocks testify/report/demand_justice via notPerpetrator)
@@ -81,7 +97,7 @@ export function registerCrimeEventHandlers(): void {
     }
   });
 
-  // NPC_ARRESTED: create beliefs for all NPCs
+  // NPC_ARRESTED: create beliefs for all NPCs + trust evolution for player claims
   registerEventHandler('NPC_ARRESTED', (event: WorldEvent, ctx: EventHandlerContext) => {
     const suspectName = (event.payload?.suspectName as string) ?? null;
     const affected = (event.payload?.affectedTargets as string[]) ?? [];
@@ -100,9 +116,23 @@ export function registerCrimeEventHandlers(): void {
         lastUpdated: ctx.getCurrentDay(),
       });
     }
+
+    // Trust evolution: if player told NPCs about this suspect → arrest confirms the claim
+    if (!suspectName) return;
+    const player = findPlayerAgent(ctx.agents);
+    if (!player) return;
+    const [playerId] = player;
+    for (const [, agent] of ctx.agents) {
+      if (agent.profile.isPlayer) continue;
+      const claims = findPlayerClaimsAbout(agent, playerId, suspectName);
+      if (claims.length > 0) {
+        agent.state.relationships?.adjustTrust(playerId, 0.08);
+        console.log(`  [Trust] ${agent.profile.name} trust in player +0.08 (arrest confirmed claim about ${suspectName})`);
+      }
+    }
   });
 
-  // NPC_SENTENCED: create beliefs for all NPCs
+  // NPC_SENTENCED: create beliefs for all NPCs + trust evolution for player claims
   registerEventHandler('NPC_SENTENCED', (event: WorldEvent, ctx: EventHandlerContext) => {
     const suspectName = (event.payload?.suspectName as string) ?? null;
     const verdict = (event.payload?.verdict as string) ?? 'unknown';
@@ -121,6 +151,27 @@ export function registerCrimeEventHandlers(): void {
         gameDay: ctx.getCurrentDay(),
         lastUpdated: ctx.getCurrentDay(),
       });
+    }
+
+    // Trust evolution: verdict confirms or refutes player claims
+    if (!suspectName) return;
+    const player = findPlayerAgent(ctx.agents);
+    if (!player) return;
+    const [playerId] = player;
+    for (const [, agent] of ctx.agents) {
+      if (agent.profile.isPlayer) continue;
+      const claims = findPlayerClaimsAbout(agent, playerId, suspectName);
+      if (claims.length === 0) continue;
+
+      if (verdict === 'exile') {
+        // Conviction — player was right, strong trust increase
+        agent.state.relationships?.adjustTrust(playerId, 0.12);
+        console.log(`  [Trust] ${agent.profile.name} trust in player +0.12 (conviction confirmed claim about ${suspectName})`);
+      } else if (verdict === 'release') {
+        // Acquittal — player was wrong (or lied), trust decrease
+        agent.state.relationships?.adjustTrust(playerId, -0.15);
+        console.log(`  [Trust] ${agent.profile.name} trust in player -0.15 (acquittal refuted claim about ${suspectName})`);
+      }
     }
   });
 

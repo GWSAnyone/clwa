@@ -1,9 +1,11 @@
+import { DEFAULT_WORLD_CONFIG } from './world-types';
+
 export interface ReflectionConfig {
   /** Cumulative importance threshold to trigger reflection (default: 30) */
   threshold: number;
   /** LM Studio base URL (default: http://localhost:1234) */
   lmStudioUrl: string;
-  /** Model identifier (default: qwen/qwen3.5-9b) */
+  /** Model identifier (from DEFAULT_WORLD_CONFIG) */
   model: string;
   /** Importance assigned to reflection memories (default: 9) */
   reflectionImportance: number;
@@ -12,7 +14,7 @@ export interface ReflectionConfig {
 const DEFAULT_CONFIG: ReflectionConfig = {
   threshold: 30,
   lmStudioUrl: 'http://localhost:1234',
-  model: 'qwen/qwen3.5-9b',
+  model: DEFAULT_WORLD_CONFIG.model,
   reflectionImportance: 9,
 };
 
@@ -71,8 +73,8 @@ Respond with ONLY the insight, nothing else. No quotes, no prefixes.`;
         model: this.config.model,
         system_prompt: systemPrompt,
         input,
-        reasoning: 'off',
         temperature: 0.7,
+        reasoning: 'off',
         max_output_tokens: 150,
       }),
     });

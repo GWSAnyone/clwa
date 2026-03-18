@@ -23,6 +23,7 @@ func _ready() -> void:
 	Backend.murder_occurred.connect(_on_murder)
 	Backend.event_received.connect(_on_event)
 	Backend.crime_scene_created.connect(_on_crime_scene)
+	Backend.npc_approach.connect(_on_npc_approach)
 
 
 func _on_murder(killer_name: String, victim_name: String) -> void:
@@ -55,6 +56,11 @@ func _on_event(event: Dictionary) -> void:
 			_show("WANTED", "%s is now wanted" % subject, Color(0.85, 0.2, 0.15), Color(0.9, 0.25, 0.2))
 		"THEFT_DISCOVERED":
 			_show("THEFT", "Stolen goods discovered!" , Color(0.7, 0.55, 0.2), Color(0.8, 0.65, 0.3))
+
+
+func _on_npc_approach(_npc_id: String, npc_name: String, display_text: String, urgency: float) -> void:
+	var color := Color(0.2, 0.6, 0.8) if urgency < 0.7 else Color(0.85, 0.65, 0.2)
+	_show("APPROACH", display_text if display_text != "" else "%s wants to talk" % npc_name, color, color.lightened(0.2))
 
 
 func _show(title: String, message: String, bg_color: Color, border_color: Color) -> void:

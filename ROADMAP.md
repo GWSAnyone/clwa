@@ -302,7 +302,7 @@ Belief mods: loneliness → social urgency, grief → comfort urgency
 - [x] **IL (Intent Layer)** — dialogue meaning extraction (claims, questions, requests, pressure)
 - [x] **IL Effects** — claims → addBelief, requests → goals, pressure → mood/relationships
 - [x] **Trust-based confidence** — player claims scaled by NPC trust. Trust shifts via interactions
-- [ ] **Trust evolution** — confirmed claims → trust up, refuted → trust down
+- [x] **Trust evolution** — confirmed claims → trust up, refuted → trust down
 - [x] **Perception System** — canSee/canHear/getCoPresent/getWitnesses/isPlayerAt
 - [x] **AL as validator** — validatePlayerAction + createGoalFromRequest
 - [x] **Event type/source flags** — isTransferable/isInformationOnly/isPerpetrator/isFirsthand/isConcealment
@@ -310,7 +310,7 @@ Belief mods: loneliness → social urgency, grief → comfort urgency
 - [x] **Co-location validation** — server authoritative, polygon-based location detection in Godot
 - [x] **inPlayerChat freeze** — NPC frozen during player conversation
 - [x] **Case resolution** — crime scene deactivation + belief zeroing on NPC_SENTENCED
-- [ ] **NPC awareness** — NPCs approach player, form opinions, spread rumors about player
+- [x] **NPC awareness** — NPCs approach player (tick phase handler + WS), spread rumors about player (TopicSource)
 - **Результат**: игрок влияет на мир через речь, NPC реагируют структурно
 
 ```
@@ -321,35 +321,144 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
                                             Same pipeline
 ```
 
-### Phase 3: World Expansion
-> Наполнить мир контентом через движок.
+### Phase 2.5: Custom LLM — Qwen3.5-9B-CLWA
+> Своя модель, заточенная под движок. Uncensored + наш формат.
 
-- [ ] **Economy & Trade** module (affordances + CG rules + EL rules)
-- [ ] **Social & Culture** module
-- [ ] **Politics & Governance** module (basic)
-- [ ] Multiple NPC archetypes (merchant, noble, thief guild, etc.)
+Текущая Qwen3.5-9B имеет safety alignment который блокирует NPC от выбора тёмных действий (steal, kill, attack) даже когда характер и ситуация требуют. Reflex tier (bypass LLM) — временный хак, не решение.
+
+**Цель**: Qwen3.5-9B-CLWA — abliterated + fine-tuned на наших данных. Uncensored, заточена под DO/WHY, JSON extraction, dark RP. Vision и reasoning toggle сохранены.
+
+- [ ] **Abliteration** — удалить refusal vector из весов. Инструмент: OBLITERATUS / NousResearch. ~30 мин на GPU с 4-bit load. Сохраняет все capabilities.
+- [ ] **Датасет** (~1000 примеров): DO/WHY volition decisions (вкл. steal/kill/attack), conversation impact JSON (mood_impact), IL extraction (DialogueMeaning), dark RP dialogue, sentence verdicts
+- [ ] **LoRA fine-tune** — Unsloth, bf16 LoRA (не QLoRA — Qwen3.5 плохо переносит 4-bit training). GPU: Colab T4 16GB или Vast.ai A100. ~2-3 часа.
+- [ ] **Export GGUF** — Q4_K_M (~5GB) для LM Studio
+- [ ] **Тестирование** — прогнать E2E: steal выбирается при urge tier, JSON парсится, диалоги in-character
+
+**Результат**: NPC выбирают steal/kill/attack когда PM instincts указывают, без reflex hack. Лучше structured output для наших форматов.
+
+### Phase 3: World Expansion
+> Новые подсистемы движка + модули контента. 4 engine-подсистемы разблокируют десятки модулей.
+
+#### Новые подсистемы движка
+
+**Trauma Layer — необратимые изменения личности**
+
+Сейчас характер NPC статичен: Big Five + Enneagram заданы при создании и не меняются. В реальности экстремальные события меняют людей необратимо.
+
+Как работает: событие (увидел убийство, потерял близкого, был предан) → постоянный сдвиг одной из шкал личности. Свидетель убийства → Neuroticism +0.1 навсегда. Предательство друга → Trust к людям -0.15.
+
+Что даёт: character arcs. NPC, переживший травму, будет принимать другие решения год спустя. Не потому что скрипт — а потому что его личность сдвинулась. Трусливый стражник, трижды столкнувшийся с насилием, может стать хладнокровным. Или сломаться.
+
+Принцип движка: engine знает Trauma (trigger, personality shift, permanent). Modules определяют какие события какие травмы вызывают. Crime module: «свидетель убийства → N +0.1». Economy module: «банкротство → mood -0.5 + C -0.05». Один механизм, разные данные.
+
+**Inventory / Ownership — кто чем владеет**
+
+Сейчас предметы — текст в магазинах. Кража создаёт событие, но предметы не перемещаются физически.
+
+Как работает: предметы существуют в мире — в инвентаре NPC, на локации, в контейнере. Могут быть переданы, украдены, потеряны, найдены, уничтожены. У каждого предмета — владелец, ценность, свойства.
+
+Что даёт: реальная экономика. Кража — перемещение предмета. Торговля — обмен на деньги. Крафт — превращение одних предметов в другие. Подкинуть нож в чужой дом — улика. Отравить бутылку вина — предмет со свойством.
+
+Принцип движка: engine знает Item (id, owner, location, properties), Container, Transfer. Modules определяют конкретные предметы: Crime → нож, яд, улики. Economy → товары, деньги, ресурсы. Survival → еда, вода, инструменты.
+
+**Need / Resource — потребности и давление**
+
+Сейчас NPC действуют из-за mood и PM. Но нет потребностей: голод, усталость, жадность, одиночество — внутренние силы, создающие давление.
+
+Как работает: каждая потребность — число 0 (удовлетворена) до 1 (критическая). Растут со временем, удовлетворяются через affordances: голод → eat, жадность → trade/steal, одиночество → seek_company. Критическая потребность (> 0.8) — NPC бросает всё и ищет удовлетворение.
+
+Что даёт: органическая мотивация. NPC ворует потому что его семья голодает. Торгует потому что нужны деньги на еду. Зима → еды мало → NPC конкурируют за ресурсы → напряжение растёт естественно.
+
+Принцип движка: engine знает Need (name, value, growth rate, critical threshold). Modules определяют потребности: Survival → hunger, thirst, warmth. Social → companionship, respect. Economy → wealth, security.
+
+**Faction / Group — коллективные субъекты**
+
+Сейчас каждый NPC — отдельная сущность. Нет групп: «стража города», «гильдия торговцев», «семья».
+
+Как работает: группы — коллекции агентов с общей идентичностью: иерархия (лидер, советники, рядовые), общие beliefs (группа «знает»), репутация (город доверяет страже на 0.7). Агент может состоять в нескольких группах. Группы враждуют, союзничают, поглощают друг друга.
+
+Что даёт: политика — мэр предлагает закон → советники голосуют → фракция замышляет переворот. Организованная преступность — гильдия воров с иерархией и территорией. Семья — арестовали отца → жена и дети реагируют как группа.
+
+Принцип движка: engine знает Group (members, hierarchy, shared beliefs, reputation, territory). Modules определяют типы: Politics → party, council, kingdom. Crime → gang, cartel. Social → family, guild, religion.
+
+#### Новые модули контента
+
+- [ ] **Economy & Trade** — affordances: buy, sell, craft, smuggle, invest. CG: trade → price change, smuggle → if caught → wanted. EL: transaction records, suspicious goods. Requires: Inventory, Needs
+- [ ] **Social & Culture** — affordances: befriend, court, mentor, celebrate, mourn. CG: marriage → family bonds, death → grief cascade. Requires: Factions (family), Trauma
+- [ ] **Politics & Governance** — affordances: propose law, vote, rebel, campaign, bribe. CG: law passed → new restrictions, rebellion → faction war. Requires: Factions, Reputation (basic)
+- [ ] Multiple NPC archetypes (noble, thief, merchant guild, priest order)
 - [ ] Larger world (20+ locations, 30+ NPCs)
-- **Результат**: разнообразный мир с экономикой, политикой, социальными связями
+- [ ] **Skills / Knowledge** (basic) — что агент умеет (не personality = склонность, а competence = способность). Кузнец умеет ковать. Навыки можно получить, передать, потерять.
+
+**Результат**: разнообразный мир с экономикой, политикой, социальными связями. Модули комбинируются: торговец-контрабандист арестован → политический кризис, потому что он советник мэра.
 
 ### Phase 4: Scale & Multiplayer
-> От одного игрока в деревне к MMO.
+> От деревни к живому миру. Сотни NPC, десятки игроков, настоящая война.
 
-- [ ] **Multi-player** — несколько human actors в одном мире
-- [ ] **NPC scaling** — tiered simulation (full AI for nearby, simplified for distant)
-- [ ] **World zones** — seamless areas, load balancing
-- [ ] **Voice integration** — speech-to-text → IL → action
-- [ ] **Persistent economy** — supply/demand across sessions
-- **Результат**: прототип MMO-мира с сотнями NPC и десятками игроков
+#### NPC Scaling — трёхуровневая симуляция
 
-### Phase 5: MMO
-> Полноценный persistent мир.
+8 NPC обрабатываются полностью (LLM, память, цели). 100+ — невозможно гонять LLM для каждого.
+
+| Уровень | Что делает NPC | LLM | Когда |
+|---|---|---|---|
+| **Hot** | Полная обработка: LLM, память, цели, диалог | Да | Рядом с игроком или в активном событии |
+| **Warm** | Числа: mood, beliefs, movement, schedule | Нет | Соседние локации, недавно активен |
+| **Cold** | Минимум: mood += delta, fatigue += 0.1 | Нет | Далеко, давно без событий |
+
+Переходы автоматические: событие рядом → warm→hot. Игрок подошёл → hot. Ушёл → hot→warm→cold. На 1000 NPC — hot только 5-15 ближайших.
+
+#### Combat System — трёхуровневый боевой ИИ
+
+LLM для real-time боёвки не подходит — даже 50ms latency убивает action combat. Решение — три уровня:
+
+**Mechanical AI (мобы, рядовые)** — чистые числа, < 1ms.
+
+Behaviour tree или utility AI на тех же OCEAN+H весах из PM. Агрессивный моб (A=0.1, N=0.2) → ближний бой, не отступает. Трусливый (N=0.9) → атакует издалека, убегает при 30% HP. Стайный (E=0.8) → координируется с группой, фланкирует. PM уже даёт веса — Combat System читает их для тактики вместо LLM.
+
+**Trained AI (элитные, мини-боссы)** — ML модель, < 5ms.
+
+Reinforcement Learning агент, обученный offline. Модель маленькая (~1-5MB), inference мгновенный. Обучена на комбинациях: «против танка → фланг», «против мага → сокращай дистанцию». PM шкалы = параметры reward function при обучении: агрессивный босс обучался с наградой за атаку, осторожный — за выживание.
+
+**Personality Bosses (уникальные боссы-личности)** — ML combat + LLM рефлексия.
+
+Два слоя работают одновременно:
+- Быстрый (combat): ML модель → удар, блок, уклонение, способность. Миллисекунды.
+- Медленный (личность): LLM вызывается **между фазами боя**, не каждый кадр:
+  - Босс на 50% HP → пауза → LLM: «Ты ранен. Твой страх — показать слабость. Что скажешь?» → уникальная фраза + стратегическое решение (агрессия / подмога / сделка)
+  - Phase transitions, триггеры (игрок нашёл слабость)
+  - PM → боевой стиль (preference weights для ML). LLM → стратегия + dialogue + character moments
+
+```
+Мобы:     PM weights → Behaviour Tree        [< 1ms, детерминированно]
+Элитные:  PM weights → Trained ML model       [< 5ms, адаптивно]
+Боссы:    PM → ML (real-time) + LLM (паузы)   [combat < 5ms, рефлексия 1-2s]
+```
+
+**Со стороны игрока**: combat = чистый action input. Но CLWA добавляет слой:
+- Beliefs NPC о игроке влияют на бой: босс, уважающий игрока → честный дуэль. Ненавидящий → удар в спину.
+- Репутация: известный убийца → мобы сдаются или убегают. Слабак → нападают агрессивнее.
+- IL в бою: игрок кричит «Сдавайся!» → IL → boss evaluates (trust, HP, mood) → может сдаться.
+- CG после боя: убийство босса → его фракция объявляет войну. Пощада → босс может вернуться союзником.
+
+#### Другие подсистемы Phase 4
+
+- [ ] **Reputation** — агрегированное мнение фракций/города/региона. «Город знает тебя как вора» — одно число вместо 1000 отношений. Репутация влияет на цены, доступ, NPC реакции.
+- [ ] **Territory / Control** — у каждой локации контролирующая фракция, уровень влияния, оспариваемость. Захват меняет правила: новые законы, новые affordances.
+- [ ] **Multi-player** — каждый игрок = Agent с isPlayer. Те же beliefs, relationships, perception. NPC формируют мнение о каждом отдельно.
+- [ ] **Voice integration** — speech-to-text → IL → action. Голос = ещё один input method, IL не зависит от источника текста.
+- [ ] **Persistent economy** — supply/demand across sessions, trade routes, inflation
+
+**Результат**: прототип MMO-мира с сотнями NPC и десятками игроков.
+
+### Phase 5: Living MMO
+> Полноценный persistent мир, где каждое действие необратимо меняет историю.
 
 - [ ] 1000+ NPC, 100+ players per zone
-- [ ] Dynamic world events (wars, plagues, migrations)
-- [ ] Emergent quests (not scripted, arise from NPC needs)
-- [ ] Reputation & fame (your actions define how world sees you)
-- [ ] Player-run factions, guilds, governments
-- [ ] Economy feedback loops (inflation, scarcity, trade routes)
+- [ ] Dynamic world events (wars, plagues, migrations) — возникают из состояния мира, не из скриптов
+- [ ] Emergent quests — не «убей 10 волков», а «кузнец потерял поставки из-за бандитов — помоги или нет»
+- [ ] Economy feedback loops — инфляция, дефицит, торговые маршруты
+- [ ] Player-run factions, guilds, governments — управляемые людьми, по правилам мира
+- [ ] History chronicle — каждый день записывается, через год — летопись из тысяч реальных событий
 - **Результат**: MMORPG нового поколения с truly living world
 
 ---

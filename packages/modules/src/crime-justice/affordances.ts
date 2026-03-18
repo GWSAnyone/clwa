@@ -6,14 +6,14 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     id: 'steal',
     actionVerb: 'steal',
     actionDescription: 'steal from their shop',
-    label: 'Steal from a nearby shop',
+    label: 'Steal from a nearby shop — desperation drives you to take what you need',
     category: 'crime',
     suppressNearPlayer: true,
     severity: 4,
     requires: {
-      noGuardNearby: true,
       targetHasShop: true,
-      moodBelow: -0.6,
+      moodBelow: -0.35,
+      period: ['night', 'evening'],
       notGuard: true,
     },
     weights: [
@@ -44,8 +44,8 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     requires: {
       period: ['night', 'evening'],
       hasMotive: true,
-      moodBelow: -0.3,
-      sentimentBelow: -0.3,
+      moodBelow: -0.6,
+      sentimentBelow: -0.4,
       notGuard: true,
     },
     weights: [

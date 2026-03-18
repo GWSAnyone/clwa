@@ -24,6 +24,8 @@ export function startServer(
   agents: Map<string, Agent>,
   config: ServerConfig,
   routeOptions?: RouteOptions,
+  /** NPC approach prompt contexts — set by tick handler, consumed on player chat */
+  approachContexts?: Map<string, string>,
 ) {
   const server = Bun.serve({
     port: config.port,
@@ -153,9 +155,11 @@ export function startServer(
               } });
             }
 
-            // Build NPC response with IL context + secret directives
+            // Build NPC response with IL context + secret directives + approach context
             const secretDirectives = buildSecretDirectives(agent, agents, eventStore);
-            const fullContext = [secretDirectives, ilAdditionalContext].filter(Boolean).join('\n\n') || undefined;
+            const approachCtx = approachContexts?.get(msg.agentId);
+            if (approachCtx) approachContexts?.delete(msg.agentId); // consume once
+            const fullContext = [secretDirectives, approachCtx, ilAdditionalContext].filter(Boolean).join('\n\n') || undefined;
 
             broadcast({ type: 'debug:llm', data: { reason: 'Player chat', target: agent.profile.name } });
             const fullReply = await agent.chatStream(msg.message, (token) => {

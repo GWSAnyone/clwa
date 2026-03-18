@@ -532,7 +532,8 @@ export class World {
     // 2.5. Check if NPCs notice crime scenes at their location
     await this.checkCrimeScenes();
 
-    // 2.7. Module-registered tick phase handlers (e.g., theft discovery)
+    // 2.7. Module-registered tick phase handlers (e.g., theft discovery, NPC approach)
+    const approachEvents: import('./world-types').ApproachEvent[] = [];
     const tickCtx = {
       agents: this.agents,
       eventStore: this.eventStore,
@@ -546,9 +547,15 @@ export class World {
         }
       },
       discoveries: this.bodyDiscoveries,
+      approaches: approachEvents,
     };
     for (const handler of getTickPhaseHandlers()) {
       await handler(tickCtx);
+    }
+    // Keep only highest-urgency approach per tick
+    if (approachEvents.length > 1) {
+      approachEvents.sort((a, b) => b.urgency - a.urgency);
+      approachEvents.length = 1;
     }
 
     // 3. Casual conversations (skip NPCs with active goals)
@@ -562,7 +569,7 @@ export class World {
       // Select topic using TopicEngine
       const tickInDay = this.tickCount % TICKS_PER_DAY;
       const period = getTimePeriod(tickInDay);
-      const topic = this.topicEngine.selectTopic(initiator, responder, gameDay, period);
+      const topic = this.topicEngine.selectTopic(initiator, responder, gameDay, period, this.playerAgent ?? undefined);
 
       this.callbacks.onLlmCall?.('Casual conversation', `${initiator.profile.name} ↔ ${responder.profile.name} [${topic.subject}]`);
       conversation = await runConversation(
@@ -604,6 +611,7 @@ export class World {
       idleReason: !conversation && goalActions.length === 0
         ? 'No suitable conversation pair found'
         : undefined,
+      approaches: approachEvents.length > 0 ? approachEvents : undefined,
     };
     this.callbacks.onTick?.(result);
     return result;
@@ -657,13 +665,15 @@ export class World {
     const prompt = [
       `Analyze this conversation for emotional impact on listeners.`,
       `Which NPCs are mentioned or discussed, and is the sentiment positive or negative?`,
+      `How does this conversation affect the listeners' mood overall?`,
       ``,
       `Known NPCs: ${npcNames.join(', ')}`,
       ``,
       `Conversation:`,
       transcript,
       ``,
-      `Return mentions of NPCs with sentiment valence (-0.2 to 0.2) and overall tension (0.0 to 0.15).`,
+      `Return mentions of NPCs with sentiment valence (-0.15 to 0.15) and overall mood_impact (-0.08 to 0.06).`,
+      `mood_impact: positive for warm/supportive/funny conversations, negative for tense/hostile/disturbing ones, near zero for neutral small talk.`,
       `Only include NPCs explicitly discussed. Empty mentions array if just small talk.`,
     ].join('\n');
 
@@ -673,9 +683,9 @@ export class World {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'qwen/qwen3.5-9b',
+          model: this.config.model,
           system_prompt: 'You analyze conversations for emotional impact. Respond ONLY with valid JSON, no other text.',
-          input: prompt + '\n\nRespond with JSON: {"mentions":[{"npc_name":"Name","valence":-0.1,"reason":"short reason"}],"tension":0.05}\nEmpty mentions array if just small talk. JSON only, no explanation.',
+          input: prompt + '\n\nRespond with JSON: {"mentions":[{"npc_name":"Name","valence":-0.1,"reason":"short reason"}],"mood_impact":0.03}\nmood_impact: positive for warm chats, negative for tense ones. JSON only, no explanation.',
           reasoning: 'off',
           temperature: 0.3,
           max_output_tokens: 200,
@@ -701,7 +711,7 @@ export class World {
       if (!objMatch) return;
       content = objMatch[0];
 
-      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; tension: number };
+      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; mood_impact?: number; tension?: number };
       try {
         impact = JSON.parse(content);
       } catch {
@@ -722,7 +732,7 @@ export class World {
           if (!mentionedId) continue;
 
           // Clamp valence to safe range
-          const valence = Math.max(-0.2, Math.min(0.2, mention.valence));
+          const valence = Math.max(-0.15, Math.min(0.15, mention.valence));
           if (Math.abs(valence) < 0.02) continue; // skip negligible shifts
 
           for (const listenerId of listenerIds) {
@@ -736,14 +746,20 @@ export class World {
         }
       }
 
-      // Apply tension as mood penalty to all listeners
-      const tension = Math.max(0, Math.min(0.15, impact.tension));
-      if (tension > 0.01) {
+      // Apply mood impact (bidirectional: positive for warm chats, negative for tense ones)
+      // Fallback: legacy `tension` field treated as negative impact for backward compat
+      const rawImpact = impact.mood_impact ?? (impact.tension ? -impact.tension : 0);
+      const bias = this.config.moodBias ?? 0;
+      const moodDelta = Math.max(-0.08, Math.min(0.06, rawImpact)) + bias;
+      if (Math.abs(moodDelta) > 0.005) {
         for (const listenerId of listenerIds) {
           const listener = this.agents.get(listenerId);
           if (listener) {
-            listener.state.mood = Math.max(-1, listener.state.mood - tension);
+            listener.state.mood = Math.max(-1, Math.min(1, listener.state.mood + moodDelta));
           }
+        }
+        if (moodDelta !== 0) {
+          console.log(`  [Mood] Conversation mood impact: ${moodDelta > 0 ? '+' : ''}${moodDelta.toFixed(3)}`);
         }
       }
     } catch (err) {
@@ -849,7 +865,7 @@ export class World {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'qwen/qwen3.5-9b',
+          model: this.config.model,
           system_prompt: 'You are a narrative decision engine. Answer only YES or NO.',
           input: prompt,
           reasoning: 'off',

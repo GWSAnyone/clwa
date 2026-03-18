@@ -15,12 +15,15 @@ import {
   isSourceCategory,
   registerDayAdvanceHandler,
   getEventLabel,
+  isTransferable,
+  isFirsthand,
+  isStatusAbsent,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
 import { CRIME_EVIDENCE_RULES } from './evidence-rules';
 import { registerCrimeEvidenceSources } from './evidence-sources';
-import { justiceTopics } from './topic-sources';
+import { justiceTopics, playerRumorTopics } from './topic-sources';
 import { registerCrimeEventHandlers } from './event-handlers';
 import { registerCrimeStepHandlers } from './step-handlers';
 export { CRIME_CG_RULES } from './cg-rules';
@@ -222,8 +225,9 @@ export function registerCrimeJusticeModule(): void {
     return `URGENT: I received reports that ${killer} committed a crime against ${victimName} at ${event.location}. I must investigate immediately.`;
   });
 
-  // Topic sources for NPC conversations about justice events
+  // Topic sources for NPC conversations about justice events + player rumors
   TOPIC_SOURCE_REGISTRY.push(justiceTopics);
+  TOPIC_SOURCE_REGISTRY.push(playerRumorTopics);
 
   // Action verb → affordance ID mapping for LLM DO/WHY parser
   registerActionVerbs({
@@ -391,6 +395,78 @@ export function registerCrimeJusticeModule(): void {
       await ctx.processEvent(discoveryEvent);
 
       console.log(`  [Theft] ${owner.profile.name} discovered robbery at ${theft.location}!`);
+    }
+  });
+
+  // Tick phase handler: NPC approach player when they have urgent info
+  const approachCooldowns = new Map<string, number>();
+  registerTickPhaseHandler(async (ctx) => {
+    // Find the player agent
+    let playerAgent: import('@clwa/engine').Agent | null = null;
+    let playerId = '';
+    for (const [id, agent] of ctx.agents) {
+      if (agent.profile.isPlayer) {
+        playerAgent = agent;
+        playerId = id;
+        break;
+      }
+    }
+    if (!playerAgent) return;
+    const playerLoc = playerAgent.state.location;
+
+    for (const [npcId, npc] of ctx.agents) {
+      if (npc.profile.isPlayer) continue;
+      if (!npc.state.alive || isStatusAbsent(npc.state.status)) continue;
+      if (npc.state.location !== playerLoc) continue;
+      if (npc.state.inPlayerChat) continue;
+      // Cooldown: 32 ticks (8 game hours) per NPC
+      if (ctx.tickCount - (approachCooldowns.get(npcId) ?? -Infinity) < 32) continue;
+
+      // Check: NPC has urgent firsthand transferable beliefs not yet shared with player
+      const urgentBeliefs = npc.state.beliefs?.getAllBeliefs().filter(
+        (b) => isTransferable(b.eventType) && isFirsthand(b.source) && b.confidence >= 0.5,
+      ) ?? [];
+
+      if (urgentBeliefs.length > 0) {
+        // Check if player already knows from this NPC
+        const playerAlreadyKnows = urgentBeliefs.every((b) => {
+          const playerBeliefs = playerAgent!.state.beliefs?.getAllBeliefs() ?? [];
+          return playerBeliefs.some((pb) => pb.eventType === b.eventType && pb.sourceNpcId === npcId);
+        });
+
+        if (!playerAlreadyKnows) {
+          const belief = urgentBeliefs[0];
+          const eventLabel = getEventLabel(belief.eventType) ?? belief.eventType;
+          ctx.approaches.push({
+            npcId,
+            npcName: npc.profile.name,
+            promptContext: `You have urgent information to share with ${playerAgent.profile.name}. You ${isFirsthand(belief.source) ? 'witnessed' : 'heard about'} ${eventLabel.toLowerCase()}${belief.object ? ` involving ${belief.object}` : ''}. You want to tell them about it.`,
+            displayText: `${npc.profile.name} approaches you urgently`,
+            urgency: 0.8,
+          });
+          approachCooldowns.set(npcId, ctx.tickCount);
+          console.log(`  [Approach] ${npc.profile.name} wants to approach player (${eventLabel})`);
+          continue;
+        }
+      }
+
+      // Check: NPC suspects the player (has transferable belief with subject = player name)
+      const suspicionBeliefs = npc.state.beliefs?.getAllBeliefs().filter(
+        (b) => isTransferable(b.eventType) && b.subject === playerAgent!.profile.name && b.confidence >= 0.4,
+      ) ?? [];
+
+      if (suspicionBeliefs.length > 0 && npc.profile.investigator) {
+        ctx.approaches.push({
+          npcId,
+          npcName: npc.profile.name,
+          promptContext: `You suspect ${playerAgent.profile.name} may be involved in a crime. You want to question them.`,
+          displayText: `${npc.profile.name} approaches you with a stern look`,
+          urgency: 0.9,
+        });
+        approachCooldowns.set(npcId, ctx.tickCount);
+        console.log(`  [Approach] ${npc.profile.name} wants to question player (suspicion)`);
+        continue;
+      }
     }
   });
 

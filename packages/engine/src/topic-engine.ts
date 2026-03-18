@@ -27,6 +27,8 @@ export interface TopicContext {
   recentTopics: string[];
   gameDay: number;
   period: string;
+  /** Player agent reference (if exists) — for topic sources about player interactions */
+  playerAgent?: Agent;
 }
 
 export type TopicSource = (
@@ -263,11 +265,12 @@ export class TopicEngine {
     responder: Agent,
     gameDay: number,
     period: string,
+    playerAgent?: Agent,
   ): TopicProposal {
     const key = pairKey(initiator.profile.id, responder.profile.id);
     const recentTopics = this.topicHistory.get(key) ?? [];
 
-    const ctx: TopicContext = { recentTopics, gameDay, period };
+    const ctx: TopicContext = { recentTopics, gameDay, period, playerAgent };
 
     // Collect all proposals from all sources
     const allProposals: TopicProposal[] = [];

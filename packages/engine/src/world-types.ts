@@ -47,6 +47,18 @@ export interface ConversationResult {
   importance: number;
 }
 
+/** NPC wants to approach the player — triggered by tick phase handlers */
+export interface ApproachEvent {
+  npcId: string;
+  npcName: string;
+  /** Injected into NPC system prompt when player opens chat */
+  promptContext: string;
+  /** Display text for client notification */
+  displayText: string;
+  /** 0-1, UI priority/urgency */
+  urgency: number;
+}
+
 /** Result of a single world tick */
 export interface TickResult {
   tickNumber: number;
@@ -66,6 +78,8 @@ export interface TickResult {
   murder?: { killerId: string; victimId: string; killerName: string; victimName: string };
   /** New crime scene created this tick */
   crimeScene?: { id: string; locationId: string; crimeType: string; pointCount: number };
+  /** NPCs that want to approach the player this tick */
+  approaches?: ApproachEvent[];
 }
 
 /** A single point of interest at a crime scene that can be examined */
@@ -148,6 +162,9 @@ export interface WorldConfig {
   decisionCooldownTicks?: number;
   /** Starting tick (default 0). Set to 28 for morning start (07:00 with 96 ticks/day) */
   startTick?: number;
+  /** Mood bias applied to every conversation mood_impact. Negative = darker world, positive = lighter.
+   *  Default 0 (neutral). Demo: -0.02 (crime within ~1 day). Peaceful: +0.02. */
+  moodBias?: number;
 }
 
 export const DEFAULT_WORLD_CONFIG: WorldConfig = {
