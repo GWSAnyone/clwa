@@ -726,7 +726,7 @@ export class World {
         system: 'You analyze conversations for emotional impact on listeners.',
         user: prompt,
         temperature: 0.3,
-        maxTokens: 200,
+        maxTokens: 300,
         jsonSchema: CONVERSATION_IMPACT_SCHEMA,
       });
       if (!content) return;

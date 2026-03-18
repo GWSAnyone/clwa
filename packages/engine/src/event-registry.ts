@@ -226,6 +226,11 @@ export function getAffordanceIdsForVerb(verb: string): string[] {
   return ACTION_VERB_MAP.get(verb) ?? [];
 }
 
+/** Get all registered action verbs (for schema enum constraints) */
+export function getAllRegisteredVerbs(): string[] {
+  return Array.from(ACTION_VERB_MAP.keys());
+}
+
 // ─── Crime Scene Templates ───
 // Modules register examination point templates per scene type.
 export interface CrimeSceneTemplate {

@@ -4,6 +4,7 @@ import type { WorldEvent } from './cg-types';
 import type { NpcGoal, GoalStep } from './goals';
 import { llmCall } from './llm-client';
 import { buildInstinctDescription, getTierName } from './instinct-builder';
+import { getAllRegisteredVerbs } from './event-registry';
 import {
   AFFORDANCE_REGISTRY,
   checkRequirements,
@@ -333,6 +334,11 @@ async function llmDecideAndBuild(
   // Set current motive on agent regardless of action (even wait carries emotional context)
   agent.state.currentMotive = parsed.why || undefined;
 
+  // Record talk target for anti-repeat
+  if (parsed.action === 'talk' && parsed.target) {
+    recordTalkTarget(npcId, parsed.target, ctx.currentTick);
+  }
+
   return intentionToGoal(parsed, npcId, agent, scored, ctx);
 }
 
@@ -543,13 +549,29 @@ function buildDecisionPrompt(
     '',
     ...(dutyConstraintLines.length > 0 ? ['DUTY CONSTRAINTS:', ...dutyConstraintLines, ''] : []),
     `LOCATIONS: ${locationNames.join(', ')}`,
-    `NPCs: ${aliveNpcNames.join(', ')}`,
+    `NPCs: ${aliveNpcNames.map(n => hasRecentTalk(npcId, n, ctx.currentTick) ? `${n} (spoke recently — try someone else)` : n).join(', ')}`,
     '',
     'Choose ONE action. Use EXACTLY the action words listed above.',
     'Respond with: action (verb), target (NPC name or location), reason (one sentence in character).',
   ].filter((l) => l !== undefined).join('\n');
 
   return { system: systemParts, user: userParts };
+}
+
+// ─── Recent Talk Target Tracking (anti-repeat) ───
+
+const _recentTalkTargets = new Map<string, Map<string, number>>(); // npcId → targetName → lastTick
+
+/** Check if NPC talked to this target recently (within 8 ticks) */
+function hasRecentTalk(npcId: string, targetName: string, currentTick: number): boolean {
+  const lastTick = _recentTalkTargets.get(npcId)?.get(targetName) ?? -Infinity;
+  return currentTick - lastTick < 8;
+}
+
+/** Record that NPC talked to target */
+export function recordTalkTarget(npcId: string, targetName: string, tick: number): void {
+  if (!_recentTalkTargets.has(npcId)) _recentTalkTargets.set(npcId, new Map());
+  _recentTalkTargets.get(npcId)!.set(targetName, tick);
 }
 
 // ─── Consideration Tracking (escalation) ───
@@ -577,21 +599,30 @@ export function resetConsideration(npcId: string, affId?: string): void {
 
 // ─── LLM Call ───
 
-/** JSON schema for NPC volition decisions */
-const VOLITION_SCHEMA: import('./llm-client').LlmJsonSchema = {
-  name: 'npc_decision',
-  strict: true,
-  schema: {
-    type: 'object',
-    properties: {
-      action: { type: 'string', description: 'The verb: go, talk, steal, kill, attack, wait, announce, report, testify, investigate, interrogate, arrest, flee, grieve, evaluate' },
-      target: { type: 'string', description: 'NPC name, location name, or empty string if no target' },
-      reason: { type: 'string', description: 'One sentence in character explaining why' },
-    },
-    required: ['action', 'target', 'reason'],
-    additionalProperties: false,
-  },
-};
+/** Build volition schema with dynamic action enum from registered verbs */
+let _volitionSchema: import('./llm-client').LlmJsonSchema | null = null;
+function getVolitionSchema(): import('./llm-client').LlmJsonSchema {
+  if (!_volitionSchema) {
+    const engineVerbs = Object.keys(ENGINE_ACTIONS); // go, talk, wait, announce
+    const moduleVerbs = getAllRegisteredVerbs();       // steal, kill, attack, investigate, etc.
+    const allVerbs = [...new Set([...engineVerbs, ...moduleVerbs])];
+    _volitionSchema = {
+      name: 'npc_decision',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: allVerbs },
+          target: { type: 'string', description: 'NPC name, location name, or empty string' },
+          reason: { type: 'string', description: 'One sentence in character' },
+        },
+        required: ['action', 'target', 'reason'],
+        additionalProperties: false,
+      },
+    };
+  }
+  return _volitionSchema;
+}
 
 // ─── Decision Resolution ───
 
@@ -635,7 +666,7 @@ async function callLlm(agent: Agent, system: string, user: string): Promise<stri
       user,
       temperature,
       maxTokens: 100,
-      jsonSchema: VOLITION_SCHEMA,
+      jsonSchema: getVolitionSchema(),
     });
     return result;
   } catch (err) {

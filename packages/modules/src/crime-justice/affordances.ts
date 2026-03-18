@@ -195,7 +195,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact', targetId: '$target', purpose: '[CRIME killer={killerName:} victim={victimName:someone} location={crimeLocation:unknown location}] urgently report a crime you learned about. Someone committed a crime at {crimeLocation:unknown location}. You need the guard to investigate immediately.', importance: 7, beliefTransfer: true, beliefTransferDirection: 'owner-to-target' },
+      { action: 'interact', targetId: '$target', purpose: '[CRIME killer={killerName:} victim={victimName:someone} location={crimeLocation:unknown location} eventType={crimeType:crime}] urgently report {crimeType:a crime} you learned about. {victimName:Someone} was victim of {crimeType:a crime} at {crimeLocation:unknown location}. You need the guard to investigate immediately.', importance: 7, beliefTransfer: true, beliefTransferDirection: 'owner-to-target' },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },
@@ -230,7 +230,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     stepTemplates: [
       { action: 'move_to', location: '$extra.crimeLocation', skipIfAt: true },
       { action: 'examine_scene', importance: 7 },
-      { action: 'interact_present', purpose: 'interrogate about the crime involving {victimName:the victim} by {killerName:an unknown assailant}. Ask what they saw, who was involved, and any details they remember', importance: 5, beliefTransfer: true },
+      { action: 'interact_present', purpose: 'interrogate about the {crimeType:crime} involving {victimName:the victim} by {killerName:an unknown assailant}. Ask what they saw, who was involved, and any details they remember', importance: 5, beliefTransfer: true },
       { action: 'announce', message: 'Attention! I am investigating a crime involving {victimName:the victim}. If anyone has information about {killerName:an unknown assailant}, report to me immediately.', importance: 4 },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
@@ -260,7 +260,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact_present', purpose: 'share alarming news you just heard — a rumor about a terrible event. You are excited and scared to share what you know', importance: 4, beliefTransfer: true },
+      { action: 'interact_present', purpose: 'share alarming news about {crimeType:a crime} involving {victimName:someone}. You are troubled and want others to know what happened.', importance: 4, beliefTransfer: true },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },

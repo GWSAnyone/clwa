@@ -531,7 +531,7 @@ function buildRelationships(npcId: string, profiles: AgentProfile[]): Relationsh
 /** Starting moods — spread across positive range. Crime requires significant mood deterioration. */
 const STARTING_MOODS: Record<string, number> = {
   ted: 0.35,          // generally cheerful despite debt worries
-  mark: -0.1,         // uneasy about Bess, but functional
+  mark: -0.2,         // paranoid about Bess, debts pressing
   elara: 0.25,        // enjoying village life despite spy guilt
   garrett: 0.45,      // dutiful, stable
   aldric: 0.10,       // faith wavering but holding
@@ -702,7 +702,7 @@ async function main() {
     agents,
     eventStore,
     engine,
-    { minConversationScore: 1, publicPlaces, pairCooldownTicks: 16, affordanceCooldownTicks: 12, decisionCooldownTicks: 4, startTick: 28, moodBias: -0.02 },
+    { minConversationScore: 1, publicPlaces, pairCooldownTicks: 16, affordanceCooldownTicks: 12, decisionCooldownTicks: 4, startTick: 28, moodBias: -0.01 },
     {
       onLine: (line) => {
         console.log(`    ${line.speakerName}: "${line.text}"`);
