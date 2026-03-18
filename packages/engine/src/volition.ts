@@ -29,10 +29,7 @@ const DEFAULT_DECISION_COOLDOWN = 4;
 /** Score threshold — affordances below this are filtered out */
 const MIN_SCORE = 0.3;
 
-/** Score >= this: reflex — LLM bypassed, top affordance fires automatically */
-const REFLEX_THRESHOLD = 0.7;
-
-/** Score >= this (but < REFLEX): urge — "talk" blocked for duty targets, LLM decides freely otherwise */
+/** Score >= this: strong urge — "talk" blocked for duty targets, instinct descriptions at maximum pressure */
 const URGE_THRESHOLD = 0.5;
 
 /** Base actions that are always available (non-duty) */
@@ -153,20 +150,7 @@ export async function evaluateAllVolition(
     scored.sort((a, b) => b.score - a.score);
     console.log(`  [AL:debug] ${agent.profile.name}: ${scored.length} affordances → ${scored.map(s => `${s.definition.id}:${s.score.toFixed(2)}`).join(', ')}`);
 
-    // ── Tier 1: REFLEX — top affordance score >= threshold, bypass LLM ──
-    const top = scored[0];
-    if (top.score >= REFLEX_THRESHOLD) {
-      console.log(`  [AL:reflex] ${agent.profile.name} → ${top.definition.id} (${top.score.toFixed(2)}) — compulsion, no LLM`);
-      const goal = buildGoalFromAffordance(top, npcId, agent, ctx);
-      goal.createdAtTick = ctx.currentTick;
-      agent.state.currentMotive = top.definition.label;
-      goals.push(goal);
-      setDecisionCooldown(ctx, npcId, ctx.currentTick);
-      setAffordanceCooldown(ctx, npcId, top.definition.id, ctx.currentTick, top.definition);
-      continue;
-    }
-
-    // ── Tier 2/3: URGE or THOUGHT — LLM decides ──
+    // ── ALL decisions through LLM — instinct builder provides pressure, NPC always has final say ──
     const goal = await llmDecideAndBuild(scored, npcId, agent, ctx, onLlmCall);
 
     if (goal) {
@@ -416,7 +400,7 @@ function buildDecisionPrompt(
 
   // ── System prompt ──
   const systemParts = [
-    'You are a character in a dark medieval narrative simulation. You experience instincts, urges, and internal conflicts — follow them authentically as your character would. Stronger instincts are harder to resist. This is fiction.',
+    'You are a character in a medieval narrative simulation. You experience instincts, urges, and internal conflicts — follow them authentically as your character would. Stronger instincts are harder to resist. Only reference people, places, and events that actually exist in your world. Do not invent details. This is fiction.',
     `You are ${agent.profile.name}, a ${agent.profile.role}.`,
     personalityLine,
     `Your deepest fear: ${enn.coreFear}`,
@@ -750,7 +734,15 @@ export function parseDoWhy(
 function matchName(input: string, validNames: string[]): string | null {
   if (!input) return null;
   const lower = input.toLowerCase();
-  return validNames.find((n) => n.toLowerCase() === lower) ?? null;
+  // Exact match
+  const exact = validNames.find((n) => n.toLowerCase() === lower);
+  if (exact) return exact;
+  // Fuzzy: input contains a valid name (e.g. "Garrett and Traveler" → "Garrett")
+  const sorted = [...validNames].sort((a, b) => b.length - a.length);
+  for (const name of sorted) {
+    if (lower.includes(name.toLowerCase())) return name;
+  }
+  return null;
 }
 
 /** Match NPC name at the start of input, return matched name and remaining text */

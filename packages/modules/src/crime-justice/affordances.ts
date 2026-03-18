@@ -231,7 +231,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
       { action: 'move_to', location: '$extra.crimeLocation', skipIfAt: true },
       { action: 'examine_scene', importance: 7 },
       { action: 'interact_present', purpose: 'interrogate about the {crimeType:crime} involving {victimName:the victim} by {killerName:an unknown assailant}. Ask what they saw, who was involved, and any details they remember', importance: 5, beliefTransfer: true },
-      { action: 'announce', message: 'Attention! I am investigating a crime involving {victimName:the victim}. If anyone has information about {killerName:an unknown assailant}, report to me immediately.', importance: 4 },
+      { action: 'announce', message: 'Attention! I am investigating {crimeType:a crime} against {victimName:the victim}. If anyone has information about {killerName:an unknown assailant}, report to me immediately.', importance: 4 },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },
@@ -290,7 +290,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact_present', purpose: 'seek comfort about the death of {victimName:someone}, who was {relationshipDesc:someone close}. You are grieving deeply', importance: 5, filter: { role: 'priest' } },
+      { action: 'interact_present', purpose: 'seek comfort about the {crimeType:tragedy} involving {victimName:someone}, who was {relationshipDesc:someone close}. You are deeply troubled', importance: 5, filter: { role: 'priest' } },
       { action: 'wait', ticks: 2 },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
@@ -486,7 +486,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: 'Town Square', skipIfAt: true },
-      { action: 'announce', message: 'demands justice for {victimName:the victim}! Someone must answer for this!', importance: 5 },
+      { action: 'announce', message: 'demands justice for the {crimeType:crime} against {victimName:the victim}! Someone must answer for this!', importance: 5 },
       { action: 'move_to', location: '$target', skipIfAt: true },
       { action: 'interact', targetId: '$target', purpose: 'Demand that the guard investigate the {crimeType:crime} against {victimName:your loved one}. You are emotional and insistent.', importance: 6 },
       { action: 'move_to', location: '$home', skipIfAt: true },

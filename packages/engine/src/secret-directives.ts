@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
-import { getSecretDirectiveBuilders, isTransferable, isConcealment, isFirsthand } from './event-registry';
+import { getSecretDirectiveBuilders, isTransferable, isConcealment, isFirsthand, getEventLabel } from './event-registry';
 
 /**
  * Build behavioral directives based on what an NPC secretly knows.
@@ -24,10 +24,11 @@ export function buildSecretDirectives(
   if (ownCrimes.length > 0) {
     const crime = ownCrimes[ownCrimes.length - 1];
     const victimName = (crime.payload?.victimName as string) ?? 'someone';
+    const crimeLabel = getEventLabel(crime.type) ?? 'crime';
     sections.push(
-      `## HIDDEN: You committed a crime\n` +
-      `You killed ${victimName}. Nobody must find out.\n` +
-      `- If asked about ${victimName} or the crime: act surprised, deny any involvement.\n` +
+      `## HIDDEN: You committed ${crimeLabel}\n` +
+      `You committed ${crimeLabel} against ${victimName}. Nobody must find out.\n` +
+      `- If asked about ${victimName} or the ${crimeLabel}: act surprised, deny any involvement.\n` +
       `- If confronted with evidence pointing to you: become defensive, try to explain it away.\n` +
       `- If pressed hard: show cracks — nervous pauses, contradictions — but do NOT confess easily.\n` +
       `- You may try to redirect suspicion to someone else if it feels natural.`,
@@ -48,10 +49,11 @@ export function buildSecretDirectives(
       const rel = agent.state.relationships?.getRelationship(coveredId);
       const relType = rel?.type ?? 'acquaintance';
 
+      const coverCrimeLabel = getEventLabel(belief.eventType) ?? 'something wrong';
       sections.push(
         `## HIDDEN: You are covering for ${coveredName}\n` +
-        `You saw ${coveredName} commit a crime, but you are protecting them because they are your ${relType}.\n` +
-        `- If asked about the crime: claim you didn't see anything clearly, be vague.\n` +
+        `You saw ${coveredName} commit ${coverCrimeLabel}, but you are protecting them because they are your ${relType}.\n` +
+        `- If asked about the ${coverCrimeLabel}: claim you didn't see anything clearly, be vague.\n` +
         `- If asked directly about ${coveredName}: change the subject or say something neutral.\n` +
         `- If pressed with evidence against ${coveredName}: show internal conflict — you hesitate, look away, almost speak but catch yourself.\n` +
         `- You feel guilt about hiding the truth. This leaks through in nervous mannerisms.`,
@@ -77,9 +79,10 @@ export function buildSecretDirectives(
       const sentiment = rel?.sentiment ?? 0;
 
       if (sentiment < -0.2) {
+        const justiceCrimeLabel = getEventLabel(wb.eventType) ?? 'a crime';
         sections.push(
           `## HIDDEN: You want justice\n` +
-          `You have information about a crime and you suspect ${suspectName}.\n` +
+          `You have information about ${justiceCrimeLabel} and you suspect ${suspectName}.\n` +
           `- You are eager to share what you know — even volunteer details without being asked.\n` +
           `- You may exaggerate slightly to make sure the guilty party is caught.`,
         );
