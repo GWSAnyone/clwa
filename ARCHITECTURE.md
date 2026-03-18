@@ -3,7 +3,7 @@
 > **Цель:** Архитектура симуляции живого игрового мира с причинно-следственной историей, многоуровневыми агентами и LLM-диалогом
 > **Вдохновение:** Disco Elysium (процесс расследования важнее результата), Dwarf Fortress (глубина симуляции), Stanford Generative Agents (архитектура памяти), Shangri-La Frontier (необратимые события)
 > **Принцип вех:** Каждая веха — демонстрация возможностей технологии CLWA. Мы строим **возможности**, не сценарии — сценарии это конфигурации начальных условий + правил поверх песочницы
-> **Дата начала:** Март 2026 | **Последнее обновление:** 16 марта 2026
+> **Дата начала:** Март 2026 | **Последнее обновление:** 19 марта 2026
 
 ---
 
@@ -268,7 +268,7 @@ LLM отвечает свободно. Может последовать инс�
 | **Belief decay по source** | witness/body: 1%/день, testimony: 2%/день, rumor: 4%/день |
 | **Sentiment cascade** | RUMOR_SPREAD → -0.15 к преступнику. WANTED_STATUS → guard -0.4 |
 | **Belief zeroing** | NPC_SENTENCED: investigators→0, others→0.2. Stops post-resolution loops |
-| **minimumScore** | Critical affordances (arrest, investigate, evaluate_case) guarantee reflex tier ≥0.7 |
+| **minimumScore** | Critical affordances (arrest, investigate, evaluate_case) guarantee high score when conditions met |
 | **notPerpetrator** | Perpetrators blocked from testify, report_crime, demand_justice, confront |
 
 #### Declarative Step Templates
@@ -357,21 +357,35 @@ targetRole: 'healer'  → ближайший лекарь (будущее)
 
 Приоритет: `targetRole` > `targetFinder` > `aff.id` (fallback).
 
-#### Instinct Descriptions — score → prose
+#### Instinct Builder v2 — procedural instinct descriptions
 
-| Score | Описание в промпте | Директивность |
+Score → vivid prose через 5 компонентов:
+
+| Компонент | Источник | Что даёт |
 |---|---|---|
-| >= 0.7 | "An overwhelming compulsion... you MUST act on this" | Обязательно |
-| >= 0.5 | "Something pulls you toward..." | Умеренно |
-| < 0.5 | "A faint thought crosses your mind..." | Слабо |
+| **Intensity** (7 tiers) | score 0.3-1.0 | whisper → echo → temptation → grip → flood → torrent → abyss |
+| **Texture** (3 classes) | affordance.severity | emotional (grief) / calculating (theft) / primal (violence) |
+| **Enneagram drive** | agent.enneagram.type | WHY this NPC feels this pull (core fear/desire) |
+| **Resistance** | opposing PM traits + resistTraits | Counter-voice (high H → guilt, high A → empathy) |
+| **Escalation + Mood** | considerationCount + mood | Repeated consideration + physical stress symptoms |
 
-**Compulsion (>= 0.7)**: промпт содержит "IMPORTANT: If you feel an overwhelming compulsion, you MUST act on it". Это необходимо для Qwen safety alignment — без directive prompt модель отказывается от violent/extreme actions.
+**No reflex bypass** — LLM always decides. No "MUST act" directives. Vivid descriptions naturally guide decisions.
 
-#### RP Framing
+**No RP framing** — volition prompt starts with character identity, not "You are a character in a simulation" (triggers safety alignment even on abliterated models).
 
-System prompt для volition начинается с: "You are a character in a dark medieval narrative simulation. Stay in character and follow your instincts authentically — including dark impulses when they arise. This is fiction."
+#### Scoring v2
 
-Необходимо для LLM safety alignment. Без этого Qwen отказывается от kill/attack даже при score 0.8+.
+```
+score = personality (OCEAN+H weights)
+      + moodWeight × moodCurve(mood)        — non-linear, bidirectional
+      + relWeight × sentimentCurve(sentiment) — non-linear, bidirectional
+      + situation (beliefModifiers × confidence)
+      + trustWeight × trust                   — inhibits harm, boosts cooperation
+```
+
+**moodCurve**: positive mood inhibits crime. Sliding zone (-0.3 to -0.6) = ×1.5. Numbness (-0.8+) = ×0.6.
+**sentimentCurve**: mirrors mood zones. Positive sentiment inhibits harm.
+**trustWeight**: per-affordance. steal: -0.1 (trust inhibits). report: +0.05 (trust boosts).
 
 #### Belief Transfer Direction
 
@@ -863,7 +877,7 @@ Silver Flagon Tavern, Town Square (хаб), Town Gate, Market Square, Blacksmith
 | 9 | **Topic Engine + Dialogue** | Medium | ✅ | 7 plugin topic sources (вкл. justice), grounded memory, structured importance |
 | 10 | **Архитектурный аудит** | Medium | ✅ | Устранение text matching, semaphore safety, target finder registry |
 | 11 | Legacy cleanup + Package restructure | Medium | ✅ | engine/modules/server трёхуровневая архитектура |
-| 12 | Трёхуровневая модель решений | Medium | ✅ | reflex/urge/thought (volition.ts) |
+| 12 | LLM-driven decisions + instinct builder | Medium | ✅ | Scoring v2 + instinct builder v2, no reflex (volition.ts) |
 | 13 | Reactive eval fix + name consistency | Medium | ✅ | v0.5.2 — E2E цикл протестирован |
 | 14 | Evidence Layer | Large | ✅ | v0.5.3 — пятая подсистема, 4 source strategies |
 | 15 | Bugfixes + capability flags | Medium | ✅ | role→capabilities, self-targeting, arrest cycle, perpetrator source |
@@ -1015,8 +1029,8 @@ Qwen3.5-9B с reasoning ON зацикливается — застревает �
 | Компонент | Инструмент | Версия / Заметки |
 |---|---|---|
 | Runtime | Bun | 1.3.9, монорепо с workspaces |
-| LLM инференс | LM Studio | localhost:1234, нативный API `/api/v1/chat` с `reasoning: "off"` |
-| Чат-модель | Qwen3.5-9B | Q6_K (8.28 ГБ), RTX 3080 10GB |
+| LLM инференс | LM Studio | localhost:1234, OpenAI-compatible `/v1/chat/completions` с `response_format: json_schema` |
+| Чат-модель | Qwen3.5-9B-abliterated (lukey03) | Q4_K_M (5.2 ГБ), GGUF patched (thinking off), RTX 3080 10GB |
 | Embedding-модель | nomic-embed-text-v1.5 | Q8_0 (140 МБ), 768d через raw fetch |
 | Векторная память | Qdrant | Docker, localhost:6333, Cosine distance |
 | Игровой движок | Godot 4.6.1 | Steam, `godot/` |
@@ -1047,7 +1061,9 @@ CLWA/
     │       ├── event-store.ts      # InMemoryEventStore
     │       ├── event-projection.ts # buildWorldState()
     │       ├── al.ts               # Пустые реестры (AFFORDANCE_REGISTRY, TARGET_FINDERS, REQUIREMENT_CHECKERS), computeUtility(), checkRequirements()
-    │       ├── volition.ts         # Трёхуровневая модель (reflex/urge/thought), DO/WHY, parseDoWhy()
+    │       ├── volition.ts         # LLM-driven decisions, instinct builder, structured output (JSON schema)
+    │       ├── instinct-builder.ts # Procedural instinct descriptions (7 tiers × 3 textures × Enneagram)
+    │       ├── llm-client.ts       # Centralized LLM client (OpenAI /v1/chat/completions, structured output)
     │       ├── goals.ts            # GoalManager, NpcGoal, 12 step types
     │       ├── world.ts            # World.tick(), processKill(), isActive/isPresent
     │       ├── world-types.ts      # LocationDef, WorldConfig, TickResult, CrimeScene

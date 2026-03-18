@@ -31,10 +31,9 @@ Engine contains **empty registries** (30+ in event-registry.ts). Modules fill th
 - **Test**: "If I add an Economy module with FRAUD/SMUGGLING events — does engine handle them without any engine code changes?" If no → violation.
 
 ### 3. PM = Instinct, LLM = Consciousness
-Personality Model computes utility scores → generates prose descriptions of urges. LLM freely decides — may follow instinct or transcend it.
-- **Reflex** (≥0.7): bypasses LLM, auto-goal.
-- **Urge** (0.5-0.7): LLM decides but constrained.
-- **Thought** (<0.5): full freedom.
+Personality Model computes utility scores → instinct-builder generates vivid prose (7 tiers × 3 textures × Enneagram × resistance). LLM freely decides — may follow instinct or transcend it. **No reflex bypass** — LLM always has final say. Stronger instincts = more vivid descriptions = harder to resist naturally.
+- **Volition prompt**: NO RP framing ("you are a character in simulation" triggers safety alignment). Just character identity + instincts.
+- **Scoring v2**: non-linear moodCurve (sliding/desperation/numbness zones), bidirectional (positive mood inhibits crime), trust as 5th input, DEBT_PRESSURE beliefModifiers.
 
 ### 4. Emergent Narrative
 We build **capabilities**, not scenarios. Nobody hardcodes "Mark kills Bess" — personality + mood + relationship + opportunity converge organically.
@@ -82,7 +81,7 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 10. **Source/event flags**: engine checks boolean flags — `isTransferable()`, `isInformationOnly()`, `isPerpetrator()`, `isFirsthand()`, `isConcealment()`. Modules register via `registerEventTypeFlags()` / `registerSourceFlags()`. Engine never checks category name strings.
 11. **Day advance/tick handlers**: module logic (rumor spread, theft discovery) via DAY_ADVANCE_HANDLERS and TICK_PHASE_HANDLERS registries.
 12. **Secret directive builders**: behavioral prompts (threats, bribes) via SECRET_DIRECTIVE_BUILDERS registry. Server registers builders.
-13. **minimumScore on affordances**: critical duties (arrest, investigate, evaluate_case) guarantee reflex tier (≥0.7) when conditions met. Bypasses LLM gambling.
+13. **No reflex bypass**: LLM always decides. Instinct builder provides pressure through vivid descriptions. minimumScore still ensures duty affordances score high enough to appear as strong instincts.
 14. **Belief dedup by source**: addBelief key = (eventType, object, source). Different sources coexist. getMaxConfidenceFor() aggregates.
 15. **notPerpetrator requirement**: perpetrators blocked from testify, report_crime, demand_justice, confront via `isPerpetrator(source)` flag. API kills also get perpetrator belief via NPC_KILLED event handler.
 16. **Configurable cooldowns**: affordanceCooldownTicks, decisionCooldownTicks, pairCooldownTicks in WorldConfig. Not hardcoded.
@@ -109,4 +108,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.9.3-dev. OpenAI endpoint (llm-client.ts), structured output (json_schema), instinct builder v2 (7 tiers × 3 textures × Enneagram × resistance), abliterated model (GGUF patched). Trust evolution, NPC approach, player rumors, bidirectional mood. Full bilateral design, IL, perception, AL validator, event/source flags.
+v0.9.4-dev. Scoring v2 (non-linear curves, bidirectional mood/sentiment, trust, DEBT_PRESSURE). Instinct builder v2 (7 tiers × 3 textures × Enneagram × resistance). No reflex bypass — LLM always decides. Centralized llm-client.ts (OpenAI endpoint, structured output json_schema). Abliterated model (GGUF patched, no RP framing in volition). World lore + background memories. suspectName normalization. Trust evolution, NPC approach, player rumors. Belief injection in interactions. Dynamic action enum.
