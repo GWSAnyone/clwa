@@ -670,12 +670,13 @@ async function main() {
   }
 
   // ─── Seed background memories (unchangeable past) ───
+  // Use memory.store() directly — NOT observe() — to avoid triggering reflection on startup
   if (!savedData) {
     for (const [npcId, agent] of agents) {
       const memories = BACKGROUND_MEMORIES[npcId];
-      if (!memories) continue;
+      if (!memories || !agent.memory) continue;
       for (const memText of memories) {
-        await agent.observe(memText, 6); // importance 6 = significant personal history
+        await agent.memory.store(memText, 6, 0); // gameDay 0 = before simulation, importance 6
       }
     }
     console.log(`  [+] Background memories seeded for ${Object.keys(BACKGROUND_MEMORIES).length} NPCs`);

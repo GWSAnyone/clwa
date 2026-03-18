@@ -13,7 +13,7 @@ export interface ReflectionConfig {
 }
 
 const DEFAULT_CONFIG: ReflectionConfig = {
-  threshold: 30,
+  threshold: 50,
   lmStudioUrl: 'http://localhost:1234',
   model: DEFAULT_WORLD_CONFIG.model,
   reflectionImportance: 9,

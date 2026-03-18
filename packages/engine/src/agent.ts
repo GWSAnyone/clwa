@@ -47,7 +47,7 @@ export interface AgentOptions {
 
 export class Agent {
   private baseUrl: string;
-  private memory: VectorMemory;
+  readonly memory: VectorMemory;
   profile: AgentProfile;
   state: AgentState;
   private model: string;
