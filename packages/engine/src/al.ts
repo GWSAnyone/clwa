@@ -245,7 +245,7 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
     (b: Belief) => isTransferable(b.eventType) && b.confidence >= 0.3,
   );
   if (crimeBelief) {
-    if (crimeBelief.subject) extra.killerName = crimeBelief.subject;
+    if (crimeBelief.subject) { extra.killerName = crimeBelief.subject; extra.suspectName = crimeBelief.subject; }
     if (crimeBelief.object) extra.victimName = crimeBelief.object;
     if (crimeBelief.location) extra.crimeLocation = crimeBelief.location;
     extra.crimeType = getEventLabel(crimeBelief.eventType);

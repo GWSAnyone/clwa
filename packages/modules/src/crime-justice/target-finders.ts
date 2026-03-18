@@ -282,6 +282,7 @@ function findInvestigateTarget(npcId: string, agent: Agent, ctx: AffordanceConte
       victimName: belief.object ?? 'someone',
       crimeLocation: belief.location!,
       killerName: belief.subject ?? 'an unknown assailant',
+      suspectName: belief.subject ?? 'an unknown suspect',
     },
   };
 }
@@ -319,7 +320,7 @@ export function registerCrimeTargetFinders(): void {
     if (!guard) return null;
     const killerName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string) ?? 'someone';
     const victimName = (event.payload?.victimName as string) ?? 'someone';
-    guard.extra = { ...guard.extra, killerName, victimName, crimeLocation: event.location, eventType: event.type };
+    guard.extra = { ...guard.extra, killerName, suspectName: killerName, victimName, crimeLocation: event.location, eventType: event.type };
     return guard;
   });
 
@@ -328,7 +329,7 @@ export function registerCrimeTargetFinders(): void {
     const crimeLocation = (event.payload?.crimeLocation as string) ?? event.location;
     const killerName = (event.payload?.killerName as string) ?? 'an unknown assailant';
     const victimName = (event.payload?.victimName as string) ?? 'the victim';
-    return { targetId: npcId, targetName: agent.profile.name, targetLocation: crimeLocation, extra: { crimeLocation, killerName, victimName } };
+    return { targetId: npcId, targetName: agent.profile.name, targetLocation: crimeLocation, extra: { crimeLocation, killerName, suspectName: killerName, victimName } };
   });
 
   REACTIVE_TARGET_FINDERS.set('gossip', (npcId, agent, ctx, event) => {
