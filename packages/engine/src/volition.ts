@@ -401,8 +401,7 @@ function buildDecisionPrompt(
 
   // ── System prompt ──
   const systemParts = [
-    'You are a character in a medieval narrative simulation. You experience instincts, urges, and internal conflicts — follow them authentically as your character would. Stronger instincts are harder to resist. Only reference people, places, and events that actually exist in your world. Do not invent details. This is fiction.',
-    `You are ${agent.profile.name}, a ${agent.profile.role}.`,
+    `You are ${agent.profile.name}, a ${agent.profile.role}. Only reference people, places, and events that actually exist. Do not invent details.`,
     personalityLine,
     `Your deepest fear: ${enn.coreFear}`,
     `Your deepest desire: ${enn.coreDesire}`,
