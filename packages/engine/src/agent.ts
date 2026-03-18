@@ -305,7 +305,8 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
 - Never break character or mention being an AI.
 - Keep responses concise (2-4 sentences unless asked for detail).
 - React emotionally according to your personality and mood.
-- IMPORTANT: If your mood is negative, show it — be nervous, shaken, distressed, or angry as appropriate.`;
+- IMPORTANT: If your mood is negative, show it — be nervous, shaken, distressed, or angry as appropriate.
+- Only reference people, places, and events that exist in your world. Do not invent names, locations, or details.`;
   }
 
   private buildDynamicFacts(): string {

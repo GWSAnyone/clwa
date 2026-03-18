@@ -223,6 +223,52 @@ const worldFactTopics: TopicSource = (init, _resp, ctx) => {
 // Engine-generic sources registered below (after TOPIC_SOURCE_REGISTRY declaration)
 
 
+/** Positive casual topics — warm conversations that can IMPROVE mood */
+const casualTopics: TopicSource = (init, resp) => {
+  const proposals: TopicProposal[] = [];
+
+  // Friends have warm casual conversations
+  const rel = init.state.relationships?.getRelationship(resp.profile.id);
+  if (rel && rel.sentiment > 0.1) {
+    proposals.push({
+      subject: 'catching up as friends',
+      tone: 'warm, relaxed',
+      weight: 3,
+      initiatorHook: `You enjoy ${resp.profile.name}'s company. Share something lighthearted — a memory, a joke, an observation about the weather or the village.`,
+      responderHook: `Respond warmly. This is a pleasant moment between friends.`,
+      category: 'casual_positive',
+      maxImportance: 3,
+    });
+  }
+
+  // Craft/profession talk (always available between co-workers)
+  if (rel && rel.type === 'colleague') {
+    proposals.push({
+      subject: `work and craft`,
+      tone: 'practical, companionable',
+      weight: 2,
+      initiatorHook: `Talk about your work — what you made today, a tricky order, the quality of materials. Professional pride.`,
+      responderHook: `Share your own work experience. Mutual respect for each other's craft.`,
+      category: 'casual_craft',
+      maxImportance: 2,
+    });
+  }
+
+  // Weather and village life (always available, low weight)
+  if (init.state.mood > -0.2) {
+    proposals.push({
+      subject: 'village life',
+      tone: 'casual, observational',
+      weight: 1,
+      initiatorHook: `Comment on something mundane — the weather, the market crowd, a funny thing you noticed today. Just small talk.`,
+      category: 'casual_village',
+      maxImportance: 2,
+    });
+  }
+
+  return proposals;
+};
+
 // ─── Fallback ───────────────────────────────────────────────────
 
 const FALLBACK_TOPIC: TopicProposal = {
@@ -245,6 +291,7 @@ TOPIC_SOURCE_REGISTRY.push(
   moodTopics,
   worldFactTopics,
   roleTopics,
+  casualTopics,
 );
 
 // ─── Topic Engine ───────────────────────────────────────────────
