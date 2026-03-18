@@ -25,9 +25,15 @@ export function createInteractionRunner(
     // Strip structured markers before sending to LLM
     const cleanPurpose = purpose.replace(/\[CRIME[^\]]*\]\s*/g, '');
 
-    // --- Initiator speaks (with purpose) ---
+    // Inject belief context — what each NPC actually KNOWS (prevents hallucination)
+    const initiatorBeliefs = initiator.state.beliefs?.summarizeForPrompt(3) ?? '';
+    const targetBeliefs = target.state.beliefs?.summarizeForPrompt(3) ?? '';
+    const initiatorCtx = initiatorBeliefs ? `\n## What you know (facts, not speculation):\n${initiatorBeliefs}\nOnly reference these facts. Do not invent details.` : '';
+    const targetCtx = targetBeliefs ? `\n## What you know (facts, not speculation):\n${targetBeliefs}\nOnly reference these facts. Do not invent details.` : '';
+
+    // --- Initiator speaks (with purpose + beliefs) ---
     const initiatorPrompt = buildPurposePrompt(initiator, target, cleanPurpose);
-    const ownerLine = await initiator.generateResponse(initiatorPrompt, { maxTokens: 200 });
+    const ownerLine = await initiator.generateResponse(initiatorPrompt, { maxTokens: 200, additionalContext: initiatorCtx || undefined });
 
     if (options?.onLine) {
       options.onLine({
@@ -37,9 +43,9 @@ export function createInteractionRunner(
       });
     }
 
-    // --- Target responds ---
+    // --- Target responds (with their own beliefs) ---
     const targetPrompt = buildResponsePrompt(target, initiator, ownerLine, cleanPurpose);
-    const targetLine = await target.generateResponse(targetPrompt, { maxTokens: 200 });
+    const targetLine = await target.generateResponse(targetPrompt, { maxTokens: 200, additionalContext: targetCtx || undefined });
 
     if (options?.onLine) {
       options.onLine({
