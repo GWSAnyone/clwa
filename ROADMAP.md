@@ -321,6 +321,46 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
                                             Same pipeline
 ```
 
+### Phase 2.9: Polish & Balance — ближайшие задачи
+> Стабилизировать систему, расширить контент, подготовить демку.
+
+#### E2E тест с prompt fix
+- [ ] Прогнать 3+ чистых запуска по 100+ тиков — проверить что steal выбирается LLM (prompt framing fix)
+- [ ] Проверить что murder chain работает без reflex
+- [ ] Проверить разнообразие между runs (разные жертвы, разные преступления)
+- [ ] Проверить что instinct builder descriptions корректно генерируются для всех tiers
+
+#### TopicEngine — расширение и проработка
+Текущее состояние: 7 built-in sources + 2 module sources. Проблема: большинство конверсаций негативные, NPC обсуждают одни и те же напряжённые темы. Нужно расширить для живого мира.
+
+- [ ] **casualTopics** — добавлено (friends, craft, village life), но weight 1-3 слишком слабый. Нужно тестировать и калибровать чтобы 30-40% конверсаций были лёгкими
+- [ ] **seasonalTopics** — погода, урожай, праздники. Привязка к gameDay (зима/лето/осень). Создают ощущение времени
+- [ ] **memoryTopics** — NPC вспоминает конкретные memories из Qdrant и делится. "Помнишь как прошлой зимой..." Использует vector recall, не hardcoded
+- [ ] **opinionTopics** — NPC формирует мнение о третьем NPC через beliefs + sentiment и обсуждает. "Что думаешь о Mark?" → ответ из реальных beliefs
+- [ ] **questionTopics** — NPC задаёт вопрос на основе того чего НЕ знает (gaps в beliefs). "Ты не слышал что случилось на площади?" → информационный обмен
+- [ ] **Topic diversity balancing** — ввести target ratio: ~40% casual, ~30% event/belief, ~20% relationship/mood, ~10% conflict. Не хардкод — через weight calibration
+- [ ] **Per-NPC topic personality** — E (экстраверт) → больше casual/gossip. N (тревожный) → больше mood/concern. O (открытый) → больше question/curiosity. PM weights влияют на topic source selection
+
+#### Conversation quality
+- [ ] **Conversation impact calibration** — mood_impact слишком часто негативный. Тестировать с casualTopics — должен быть net positive для дружеских разговоров
+- [ ] **Repeat phrase reduction** — repeat_penalty 1.15 в LM Studio. Тестировать — "Valdris", "the soil changes" не должны повторяться
+- [ ] **NPC speech consistency** — NPC иногда теряют speech style на длинных промптах. Убедиться что speechStyle reminder в conversation prompt достаточно видим
+
+#### Godot клиент
+- [ ] Стены/крыши зданий на тайлмапе
+- [ ] NPC hover tooltip (trust + relationship)
+- [ ] Player mood indicator в HUD
+- [ ] Проверить approach notifications в Godot
+
+#### Demo readiness
+- [ ] Настроить начальные условия (tension seeds если нужно после E2E тестов)
+- [ ] Demo script — что показывать, в каком порядке
+- [ ] 2-3 полных прогона с Godot клиентом (наблюдение, взаимодействие с NPC, осмотр crime scene)
+
+#### NPC config externalization
+- [ ] Вынести NPC профили (PROFILES, RELATIONSHIP_DEFS, NPC_SCHEDULES, STARTING_MOODS, BACKGROUND_MEMORIES, WORLD_LORE) в JSON/YAML файлы вместо TypeScript constants
+- [ ] Сценарист редактирует JSON без программиста → ноль code changes для нового мира
+
 ### Phase 2.5: Custom LLM — Qwen3.5-9B-CLWA
 > Своя модель, заточенная под движок. Uncensored + наш формат.
 
