@@ -540,6 +540,81 @@ const STARTING_MOODS: Record<string, number> = {
   magistrate: 0.40,   // found purpose in small-town justice
 };
 
+/** Shared world knowledge — every NPC knows these facts about the village. */
+const WORLD_LORE: string[] = [
+  'Millhaven is a small frontier village, founded over 200 years ago by settlers from the eastern kingdoms.',
+  'The village has 8 locations: Silver Flagon Tavern (the social heart), Town Square (the central hub), Town Gate (the only way in or out), Market Square (trade and commerce), Blacksmith (Hilda\'s forge), Temple of Dawn (worship and counsel), Residential Lane (homes), and the Courthouse (law and order).',
+  'The road to Valdris — the nearest city — is a week\'s journey through highlands known for bandits.',
+  'The Silver Flagon has served ale since the village founding. It\'s where everyone gathers in the evenings.',
+  'Magistrate Theron was sent here five years ago from the capital. Nobody knows exactly why.',
+  'Market days draw a few traders from surrounding farms, but Millhaven is mostly self-sufficient.',
+  'The Temple of Dawn was built by Brother Celwyn two generations ago. Father Aldric is his successor.',
+  'Winters are harsh. The village depends on stored grain, preserved meat, and whatever Bess can grow.',
+  'There is no formal jail — the courthouse has a holding cell used maybe once a year.',
+  'Everyone knows everyone. Secrets don\'t stay hidden long in a village this small.',
+];
+
+/** Per-NPC background memories — seeded into Qdrant at startup. Their lived past. */
+const BACKGROUND_MEMORIES: Record<string, string[]> = {
+  ted: [
+    'I\'ve been running the Silver Flagon for fifteen years. Every face that walks through that door, I know their name and their usual drink.',
+    'My wife passed seven years ago. The tavern is all I have left. It keeps me busy, keeps me sane.',
+    'Hilda comes in every evening after closing the forge. We sit, we drink, we talk about nothing. It\'s the only peace either of us gets.',
+    'Three years ago, Mark rolled in with his wagon of "exotic spices." The market hasn\'t been the same since.',
+    'The gambling started small — a few coins on card games with travelers. Now I owe more than I earn in three months. I\'ve been watering the ale to cover the difference.',
+    'Father Aldric used to come in more often. Lately he just sits in the temple staring at the altar. Something changed in him.',
+  ],
+  mark: [
+    'I came to Millhaven three years ago. These villagers don\'t know real trade — they pay premium for colored dirt I buy for pennies in the next town.',
+    'Old Bess figured out my spices are common herbs within the first week. She just smiles that knowing smile and says nothing. Every day I wonder when she\'ll talk.',
+    'The debts to the Valdris money-lenders are growing. They don\'t send polite reminders — they send men.',
+    'I chose this village because it\'s remote enough that nobody checks credentials. A fresh start. Or so I thought.',
+    'Hilda overcharges me for metalwork. I overcharge everyone for spices. We understand each other, in a way.',
+  ],
+  elara: [
+    'I arrived in Millhaven two years ago, posing as a traveling bard. My patron — Lord Ashford of the eastern court — sends a courier every month for my reports.',
+    'The people here have no idea. They think I\'m just a wandering musician who fell in love with the village. And honestly... I did.',
+    'Ted lets me perform at the Flagon every evening. Free room, free ale, and a front-row seat to every secret this village whispers.',
+    'I\'ve been watching Garrett closely. A guard who once took a bribe — that\'s the kind of information Lord Ashford pays well for.',
+    'Sometimes I play songs about real events — the caravan robbery last autumn, the miller\'s affair. People laugh, not knowing I\'m documenting them.',
+  ],
+  garrett: [
+    'Ten years at this gate. I know every merchant, every traveler, every suspicious shadow that passes through.',
+    'Last winter, a fugitive came through. Offered me gold — more than I make in a year. I let him pass. I\'ve never told anyone.',
+    'The magistrate trusts me. That trust is the only thing holding my conscience together after what I did.',
+    'I trained with the King\'s Guard in the capital before being stationed here. This posting was supposed to be temporary. That was ten years ago.',
+    'Hilda made my halberd. Best weapon I\'ve ever held. She takes pride in her craft — I respect that more than she knows.',
+  ],
+  aldric: [
+    'I took the vows thirty years ago, full of fire and faith. Brother Celwyn himself ordained me at this very altar.',
+    'The Dawn stopped answering my prayers five years ago. I go through the motions — the candles, the hymns, the sermons. But inside, there\'s only silence.',
+    'Old Bess is the only person who doesn\'t need me to be strong. We share tea and silence. She knows something is wrong but never asks.',
+    'I counsel the troubled, comfort the grieving, bless the newborn. All while feeling like a fraud. They deserve better.',
+    'The temple needs repairs I can\'t afford. The roof leaks when it rains. Brother Celwyn would be heartbroken.',
+  ],
+  hilda: [
+    'My father built this forge with his own hands. I was hammering horseshoes before I could read. This is my life — iron and fire.',
+    'Father died in Ted\'s tavern. A bar fight. Ted tried to break it up but was too slow. Fifteen years and I still see the blood on the floorboards.',
+    'Ted is my closest friend. We drink together almost every night. But sometimes when he laughs, I hear my father\'s last breath.',
+    'I make weapons, tools, horseshoes. The work is honest. I don\'t need exotic spices or fancy words — just good steel and a hot forge.',
+    'Mark haggles every time he picks up an order. Tries to talk the price down. I don\'t budge. He pays what it\'s worth or he walks.',
+  ],
+  bess: [
+    'I\'ve lived in Millhaven longer than anyone remembers. They call me Old Bess now. I was just Bess once.',
+    'The tea leaves show me things. Not clear pictures — fragments, feelings, shadows of what\'s coming. Most people think it\'s a trick. It\'s not.',
+    'I saw the murder before it happened. In the leaves, clear as daylight. Someone in this village will die by another\'s hand. I said nothing.',
+    'Mark thinks I don\'t know about his fake spices. I knew the moment he opened his first sack — common rosemary dusted with turmeric. I could expose him anytime.',
+    'Father Aldric and I share evening tea. He\'s lost something precious — not an object, but his connection to whatever he used to pray to. I see it in his eyes.',
+  ],
+  magistrate: [
+    'Five years ago I stood before the Duke and accused him of corruption. I was right. He was powerful. I was exiled to this village as punishment.',
+    'The law is the law — whether in the capital or in Millhaven. I will uphold it with the same rigor here as I would before the King.',
+    'Garrett is competent. Dutiful. But I sense something buried — a guilt he carries like a stone in his chest. I haven\'t pressed him on it.',
+    'This village is small but its people are complex. Every case I judge, every dispute I settle — there are layers beneath layers.',
+    'I miss the capital. The libraries, the courts, the debates. Here I judge disputes over goat ownership. But justice is justice, regardless of scale.',
+  ],
+};
+
 function makeState(location: string, npcId: string): AgentState {
   return {
     alive: true,
@@ -547,9 +622,7 @@ function makeState(location: string, npcId: string): AgentState {
     location,
     mood: STARTING_MOODS[npcId] ?? 0.2,
     currentDay: 1,
-    knownFacts: [
-      '# The town has 8 locations: tavern, town square, gate, market, blacksmith, temple, residential lane, and courthouse',
-    ],
+    knownFacts: WORLD_LORE.slice(), // each NPC gets a copy of shared world knowledge
     beliefs: new BeliefManager(),
     relationships: buildRelationships(npcId, PROFILES),
   };
@@ -594,6 +667,18 @@ async function main() {
     });
     agents.set(profile.id, agent);
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npc.location}`);
+  }
+
+  // ─── Seed background memories (unchangeable past) ───
+  if (!savedData) {
+    for (const [npcId, agent] of agents) {
+      const memories = BACKGROUND_MEMORIES[npcId];
+      if (!memories) continue;
+      for (const memText of memories) {
+        await agent.observe(memText, 6); // importance 6 = significant personal history
+      }
+    }
+    console.log(`  [+] Background memories seeded for ${Object.keys(BACKGROUND_MEMORIES).length} NPCs`);
   }
 
   // ─── Starting beliefs (economic pressure, secrets) ───
