@@ -528,15 +528,16 @@ function buildRelationships(npcId: string, profiles: AgentProfile[]): Relationsh
 }
 
 /** Starting moods derived from personality + situation. Creates varied tension landscape. */
+/** Starting moods — spread across positive range. Crime requires significant mood deterioration. */
 const STARTING_MOODS: Record<string, number> = {
-  ted: 0.15,          // debt anxiety, watered-down ale guilt
-  mark: -0.2,         // paranoid about Bess exposing his fraud
-  elara: 0.1,         // conflicted about spying on people she likes
-  garrett: 0.25,      // steady, slight guilt about the bribe
-  aldric: -0.1,       // crisis of faith, emptiness
-  hilda: 0.1,         // simmering resentment about father's death
-  bess: 0.1,          // anxious about her visions
-  magistrate: 0.15,   // frustrated by exile to this small town
+  ted: 0.35,          // generally cheerful despite debt worries
+  mark: -0.1,         // uneasy about Bess, but functional
+  elara: 0.25,        // enjoying village life despite spy guilt
+  garrett: 0.45,      // dutiful, stable
+  aldric: 0.10,       // faith wavering but holding
+  hilda: 0.20,        // content at the forge, father's memory simmers
+  bess: 0.30,         // at peace with her herbs and visions
+  magistrate: 0.40,   // found purpose in small-town justice
 };
 
 function makeState(location: string, npcId: string): AgentState {
@@ -593,6 +594,38 @@ async function main() {
     });
     agents.set(profile.id, agent);
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npc.location}`);
+  }
+
+  // ─── Starting beliefs (economic pressure, secrets) ───
+  const markAgent = agents.get('mark');
+  if (markAgent?.state.beliefs) {
+    markAgent.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: 'DEBT_PRESSURE',
+      subject: 'Mark',
+      object: null,
+      location: null,
+      confidence: 0.8,
+      source: 'observation',
+      sourceNpcId: null,
+      gameDay: 1,
+      lastUpdated: 1,
+    });
+  }
+  const tedAgent = agents.get('ted');
+  if (tedAgent?.state.beliefs) {
+    tedAgent.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: 'DEBT_PRESSURE',
+      subject: 'Ted',
+      object: null,
+      location: null,
+      confidence: 0.6,
+      source: 'observation',
+      sourceNpcId: null,
+      gameDay: 1,
+      lastUpdated: 1,
+    });
   }
 
   // ─── Player Agent — full participant in the world ───

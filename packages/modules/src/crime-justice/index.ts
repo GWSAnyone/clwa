@@ -52,6 +52,7 @@ export function registerCrimeJusticeModule(): void {
 
   // Event registries — declare module-specific event metadata for engine
   registerEventCategory('crime', ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE']);
+  registerEventCategory('economic_pressure', ['DEBT_PRESSURE']);
   registerEventCategory('body_discovery', ['BODY_DISCOVERED']);
   registerEventCategory('witness_event', ['WITNESS_MEMORY']);
   registerEventCategory('theft', ['GOODS_STOLEN']);
@@ -170,10 +171,10 @@ export function registerCrimeJusticeModule(): void {
   });
 
   registerEventMoodShifts({
-    WITNESS_MEMORY: -0.4,
-    BODY_DISCOVERED: -0.35,
-    RUMOR_SPREAD: -0.15,
-    WANTED_STATUS: -0.1,
+    WITNESS_MEMORY: -0.20,    // shock — rumination through conversations, not instant cliff
+    BODY_DISCOVERED: -0.15,   // grim finding
+    RUMOR_SPREAD: -0.08,      // unsettling
+    WANTED_STATUS: -0.05,     // tension
   });
 
   registerGoalMoodBoost({

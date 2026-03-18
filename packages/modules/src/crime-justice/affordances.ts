@@ -25,6 +25,11 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     moodWeight: 0.35,
     relationshipWeight: 0.05,
     baseProbability: 0.3,
+    trustWeight: -0.1,
+    beliefModifiers: [
+      { eventType: 'DEBT_PRESSURE', weight: 0.3 },
+      { eventType: 'GOODS_STOLEN', weight: 0.2 },
+    ],
     goalType: 'steal',
     goalPriority: 5,
     stepTemplates: [

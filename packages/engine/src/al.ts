@@ -151,6 +151,8 @@ export interface AffordanceDefinition {
   /** Personality traits that resist this action — drives internal conflict in instinct description.
    *  direction 'high' = high trait resists (e.g. honesty:high resists steal). */
   resistTraits?: Array<{ trait: 'openness' | 'conscientiousness' | 'extraversion' | 'agreeableness' | 'neuroticism' | 'honesty'; direction: 'high' | 'low' }>;
+  /** Trust contribution to scoring. Negative = trust inhibits (crime: -0.1). Positive = trust boosts (duty: 0.05). */
+  trustWeight?: number;
 }
 
 // ─── Mutable Registries (populated by modules at startup) ───
@@ -429,7 +431,39 @@ const TRAIT_MAP: Record<OceanHTrait, keyof Agent['profile']['bigFive']> = {
   A: 'agreeableness', N: 'neuroticism', H: 'honesty',
 };
 
+/**
+ * Non-linear mood curve — 3 psychological zones:
+ * - Sliding (-0.3 to -0.6): most volatile, ×1.5 multiplier (desperation onset)
+ * - Desperation (-0.6 to -0.8): sustained high contribution, ×1.0
+ * - Numbness (-0.8 to -1.0): reduced effect ×0.6 (apathy, not action)
+ * - Positive mood: returns negative value (inhibits crime, enables social)
+ */
+function moodCurve(mood: number): number {
+  if (mood >= 0) return -mood * 0.3; // positive mood → negative score (inhibits)
+  const absMood = -mood; // 0 to 1
+  if (absMood <= 0.3) return absMood * 0.5;       // mild bad day
+  if (absMood <= 0.6) return 0.15 + (absMood - 0.3) * 1.5; // sliding zone — ×1.5
+  if (absMood <= 0.8) return 0.60 + (absMood - 0.6) * 1.0; // desperation
+  return 0.80 + (absMood - 0.8) * 0.6;                      // numbness plateau
+}
+
+/**
+ * Non-linear sentiment curve — mirrors mood zones:
+ * - Mild irritation (0 to -0.3): ×0.5
+ * - Active hostility (-0.3 to -0.6): ×1.5
+ * - Dehumanization (-0.6 to -1.0): ×0.8 (already decided, less incremental)
+ * - Positive sentiment: returns negative value (inhibits harm, enables cooperation)
+ */
+function sentimentCurve(sentiment: number): number {
+  if (sentiment >= 0) return -sentiment * 0.3; // positive → inhibits harm
+  const absSent = -sentiment;
+  if (absSent <= 0.3) return absSent * 0.5;
+  if (absSent <= 0.6) return 0.15 + (absSent - 0.3) * 1.5;
+  return 0.60 + (absSent - 0.6) * 0.8;
+}
+
 export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: AffordanceTarget): number {
+  // 1. Personality (OCEAN+H weights)
   let personalityScore = 0;
   for (const w of aff.weights) {
     const traitValue = agent.profile.bigFive[TRAIT_MAP[w.trait]];
@@ -437,15 +471,17 @@ export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: 
     personalityScore += w.multiplier * effective;
   }
 
-  const moodContribution = aff.moodWeight * Math.max(0, -agent.state.mood);
+  // 2. Mood (non-linear, bidirectional)
+  const moodContribution = aff.moodWeight * moodCurve(agent.state.mood);
 
+  // 3. Relationship (non-linear, bidirectional)
   let relationshipContribution = 0;
   const rel = agent.state.relationships?.getRelationship(target.targetId);
   if (rel) {
-    relationshipContribution = aff.relationshipWeight * Math.max(0, -rel.sentiment);
+    relationshipContribution = aff.relationshipWeight * sentimentCurve(rel.sentiment);
   }
 
-  // Situational: beliefs boost score based on what NPC knows
+  // 4. Situational: beliefs boost score based on what NPC knows
   let situationalContribution = 0;
   if (aff.beliefModifiers && agent.state.beliefs) {
     const beliefs = agent.state.beliefs.getAllBeliefs();
@@ -460,9 +496,11 @@ export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: 
     }
   }
 
-  const rawScore = personalityScore + moodContribution + relationshipContribution + situationalContribution;
+  // 5. Trust (direction from affordance data: negative = inhibits, positive = boosts)
+  const trustContribution = (rel && aff.trustWeight) ? aff.trustWeight * rel.trust : 0;
+
+  const rawScore = personalityScore + moodContribution + relationshipContribution + situationalContribution + trustContribution;
   const clamped = Math.max(0, Math.min(1, rawScore));
-  // minimumScore: if affordance passed requirements, ensure score is at least this value
   return aff.minimumScore ? Math.max(clamped, aff.minimumScore) : clamped;
 }
 

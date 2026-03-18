@@ -109,4 +109,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.9.2-dev. Trust evolution (confirmed/refuted claims → trust delta). NPC approach system (tick phase handler → WS notification → prompt injection). Player rumor topics (NPC-NPC discuss player). Full bilateral design, IL, perception, AL validator, event/source flags. E2E chain: player claim → investigate → arrest → trial → exile → trust update.
+v0.9.3-dev. OpenAI endpoint (llm-client.ts), structured output (json_schema), instinct builder v2 (7 tiers × 3 textures × Enneagram × resistance), abliterated model (GGUF patched). Trust evolution, NPC approach, player rumors, bidirectional mood. Full bilateral design, IL, perception, AL validator, event/source flags.
