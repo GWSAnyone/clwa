@@ -1,5 +1,5 @@
 {
-    "activeFile": "assets/kenney/dungeon/Samples/Tiled Sample/Floor.tsx",
+    "activeFile": "assets/kenney/Sample.tmx",
     "expandedProjectPaths": [
     ],
     "fileStates": {
@@ -8,7 +8,9 @@
             "scaleInDock": 1
         },
         "assets/kenney/Buildings.tsx": {
-            "dynamicWrapping": true
+            "dynamicWrapping": true,
+            "scaleInDock": 0.125,
+            "scaleInEditor": 1
         },
         "assets/kenney/Buildingx.tsx": {
             "dynamicWrapping": true,
@@ -16,10 +18,22 @@
             "scaleInEditor": 1
         },
         "assets/kenney/Decorations.tsx": {
-            "dynamicWrapping": true
+            "dynamicWrapping": true,
+            "scaleInDock": 0.25,
+            "scaleInEditor": 1
         },
         "assets/kenney/Floor.tsx": {
-            "dynamicWrapping": true
+            "dynamicWrapping": true,
+            "scaleInDock": 0.25,
+            "scaleInEditor": 0.25
+        },
+        "assets/kenney/Sample.tmx": {
+            "scale": 0.33,
+            "selectedLayer": 0,
+            "viewCenter": {
+                "x": 7228.787878787878,
+                "y": 4772.727272727273
+            }
         },
         "assets/kenney/Sample.tsx": {
             "dynamicWrapping": false,
@@ -47,11 +61,17 @@
     "last.externalTilesetPath": "C:/Ledevia/Projects/CLWA/godot/assets/kenney",
     "last.imagePath": "C:/Ledevia/Projects/CLWA/godot/assets/kenney/dungeon/Isometric",
     "openFiles": [
-        "assets/kenney/dungeon/Samples/Tiled Sample/Sample.tmx",
-        "assets/kenney/dungeon/Samples/Tiled Sample/Floor.tsx"
+        "assets/kenney/Sample.tmx",
+        "assets/kenney/Decorations.tsx",
+        "assets/kenney/Buildings.tsx",
+        "assets/kenney/Floor.tsx"
     ],
     "project": "",
     "recentFiles": [
+        "assets/kenney/Floor.tsx",
+        "assets/kenney/Buildings.tsx",
+        "assets/kenney/Decorations.tsx",
+        "assets/kenney/Sample.tmx",
         "assets/kenney/Buildingx.tsx",
         "assets/kenney/Sample.tsx",
         "assets/kenney/dungeon/Samples/Tiled Sample/Floor.tsx",

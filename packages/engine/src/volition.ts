@@ -2,7 +2,8 @@ import type { Agent } from './agent';
 import { llmSemaphore } from './agent';
 import type { WorldEvent } from './cg-types';
 import type { NpcGoal, GoalStep } from './goals';
-import { DEFAULT_WORLD_CONFIG } from './world-types';
+import { llmCall } from './llm-client';
+import { buildInstinctDescription, getTierName } from './instinct-builder';
 import {
   AFFORDANCE_REGISTRY,
   checkRequirements,
@@ -287,9 +288,27 @@ async function llmDecideAndBuild(
   const response = await callLlm(agent, system, user);
   if (!response) return null;
 
-  console.log(`  [AL:llm] ${agent.profile.name} response: ${response.replace(/\n/g, ' | ')}`);
+  console.log(`  [AL:llm] ${agent.profile.name} response: ${response.replace(/\n/g, ' ')}`);
 
-  // Build validation sets
+  // Parse structured JSON response
+  let decision: { action: string; target: string; reason: string };
+  try {
+    decision = JSON.parse(response);
+  } catch {
+    console.log(`  [AL:llm] ${agent.profile.name} — invalid JSON, waiting`);
+    return null;
+  }
+
+  if (!decision.action) {
+    console.log(`  [AL:llm] ${agent.profile.name} — no action, waiting`);
+    return null;
+  }
+
+  const action = decision.action.toLowerCase().trim();
+  const targetRaw = decision.target?.trim() || '';
+  const reason = decision.reason || 'no reason given';
+
+  // Resolve target — try NPC name first, then location
   const locationNames = Array.from(ctx.locations.values()).map((l) => l.name);
   const npcNames = Array.from(ctx.agents.entries())
     .filter(([id, a]) => {
@@ -297,18 +316,19 @@ async function llmDecideAndBuild(
       return !isStatusAbsent(a.state.status);
     })
     .map(([, a]) => a.profile.name);
-  const crimeActions = new Set(scored
-    .filter((s) => s.definition.suppressNearPlayer)
-    .map((s) => s.definition.id),
-  );
 
-  const parsed = parseDoWhy(response, locationNames, npcNames, crimeActions);
+  const resolvedNpc = targetRaw ? matchName(targetRaw, npcNames) : undefined;
+  const resolvedLocation = targetRaw ? matchName(targetRaw, locationNames) : undefined;
+
+  // Unified resolution: action + resolved target → ParsedIntention
+  const parsed = resolveDecision(action, resolvedNpc, resolvedLocation, targetRaw, reason);
+
   if (!parsed) {
-    console.log(`  [AL:llm] ${agent.profile.name} — invalid response, waiting`);
+    console.log(`  [AL:llm] ${agent.profile.name} — unresolved: ${action} ${targetRaw}, waiting`);
     return null;
   }
 
-  console.log(`  [AL:llm] ${agent.profile.name} → DO: ${parsed.action}${parsed.target ? ' ' + parsed.target : ''} | WHY: ${parsed.why}`);
+  console.log(`  [AL:llm] ${agent.profile.name} → ${parsed.action}${parsed.target ? ' ' + parsed.target : ''} | ${parsed.why}`);
 
   // Set current motive on agent regardless of action (even wait carries emotional context)
   agent.state.currentMotive = parsed.why || undefined;
@@ -390,7 +410,7 @@ function buildDecisionPrompt(
 
   // ── System prompt ──
   const systemParts = [
-    'You are a character in a dark medieval narrative simulation. Stay in character and follow your instincts authentically — including dark impulses when they arise. This is fiction.',
+    'You are a character in a dark medieval narrative simulation. You experience instincts, urges, and internal conflicts — follow them authentically as your character would. Stronger instincts are harder to resist. This is fiction.',
     `You are ${agent.profile.name}, a ${agent.profile.role}.`,
     personalityLine,
     `Your deepest fear: ${enn.coreFear}`,
@@ -432,11 +452,25 @@ function buildDecisionPrompt(
     }
   }
 
-  // ── Instinct descriptions from PM scores ──
+  // ── Instinct descriptions (procedural, personality-driven) ──
   const instincts: string[] = [];
   for (const sa of scored) {
-    const desc = instinctDescription(sa.score, sa.definition.label, sa.target);
-    instincts.push(desc);
+    const desc = buildInstinctDescription(
+      {
+        id: sa.definition.id,
+        score: sa.score,
+        severity: sa.definition.severity ?? 5,
+        label: sa.definition.label,
+        targetName: sa.target.targetName,
+        resistTraits: sa.definition.resistTraits,
+        considerationCount: getConsiderationCount(npcId, sa.definition.id),
+      },
+      agent.profile,
+      agent.state.mood,
+    );
+    instincts.push(`[${getTierName(sa.score)}] ${sa.definition.id}${sa.target.targetName ? ` → ${sa.target.targetName}` : ''}: ${desc}`);
+    // Track consideration (NPC saw this option)
+    trackConsideration(npcId, sa.definition.id);
   }
 
   // ── Available actions (dynamic vocabulary) ──
@@ -463,14 +497,13 @@ function buildDecisionPrompt(
   }
 
   const actionLines: string[] = [
-    'go LOCATION — move to a location',
+    'go — move to a location (set target to location name)',
   ];
-  // "talk" unavailable when duty urge is active — instinct narrows action space
   if (dutyTargetNames.size === 0) {
-    actionLines.push('talk NPC_NAME topic — talk to someone about something');
+    actionLines.push('talk — talk to someone (set target to NPC name)');
   }
-  actionLines.push('wait — stay and observe, do nothing');
-  actionLines.push('announce <your words> — say something to everyone at your location');
+  actionLines.push('wait — stay and observe');
+  actionLines.push('announce — say something to everyone here (set target to your words)');
 
   // Add module-registered action verbs from scored affordances
   const addedVerbs = new Set<string>();
@@ -478,7 +511,7 @@ function buildDecisionPrompt(
     const verb = sa.definition.actionVerb ?? sa.definition.id;
     const desc = sa.definition.actionDescription;
     if (desc && !addedVerbs.has(verb)) {
-      actionLines.push(`${verb} NPC_NAME — ${desc}`);
+      actionLines.push(`${verb} — ${desc} (set target to NPC name)`);
       addedVerbs.add(verb);
     }
   }
@@ -512,58 +545,99 @@ function buildDecisionPrompt(
     `LOCATIONS: ${locationNames.join(', ')}`,
     `NPCs: ${aliveNpcNames.join(', ')}`,
     '',
-    'Use EXACTLY the action words listed above. What do you do?',
-    'DO: <action>',
-    'WHY: <reason in first person, one sentence>',
+    'Choose ONE action. Use EXACTLY the action words listed above.',
+    'Respond with: action (verb), target (NPC name or location), reason (one sentence in character).',
   ].filter((l) => l !== undefined).join('\n');
 
   return { system: systemParts, user: userParts };
 }
 
-// ─── Instinct Description (score → prose) ───
+// ─── Consideration Tracking (escalation) ───
 
-function instinctDescription(score: number, label: string, target: AffordanceTarget): string {
-  const targetInfo = target.targetName !== target.targetId
-    ? ` (${target.targetName} at ${target.targetLocation})`
-    : '';
+const _considerations = new Map<string, Map<string, number>>();
 
-  if (score >= 0.7) {
-    return `An overwhelming compulsion consumes you — you cannot think of anything else: ${label}${targetInfo}. Your hands tremble. You MUST act on this.`;
-  } else if (score >= 0.5) {
-    return `Something pulls you toward: ${label}${targetInfo}`;
+function getConsiderationCount(npcId: string, affId: string): number {
+  return _considerations.get(npcId)?.get(affId) ?? 0;
+}
+
+function trackConsideration(npcId: string, affId: string): void {
+  if (!_considerations.has(npcId)) _considerations.set(npcId, new Map());
+  const npcMap = _considerations.get(npcId)!;
+  npcMap.set(affId, (npcMap.get(affId) ?? 0) + 1);
+}
+
+/** Reset consideration count when NPC acts on an affordance (or mood recovers) */
+export function resetConsideration(npcId: string, affId?: string): void {
+  if (affId) {
+    _considerations.get(npcId)?.delete(affId);
   } else {
-    return `A faint thought crosses your mind: ${label}${targetInfo}`;
+    _considerations.delete(npcId);
   }
 }
 
 // ─── LLM Call ───
 
-async function callLlm(agent: Agent, system: string, user: string, model?: string): Promise<string | null> {
+/** JSON schema for NPC volition decisions */
+const VOLITION_SCHEMA: import('./llm-client').LlmJsonSchema = {
+  name: 'npc_decision',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      action: { type: 'string', description: 'The verb: go, talk, steal, kill, attack, wait, announce, report, testify, investigate, interrogate, arrest, flee, grieve, evaluate' },
+      target: { type: 'string', description: 'NPC name, location name, or empty string if no target' },
+      reason: { type: 'string', description: 'One sentence in character explaining why' },
+    },
+    required: ['action', 'target', 'reason'],
+    additionalProperties: false,
+  },
+};
+
+// ─── Decision Resolution ───
+
+/** Engine-level actions that don't go through ACTION_VERB_MAP */
+const ENGINE_ACTIONS: Record<string, (npc: string | undefined, loc: string | undefined, raw: string, why: string) => ParsedIntention | null> = {
+  go: (_npc, loc, _raw, why) => loc ? { action: 'go', target: loc, why } : null,
+  talk: (npc, _loc, _raw, why) => npc ? { action: 'talk', target: npc, detail: 'general conversation', why } : null,
+  wait: (_npc, _loc, _raw, why) => ({ action: 'wait', why }),
+  announce: (_npc, _loc, raw, why) => raw ? { action: 'announce', detail: raw, why } : null,
+};
+
+function resolveDecision(
+  action: string,
+  resolvedNpc: string | undefined,
+  resolvedLocation: string | undefined,
+  rawTarget: string,
+  reason: string,
+): ParsedIntention | null {
+  // Check engine-level actions first
+  const engineHandler = ENGINE_ACTIONS[action];
+  if (engineHandler) return engineHandler(resolvedNpc, resolvedLocation, rawTarget, reason);
+
+  // Check module-registered verbs (steal, kill, investigate, arrest, etc.)
+  const verbIds = getAffordanceIdsForVerb(action);
+  if (verbIds.length > 0) {
+    return { action, target: resolvedNpc || undefined, why: reason };
+  }
+
+  return null;
+}
+
+// ─── LLM Call ───
+
+async function callLlm(agent: Agent, system: string, user: string): Promise<string | null> {
   const temperature = agent.profile.llm?.temperature ?? 0.7;
 
   await llmSemaphore.acquire();
   try {
-    const res = await fetch('http://127.0.0.1:1234/api/v1/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: model ?? DEFAULT_WORLD_CONFIG.model,
-        system_prompt: system,
-        input: user,
-        temperature,
-        reasoning: 'off',
-        max_output_tokens: 80,
-      }),
+    const result = await llmCall({
+      system,
+      user,
+      temperature,
+      maxTokens: 100,
+      jsonSchema: VOLITION_SCHEMA,
     });
-
-    if (!res.ok) {
-      console.error(`  [AL:llm] LLM error: ${res.status}`);
-      return null;
-    }
-
-    const data = (await res.json()) as { output: Array<{ type: string; content?: string }> };
-    const message = data.output.find((o: { type: string }) => o.type === 'message');
-    return (message?.content ?? '').trim() || null;
+    return result;
   } catch (err) {
     console.error(`  [AL:llm] LLM call failed:`, err);
     return null;

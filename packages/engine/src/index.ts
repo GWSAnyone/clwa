@@ -68,8 +68,13 @@ export type {
 export { canSee, canInteract, canHear, getCoPresent, getWitnesses, getPlayerAgent, isPlayerAt, getNpcsAt } from './perception';
 
 // ─── Volition ───
-export { evaluateAllVolition, evaluateReactiveVolition, parseDoWhy, createGoalFromRequest } from './volition';
+export { evaluateAllVolition, evaluateReactiveVolition, createGoalFromRequest } from './volition';
+export { llmCall, llmStream } from './llm-client';
+export type { LlmCallOptions, LlmStreamOptions, LlmJsonSchema } from './llm-client';
 export type { ParsedIntention } from './volition';
+export { resetConsideration } from './volition';
+export { buildInstinctDescription, getTierName } from './instinct-builder';
+export type { InstinctInput } from './instinct-builder';
 
 // ─── Goals ───
 export { GoalManager } from './goals';

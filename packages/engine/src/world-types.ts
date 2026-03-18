@@ -172,7 +172,7 @@ export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   pairCooldownTicks: 16,
   exchangeCount: 1,
   lmStudioUrl: 'http://localhost:1234',
-  model: 'qwen/qwen3.5-9b',
+  model: 'qwen3.5-9b-abliterated',
   affordanceCooldownTicks: 12,
   decisionCooldownTicks: 4,
 };

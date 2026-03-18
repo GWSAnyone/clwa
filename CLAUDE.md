@@ -54,7 +54,9 @@ Do NOT rationalize keeping module knowledge in engine because "it's easier" or "
 docker compose up -d                          # Qdrant (vector memory)
 bun install && bun run packages/server/src/index.ts  # → http://localhost:3000
 ```
-- **Runtime**: Bun | **LLM**: LM Studio, `qwen/qwen3.5-9b`, `reasoning: "off"` | **Embeddings**: raw fetch (NOT OpenAI SDK)
+- **Runtime**: Bun | **LLM**: LM Studio, `qwen3.5-9b-abliterated` (lukey03, patched GGUF) | **Embeddings**: raw fetch (NOT OpenAI SDK)
+- **LLM API**: переход на OpenAI-compatible `/v1/chat/completions` с `response_format: json_schema` для structured output
+- **GGUF Patch**: thinking отключён патчем в GGUF binary. В chat template заменено `enable_thinking is defined and` → `if true` (same-length binary replace). Backup: `.bak`. Если нужно перепатчить новый GGUF — см. `training/patch-gguf-thinking.py`
 - **Godot**: 4.6.1, WS on `127.0.0.1` (NOT localhost) | **Save**: `packages/server/data/save.json`
 
 ## Architecture

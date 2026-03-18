@@ -1,4 +1,5 @@
 import { DEFAULT_WORLD_CONFIG } from './world-types';
+import { llmCall } from './llm-client';
 
 export interface ReflectionConfig {
   /** Cumulative importance threshold to trigger reflection (default: 30) */
@@ -66,27 +67,16 @@ Respond with ONLY the insight, nothing else. No quotes, no prefixes.`;
 
     const input = `My recent experiences:\n${memoriesList}\n\nWhat is the deepest realization I draw from all of this?`;
 
-    const res = await fetch(`${this.config.lmStudioUrl}/api/v1/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: this.config.model,
-        system_prompt: systemPrompt,
-        input,
-        temperature: 0.7,
-        reasoning: 'off',
-        max_output_tokens: 150,
-      }),
+    const result = await llmCall({
+      system: systemPrompt,
+      user: input,
+      temperature: 0.7,
+      maxTokens: 150,
+      baseUrl: this.config.lmStudioUrl,
+      model: this.config.model,
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Reflection LLM error ${res.status}: ${text}`);
-    }
-
-    const data = await res.json() as { output: Array<{ type: string; content: string }> };
-    const message = data.output.find((o: { type: string }) => o.type === 'message');
-    return message?.content?.trim() ?? 'Something has changed, but I cannot put it into words.';
+    return result ?? 'Something has changed, but I cannot put it into words.';
   }
 
   /** Reset tracker after reflection is stored */

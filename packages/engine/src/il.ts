@@ -17,7 +17,26 @@ import { llmSemaphore } from './agent';
 import type { Agent } from './agent';
 import type { IEventStore } from './event-store';
 import { getEventLabel, BELIEF_SOURCE } from './event-registry';
-import { DEFAULT_WORLD_CONFIG } from './world-types';
+import { llmCall } from './llm-client';
+import type { LlmJsonSchema } from './llm-client';
+
+const IL_EXTRACTION_SCHEMA: LlmJsonSchema = {
+  name: 'dialogue_meaning',
+  schema: {
+    type: 'object',
+    properties: {
+      speechAct: { type: 'string' },
+      claims: { type: 'array', items: { type: 'object', properties: { eventType: { type: 'string' }, subject: { type: 'string' }, object: { type: 'string' }, location: { type: 'string' }, source: { type: 'string' }, confidence: { type: 'number' } }, required: ['confidence'], additionalProperties: false } },
+      questions: { type: 'array', items: { type: 'object', properties: { about: { type: 'string' }, topic: { type: 'string' } }, required: ['about'], additionalProperties: false } },
+      requestedAction: { type: 'object', properties: { action: { type: 'string' }, target: { type: 'string' }, urgency: { type: 'number' } }, required: ['action', 'urgency'], additionalProperties: false },
+      emotionalPressure: { type: 'object', properties: { type: { type: 'string' }, intensity: { type: 'number' } }, required: ['type', 'intensity'], additionalProperties: false },
+      tradeIntent: { type: 'object', properties: { category: { type: 'string' }, itemName: { type: 'string' } }, additionalProperties: false },
+      extractionConfidence: { type: 'number' },
+    },
+    required: ['speechAct', 'extractionConfidence'],
+    additionalProperties: false,
+  },
+};
 
 /** Event type for player actions — must be registered by server/module at startup */
 export const PLAYER_ACTION_EVENT = 'PLAYER_ACTION';
@@ -172,34 +191,17 @@ export async function extractDialogueMeaning(
 
   await llmSemaphore.acquire();
   try {
-    const baseUrl = ctx.llmBaseUrl ?? 'http://127.0.0.1:1234';
-    const model = ctx.llmModel ?? DEFAULT_WORLD_CONFIG.model;
-    const res = await fetch(`${baseUrl}/api/v1/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        system_prompt: 'You are a dialogue meaning extractor. Extract structured information from player speech. Respond ONLY with valid JSON, no other text.',
-        input: prompt,
-        reasoning: 'off',
-        temperature: 0.15,
-        max_output_tokens: 400,
-      }),
+    const content = await llmCall({
+      system: 'You are a dialogue meaning extractor. Extract structured information from player speech.',
+      user: prompt,
+      temperature: 0.15,
+      maxTokens: 400,
+      baseUrl: ctx.llmBaseUrl,
+      model: ctx.llmModel,
+      jsonSchema: IL_EXTRACTION_SCHEMA,
     });
 
-    if (!res.ok) {
-      console.error(`  [IL] LLM error: ${res.status}`);
-      return { speechAct: 'smalltalk', extractionConfidence: 0 };
-    }
-
-    const data = await res.json() as { output: Array<{ type: string; content?: string }> };
-    const msg = data.output?.find((o: { type: string }) => o.type === 'message');
-    let content = msg?.content?.trim() ?? '';
     if (!content) return { speechAct: 'smalltalk', extractionConfidence: 0 };
-
-    // Extract JSON from possible markdown code block
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) content = jsonMatch[1].trim();
 
     const raw = JSON.parse(content) as Record<string, unknown>;
     return validateAndResolve(raw, ctx);

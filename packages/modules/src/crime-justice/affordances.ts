@@ -10,6 +10,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'crime',
     suppressNearPlayer: true,
     severity: 4,
+    resistTraits: [{ trait: 'honesty', direction: 'high' }, { trait: 'conscientiousness', direction: 'high' }],
     requires: {
       targetHasShop: true,
       moodBelow: -0.35,
@@ -41,6 +42,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'crime',
     suppressNearPlayer: true,
     severity: 10,
+    resistTraits: [{ trait: 'agreeableness', direction: 'high' }, { trait: 'honesty', direction: 'high' }],
     requires: {
       period: ['night', 'evening'],
       hasMotive: true,
@@ -74,6 +76,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'crime',
     suppressNearPlayer: true,
     severity: 8,
+    resistTraits: [{ trait: 'agreeableness', direction: 'high' }],
     requires: {
       hasCrimeBelief: true,
       beliefConfidence: 0.6,
@@ -107,6 +110,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'crime',
     suppressNearPlayer: true,
     severity: 5,
+    resistTraits: [{ trait: 'honesty', direction: 'high' }],
     requires: { moodBelow: -0.3, notGuard: true },
     weights: [
       { trait: 'H', direction: 'low', multiplier: 0.4 },
@@ -133,6 +137,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetFinder: 'crime_belief',
     category: 'social',
     severity: 3,
+    resistTraits: [{ trait: 'neuroticism', direction: 'high' }],
     requires: { hasCrimeBelief: true, beliefConfidence: 0.5, sentimentBelow: -0.2, notPerpetrator: true },
     weights: [
       { trait: 'E', direction: 'high', multiplier: 0.25 },
@@ -163,6 +168,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     cooldownOverride: 48,
     category: 'duty',
     severity: 2,
+    resistTraits: [{ trait: 'neuroticism', direction: 'high' }],
     requires: { notGuard: true, hasWitnessBelief: true },
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.2 },
@@ -490,6 +496,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'crime',
     suppressNearPlayer: true,
     severity: 4,
+    resistTraits: [{ trait: 'honesty', direction: 'high' }],
     requires: { isCriminal: true, noGuardNearby: true, maxWitnesses: 0, period: ['night', 'evening'] },
     weights: [
       { trait: 'H', direction: 'low', multiplier: 0.4 },
@@ -522,6 +529,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'crime',
     suppressNearPlayer: true,
     severity: 5,
+    resistTraits: [{ trait: 'agreeableness', direction: 'high' }],
     requires: { isCriminal: true, noGuardNearby: true, period: ['night', 'evening'] },
     weights: [
       { trait: 'H', direction: 'low', multiplier: 0.35 },
@@ -554,6 +562,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     category: 'crime',
     suppressNearPlayer: true,
     severity: 3,
+    resistTraits: [{ trait: 'conscientiousness', direction: 'high' }],
     requires: { isCriminal: true, isWanted: true, moodBelow: -0.5 },
     weights: [
       { trait: 'N', direction: 'high', multiplier: 0.3 },

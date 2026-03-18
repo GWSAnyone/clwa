@@ -5,11 +5,7 @@ import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './a
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
 import { getEventLabel, isPursuitEvent, isTransferable, isPerpetrator, isFirsthand } from './event-registry';
 import { DEFAULT_WORLD_CONFIG } from './world-types';
-
-interface LMStudioResponse {
-  output: Array<{ type: string; content: string }>;
-  stats: { tokens_per_second: number; time_to_first_token_seconds: number };
-}
+import { llmCall, llmStream } from './llm-client';
 
 /**
  * Global LLM semaphore — prevents overloading LM Studio with concurrent requests.
@@ -100,27 +96,15 @@ export class Agent {
     await llmSemaphore.acquire();
     let reply: string;
     try {
-      const res = await fetch(`${this.baseUrl}/api/v1/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.model,
-          system_prompt: systemPrompt,
-          input: userMessage,
-          temperature: this.llmConfig.temperature,
-          reasoning: 'off',
-          max_output_tokens: this.llmConfig.maxTokens,
-        }),
+      const result = await llmCall({
+        system: systemPrompt,
+        user: userMessage,
+        temperature: this.llmConfig.temperature,
+        maxTokens: this.llmConfig.maxTokens,
+        baseUrl: this.baseUrl,
+        model: this.model,
       });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`LM Studio error ${res.status}: ${text}`);
-      }
-
-      const data = (await res.json()) as LMStudioResponse;
-      const message = data.output.find((o) => o.type === 'message');
-      reply = message?.content ?? '...';
+      reply = result ?? '...';
     } finally {
       llmSemaphore.release();
     }
@@ -152,76 +136,26 @@ export class Agent {
     }
 
     await llmSemaphore.acquire();
-    let res: Response;
+    let fullReply: string;
     try {
-      // Build conversation input with history for multi-turn continuity
-      const historyText = this._chatHistory.slice(0, -1) // all except current message (already appended)
-        .map((m) => m.role === 'user' ? `Player: "${m.content}"` : `You: "${m.content}"`)
-        .join('\n');
-      const inputWithHistory = historyText
-        ? `${historyText}\nPlayer: "${userMessage}"\nRespond naturally, continuing the conversation:`
-        : userMessage;
+      // Build chat history for multi-turn continuity
+      const history = this._chatHistory.slice(0, -1) as Array<{ role: 'user' | 'assistant'; content: string }>;
 
-      res = await fetch(`${this.baseUrl}/api/v1/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.model,
-          system_prompt: systemPrompt,
-          input: inputWithHistory,
-          temperature: this.llmConfig.temperature,
-          reasoning: 'off',
-          max_output_tokens: this.llmConfig.maxTokens,
-          stream: true,
-        }),
+      fullReply = await llmStream({
+        system: systemPrompt,
+        user: userMessage,
+        onToken,
+        temperature: this.llmConfig.temperature,
+        maxTokens: this.llmConfig.maxTokens,
+        history: history.length > 0 ? history : undefined,
+        baseUrl: this.baseUrl,
+        model: this.model,
       });
     } catch (err) {
-      llmSemaphore.release();
       throw err;
-    }
-
-    if (!res.ok) {
-      llmSemaphore.release();
-      const text = await res.text();
-      throw new Error(`LM Studio error ${res.status}: ${text}`);
-    }
-
-    let fullReply = '';
-    const reader = res.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const data = line.slice(6).trim();
-          if (data === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(data);
-            // LM Studio native SSE: { type: "message.delta", content: "..." }
-            if (parsed.type === 'message.delta' && parsed.content) {
-              fullReply += parsed.content;
-              onToken(parsed.content);
-            }
-          } catch {
-            // skip unparseable lines
-          }
-        }
-      }
     } finally {
       llmSemaphore.release();
     }
-
-    if (!fullReply) fullReply = '...';
 
     // Add NPC reply to conversation history for multi-turn continuity
     this._chatHistory.push({ role: 'assistant', content: fullReply });
@@ -291,27 +225,15 @@ export class Agent {
 
     await llmSemaphore.acquire();
     try {
-      const res = await fetch(`${this.baseUrl}/api/v1/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.model,
-          system_prompt: systemPrompt,
-          input: prompt,
-          reasoning: 'off',
-          temperature: this.llmConfig.temperature,
-          max_output_tokens: options?.maxTokens ?? this.llmConfig.maxTokens,
-        }),
+      const result = await llmCall({
+        system: systemPrompt,
+        user: prompt,
+        temperature: this.llmConfig.temperature,
+        maxTokens: options?.maxTokens ?? this.llmConfig.maxTokens,
+        baseUrl: this.baseUrl,
+        model: this.model,
       });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`LM Studio error ${res.status}: ${text}`);
-      }
-
-      const data = (await res.json()) as LMStudioResponse;
-      const message = data.output.find((o) => o.type === 'message');
-      return message?.content?.trim() ?? '...';
+      return result ?? '...';
     } finally {
       llmSemaphore.release();
     }

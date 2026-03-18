@@ -148,6 +148,9 @@ export interface AffordanceDefinition {
   minimumScore?: number;
   /** Per-affordance cooldown override (ticks). If set, overrides global affordanceCooldownTicks for this affordance. */
   cooldownOverride?: number;
+  /** Personality traits that resist this action — drives internal conflict in instinct description.
+   *  direction 'high' = high trait resists (e.g. honesty:high resists steal). */
+  resistTraits?: Array<{ trait: 'openness' | 'conscientiousness' | 'extraversion' | 'agreeableness' | 'neuroticism' | 'honesty'; direction: 'high' | 'low' }>;
 }
 
 // ─── Mutable Registries (populated by modules at startup) ───

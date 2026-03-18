@@ -1,0 +1,164 @@
+/**
+ * Centralized LLM client — single point for all LLM calls.
+ *
+ * Uses OpenAI-compatible endpoint (/v1/chat/completions).
+ * Supports structured output via response_format: json_schema.
+ * Does NOT manage semaphore — callers handle concurrency.
+ */
+
+import { DEFAULT_WORLD_CONFIG } from './world-types';
+
+// ─── Types ───
+
+export interface LlmCallOptions {
+  system: string;
+  user: string;
+  temperature?: number;
+  maxTokens?: number;
+  /** If provided, model MUST return JSON conforming to this schema */
+  jsonSchema?: LlmJsonSchema;
+  /** Base URL override (default: from DEFAULT_WORLD_CONFIG) */
+  baseUrl?: string;
+  /** Model override (default: from DEFAULT_WORLD_CONFIG) */
+  model?: string;
+}
+
+export interface LlmJsonSchema {
+  name: string;
+  strict?: boolean;
+  schema: Record<string, unknown>;
+}
+
+export interface LlmStreamOptions {
+  system: string;
+  user: string;
+  onToken: (token: string) => void;
+  temperature?: number;
+  maxTokens?: number;
+  /** Additional messages for multi-turn (chat history) */
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  baseUrl?: string;
+  model?: string;
+}
+
+// ─── Single call ───
+
+export async function llmCall(options: LlmCallOptions): Promise<string | null> {
+  const baseUrl = options.baseUrl ?? DEFAULT_WORLD_CONFIG.lmStudioUrl;
+  const model = options.model ?? DEFAULT_WORLD_CONFIG.model;
+
+  const body: Record<string, unknown> = {
+    model,
+    messages: [
+      { role: 'system', content: options.system },
+      { role: 'user', content: options.user },
+    ],
+    temperature: options.temperature ?? 0.7,
+    max_tokens: options.maxTokens ?? 200,
+  };
+
+  if (options.jsonSchema) {
+    body.response_format = {
+      type: 'json_schema',
+      json_schema: {
+        name: options.jsonSchema.name,
+        strict: options.jsonSchema.strict ?? true,
+        schema: options.jsonSchema.schema,
+      },
+    };
+  }
+
+  try {
+    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      console.error(`  [LLM] Error ${res.status}: ${await res.text().catch(() => 'unknown')}`);
+      return null;
+    }
+
+    const data = await res.json() as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+
+    return data.choices?.[0]?.message?.content?.trim() || null;
+  } catch (err) {
+    console.error(`  [LLM] Call failed:`, err);
+    return null;
+  }
+}
+
+// ─── Streaming call ───
+
+export async function llmStream(options: LlmStreamOptions): Promise<string> {
+  const baseUrl = options.baseUrl ?? DEFAULT_WORLD_CONFIG.lmStudioUrl;
+  const model = options.model ?? DEFAULT_WORLD_CONFIG.model;
+
+  const messages: Array<{ role: string; content: string }> = [
+    { role: 'system', content: options.system },
+  ];
+
+  if (options.history) {
+    messages.push(...options.history);
+  }
+
+  messages.push({ role: 'user', content: options.user });
+
+  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 250,
+      stream: true,
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`LLM stream error ${res.status}: ${text}`);
+  }
+
+  let fullReply = '';
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(data);
+          // OpenAI SSE format: { choices: [{ delta: { content: "..." } }] }
+          const token = parsed.choices?.[0]?.delta?.content;
+          if (token) {
+            fullReply += token;
+            options.onToken(token);
+          }
+        } catch {
+          // skip unparseable SSE lines
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  return fullReply || '...';
+}

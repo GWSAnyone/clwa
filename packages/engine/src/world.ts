@@ -1,4 +1,6 @@
 import { Agent, llmSemaphore } from './agent';
+import { llmCall } from './llm-client';
+import type { LlmJsonSchema } from './llm-client';
 import { BeliefManager } from './beliefs';
 import { RelationshipGraph } from './relationships';
 import type { Belief } from './beliefs';
@@ -59,6 +61,47 @@ function isActive(agent: Agent): boolean {
 function isPresent(agent: Agent): boolean {
   return agent.state.alive && !isStatusAbsent(agent.state.status);
 }
+
+// ─── LLM JSON Schemas ───
+
+const CONVERSATION_IMPACT_SCHEMA: LlmJsonSchema = {
+  name: 'conversation_impact',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      mentions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            npc_name: { type: 'string' },
+            valence: { type: 'number' },
+            reason: { type: 'string' },
+          },
+          required: ['npc_name', 'valence', 'reason'],
+          additionalProperties: false,
+        },
+      },
+      mood_impact: { type: 'number' },
+    },
+    required: ['mentions', 'mood_impact'],
+    additionalProperties: false,
+  },
+};
+
+const MURDER_DECISION_SCHEMA: LlmJsonSchema = {
+  name: 'murder_decision',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      answer: { type: 'string', enum: ['yes', 'no'] },
+    },
+    required: ['answer'],
+    additionalProperties: false,
+  },
+};
 
 export class World {
   readonly agents: Map<string, Agent>;
@@ -679,39 +722,16 @@ export class World {
 
     await llmSemaphore.acquire();
     try {
-      const res = await fetch('http://127.0.0.1:1234/api/v1/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.config.model,
-          system_prompt: 'You analyze conversations for emotional impact. Respond ONLY with valid JSON, no other text.',
-          input: prompt + '\n\nRespond with JSON: {"mentions":[{"npc_name":"Name","valence":-0.1,"reason":"short reason"}],"mood_impact":0.03}\nmood_impact: positive for warm chats, negative for tense ones. JSON only, no explanation.',
-          reasoning: 'off',
-          temperature: 0.3,
-          max_output_tokens: 200,
-        }),
+      const content = await llmCall({
+        system: 'You analyze conversations for emotional impact on listeners.',
+        user: prompt,
+        temperature: 0.3,
+        maxTokens: 200,
+        jsonSchema: CONVERSATION_IMPACT_SCHEMA,
       });
-
-      if (!res.ok) {
-        console.error(`  [Impact] LLM error: ${res.status}`);
-        return;
-      }
-
-      const data = await res.json() as { output: Array<{ type: string; content?: string }> };
-      const message = data.output?.find((o: { type: string }) => o.type === 'message');
-      let content = message?.content?.trim() ?? '';
       if (!content) return;
 
-      // Extract JSON from possible markdown code block
-      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) content = jsonMatch[1].trim();
-
-      // Try to extract JSON object even if surrounded by extra text
-      const objMatch = content.match(/\{[\s\S]*\}/);
-      if (!objMatch) return;
-      content = objMatch[0];
-
-      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; mood_impact?: number; tension?: number };
+      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; mood_impact: number };
       try {
         impact = JSON.parse(content);
       } catch {
@@ -747,8 +767,7 @@ export class World {
       }
 
       // Apply mood impact (bidirectional: positive for warm chats, negative for tense ones)
-      // Fallback: legacy `tension` field treated as negative impact for backward compat
-      const rawImpact = impact.mood_impact ?? (impact.tension ? -impact.tension : 0);
+      const rawImpact = impact.mood_impact;
       const bias = this.config.moodBias ?? 0;
       const moodDelta = Math.max(-0.08, Math.min(0.06, rawImpact)) + bias;
       if (Math.abs(moodDelta) > 0.005) {
@@ -861,30 +880,18 @@ export class World {
 
     await llmSemaphore.acquire();
     try {
-      const res = await fetch('http://127.0.0.1:1234/api/v1/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: this.config.model,
-          system_prompt: 'You are a narrative decision engine. Answer only YES or NO.',
-          input: prompt,
-          reasoning: 'off',
-          temperature: 0.7,
-          max_output_tokens: 10,
-        }),
+      const content = await llmCall({
+        system: 'You are a narrative decision engine.',
+        user: prompt,
+        temperature: 0.7,
+        maxTokens: 30,
+        jsonSchema: MURDER_DECISION_SCHEMA,
       });
+      if (!content) return false;
 
-      if (!res.ok) {
-        console.error(`  [Motive] LLM error: ${res.status}`);
-        return false;
-      }
-
-      const data = await res.json() as { output: Array<{ type: string; content?: string }> };
-      const message = data.output.find((o: { type: string }) => o.type === 'message');
-      const answer = (message?.content ?? '').trim();
-      const firstWord = answer.split(/\s+/)[0].toUpperCase().replace(/[^A-Z]/g, '');
-      console.log(`  [Motive] LLM decision for ${killer.profile.name}: ${answer}`);
-      return firstWord === 'YES';
+      const decision = JSON.parse(content) as { answer: string };
+      console.log(`  [Motive] LLM decision for ${killer.profile.name}: ${decision.answer}`);
+      return decision.answer.toUpperCase() === 'YES';
     } catch (err) {
       console.error(`  [Motive] LLM call failed:`, err);
       return false;
