@@ -279,7 +279,7 @@ export class World {
 
     // Information spread → sentiment toward criminal drops for affected NPCs
     if (isInformationOnly(event.type)) {
-      const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);
+      const criminalName = (event.payload?.suspectName as string);
       if (criminalName) {
         const criminalEntry = Array.from(this.agents.entries())
           .find(([, a]) => a.profile.name === criminalName || a.profile.id === criminalName);
@@ -313,7 +313,7 @@ export class World {
     // WANTED_STATUS reactive: criminal gets reactive goals (lay_low, seek_forgiveness)
     // This stays in engine because it uses evaluateReactiveVolition (engine function)
     if (isInformationOnly(event.type) || isPursuitEvent(event.type)) {
-      const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);
+      const criminalName = (event.payload?.suspectName as string);
       if (criminalName && isPursuitEvent(event.type)) {
         const criminalEntry = Array.from(this.agents.entries())
           .find(([, a]) => a.profile.name === criminalName || a.profile.id === criminalName);
@@ -515,7 +515,7 @@ export class World {
             }
             if (isDeathEvent(crimeData.type) && crimeData.object) {
               this.callbacks.onMurder?.(crimeData.subject, crimeData.object,
-                crimeData.payload.killerName as string, crimeData.payload.victimName as string);
+                crimeData.payload.suspectName as string, crimeData.payload.victimName as string);
             }
 
             // Generate structured evidence at the scene
@@ -946,7 +946,7 @@ export class World {
         const deathEventType = victimScene?.eventType ?? victimScene?.crimeType;
 
         // BODY_DISCOVERED represents what the discoverer knows:
-        // victim identity + location. killerName unknown.
+        // victim identity + location. suspectName unknown.
         const discoveryEvent: WorldEvent = {
           id: crypto.randomUUID(),
           type: bodyDiscoveryType!,
@@ -958,7 +958,7 @@ export class World {
           payload: {
             discoveredBy: agent.profile.name,
             victimName,
-            killerName: null,
+            suspectName: null,
           },
         };
 
@@ -1143,7 +1143,7 @@ export class World {
     const killer = killerId ? this.agents.get(killerId) : null;
     const playerAgent = this.playerAgent;
     const killerSubject = killerId ?? playerAgent?.profile.id ?? 'unknown';
-    const killerName = killer ? killer.profile.name : (playerAgent?.profile.name ?? 'unknown');
+    const suspectName = killer ? killer.profile.name : (playerAgent?.profile.name ?? 'unknown');
 
     victim.state.alive = false;
     victim.state.mood = -1;
@@ -1162,7 +1162,7 @@ export class World {
       gameDay: this.getCurrentDay(),
       importance: 9,
       payload: {
-        killerName,
+        suspectName,
         killerRole: killer?.profile.role,
         victimName: victim.profile.name,
         victimRole: victim.profile.role,

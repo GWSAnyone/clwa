@@ -97,11 +97,11 @@ export class ConsequenceEngine {
 
         // Sentiment shift: if NPC learns who killed someone they cared about,
         // their sentiment toward the killer drops sharply
-        const killerId = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string) ?? event.subject;
+        const killerId = (event.payload?.suspectName as string) ?? event.subject;
         if (killerId && victimId && agent.state.relationships) {
           const victimRel = agent.state.relationships.getRelationship(victimId);
           if (victimRel && victimRel.sentiment > 0) {
-            // Find killer agent ID (killerName might be a name, not an ID)
+            // Find suspect agent ID (suspectName might be a name, not an ID)
             const killerAgent = Array.from(ctx.agents.entries())
               .find(([, a]) => a.profile.name === killerId || a.profile.id === killerId);
             if (killerAgent) {
@@ -198,7 +198,7 @@ export class ConsequenceEngine {
     const agent = ctx.agents.get(targetId);
     if (!agent?.state.beliefs) return;
 
-    const killer = (event.payload?.killerName as string) ?? null;
+    const suspect = (event.payload?.suspectName as string) ?? null;
     const victim = event.object ? ctx.agents.get(event.object) : null;
     const victimName = (event.payload?.victimName as string)
       ?? (victim ? `${victim.profile.name} the ${victim.profile.role}` : null)
@@ -209,7 +209,7 @@ export class ConsequenceEngine {
     // Module-registered belief creators handle specific consequence types
     const creator = getBeliefCreator(rule.consequence.type);
     if (creator) {
-      creator(agent, event, rule, crimeEventType, killer, victimName);
+      creator(agent, event, rule, crimeEventType, suspect, victimName);
     }
   }
 
@@ -220,7 +220,7 @@ export class ConsequenceEngine {
     targetId: string,
     ctx: WorldContext,
   ): string {
-    const killer = (event.payload?.killerName as string) ?? 'someone unknown';
+    const suspect = (event.payload?.suspectName as string) ?? 'someone unknown';
     const victim = event.object ? ctx.agents.get(event.object) : null;
     const victimName = (event.payload?.victimName as string)
       ?? (victim ? victim.profile.name : null)
@@ -228,9 +228,9 @@ export class ConsequenceEngine {
 
     // Module-registered memory text builders
     const builder = getMemoryTextBuilder(rule.consequence.type);
-    if (builder) return builder(event, killer, victimName);
+    if (builder) return builder(event, suspect, victimName);
 
-    return `Something happened: ${event.type} involving ${killer}.`;
+    return `Something happened: ${event.type} involving ${suspect}.`;
   }
 
   /**

@@ -326,7 +326,7 @@ export function registerCrimeJusticeModule(): void {
       gameDay: ctx.target.state.currentDay,
       importance: 7,
       payload: {
-        killerName: killer,
+        suspectName: killer,
         victimName: victim,
         crimeLocation: location,
         affectedTargets: [ctx.target.profile.id],
@@ -356,7 +356,7 @@ export function registerCrimeJusticeModule(): void {
 
       ctx.discoveries.add(discoveryKey);
 
-      const thiefName = (theft.payload?.thiefName as string) ?? 'someone';
+      const suspectName = (theft.payload?.suspectName as string) ?? 'someone';
       await owner.observe(
         `I discovered that goods have been stolen from my shop! Things are missing and scattered. Someone robbed me!`,
         7,
@@ -386,7 +386,7 @@ export function registerCrimeJusticeModule(): void {
         gameDay: ctx.currentDay,
         importance: 6,
         payload: {
-          thiefName,
+          suspectName,
           victimName: owner.profile.name,
           originalTheftId: theft.id,
           sourceEvent: 'theft_discovery',
@@ -528,7 +528,7 @@ export function registerCrimeJusticeModule(): void {
             affectedTargets: [targetId],
             sourceRule: 'daily-rumor-spread',
             sourceEvent: belief.id,
-            killerName: criminalName,
+            suspectName: criminalName,
             victimName,
             crimeLocation,
           },
@@ -556,7 +556,7 @@ export function registerCrimeJusticeModule(): void {
               sourceRule: 'guard-heard-rumor',
               sourceEvent: belief.id,
               victimName,
-              killerName: criminalName,
+              suspectName: criminalName,
             },
           };
           ctx.eventStore.append(wantedEvent);

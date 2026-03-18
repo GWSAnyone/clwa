@@ -24,7 +24,7 @@ export function buildWorldState(events: WorldEvent[]): WorldState {
 
     // Track wanted/pursued subjects (pursuit events registered by modules)
     if (isPursuitEvent(event.type)) {
-      const wanted = (event.payload?.killerName as string) ?? event.subject;
+      const wanted = (event.payload?.suspectName as string) ?? event.subject;
       state.wantedSubjects.add(wanted);
     }
 

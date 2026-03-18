@@ -46,7 +46,7 @@ export function registerCrimeEventHandlers(): void {
 
   // WANTED_STATUS: investigator sentiment + criminal awareness
   registerEventHandler('WANTED_STATUS', (event: WorldEvent, ctx: EventHandlerContext) => {
-    const criminalName = (event.payload?.killerName as string) ?? (event.payload?.thiefName as string);
+    const criminalName = (event.payload?.suspectName as string);
     if (!criminalName) return;
 
     const criminalEntry = Array.from(ctx.agents.entries())
