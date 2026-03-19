@@ -463,8 +463,8 @@ export function registerCrimeStepHandlers(): void {
     } else if (chosenVerdict === 'imprisonment') {
       target.state.status = 'imprisoned';
       const durationDays = verdictDef.effects.durationDays ?? 2;
-      const currentDay = owner.state.currentDay;
-      const releaseDay = currentDay + durationDays;
+      const sentenceDay = owner.state.currentDay;
+      const releaseDay = sentenceDay + durationDays;
       imprisonmentTimers.set(target.profile.id, releaseDay);
       await owner.observe(`I sentenced ${target.profile.name} to ${durationDays} days of imprisonment. ${reasoning}`, step.importance as number);
       await target.observe(`Magistrate ${owner.profile.name} sentenced me to ${durationDays} days of imprisonment. I must serve my time.`, step.importance as number);

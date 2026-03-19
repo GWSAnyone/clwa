@@ -856,7 +856,11 @@ export class World {
       }
 
       // LLM-assessed importance (content-aware, not just topic weight)
-      const llmImportance = Math.max(1, Math.min(8, Math.round(impact.importance ?? conversation.importance)));
+      const rawImportance = impact.importance ?? conversation.importance;
+      if (rawImportance < 0 || rawImportance > 10) {
+        console.warn(`  [Impact] LLM returned importance ${rawImportance} (out of 1-8 range), clamping`);
+      }
+      const llmImportance = Math.max(1, Math.min(8, Math.round(rawImportance)));
       return { moodDelta, importance: llmImportance };
     } catch (err) {
       console.error(`  [Impact] Analysis failed:`, err);

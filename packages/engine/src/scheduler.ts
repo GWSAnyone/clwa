@@ -121,8 +121,8 @@ export class ConversationScheduler {
     score += ((eA - 0.3) + (eB - 0.3)) * 2; // E=0.9+0.9→+2.4, E=0.5+0.5→+0.8, E=0.2+0.2→-0.4
 
     // Social hunger — NPC who hasn't talked recently wants to chat
-    const lastA = this.npcLastConversation.get(agentA.profile.id) ?? -Infinity;
-    const lastB = this.npcLastConversation.get(agentB.profile.id) ?? -Infinity;
+    const lastA = this.npcLastConversation.get(agentA.profile.id) ?? 0;
+    const lastB = this.npcLastConversation.get(agentB.profile.id) ?? 0;
     const hungerA = Math.min(3, (currentTick - lastA) / 24); // max +3 after 24 ticks (6h game)
     const hungerB = Math.min(3, (currentTick - lastB) / 24);
     score += (hungerA + hungerB) * 0.5; // +0 to +3
