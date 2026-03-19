@@ -9,7 +9,7 @@ import type { IEventStore } from './event-types';
 import { ConsequenceEngine } from './cg-engine';
 import type { WorldEvent } from './cg-types';
 import { ConversationScheduler } from './scheduler';
-import { runConversation } from './conversation';
+import { runConversation, buildMemoryText } from './conversation';
 import { processMovement } from './movement';
 import { GoalManager } from './goals';
 import type { GoalActionResult } from './goals';
@@ -27,10 +27,10 @@ import { PlayerJournal } from './journal';
 import { evaluateAllVolition, evaluateReactiveVolition } from './volition';
 import { AFFORDANCE_REGISTRY, checkRequirements, computeUtility } from './al';
 import type { AffordanceContext } from './al';
-import { TopicEngine } from './topic-engine';
+import { TopicEngine, getTopicGroup } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, shouldZeroBeliefs, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers, isInformationOnly, BELIEF_SOURCE } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers, isInformationOnly, isTransferable, BELIEF_SOURCE } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -84,8 +84,9 @@ const CONVERSATION_IMPACT_SCHEMA: LlmJsonSchema = {
         },
       },
       mood_impact: { type: 'number' },
+      importance: { type: 'number' },
     },
-    required: ['mentions', 'mood_impact'],
+    required: ['mentions', 'mood_impact', 'importance'],
     additionalProperties: false,
   },
 };
@@ -231,51 +232,9 @@ export class World {
       this.goalManager.completeGoalsByType(goalType);
     }
 
-    // Registry-based belief zeroing: modules declare which events resolve a case.
-    // Reduces ALL NPCs' crime beliefs about the suspect — justice served, urgency drops.
-    // Investigators zeroed fully, others reduced to 0.2 (they remember, but no compulsion).
-    if (shouldZeroBeliefs(event.type)) {
-      const suspectId = event.object;
-      const suspect = suspectId ? this.agents.get(suspectId) : null;
-      if (suspect) {
-        // Collect victim names from crime scenes linked to this suspect
-        const victimNames = new Set<string>();
-        for (const [, scenes] of this.crimeScenes) {
-          for (const scene of scenes) {
-            if (scene.perpetratorId === suspectId && scene.victimId) {
-              const victim = this.agents.get(scene.victimId);
-              if (victim) victimNames.add(victim.profile.name);
-            }
-          }
-        }
-        // Zero transferable beliefs: by suspect name OR by victim name (catches subject=null discoveries)
-        for (const [, agent] of this.agents) {
-          if (!agent.state.beliefs) continue;
-          for (const b of agent.state.beliefs.getAllBeliefs()) {
-            if (!isTransferable(b.eventType)) continue; // only crime-related beliefs
-            const aboutSuspect = b.subject === suspect.profile.name || b.subject === suspect.profile.id;
-            const aboutVictim = b.object != null && victimNames.has(b.object);
-            if (aboutSuspect || aboutVictim) {
-              b.confidence = 0;
-            }
-          }
-        }
-        // Deactivate crime scenes linked to this suspect + mark bodies discovered
-        // This prevents post-resolution body discoveries from restarting the cycle
-        for (const [, scenes] of this.crimeScenes) {
-          for (const scene of scenes) {
-            if (scene.perpetratorId !== suspectId) continue;
-            scene.active = false;
-            // Mark all agents as having discovered this victim's body
-            if (scene.victimId) {
-              for (const [agentId] of this.agents) {
-                this.bodyDiscoveries.add(`${agentId}:${scene.victimId}`);
-              }
-            }
-          }
-        }
-      }
-    }
+    // Belief zeroing, crime scene deactivation, and body marking are now handled
+    // by module event handlers (crime-justice/event-handlers.ts) which know verdict-specific logic.
+    // Engine provides: agents, crimeScenes, bodyDiscoveries via EventHandlerContext.
 
     // Information spread → sentiment toward criminal drops for affected NPCs
     if (isInformationOnly(event.type)) {
@@ -304,6 +263,7 @@ export class World {
         goalManager: this.goalManager,
         crimeScenes: this.crimeScenes,
         getCurrentDay: () => this.getCurrentDay(),
+        bodyDiscoveries: this.bodyDiscoveries,
       };
       for (const handler of handlers) {
         await handler(event, handlerCtx);
@@ -624,11 +584,58 @@ export class World {
         topic,
         { onLine: this.callbacks.onLine, agents: this.agents },
       );
+      conversation.topic = topic.subject;
+      conversation.topicGroup = getTopicGroup(topic.category);
 
       this.callbacks.onConversation?.(conversation);
 
-      // Overhear: other NPCs at the same location may catch fragments
-      await this.processOverhear(conversation);
+      // Belief transfer: if topic carried structured belief data, transfer bidirectionally
+      if (topic.beliefTransfer) {
+        const bt = topic.beliefTransfer;
+        // Transfer initiator → responder (primary: initiator raised the topic)
+        const initBelief = initiator.state.beliefs?.getAllBeliefs().find(
+          b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object),
+        );
+        if (initBelief && responder.state.beliefs) {
+          const conf = Math.max(0.25, initBelief.confidence * bt.confidenceMultiplier);
+          responder.state.beliefs.addBelief({
+            id: crypto.randomUUID(),
+            eventType: bt.eventType,
+            subject: initBelief.subject,
+            object: initBelief.object,
+            location: initBelief.location,
+            confidence: conf,
+            source: 'rumor',
+            sourceNpcId: initiator.profile.id,
+            gameDay,
+            lastUpdated: gameDay,
+          });
+          console.log(`  [BeliefTransfer] ${initiator.profile.name} → ${responder.profile.name}: ${bt.eventType} (conf ${conf.toFixed(2)})`);
+        }
+        // Transfer responder → initiator (secondary: responder may share related knowledge)
+        const respBelief = responder.state.beliefs?.getAllBeliefs().find(
+          b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object)
+            && b.subject && !initiator.state.beliefs?.getAllBeliefs().some(
+              ib => ib.eventType === b.eventType && ib.object === b.object && ib.subject === b.subject,
+            ),
+        );
+        if (respBelief && initiator.state.beliefs) {
+          const conf = Math.max(0.25, respBelief.confidence * bt.confidenceMultiplier * 0.8);
+          initiator.state.beliefs.addBelief({
+            id: crypto.randomUUID(),
+            eventType: bt.eventType,
+            subject: respBelief.subject,
+            object: respBelief.object,
+            location: respBelief.location,
+            confidence: conf,
+            source: 'rumor',
+            sourceNpcId: responder.profile.id,
+            gameDay,
+            lastUpdated: gameDay,
+          });
+          console.log(`  [BeliefTransfer] ${responder.profile.name} → ${initiator.profile.name}: ${bt.eventType} (conf ${conf.toFixed(2)})`);
+        }
+      }
 
       // Analyze conversation for sentiment/mood shifts (structured LLM call)
       const listeners = [pair.a, pair.b];
@@ -640,7 +647,26 @@ export class World {
         }
       }
       this.callbacks.onLlmCall?.('Sentiment analysis', `${initiator.profile.name} ↔ ${responder.profile.name}`);
-      await this.analyzeConversationImpact(conversation, listeners);
+      const impactResult = await this.analyzeConversationImpact(conversation, listeners);
+      const finalImportance = impactResult.importance;
+
+      // Store conversation memories with LLM-assessed importance (content-aware)
+      const responderSaid = conversation.lines.filter(l => l.speaker === responder.profile.id).map(l => l.text).join(' ');
+      const initiatorSaid = conversation.lines.filter(l => l.speaker === initiator.profile.id).map(l => l.text).join(' ');
+      await initiator.observe(
+        buildMemoryText(responder.profile.name, topic.subject, responderSaid, responder.state.mood),
+        finalImportance,
+      );
+      await responder.observe(
+        buildMemoryText(initiator.profile.name, topic.subject, initiatorSaid, initiator.state.mood),
+        finalImportance,
+      );
+      if (finalImportance !== conversation.importance) {
+        console.log(`  [Importance] Topic: ${conversation.importance} → LLM: ${finalImportance}`);
+      }
+
+      // Overhear: bystanders get memories + belief transfer (AFTER importance is finalized)
+      await this.processOverhear(conversation, finalImportance, topic);
     }
 
     const timeInfo = this.scheduleManager?.getTimeInfo(tickInDay);
@@ -663,26 +689,55 @@ export class World {
 
   /**
    * NPCs at the same location as a conversation may overhear fragments.
-   * ~60% chance per bystander. Importance reduced by 1.
+   * ~60% chance per bystander. Importance reduced by 1 from LLM-assessed value.
+   * Also transfers beliefs at reduced confidence (overheard = weaker than direct).
    */
-  private async processOverhear(conversation: ConversationResult): Promise<void> {
-    const { initiator: initId, responder: respId, location, lines, importance } = conversation;
+  private async processOverhear(
+    conversation: ConversationResult,
+    finalImportance: number,
+    topic: import('./topic-engine').TopicProposal,
+  ): Promise<void> {
+    const { initiator: initId, responder: respId, location, lines } = conversation;
     if (lines.length === 0) return;
 
     const summary = lines.map(l => `${l.speakerName}: "${l.text}"`).join(' | ');
-    const overheardImportance = Math.max(importance - 1, 2);
+    const overheardImportance = Math.max(finalImportance - 1, 2);
+    const initiator = this.agents.get(initId);
 
     for (const [id, agent] of this.agents) {
       if (id === initId || id === respId) continue;
       if (!isPresent(agent)) continue;
       if (agent.state.location !== location) continue;
-      // 60% chance to overhear
       if (Math.random() > 0.6) continue;
 
       await agent.observe(
         `You overheard a conversation nearby between ${lines[0]?.speakerName ?? 'someone'} and ${lines[1]?.speakerName ?? 'someone'}: ${summary}`,
         overheardImportance,
       );
+
+      // Belief transfer from overheard conversation (weaker than direct: ×0.3)
+      if (topic.beliefTransfer && initiator && agent.state.beliefs) {
+        const bt = topic.beliefTransfer;
+        const sourceBelief = initiator.state.beliefs?.getAllBeliefs().find(
+          b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object),
+        );
+        if (sourceBelief) {
+          const conf = Math.max(0.2, sourceBelief.confidence * 0.3);
+          agent.state.beliefs.addBelief({
+            id: crypto.randomUUID(),
+            eventType: bt.eventType,
+            subject: sourceBelief.subject,
+            object: sourceBelief.object,
+            location: sourceBelief.location,
+            confidence: conf,
+            source: 'rumor',
+            sourceNpcId: initId,
+            gameDay: conversation.gameDay,
+            lastUpdated: conversation.gameDay,
+          });
+          console.log(`  [Overhear] ${agent.profile.name} overheard about ${bt.eventType} (conf ${conf.toFixed(2)})`);
+        }
+      }
     }
   }
 
@@ -694,8 +749,10 @@ export class World {
   private async analyzeConversationImpact(
     conversation: ConversationResult,
     listenerIds: string[],
-  ): Promise<void> {
-    if (conversation.lines.length === 0 || listenerIds.length === 0) return;
+  ): Promise<{ moodDelta: number; importance: number }> {
+    if (conversation.lines.length === 0 || listenerIds.length === 0) {
+      return { moodDelta: 0, importance: conversation.importance };
+    }
 
     const transcript = conversation.lines
       .map((l) => `${l.speakerName}: "${l.text}"`)
@@ -710,14 +767,16 @@ export class World {
       `Analyze this conversation for emotional impact on listeners.`,
       `Which NPCs are mentioned or discussed, and is the sentiment positive or negative?`,
       `How does this conversation affect the listeners' mood overall?`,
+      `How memorable is this conversation (importance 1-8)?`,
       ``,
       `Known NPCs: ${npcNames.join(', ')}`,
       ``,
       `Conversation:`,
       transcript,
       ``,
-      `Return mentions of NPCs with sentiment valence (-0.15 to 0.15) and overall mood_impact (-0.08 to 0.06).`,
+      `Return mentions of NPCs with sentiment valence (-0.15 to 0.15), overall mood_impact (-0.08 to 0.06), and importance (1-8).`,
       `mood_impact: positive for warm/supportive/funny conversations, negative for tense/hostile/disturbing ones, near zero for neutral small talk.`,
+      `importance: 1-2 for mundane small talk, 3-4 for interesting personal exchanges, 5-6 for emotionally significant revelations, 7-8 for shocking or life-changing information.`,
       `Only include NPCs explicitly discussed. Empty mentions array if just small talk.`,
     ].join('\n');
 
@@ -732,12 +791,12 @@ export class World {
       });
       if (!content) return;
 
-      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; mood_impact: number };
+      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; mood_impact: number; importance: number };
       try {
         impact = JSON.parse(content);
       } catch {
         console.warn(`  [Impact] Invalid JSON from LLM, skipping`);
-        return;
+        return { moodDelta: 0, importance: conversation.importance };
       }
 
       // Apply sentiment shifts to all listeners
@@ -782,8 +841,13 @@ export class World {
           console.log(`  [Mood] Conversation mood impact: ${moodDelta > 0 ? '+' : ''}${moodDelta.toFixed(3)}`);
         }
       }
+
+      // LLM-assessed importance (content-aware, not just topic weight)
+      const llmImportance = Math.max(1, Math.min(8, Math.round(impact.importance ?? conversation.importance)));
+      return { moodDelta, importance: llmImportance };
     } catch (err) {
       console.error(`  [Impact] Analysis failed:`, err);
+      return { moodDelta: 0, importance: conversation.importance };
     } finally {
       llmSemaphore.release();
     }

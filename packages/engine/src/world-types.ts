@@ -45,6 +45,10 @@ export interface ConversationResult {
   gameDay: number;
   /** Estimated topic importance (affects memory storage) */
   importance: number;
+  /** Topic subject (for debugging/analytics) */
+  topic?: string;
+  /** Topic category group (casual/event/relationship/mood/etc.) */
+  topicGroup?: string;
 }
 
 /** NPC wants to approach the player — triggered by tick phase handlers */
@@ -165,6 +169,12 @@ export interface WorldConfig {
   /** Mood bias applied to every conversation mood_impact. Negative = darker world, positive = lighter.
    *  Default 0 (neutral). Demo: -0.02 (crime within ~1 day). Peaceful: +0.02. */
   moodBias?: number;
+  /** Penalize repeated tokens in LLM output. 1.0 = none, 1.1-1.15 recommended. */
+  repeatPenalty?: number;
+  /** Penalize tokens proportional to how often they appeared. 0.0-2.0. */
+  frequencyPenalty?: number;
+  /** Penalize any token already present in output. 0.0-2.0. */
+  presencePenalty?: number;
 }
 
 export const DEFAULT_WORLD_CONFIG: WorldConfig = {
@@ -175,6 +185,9 @@ export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   model: 'qwen3.5-9b-abliterated',
   affordanceCooldownTicks: 12,
   decisionCooldownTicks: 4,
+  repeatPenalty: 1.1,
+  frequencyPenalty: 0.3,
+  presencePenalty: 0.2,
 };
 
 export const DEFAULT_MOVEMENT_CONFIG: NpcMovementConfig = {

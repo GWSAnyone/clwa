@@ -3,7 +3,44 @@ import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { InteractionRunner, GoalStep } from './goals';
 import type { ConversationLine } from './world-types';
+import type { LlmJsonSchema } from './llm-client';
 import { getInteractionResultHooks } from './event-registry';
+
+/** Structured output for goal-driven NPC dialogue (allows slightly longer speech) */
+const INTERACTION_DIALOGUE_SCHEMA: LlmJsonSchema = {
+  name: 'npc_interaction_dialogue',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      speech: { type: 'string', description: 'Spoken words only. MAXIMUM 20 words. No narration. Fresh wording.' },
+      gesture: { type: 'string', description: 'Brief gesture like *nods*. Max 5 words. Empty if none.' },
+    },
+    required: ['speech', 'gesture'],
+    additionalProperties: false,
+  },
+};
+
+/** Parse structured dialogue JSON → display text. Handles malformed JSON from LLM. */
+function parseInteractionDialogue(raw: string): string {
+  try {
+    const d = JSON.parse(raw);
+    const speech = (d.speech ?? '').trim().replace(/^["']+|["']+$/g, '');
+    const gesture = (d.gesture ?? '').trim();
+    if (!speech) return gesture || '...';
+    return gesture ? `${gesture} ${speech}` : speech;
+  } catch {
+    // Fallback: extract speech from malformed JSON via regex
+    const speechMatch = raw.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (speechMatch) {
+      const speech = speechMatch[1].replace(/\\"/g, '"').replace(/^["']+|["']+$/g, '').trim();
+      const gestureMatch = raw.match(/"gesture"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      const gesture = gestureMatch?.[1]?.trim() || '';
+      return gesture ? `${gesture} ${speech}` : speech;
+    }
+    return raw.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').trim() || '...';
+  }
+}
 
 /**
  * Create an InteractionRunner that uses LLM for goal-driven conversations.
@@ -31,9 +68,10 @@ export function createInteractionRunner(
     const initiatorCtx = initiatorBeliefs ? `\n## What you know (facts, not speculation):\n${initiatorBeliefs}\nOnly reference these facts. Do not invent details.` : '';
     const targetCtx = targetBeliefs ? `\n## What you know (facts, not speculation):\n${targetBeliefs}\nOnly reference these facts. Do not invent details.` : '';
 
-    // --- Initiator speaks (with purpose + beliefs) ---
+    // --- Initiator speaks (with purpose + beliefs, structured output) ---
     const initiatorPrompt = buildPurposePrompt(initiator, target, cleanPurpose);
-    const ownerLine = await initiator.generateResponse(initiatorPrompt, { maxTokens: 200, additionalContext: initiatorCtx || undefined });
+    const ownerRaw = await initiator.generateResponse(initiatorPrompt, { maxTokens: 100, additionalContext: initiatorCtx || undefined, jsonSchema: INTERACTION_DIALOGUE_SCHEMA });
+    const ownerLine = parseInteractionDialogue(ownerRaw);
 
     if (options?.onLine) {
       options.onLine({
@@ -43,9 +81,10 @@ export function createInteractionRunner(
       });
     }
 
-    // --- Target responds (with their own beliefs) ---
+    // --- Target responds (with their own beliefs, structured output) ---
     const targetPrompt = buildResponsePrompt(target, initiator, ownerLine, cleanPurpose);
-    const targetLine = await target.generateResponse(targetPrompt, { maxTokens: 200, additionalContext: targetCtx || undefined });
+    const targetRaw = await target.generateResponse(targetPrompt, { maxTokens: 100, additionalContext: targetCtx || undefined, jsonSchema: INTERACTION_DIALOGUE_SCHEMA });
+    const targetLine = parseInteractionDialogue(targetRaw);
 
     if (options?.onLine) {
       options.onLine({
@@ -116,7 +155,7 @@ function buildPurposePrompt(initiator: Agent, target: Agent, purpose: string): s
 YOUR GOAL: ${purpose}
 
 (Your voice: ${speech})
-Speak in character. Be focused on your goal. 1-3 sentences. You may include a brief action.`;
+IMPORTANT: speech must be at most 20 words. Only spoken words — no narration.`;
 }
 
 function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: string, purpose: string): string {
@@ -124,18 +163,17 @@ function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: str
   const isUrgentReport = /\[CRIME\s/.test(purpose);
 
   const contextDirective = isUrgentReport
-    ? `IMPORTANT: ${initiator.profile.name} is bringing you urgent, critical information. Take what they say seriously — they are an eyewitness or have direct knowledge. React to the NEW information they are giving you RIGHT NOW, even if you didn't know about it before. This is the first time you're hearing this.`
-    : `They seem to be trying to ${purpose}.`;
+    ? `IMPORTANT: ${initiator.profile.name} is bringing urgent information. Take it seriously — react to what they say.`
+    : `They are trying to ${purpose}.`;
 
   const speech = speechReminder(target);
   const beliefContext = target.state.beliefs?.summarizeForPrompt(2);
   const beliefLine = beliefContext ? `\nWhat you already know: ${beliefContext}` : '';
-  return `You are at ${target.state.location}. ${initiator.profile.name} the ${initiator.profile.role} approaches you and says:
-
+  return `${initiator.profile.name} the ${initiator.profile.role} says:
 "${initiatorLine}"
 
 ${contextDirective}${beliefLine}
 
 (Your voice: ${speech})
-React in character. 1-3 sentences. You may include a brief action.`;
+IMPORTANT: speech must be at most 20 words. React briefly in character. No narration.`;
 }

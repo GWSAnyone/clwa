@@ -52,6 +52,6 @@ export function buildWorldState(events: WorldEvent[]): WorldState {
 
 function buildFactText(event: WorldEvent): string | null {
   const label = getEventLabel(event.type);
-  if (label === event.type) return null; // no label registered = not a notable event
+  if (!label) return null;
   return `[day ${event.gameDay}] ${event.subject ?? 'someone'}: ${label} — ${event.object ?? ''}`;
 }

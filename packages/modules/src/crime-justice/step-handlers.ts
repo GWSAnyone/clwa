@@ -1,28 +1,144 @@
-import { registerStepHandler, getEventLabel, getBeliefSourceLabel, nextHop } from '@clwa/engine';
-import type { StepExecutionContext } from '@clwa/engine';
+import { registerStepHandler, registerTickPhaseHandler, getEventLabel, getBeliefSourceLabel, isFirsthand, nextHop, llmCall, llmSemaphore } from '@clwa/engine';
+import type { StepExecutionContext, LlmJsonSchema } from '@clwa/engine';
 import type { GoalActionResult } from '@clwa/engine';
 
-/** Gather evidence from all NPC beliefs about a suspect */
-function gatherEvidence(suspect: any, agents: Map<string, any>): string {
-  const lines: string[] = [];
+// ─── Punishment System v2 — Graduated Verdicts ──────────────────
+
+/** Crime severity by event type (module data, not engine) */
+const CRIME_SEVERITY: Record<string, number> = {
+  GOODS_STOLEN: 4,
+  SELF_JUSTICE: 7,
+  EVIDENCE_DESTROYED: 5,
+  WITNESS_INTIMIDATED: 6,
+  NPC_KILLED: 10,
+};
+
+interface VerdictOption {
+  id: string;
+  label: string;
+  severityRange: [number, number];
+  effects: { status?: string; durationDays?: number; moodShift: number };
+  isAcquittal?: boolean;
+}
+
+const VERDICT_OPTIONS: VerdictOption[] = [
+  { id: 'release', label: 'Acquittal — insufficient evidence', severityRange: [0, 10], effects: { moodShift: 0.3 }, isAcquittal: true },
+  { id: 'warning', label: 'Public Warning', severityRange: [1, 4], effects: { moodShift: -0.1 } },
+  { id: 'fine', label: 'Heavy Fine', severityRange: [2, 6], effects: { moodShift: -0.2 } },
+  { id: 'imprisonment', label: 'Temporary Imprisonment', severityRange: [4, 8], effects: { status: 'imprisoned', durationDays: 2, moodShift: -0.5 } },
+  { id: 'exile', label: 'Permanent Exile', severityRange: [6, 10], effects: { status: 'exiled', moodShift: -1.0 } },
+];
+
+function getAvailableVerdicts(severity: number): VerdictOption[] {
+  return VERDICT_OPTIONS.filter(v => severity >= v.severityRange[0] && severity <= v.severityRange[1]);
+}
+
+/** Module-level imprisonment timers: npcId → game day when they should be released */
+export const imprisonmentTimers: Map<string, number> = new Map();
+
+/** Gather evidence grouped by quality tier */
+function gatherEvidenceGrouped(suspect: any, agents: Map<string, any>): { strong: string[]; moderate: string[]; weak: string[]; crimeTypes: Set<string> } {
+  const strong: string[] = [];
+  const moderate: string[] = [];
+  const weak: string[] = [];
+  const crimeTypes = new Set<string>();
   const suspectName = suspect.profile.name;
   const suspectId = suspect.profile.id;
   const matchesSuspect = (field: string | null | undefined): boolean =>
     !!field && (field === suspectName || field === suspectId);
 
   for (const [, agent] of agents) {
-    if (!agent.state.alive) continue;
+    if (!agent.state.alive || agent.profile.id === suspectId) continue;
     const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
     for (const b of beliefs) {
-      if (b.confidence >= 0.3 && (matchesSuspect(b.subject) || matchesSuspect(b.object))) {
-        const sourceLabel = getBeliefSourceLabel(b.source);
-        lines.push(`- ${agent.profile.name} (${sourceLabel}, confidence ${Math.round(b.confidence * 100)}%): ${b.subject} committed ${getEventLabel(b.eventType)} of ${b.object ?? 'unknown'}`);
+      if (b.confidence < 0.3 || (!matchesSuspect(b.subject) && !matchesSuspect(b.object))) continue;
+      const sourceLabel = getBeliefSourceLabel(b.source);
+      const eventLabel = getEventLabel(b.eventType);
+      if (!eventLabel) continue;
+      const line = `${agent.profile.name} (${sourceLabel}, ${Math.round(b.confidence * 100)}%): ${b.subject ?? 'unknown'} committed ${eventLabel} against ${b.object ?? 'unknown'}`;
+
+      if (b.eventType) crimeTypes.add(b.eventType);
+
+      if (isFirsthand(b.source) || b.source === 'evidence') {
+        strong.push(line);
+      } else if (b.source === 'deduction' || b.source === 'interrogation' || b.confidence >= 0.6) {
+        moderate.push(line);
+      } else {
+        weak.push(line);
       }
     }
   }
 
-  if (lines.length === 0) return 'No evidence gathered against this suspect.';
-  return lines.join('\n');
+  return { strong, moderate, weak, crimeTypes };
+}
+
+/** Build suspect defense text from H trait + own beliefs */
+function buildSuspectDefense(suspect: any): string {
+  const h = suspect.profile.bigFive?.honesty ?? 0.5;
+  const name = suspect.profile.name;
+
+  // Check if suspect actually has perpetrator belief (they KNOW they did it)
+  const hasPerpBelief = suspect.state.beliefs?.getAllBeliefs().some(
+    (b: any) => b.source === 'perpetrator' && b.subject === name,
+  ) ?? false;
+
+  if (!hasPerpBelief) {
+    // Genuinely innocent (or doesn't remember) — defense is more convincing
+    return `${name} maintains their innocence with steady conviction. They provide clear answers and seem genuinely confused by the accusations. ${h >= 0.6 ? 'Their sincerity is apparent.' : 'Though their manner is rough, nothing suggests deception.'}`;
+  }
+
+  // Guilty — H trait determines how well they lie
+  if (h >= 0.7) return `${name} appears genuinely remorseful. They lower their eyes and do not deny the accusations directly. Their voice cracks with guilt.`;
+  if (h >= 0.4) return `${name} is evasive and uncomfortable. They offer no clear defense but do not confess either. Their answers are vague and contradictory.`;
+  return `${name} vehemently denies all charges. They claim innocence with aggressive confidence, dismissing every piece of evidence and blaming others.`;
+}
+
+/** Build judge personality context from PM */
+function buildJudgeContext(judge: any): string {
+  const pm = judge.profile.bigFive;
+  if (!pm) return '';
+  const lines: string[] = [];
+  if (pm.conscientiousness >= 0.7) lines.push('Your sense of duty demands order and precedent. The law must be applied consistently.');
+  if (pm.agreeableness >= 0.7) lines.push('You see a person before you, not just a criminal. Rehabilitation matters.');
+  else if (pm.agreeableness <= 0.3) lines.push('The village needs to see consequences. Leniency invites more crime.');
+  if (pm.honesty >= 0.8) lines.push('Truth and fairness are sacred. Punish honestly — neither too much nor too little.');
+  if (pm.neuroticism >= 0.6) lines.push('The weight of judgment burdens you. What if you are wrong?');
+  return lines.join(' ');
+}
+
+/** Build community pressure summary — relationships to suspect AND victim, completed goals */
+function buildCommunityPressure(suspect: any, victimId: string | null, agents: Map<string, any>, goalManager: any): string {
+  const lines: string[] = [];
+  const suspectId = suspect.profile.id;
+
+  for (const [id, agent] of agents) {
+    if (!agent.state.alive || id === suspectId || agent.profile.isPlayer) continue;
+
+    // Check completed goals related to this case
+    const goals = goalManager?.getGoals(id) ?? [];
+    const demandedJustice = goals.some((g: any) => g.type === 'demand_justice' && g.state === 'completed');
+    const testified = goals.some((g: any) => g.type === 'testify' && g.state === 'completed');
+
+    // Relationship to victim (friend of victim → wants punishment)
+    const relToVictim = victimId ? agent.state.relationships?.getRelationship(victimId) : null;
+    const closenessToVictim = relToVictim?.sentiment ?? 0;
+
+    // Relationship to suspect
+    const relToSuspect = agent.state.relationships?.getRelationship(suspectId);
+    const sentimentToSuspect = relToSuspect?.sentiment ?? 0;
+
+    if (demandedJustice) {
+      lines.push(`${agent.profile.name} publicly demanded justice — wants harsh punishment`);
+    } else if (testified) {
+      lines.push(`${agent.profile.name} testified against the suspect`);
+    } else if (closenessToVictim > 0.3) {
+      lines.push(`${agent.profile.name} (close to the victim): likely wants punishment`);
+    } else if (sentimentToSuspect >= 0.3) {
+      lines.push(`${agent.profile.name} (sympathetic to suspect): urges leniency`);
+    }
+  }
+
+  return lines.length > 0 ? lines.join('\n') : 'No notable community pressure.';
 }
 
 /** Check if suspect is guilty (perpetrator of an active crime scene) */
@@ -210,7 +326,7 @@ export function registerCrimeStepHandlers(): void {
     const scenes = ctx.crimeScenes?.get(owner.state.location) ?? [];
     const activeScene = scenes.find((s: any) => s.active);
     const victimName = activeScene?.victimId ? agents.get(activeScene.victimId)?.profile.name ?? 'unknown' : 'unknown';
-    const crimeLabel = activeScene?.crimeType ? getEventLabel(activeScene.eventType ?? activeScene.crimeType) : 'crime';
+    const crimeLabel = activeScene?.crimeType ? (getEventLabel(activeScene.eventType ?? activeScene.crimeType) ?? 'crime') : 'crime';
     await owner.observe(`I examined the crime scene. ${suspectCount > 0 ? `Found ${suspectCount} suspect(s) in the ${crimeLabel} of ${victimName}.` : `Reinforced suspicions about ${victimName}.`}`, step.importance);
     goal.currentStep++;
     return { ...baseResult, action: 'examine_scene', description: `${owner.profile.name} examined evidence: ${undiscovered.length} clue(s), ${suspectCount} suspect(s)` };
@@ -219,42 +335,177 @@ export function registerCrimeStepHandlers(): void {
   registerStepHandler('sentence_npc', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
     const { goal, step, owner, agents } = ctx;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
-    const target = agents.get(step.targetId);
+    const target = agents.get(step.targetId as string);
     if (!target || target.state.status !== 'detained') { goal.currentStep++; return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name}: no detained suspect` }; }
-    const evidenceSummary = gatherEvidence(target, agents);
-    const prompt = `You are ${owner.profile.name}, the town magistrate. ${target.profile.name} the ${target.profile.role} has been arrested and brought before you.\n\nEvidence gathered:\n${evidenceSummary}\n\nBased on this evidence, you must decide:\n- If evidence is strong and clear: sentence to EXILE (banished from town)\n- If evidence is weak or contradictory: RELEASE (freed, insufficient proof)\n\nRespond with exactly one word: EXILE or RELEASE`;
-    const response = await owner.generateResponse(prompt, { maxTokens: 10 });
-    const firstWord = response.trim().split(/\s+/)[0].toUpperCase().replace(/[^A-Z]/g, '');
-    const verdict = firstWord === 'EXILE' ? 'exile' : 'release';
-    if (verdict === 'exile') {
-      target.state.status = 'exiled';
-      ctx.goalManager.clearGoals(step.targetId);
-      await owner.observe(`I sentenced ${target.profile.name} to exile. Justice is served.`, step.importance);
-      await target.observe(`Magistrate ${owner.profile.name} sentenced me to exile. I must leave.`, step.importance);
-      target.state.mood = -1;
-    } else {
-      target.state.status = undefined;
-      await owner.observe(`I released ${target.profile.name}. Insufficient evidence.`, step.importance);
-      await target.observe(`Magistrate ${owner.profile.name} released me. I am free.`, step.importance);
-      target.state.mood = Math.min(1, target.state.mood + 0.3);
-    }
-    if (ctx.onCrimeEvent) {
-      // Find victim from crime scenes linked to this suspect — needed for CG cascade payload
-      let victimName: string | null = null;
-      if (ctx.crimeScenes) {
-        for (const scenes of ctx.crimeScenes.values()) {
-          for (const scene of scenes) {
-            if (scene.perpetratorId === step.targetId && scene.victimId) {
-              victimName = agents.get(scene.victimId)?.profile.name ?? null;
-              break;
+
+    // 1. Determine crime severity from crime scenes, fallback to beliefs
+    let crimeSeverity = 3; // conservative fallback
+    let victimName: string | null = null;
+    let victimId: string | null = null;
+    let crimeEventType: string | null = null;
+    if (ctx.crimeScenes) {
+      for (const scenes of ctx.crimeScenes.values()) {
+        for (const scene of scenes) {
+          if (scene.perpetratorId === step.targetId && scene.active !== false) {
+            crimeEventType = scene.eventType ?? scene.crimeType ?? null;
+            if (crimeEventType && CRIME_SEVERITY[crimeEventType]) {
+              crimeSeverity = CRIME_SEVERITY[crimeEventType];
             }
+            victimId = scene.victimId ?? null;
+            if (victimId) {
+              victimName = agents.get(victimId)?.profile.name ?? null;
+            }
+            break;
           }
-          if (victimName) break;
+        }
+        if (crimeEventType) break;
+      }
+    }
+    // Fallback: if no crime scene found, infer severity from evidence beliefs
+    if (!crimeEventType) {
+      const evidence = gatherEvidenceGrouped(target, agents);
+      for (const et of evidence.crimeTypes) {
+        if (CRIME_SEVERITY[et] && CRIME_SEVERITY[et] > crimeSeverity) {
+          crimeSeverity = CRIME_SEVERITY[et];
+          crimeEventType = et;
         }
       }
-      await ctx.onCrimeEvent({ type: 'NPC_SENTENCED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { judgeName: owner.profile.name, suspectName: target.profile.name, victimName, verdict, affectedTargets: Array.from(agents.keys()) } });
+    }
+
+    // 2. Get available verdicts for this crime severity
+    const available = getAvailableVerdicts(crimeSeverity);
+    const verdictIds = available.map(v => v.id);
+    const verdictDescriptions = available.map(v => `${v.id}: ${v.label}`).join('\n');
+
+    // 3. Gather evidence grouped by quality
+    const evidence = gatherEvidenceGrouped(target, agents);
+    const evidenceLines: string[] = [];
+    if (evidence.strong.length > 0) evidenceLines.push(`STRONG EVIDENCE (direct witness, physical proof):\n${evidence.strong.map(l => `  • ${l}`).join('\n')}`);
+    if (evidence.moderate.length > 0) evidenceLines.push(`MODERATE EVIDENCE (deduction, interrogation):\n${evidence.moderate.map(l => `  • ${l}`).join('\n')}`);
+    if (evidence.weak.length > 0) evidenceLines.push(`WEAK EVIDENCE (rumors, hearsay):\n${evidence.weak.map(l => `  • ${l}`).join('\n')}`);
+    const evidenceSummary = evidenceLines.length > 0 ? evidenceLines.join('\n\n') : 'No evidence gathered against this suspect.';
+    const totalEvidence = evidence.strong.length + evidence.moderate.length + evidence.weak.length;
+
+    // 4. Suspect defense (H trait)
+    const suspectDefense = buildSuspectDefense(target);
+
+    // 5. Community pressure (relationships to victim + completed goals)
+    const communityPressure = buildCommunityPressure(target, victimId, agents, ctx.goalManager);
+
+    // 6. Judge personality context
+    const judgeContext = buildJudgeContext(owner);
+
+    // 7. Build prompt + structured output
+    const crimeLabel = crimeEventType ? (getEventLabel(crimeEventType) ?? 'crime') : 'crime';
+    const system = `You are ${owner.profile.name}, the town magistrate. You must deliver a just verdict.\n${judgeContext}`;
+    const user = [
+      `${target.profile.name} the ${target.profile.role} stands accused of ${crimeLabel}${victimName ? ` against ${victimName}` : ''}.`,
+      `Crime severity: ${crimeSeverity}/10.`,
+      ``,
+      evidenceSummary,
+      ``,
+      `SUSPECT'S DEFENSE:`,
+      suspectDefense,
+      ``,
+      `COMMUNITY:`,
+      communityPressure,
+      ``,
+      `AVAILABLE VERDICTS (choose one appropriate to evidence strength and crime severity):`,
+      verdictDescriptions,
+      ``,
+      `Consider: strong evidence + severe crime → harsher verdict. Weak evidence → acquittal. Moderate crime → proportionate response.`,
+    ].join('\n');
+
+    const verdictSchema: LlmJsonSchema = {
+      name: 'verdict_decision',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: {
+          verdict: { type: 'string', enum: verdictIds },
+          reasoning: { type: 'string' },
+        },
+        required: ['verdict', 'reasoning'],
+        additionalProperties: false,
+      },
+    };
+
+    // 8. LLM call with structured output
+    await llmSemaphore.acquire();
+    let chosenVerdict = 'release';
+    let reasoning = '';
+    try {
+      const content = await llmCall({ system, user, temperature: 0.4, maxTokens: 200, jsonSchema: verdictSchema });
+      if (content) {
+        try {
+          const parsed = JSON.parse(content);
+          if (verdictIds.includes(parsed.verdict)) {
+            chosenVerdict = parsed.verdict;
+            reasoning = parsed.reasoning ?? '';
+          }
+        } catch { /* fallback to release */ }
+      }
+    } finally {
+      llmSemaphore.release();
+    }
+
+    // 9. Apply verdict effects
+    const verdictDef = available.find(v => v.id === chosenVerdict) ?? available[0];
+    const verdictLabel = verdictDef.label;
+    console.log(`  [Verdict] ${owner.profile.name} → ${target.profile.name}: ${chosenVerdict} (severity ${crimeSeverity}, evidence ${totalEvidence}). ${reasoning}`);
+
+    if (chosenVerdict === 'exile') {
+      target.state.status = 'exiled';
+      ctx.goalManager.clearGoals(step.targetId as string);
+      await owner.observe(`I sentenced ${target.profile.name} to permanent exile. ${reasoning}`, step.importance as number);
+      await target.observe(`Magistrate ${owner.profile.name} banished me from the village forever. ${reasoning}`, step.importance as number);
+      target.state.mood = -1;
+    } else if (chosenVerdict === 'imprisonment') {
+      target.state.status = 'imprisoned';
+      const durationDays = verdictDef.effects.durationDays ?? 2;
+      const currentDay = owner.state.currentDay;
+      const releaseDay = currentDay + durationDays;
+      imprisonmentTimers.set(target.profile.id, releaseDay);
+      await owner.observe(`I sentenced ${target.profile.name} to ${durationDays} days of imprisonment. ${reasoning}`, step.importance as number);
+      await target.observe(`Magistrate ${owner.profile.name} sentenced me to ${durationDays} days of imprisonment. I must serve my time.`, step.importance as number);
+      target.state.mood = Math.max(-1, target.state.mood + verdictDef.effects.moodShift);
+    } else if (chosenVerdict === 'release') {
+      target.state.status = undefined;
+      await owner.observe(`I released ${target.profile.name}. ${reasoning}`, step.importance as number);
+      await target.observe(`Magistrate ${owner.profile.name} released me. I am free.`, step.importance as number);
+      target.state.mood = Math.min(1, target.state.mood + 0.3);
+    } else {
+      // warning, fine — NPC is freed but punished. Social stigma remains.
+      target.state.status = undefined;
+      await owner.observe(`I gave ${target.profile.name} a ${verdictLabel.toLowerCase()}. ${reasoning}`, step.importance as number);
+      await target.observe(`Magistrate ${owner.profile.name} sentenced me: ${verdictLabel.toLowerCase()}. The shame is public. ${reasoning}`, step.importance as number);
+      target.state.mood = Math.max(-1, target.state.mood + verdictDef.effects.moodShift);
+      // Victim reaction: mild punishments may frustrate the victim
+      if (victimId) {
+        const victim = agents.get(victimId);
+        if (victim?.state.alive) {
+          victim.state.relationships?.adjustSentiment(step.targetId as string, -0.1);
+          if (chosenVerdict === 'warning') {
+            victim.state.mood = Math.max(-1, victim.state.mood - 0.1);
+          }
+        }
+      }
+    }
+
+    if (ctx.onCrimeEvent) {
+      await ctx.onCrimeEvent({
+        type: 'NPC_SENTENCED', subject: goal.ownerId, object: step.targetId as string,
+        location: owner.state.location, importance: step.importance as number,
+        payload: {
+          judgeName: owner.profile.name, suspectName: target.profile.name,
+          victimName, verdict: chosenVerdict, verdictLabel, reasoning,
+          crimeSeverity, evidenceCount: totalEvidence,
+          releaseDay: chosenVerdict === 'imprisonment' ? imprisonmentTimers.get(target.profile.id) : undefined,
+          affectedTargets: Array.from(agents.keys()),
+        },
+      });
     }
     goal.currentStep++;
-    return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name} ${verdict === 'exile' ? 'exiled' : 'released'} ${target.profile.name}` };
+    return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name} sentenced ${target.profile.name}: ${verdictLabel}` };
   });
 }

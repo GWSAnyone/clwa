@@ -1,6 +1,6 @@
 import {
   AFFORDANCE_REGISTRY, EVIDENCE_RULES, REQUIREMENT_CHECKERS, TOPIC_SOURCE_REGISTRY,
-  registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerBeliefZeroingEvents, registerEventTypeFlagsBatch, registerSourceFlags,
+  registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerEventTypeFlagsBatch, registerSourceFlags,
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
   registerAbsentStatuses, registerStepHandler, registerInteractPostHook,
   registerWitnessEventType, registerEventMoodShifts, registerGoalMoodBoost,
@@ -25,7 +25,7 @@ import { CRIME_EVIDENCE_RULES } from './evidence-rules';
 import { registerCrimeEvidenceSources } from './evidence-sources';
 import { justiceTopics, playerRumorTopics } from './topic-sources';
 import { registerCrimeEventHandlers } from './event-handlers';
-import { registerCrimeStepHandlers } from './step-handlers';
+import { registerCrimeStepHandlers, imprisonmentTimers } from './step-handlers';
 export { CRIME_CG_RULES } from './cg-rules';
 export { CRIME_EVIDENCE_RULES } from './evidence-rules';
 export { isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -80,6 +80,7 @@ export function registerCrimeJusticeModule(): void {
     NPC_SENTENCED: 'sentencing',
     NPC_FLED: 'escape',
     EVIDENCE_DESTROYED: 'evidence tampering',
+    NPC_RELEASED: 'release from prison',
   });
 
   registerEventGoalCleanup({
@@ -89,7 +90,8 @@ export function registerCrimeJusticeModule(): void {
     NPC_FLED: ['arrest', 'interrogate'],
   });
 
-  registerBeliefZeroingEvents(['NPC_SENTENCED']);
+  // Belief zeroing is now handled verdict-conditionally in NPC_SENTENCED event handler
+  // (exile/imprisonment → full zeroing, fine → partial, warning/release → none)
 
   registerEventSceneTypes({
     NPC_KILLED: 'murder',
@@ -102,7 +104,7 @@ export function registerCrimeJusticeModule(): void {
   registerWitnessEventType('WITNESS_MEMORY');
   registerBodyDiscoveryEventType('BODY_DISCOVERED');
   registerRumorEventType('RUMOR_SPREAD');
-  registerAbsentStatuses(['detained', 'exiled', 'fled']);
+  registerAbsentStatuses(['detained', 'exiled', 'fled', 'imprisoned']);
 
   // Source categories — classify belief sources for engine behavioral prompts
   registerSourceCategory('guilt', ['perpetrator']);
@@ -437,7 +439,7 @@ export function registerCrimeJusticeModule(): void {
 
         if (!playerAlreadyKnows) {
           const belief = urgentBeliefs[0];
-          const eventLabel = getEventLabel(belief.eventType) ?? belief.eventType;
+          const eventLabel = getEventLabel(belief.eventType) ?? 'a crime';
           ctx.approaches.push({
             npcId,
             npcName: npc.profile.name,
@@ -471,6 +473,47 @@ export function registerCrimeJusticeModule(): void {
     }
   });
 
+  // Imprisonment timer: auto-release NPCs when sentence duration expires (game days)
+  registerTickPhaseHandler(async (ctx) => {
+    // Reconstruct timers from events if map is empty but imprisoned NPCs exist (after server restart)
+    if (imprisonmentTimers.size === 0) {
+      for (const [npcId, agent] of ctx.agents) {
+        if (agent.state.status === 'imprisoned') {
+          const sentenceEvent = ctx.eventStore.getAll().reverse().find(
+            (e: any) => e.type === 'NPC_SENTENCED' && e.object === npcId && e.payload?.verdict === 'imprisonment',
+          );
+          const releaseDay = (sentenceEvent?.payload?.releaseDay as number) ?? ctx.currentDay + 1;
+          imprisonmentTimers.set(npcId, releaseDay);
+          console.log(`  [Prison] Reconstructed timer for ${agent.profile.name}: release day ${releaseDay}`);
+        }
+      }
+    }
+
+    for (const [npcId, releaseDay] of imprisonmentTimers) {
+      if (ctx.currentDay >= releaseDay) {
+        const agent = ctx.agents.get(npcId);
+        if (agent && agent.state.status === 'imprisoned') {
+          agent.state.status = undefined;
+          agent.state.mood = Math.min(1, agent.state.mood + 0.2);
+          await agent.observe(`I have served my sentence and been released from imprisonment. I am free, but the shame lingers.`, 6);
+          console.log(`  [Prison] ${agent.profile.name} released after serving sentence`);
+          // Fire release event
+          await ctx.processEvent({
+            id: crypto.randomUUID(),
+            type: 'NPC_RELEASED',
+            subject: npcId,
+            object: npcId,
+            location: agent.state.location,
+            gameDay: ctx.currentDay,
+            importance: 5,
+            payload: { releasedName: agent.profile.name, affectedTargets: Array.from(ctx.agents.keys()) },
+          });
+        }
+        imprisonmentTimers.delete(npcId);
+      }
+    }
+  });
+
   // Day advance handler: spread rumors from witnesses in public places
   registerDayAdvanceHandler(async (ctx) => {
     const alreadySpreadTo = new Set<string>();
@@ -496,6 +539,7 @@ export function registerCrimeJusticeModule(): void {
       const victimName = belief.object ?? 'someone';
       const crimeLocation = belief.location ?? witness.state.location;
       const crimeLabel = getEventLabel(belief.eventType);
+      if (!crimeLabel) continue;
 
       for (const [targetId, target] of ctx.agents) {
         if (targetId === witnessId || !target.state.alive) continue;

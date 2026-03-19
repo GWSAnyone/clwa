@@ -399,7 +399,7 @@ function buildDecisionPrompt(
   const beliefSummary = agent.state.beliefs?.summarizeForPrompt(3) ?? '';
   const relSummary = agent.state.relationships?.summarizeForPrompt() ?? '';
 
-  // ── System prompt ──
+  // ── System prompt (identity + personality — no beliefs, those go in user prompt) ──
   const systemParts = [
     `You are ${agent.profile.name}, a ${agent.profile.role}. Only reference people, places, and events that actually exist. Do not invent details.`,
     personalityLine,
@@ -407,8 +407,6 @@ function buildDecisionPrompt(
     `Your deepest desire: ${enn.coreDesire}`,
     moodLine,
     stressGrowth,
-    beliefSummary ? `What you know:\n${beliefSummary}` : '',
-    relSummary ? `People you know:\n${relSummary}` : '',
     agent.profile.secret ? `Secret: ${agent.profile.secret}` : '',
     agent.profile.innerConflict ? `Inner conflict: ${agent.profile.innerConflict}` : '',
   ].filter(Boolean).join('\n');
@@ -516,7 +514,7 @@ function buildDecisionPrompt(
     }
   }
 
-  // ── User prompt ──
+  // ── User prompt (beliefs + relationships near instincts for attention) ──
   const userParts = [
     `SITUATION:`,
     `You are at ${agent.state.location}. Time: ${ctx.period}.`,
@@ -525,6 +523,9 @@ function buildDecisionPrompt(
       : 'You are alone here.',
     neighborLines.length > 0 ? `Neighboring locations:\n${neighborLines.join('\n')}` : '',
     '',
+    // Beliefs + relationships in user prompt (not system) — avoids "lost middle" problem
+    ...(beliefSummary ? [`WHAT YOU KNOW:`, beliefSummary, ''] : []),
+    ...(relSummary ? [`PEOPLE YOU KNOW:`, relSummary, ''] : []),
     'YOUR INSTINCTS (the stronger the urge, the harder it is to resist):',
     ...instincts,
     '',
@@ -613,7 +614,7 @@ function getVolitionSchema(): import('./llm-client').LlmJsonSchema {
 /** Engine-level actions that don't go through ACTION_VERB_MAP */
 const ENGINE_ACTIONS: Record<string, (npc: string | undefined, loc: string | undefined, raw: string, why: string) => ParsedIntention | null> = {
   go: (_npc, loc, _raw, why) => loc ? { action: 'go', target: loc, why } : null,
-  talk: (npc, _loc, _raw, why) => npc ? { action: 'talk', target: npc, detail: 'general conversation', why } : null,
+  talk: (npc, _loc, _raw, why) => npc ? { action: 'talk', target: npc, detail: why || 'catch up', why } : null,
   wait: (_npc, _loc, _raw, why) => ({ action: 'wait', why }),
   announce: (_npc, _loc, raw, why) => raw ? { action: 'announce', detail: raw, why } : null,
 };
@@ -701,7 +702,7 @@ export function parseDoWhy(
       const rest = parts.slice(1).join(' ');
       const { matched, remainder } = matchNameWithRemainder(rest, validNpcs);
       if (!matched) return null;
-      return { action: 'talk', target: matched, detail: remainder || 'general conversation', why };
+      return { action: 'talk', target: matched, detail: remainder || why || 'catch up', why };
     }
 
     case 'wait': {
@@ -978,63 +979,19 @@ function resolveTemplates(
         steps.push({ action: 'wait', ticks: tmpl.ticks ?? 1 });
         break;
       }
-      case 'steal_from': {
-        const targetId = resolveTargetId(tmpl.targetId ?? '$target', target);
-        steps.push({
-          action: 'steal_from',
-          targetId,
-          importance: tmpl.importance ?? 6,
-        });
-        break;
-      }
-      case 'attack_npc': {
-        const targetId = resolveTargetId(tmpl.targetId ?? '$target', target);
-        steps.push({
-          action: 'attack_npc',
-          targetId,
-          importance: tmpl.importance ?? 7,
-          reason: interpolate(tmpl.reason ?? '', vars),
-          lethal: tmpl.lethal,
-        });
-        break;
-      }
-      case 'arrest_npc': {
-        const targetId = resolveTargetId(tmpl.targetId ?? '$target', target);
-        steps.push({
-          action: 'arrest_npc',
-          targetId,
-          importance: tmpl.importance ?? 9,
-        });
-        break;
-      }
-      case 'destroy_evidence': {
-        steps.push({
-          action: 'destroy_evidence',
-          importance: tmpl.importance ?? 7,
-        });
-        break;
-      }
-      case 'flee': {
-        steps.push({
-          action: 'flee',
-          importance: tmpl.importance ?? 8,
-        });
-        break;
-      }
-      case 'examine_scene': {
-        steps.push({
-          action: 'examine_scene',
-          importance: tmpl.importance ?? 7,
-        });
-        break;
-      }
-      case 'sentence_npc': {
-        const targetId = resolveTargetId(tmpl.targetId ?? '$target', target);
-        steps.push({
-          action: 'sentence_npc',
-          targetId,
-          importance: tmpl.importance ?? 9,
-        });
+      // Generic handler for all module-registered step types (steal, arrest, trade, etc.)
+      // Resolves $target references and interpolates string fields automatically.
+      default: {
+        const step: Record<string, unknown> = { action: tmpl.action };
+        if (tmpl.targetId) step.targetId = resolveTargetId(tmpl.targetId, target);
+        if (tmpl.importance !== undefined) step.importance = tmpl.importance;
+        // Resolve remaining template fields (interpolate strings, copy rest)
+        const handled = new Set(['action', 'targetId', 'importance', 'location', 'skipIfAt']);
+        for (const [key, value] of Object.entries(tmpl)) {
+          if (handled.has(key) || step[key] !== undefined) continue;
+          step[key] = typeof value === 'string' ? interpolate(value, vars) : value;
+        }
+        steps.push(step as GoalStep);
         break;
       }
     }

@@ -218,7 +218,7 @@ export class Agent {
    */
   async generateResponse(
     prompt: string,
-    options?: { maxTokens?: number; additionalContext?: string },
+    options?: { maxTokens?: number; additionalContext?: string; jsonSchema?: import('./llm-client').LlmJsonSchema },
   ): Promise<string> {
     const memories = await this.memory.recall(prompt, this.state.currentDay, 5);
     const systemPrompt = this.buildSystemPrompt(memories, options?.additionalContext);
@@ -232,6 +232,7 @@ export class Agent {
         maxTokens: options?.maxTokens ?? this.llmConfig.maxTokens,
         baseUrl: this.baseUrl,
         model: this.model,
+        jsonSchema: options?.jsonSchema,
       });
       return result ?? '...';
     } finally {
@@ -297,16 +298,11 @@ ${stressGrowthBlock}## Your memories (most relevant to this conversation)
 ${memoryBlock}
 
 ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT reveal this unless directly confronted with evidence. If someone gets close to the topic — redirect, deflect, or change the subject.\n\n` : ''}${this.profile.innerConflict ? `## Your inner conflict\n${this.profile.innerConflict}\nThis tension leaks through — in hesitations, half-started sentences, and moments where you almost say something but catch yourself.\n\n` : ''}${additionalContext ? `${additionalContext}\n\n` : ''}## Rules
-- Stay in character at all times.
-- Your memories are REAL experiences. Reference them naturally and react to them emotionally.
-- Stronger memories (higher significance) should weigh more in your responses.
-- Fading memories (low significance) should feel vague: "I think I recall...", "wasn't there something..."
-- If you don't remember something, say so honestly ("I don't recall...").
-- Never break character or mention being an AI.
-- Keep responses concise (2-4 sentences unless asked for detail).
-- React emotionally according to your personality and mood.
-- IMPORTANT: If your mood is negative, show it — be nervous, shaken, distressed, or angry as appropriate.
-- Only reference people, places, and events that exist in your world. Do not invent names, locations, or details.`;
+- CRITICAL: Only reference people, places, and events that exist in your world. Do NOT invent names, locations, or details you don't know.
+- Stay in character at all times. Never break character.
+- React emotionally according to your personality and mood. If your mood is negative, show it.
+- Your memories are REAL experiences. Stronger memories feel vivid; fading ones feel vague.
+- Keep responses concise — speak naturally, not in essays.`;
   }
 
   private buildDynamicFacts(): string {
@@ -333,18 +329,23 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
       if (this.profile.investigator && crimeBeliefs.length > 0) {
         const top = crimeBeliefs.sort((a, b) => b.confidence - a.confidence)[0];
         const suspect = top.subject ?? 'an unknown perpetrator';
-        const crimeWord = getEventLabel(top.eventType);
+        const crimeWord = getEventLabel(top.eventType) ?? 'crime';
         const victim = top.object ?? 'a victim';
-        sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}.\nYou scan every face for guilt. You interrupt conversations to ask questions. You stand taller, hand near your weapon. This is your top priority.`);
+        sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}. This is your top priority.`);
       } else if (crimeBeliefs.some((b) => isPerpetrator(b.source))) {
-        // Killer's emotional state — guilt/paranoia (complements secret-directives)
         const b = crimeBeliefs.find((b) => isPerpetrator(b.source))!;
-        sections.push(`## How you feel right now\nYour hands won't stop shaking. Every time someone mentions ${b.object}, your blood runs cold. You avoid eye contact. You feel the walls closing in.`);
+        const n = this.profile.bigFive?.neuroticism ?? 0.5;
+        const guilt = n > 0.6 ? 'Guilt gnaws at you constantly. You flinch at every mention of' : 'You keep your composure but the weight of what you did to';
+        sections.push(`## How you feel right now\n${guilt} ${b.object} hangs over you.`);
       } else if (crimeBeliefs.some((b) => isFirsthand(b.source))) {
         const b = crimeBeliefs.find((b) => isFirsthand(b.source))!;
-        sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${b.object}. Your hands tremble slightly. You start sentences and lose track of what you were saying. You do not want to talk about it but you cannot stop thinking about it.`);
+        const n = this.profile.bigFive?.neuroticism ?? 0.5;
+        const reaction = n > 0.6 ? 'The memory haunts you — you can barely focus.' : 'You process what happened calmly but it stays with you.';
+        sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${b.object}. ${reaction}`);
       } else if (crimeBeliefs.length > 0) {
-        sections.push(`## How you feel right now\nYou heard something terrible happened in town. You lower your voice when talking about it. You look over your shoulder more often. The unease sits in your stomach like a stone.`);
+        const n = this.profile.bigFive?.neuroticism ?? 0.5;
+        const unease = n > 0.6 ? 'You feel deeply unsettled — the news shook you.' : 'You are aware something bad happened in town.';
+        sections.push(`## How you feel right now\n${unease}`);
       }
 
       // Wanted NPC self-awareness
@@ -352,7 +353,9 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
         (b) => isPursuitEvent(b.eventType) && b.subject === this.profile.name,
       );
       if (wantedBelief) {
-        sections.push(`## Your situation\nYou know people are looking for you. You are wanted for a crime. You feel the weight of guilt and fear. Every guard's glance makes your heart race.`);
+        const n = this.profile.bigFive?.neuroticism ?? 0.5;
+        const fear = n > 0.6 ? 'Panic is setting in. Every sound could be the guard coming for you.' : 'You know they are looking for you. Stay alert.';
+        sections.push(`## Your situation\nYou are wanted for a crime. ${fear}`);
       }
     }
 

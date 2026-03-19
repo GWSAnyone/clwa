@@ -3,11 +3,58 @@ import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { ConversationResult, ConversationLine, WorldConfig } from './world-types';
 import type { TopicProposal } from './topic-engine';
+import type { LlmJsonSchema } from './llm-client';
 import { getRelationshipLabel } from './event-registry';
 import { buildSecretDirectives } from './secret-directives';
 
-/** Max tokens for a single NPC-NPC dialogue line */
-const CONVERSATION_MAX_TOKENS = 55;
+/** Max tokens for structured dialogue output (JSON overhead ~20 + speech ~25 + gesture ~5) */
+const CONVERSATION_MAX_TOKENS = 80;
+
+/** Structured output schema — separates speech from gesture, prevents narration */
+const DIALOGUE_SCHEMA: LlmJsonSchema = {
+  name: 'npc_dialogue',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      speech: { type: 'string', description: 'Spoken words only. MAXIMUM 12 words. No narration. Fresh wording.' },
+      gesture: { type: 'string', description: 'Brief gesture like *nods*. Max 4 words. Empty if none.' },
+    },
+    required: ['speech', 'gesture'],
+    additionalProperties: false,
+  },
+};
+
+/** Parse structured dialogue JSON → display text. Handles malformed JSON from LLM. */
+function parseDialogue(raw: string): string {
+  try {
+    const d = JSON.parse(raw);
+    const speech = (d.speech ?? '').trim().replace(/^["']+|["']+$/g, '');
+    const gesture = (d.gesture ?? '').trim();
+    if (!speech) return gesture || '...';
+    return gesture ? `${gesture} ${speech}` : speech;
+  } catch {
+    // Fallback: extract speech from malformed JSON via regex
+    const speechMatch = raw.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (speechMatch) {
+      const speech = speechMatch[1].replace(/\\"/g, '"').replace(/^["']+|["']+$/g, '').trim();
+      const gestureMatch = raw.match(/"gesture"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      const gesture = gestureMatch?.[1]?.trim() || '';
+      return gesture ? `${gesture} ${speech}` : speech;
+    }
+    // Last resort: strip JSON artifacts and return cleaned text
+    return raw.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').trim() || '...';
+  }
+}
+
+/** Extract only speech portion (for memory storage, impact analysis) */
+function extractSpeech(raw: string): string {
+  try {
+    return (JSON.parse(raw).speech ?? '').trim() || raw;
+  } catch {
+    return raw;
+  }
+}
 
 /**
  * Run an NPC-to-NPC conversation: initiator speaks, responder replies.
@@ -39,10 +86,12 @@ export async function runConversation(
       ? buildInitiatorPrompt(initiator, responder, topic)
       : buildFollowUpPrompt(initiator, responder, lines, topic);
 
-    const initiatorLine = await initiator.generateResponse(initiatorPrompt, {
+    const initiatorRaw = await initiator.generateResponse(initiatorPrompt, {
       maxTokens: CONVERSATION_MAX_TOKENS,
       additionalContext: initSecrets || undefined,
+      jsonSchema: DIALOGUE_SCHEMA,
     });
+    const initiatorLine = parseDialogue(initiatorRaw);
     const iLine: ConversationLine = {
       speaker: initiator.profile.id,
       speakerName: initiator.profile.name,
@@ -53,10 +102,12 @@ export async function runConversation(
 
     // --- Responder replies ---
     const responderPrompt = buildResponderPrompt(responder, initiator, initiatorLine, topic);
-    const responderLine = await responder.generateResponse(responderPrompt, {
+    const responderRaw = await responder.generateResponse(responderPrompt, {
       maxTokens: CONVERSATION_MAX_TOKENS,
       additionalContext: respSecrets || undefined,
+      jsonSchema: DIALOGUE_SCHEMA,
     });
+    const responderLine = parseDialogue(responderRaw);
     const rLine: ConversationLine = {
       speaker: responder.profile.id,
       speakerName: responder.profile.name,
@@ -69,18 +120,8 @@ export async function runConversation(
   // Determine importance: topic weight + content keywords
   const importance = estimateImportance(lines, topic);
 
-  // Store grounded memories for both participants
-  const responderSaid = lines.filter(l => l.speaker === responder.profile.id).map(l => l.text).join(' ');
-  const initiatorSaid = lines.filter(l => l.speaker === initiator.profile.id).map(l => l.text).join(' ');
-
-  await initiator.observe(
-    buildMemoryText(responder.profile.name, topic.subject, responderSaid, responder.state.mood),
-    importance,
-  );
-  await responder.observe(
-    buildMemoryText(initiator.profile.name, topic.subject, initiatorSaid, initiator.state.mood),
-    importance,
-  );
+  // NOTE: Memory storage (observe) moved to world.ts — importance is adjusted
+  // after analyzeConversationImpact determines emotional significance.
 
   // Casual conversation slightly improves mutual sentiment
   initiator.state.relationships?.adjustSentiment(responder.profile.id, 0.05);
@@ -137,9 +178,8 @@ function buildInitiatorPrompt(initiator: Agent, responder: Agent, topic: TopicPr
 
   return `You see ${responder.profile.name} the ${responder.profile.role} at ${initiator.state.location}.
 ${topic.initiatorHook}
-${relNote ? `${relNote}\n` : ''}
-(Your voice: ${speech})
-Say ONE or TWO short sentences (under 25 words total). Optional brief action: *nods* or *sighs*. Focus on the topic, not your backstory.`;
+${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
+IMPORTANT: speech must be at most 12 words. Be brief. Only spoken words — no narration.`;
 }
 
 function buildResponderPrompt(
@@ -149,11 +189,10 @@ function buildResponderPrompt(
   const relNote = relationshipNote(responder, initiator);
   const speech = speechReminder(responder);
 
-  return `${initiator.profile.name} the ${initiator.profile.role} at ${responder.state.location} says to you:
+  return `${initiator.profile.name} the ${initiator.profile.role} says to you:
 "${initiatorLine}"
-${topic.responderHook ? `${topic.responderHook}\n` : ''}${relNote ? `${relNote}\n` : ''}
-(Your voice: ${speech})
-React with ONE or TWO short sentences (under 25 words total). Optional brief action: *nods* or *frowns*. Focus on what they said.`;
+${topic.responderHook ? `${topic.responderHook}\n` : ''}${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
+IMPORTANT: speech must be at most 12 words. React briefly in character. No narration.`;
 }
 
 function buildFollowUpPrompt(
@@ -164,31 +203,31 @@ function buildFollowUpPrompt(
   const speech = speechReminder(speaker);
 
   return `${other.profile.name} just said: "${lastLine.text}"
-
-You are still talking about ${topic.subject}. Continue naturally.
-
-(Your voice: ${speech})
-Say ONE or TWO short sentences (under 25 words total). Optional brief action.`;
+Topic: ${topic.subject}. (Your voice: ${speech})
+IMPORTANT: speech at most 12 words. Continue briefly.`;
 }
 
 // ─── Memory & Importance ────────────────────────────────────────
 
-/** Build grounded memory text with topic context */
-function buildMemoryText(
+/** Build grounded memory text with topic context — varied format for better recall differentiation */
+export function buildMemoryText(
   otherName: string, topicSubject: string,
   whatTheySaid: string, otherMood: number,
 ): string {
-  const moodLabel = otherMood < -0.5 ? 'They seemed shaken'
-    : otherMood < -0.2 ? 'They seemed tense'
-    : otherMood > 0.3 ? 'They were in good spirits'
-    : 'They seemed calm';
+  const moodLabel = otherMood < -0.5 ? 'visibly shaken'
+    : otherMood < -0.2 ? 'tense'
+    : otherMood > 0.3 ? 'in good spirits'
+    : 'calm';
 
-  // Truncate their words to key content (max ~100 chars)
-  const key = whatTheySaid.length > 100
-    ? whatTheySaid.slice(0, 100).replace(/\s\S*$/, '...')
+  // Truncate their words to key content (max ~80 chars)
+  const key = whatTheySaid.length > 80
+    ? whatTheySaid.slice(0, 80).replace(/\s\S*$/, '...')
     : whatTheySaid;
 
-  return `Talked with ${otherName} about ${topicSubject}. ${moodLabel}. They said: "${key}"`;
+  // Varied format based on mood (deterministic — no Math.random for replay safety)
+  if (otherMood < -0.2) return `${otherName} (${moodLabel}) told me about ${topicSubject}: "${key}"`;
+  if (otherMood > 0.3) return `${otherName} and I chatted about ${topicSubject}. They were ${moodLabel}. "${key}"`;
+  return `Had a conversation with ${otherName} about ${topicSubject}. ${moodLabel}. They said: "${key}"`;
 }
 
 /** Estimate conversation importance from structured topic category (no text matching) */

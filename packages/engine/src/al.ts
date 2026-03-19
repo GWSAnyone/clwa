@@ -76,7 +76,7 @@ export interface EventBoost {
  *   crimeLocation, crimeType, relationship, relationshipDesc, + all target.extra keys.
  */
 export interface StepTemplate {
-  action: 'move_to' | 'interact' | 'interact_present' | 'announce' | 'wait' | 'steal_from' | 'attack_npc' | 'arrest_npc' | 'destroy_evidence' | 'flee' | 'examine_scene' | 'sentence_npc';
+  action: string;
   /** Location reference: '$target', '$home', '$extra.KEY', or literal */
   location?: string;
   /** Target NPC: '$target' or literal id */
@@ -250,7 +250,7 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
     if (crimeBelief.subject) { extra.suspectName = crimeBelief.subject; }
     if (crimeBelief.object) extra.victimName = crimeBelief.object;
     if (crimeBelief.location) extra.crimeLocation = crimeBelief.location;
-    extra.crimeType = getEventLabel(crimeBelief.eventType);
+    extra.crimeType = getEventLabel(crimeBelief.eventType) ?? 'crime';
   }
 
   return { targetId: best.id, targetName: best.name, targetLocation: best.location, extra };

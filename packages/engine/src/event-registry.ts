@@ -107,8 +107,8 @@ export function registerEventLabels(labels: Record<string, string>): void {
   }
 }
 
-export function getEventLabel(eventType: string): string {
-  return EVENT_LABELS.get(eventType) ?? eventType;
+export function getEventLabel(eventType: string): string | null {
+  return EVENT_LABELS.get(eventType) ?? null;
 }
 
 // ─── Event → Goal Cleanup ───
@@ -127,15 +127,8 @@ export function getGoalCleanupForEvent(eventType: string): string[] {
 
 // ─── Belief Zeroing Events ───
 // Events that should zero out investigator beliefs about the suspect (case resolved)
-const BELIEF_ZEROING_EVENTS: Set<string> = new Set();
-
-export function registerBeliefZeroingEvents(eventTypes: string[]): void {
-  for (const t of eventTypes) BELIEF_ZEROING_EVENTS.add(t);
-}
-
-export function shouldZeroBeliefs(eventType: string): boolean {
-  return BELIEF_ZEROING_EVENTS.has(eventType);
-}
+// Belief zeroing moved to module event handlers (verdict-conditional).
+// Modules call ctx.bodyDiscoveries / iterate ctx.crimeScenes directly.
 
 // ─── Event → Scene Type mapping ───
 // Maps eventType to crime scene type string (modules define what scene types exist)
@@ -196,6 +189,8 @@ export interface EventHandlerContext {
   goalManager: GoalManager;
   crimeScenes: Map<string, CrimeScene[]>;
   getCurrentDay: () => number;
+  /** Body discovery tracking — module can mark bodies as discovered to prevent re-discovery loops */
+  bodyDiscoveries: Set<string>;
 }
 
 export type EventHandlerFn = (event: WorldEvent, ctx: EventHandlerContext) => void | Promise<void>;
@@ -479,13 +474,22 @@ export function getBodyDiscoveryEventType(): string | null {
 
 // ─── Role Topic Pool ───
 // Modules register role-specific conversation topic pools
-const ROLE_TOPIC_POOLS: Map<string, any[]> = new Map();
+interface RoleTopicDef {
+  subject: string;
+  tone: string;
+  weight: number;
+  initiatorHook: string;
+  category: string;
+  responderHook?: string;
+}
 
-export function registerRoleTopicPool(role: string, topics: any[]): void {
+const ROLE_TOPIC_POOLS: Map<string, RoleTopicDef[]> = new Map();
+
+export function registerRoleTopicPool(role: string, topics: RoleTopicDef[]): void {
   ROLE_TOPIC_POOLS.set(role, topics);
 }
 
-export function getRoleTopicPool(role: string): any[] {
+export function getRoleTopicPool(role: string): RoleTopicDef[] {
   return ROLE_TOPIC_POOLS.get(role) ?? [];
 }
 

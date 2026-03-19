@@ -330,16 +330,28 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [ ] Проверить разнообразие между runs (разные жертвы, разные преступления)
 - [ ] Проверить что instinct builder descriptions корректно генерируются для всех tiers
 
-#### TopicEngine — расширение и проработка
-Текущее состояние: 7 built-in sources + 2 module sources. Проблема: большинство конверсаций негативные, NPC обсуждают одни и те же напряжённые темы. Нужно расширить для живого мира.
+#### TopicEngine — критические фиксы + расширение
+Аудит выявил 8 проблем. 3 критические, 3 высокие, 2 средние. Сначала фиксы, потом новый контент.
 
-- [ ] **casualTopics** — добавлено (friends, craft, village life), но weight 1-3 слишком слабый. Нужно тестировать и калибровать чтобы 30-40% конверсаций были лёгкими
-- [ ] **seasonalTopics** — погода, урожай, праздники. Привязка к gameDay (зима/лето/осень). Создают ощущение времени
-- [ ] **memoryTopics** — NPC вспоминает конкретные memories из Qdrant и делится. "Помнишь как прошлой зимой..." Использует vector recall, не hardcoded
-- [ ] **opinionTopics** — NPC формирует мнение о третьем NPC через beliefs + sentiment и обсуждает. "Что думаешь о Mark?" → ответ из реальных beliefs
-- [ ] **questionTopics** — NPC задаёт вопрос на основе того чего НЕ знает (gaps в beliefs). "Ты не слышал что случилось на площади?" → информационный обмен
-- [ ] **Topic diversity balancing** — ввести target ratio: ~40% casual, ~30% event/belief, ~20% relationship/mood, ~10% conflict. Не хардкод — через weight calibration
-- [ ] **Per-NPC topic personality** — E (экстраверт) → больше casual/gossip. N (тревожный) → больше mood/concern. O (открытый) → больше question/curiosity. PM weights влияют на topic source selection
+**Критические фиксы:**
+- [ ] **Scheduler rebalance** — scorePair() даёт +5 за crime beliefs, подавляя все casual пары. Добавить social scoring (relationship warmth, extraversion, "social hunger" — давно не общались), снизить crime bonus
+- [ ] **Belief transfer в разговорах** — beliefTopics говорит "расскажи про убийство" но responder НЕ получает belief. TopicProposal.beliefTransfer? → после разговора engine делает addBelief
+- [ ] **PM-influenced topic selection** — OCEAN не влияет на выбор тем. E → casual/gossip, N → concern/worry, O → curiosity/questions, A → comfort/support
+
+**Высокие фиксы:**
+- [ ] **Weighted random selection** — заменить sort-and-pick на пропорциональный выбор. Weight 9 = 3x вероятнее weight 3, не 100% доминирование
+- [ ] **Topic diversity tracking** — считать % casual/event/relationship за день, давать бонус недопредставленным категориям
+- [ ] **Content-aware importance** — использовать mood_impact из analyzeConversationImpact как сигнал важности (сейчас _lines игнорируется)
+
+**Средние фиксы:**
+- [ ] **Типизация** — ROLE_TOPIC_POOLS `any[]` → `TopicProposal[]`
+- [ ] **Убрать dual registration** — registerSource() не используется, TopicEngine читает TOPIC_SOURCE_REGISTRY напрямую
+
+**Новые topic sources:**
+- [ ] **seasonalTopics** — погода, урожай, праздники. Привязка к gameDay. Создают ощущение времени
+- [ ] **memoryTopics** — NPC вспоминает memories из Qdrant. "Помнишь как прошлой зимой..." Vector recall, не hardcoded
+- [ ] **opinionTopics** — мнение о третьем NPC через beliefs + sentiment. "Что думаешь о Mark?"
+- [ ] **questionTopics** — NPC спрашивает о том чего НЕ знает (gaps в beliefs). Информационный обмен
 
 #### Conversation quality
 - [ ] **Conversation impact calibration** — mood_impact слишком часто негативный. Тестировать с casualTopics — должен быть net positive для дружеских разговоров
@@ -360,6 +372,26 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 #### NPC config externalization
 - [ ] Вынести NPC профили (PROFILES, RELATIONSHIP_DEFS, NPC_SCHEDULES, STARTING_MOODS, BACKGROUND_MEMORIES, WORLD_LORE) в JSON/YAML файлы вместо TypeScript constants
 - [ ] Сценарист редактирует JSON без программиста → ноль code changes для нового мира
+
+#### World Content Architecture (будущее — после externalization)
+Цель: весь мировой контент живёт в папке мира (`modules/millhaven/`), а не размазан по коду. Три уровня:
+- **Engine** — чистый механизм (TopicEngine, AL, PM, CG). Ноль контента.
+- **Modules** (TypeScript) — поведенческая логика (social: beliefTopics/grief, crime-justice: justiceTopics). Код, не данные.
+- **World data** (JSON) — всё что редактирует сценарист. Один мир = одна папка.
+
+Что переносится в JSON (мировые данные):
+- [ ] NPC профили, personality, relationships, schedules, starting moods
+- [ ] Декларативные topic definitions (casual, mood, tension, comfort, inner conflict, role pools) — условия + текст
+- [ ] World lore + background memories
+- [ ] **LLM prompt templates** — system prompts, instinct description шаблоны, conversation hooks. Сценарист подстраивает тон/стиль мира без кода
+- [ ] **World history** — события до начала игры, historical facts. Каждый модуль дополняет историю (crime module: "три года назад был последний суд", economy: "торговый путь закрылся зимой")
+
+Что остаётся кодом (поведенческая логика в modules):
+- Complex topic sources (итерация beliefs, cross-reference, dynamic generation)
+- Affordance definitions с target finders
+- CG rules, EL rules, step handlers
+
+Результат: `modules/millhaven/` → полный мир. `modules/pirate-cove/` → другой мир. Ноль изменений в engine/modules. Графический редактор читает/пишет JSON.
 
 ### Phase 2.5: Custom LLM — Qwen3.5-9B-CLWA
 > Своя модель, заточенная под движок. Uncensored + наш формат.

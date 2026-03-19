@@ -130,16 +130,22 @@ export class BeliefManager {
 
   /** Compact summary for LLM system prompt */
   summarizeForPrompt(maxBeliefs = 3): string {
-    const beliefs = this.getAllBeliefs().slice(0, maxBeliefs);
+    const beliefs = this.getAllBeliefs()
+      .filter(b => b.object != null || b.subject != null) // skip beliefs with no meaningful content
+      .slice(0, maxBeliefs);
     if (beliefs.length === 0) return '';
 
     return beliefs.map((b) => {
       const certainty = b.confidence > 0.8 ? 'certain' : b.confidence > 0.5 ? 'believe' : 'heard rumor';
-      const who = b.subject ?? 'someone unknown';
       const verb = getEventLabel(b.eventType);
+      if (!verb) return null;
+      const who = b.subject ?? 'someone unknown';
+      const target = b.object ?? 'someone';
+      const where = b.location ? ` at ${b.location}` : '';
       const how = getBeliefSourceLabel(b.source);
-      return `- You ${certainty}: ${who} ${verb} ${b.object} at ${b.location} (${how})`;
-    }).join('\n');
+      // Clear role distinction: "X committed theft against Y" not "X theft Y"
+      return `- You ${certainty}: ${who} committed ${verb} against ${target}${where} (${how})`;
+    }).filter(Boolean).join('\n');
   }
 
   /** Serializable snapshot */

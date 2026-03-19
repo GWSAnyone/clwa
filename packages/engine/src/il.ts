@@ -390,7 +390,7 @@ export function applyDialogueMeaning(
         });
 
         console.log(`  [IL] Belief created in ${npc.profile.name}: ${claim.eventType} subject=${claim.subject} conf=${effectiveConfidence.toFixed(2)} (trust=${playerTrust.toFixed(2)})`);
-        const eventLabel = claim.eventType ? (getEventLabel(claim.eventType) ?? claim.eventType) : null;
+        const eventLabel = claim.eventType ? (getEventLabel(claim.eventType) ?? 'crime') : null;
         sections.push(`${playerName} claims: ${claim.subject ?? 'someone'}${eventLabel ? ` was involved in ${eventLabel.toLowerCase()}` : ''}${claim.object ? ` against ${claim.object}` : ''}. You ${playerTrust >= 0.5 ? 'find this somewhat credible' : 'are skeptical about this claim'}.`);
       } else if (claim.subject) {
         // Non-event claim — suspicion or observation about an NPC

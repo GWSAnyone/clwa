@@ -132,11 +132,14 @@ export function registerCrimeEventHandlers(): void {
     }
   });
 
-  // NPC_SENTENCED: create beliefs for all NPCs + trust evolution for player claims
+  // NPC_SENTENCED: beliefs + trust evolution + verdict-conditional belief zeroing/scene cleanup
   registerEventHandler('NPC_SENTENCED', (event: WorldEvent, ctx: EventHandlerContext) => {
     const suspectName = (event.payload?.suspectName as string) ?? null;
+    const suspectId = event.object;
     const verdict = (event.payload?.verdict as string) ?? 'unknown';
     const affected = (event.payload?.affectedTargets as string[]) ?? [];
+
+    // 1. Create sentence beliefs for all NPCs
     for (const npcId of affected) {
       const agent = ctx.agents.get(npcId);
       agent?.state.beliefs?.addBelief({
@@ -153,7 +156,66 @@ export function registerCrimeEventHandlers(): void {
       });
     }
 
-    // Trust evolution: verdict confirms or refutes player claims
+    // 2. Verdict-conditional case resolution
+    if (suspectId) {
+      const suspect = ctx.agents.get(suspectId);
+      if (suspect && (verdict === 'exile' || verdict === 'imprisonment')) {
+        // FULL resolution: zero transferable beliefs + deactivate crime scenes
+        // Collect victim names from crime scenes linked to this suspect
+        const victimNames = new Set<string>();
+        for (const [, scenes] of ctx.crimeScenes) {
+          for (const scene of scenes) {
+            if (scene.perpetratorId === suspectId && scene.victimId) {
+              const victim = ctx.agents.get(scene.victimId);
+              if (victim) victimNames.add(victim.profile.name);
+            }
+          }
+        }
+        // Zero transferable beliefs about suspect/victim for all NPCs
+        for (const [, agent] of ctx.agents) {
+          if (!agent.state.beliefs) continue;
+          for (const b of agent.state.beliefs.getAllBeliefs()) {
+            if (!isTransferable(b.eventType)) continue;
+            const aboutSuspect = b.subject === suspect.profile.name || b.subject === suspectId;
+            const aboutVictim = b.object != null && victimNames.has(b.object);
+            if (aboutSuspect || aboutVictim) {
+              b.confidence = 0;
+            }
+          }
+        }
+        // Deactivate crime scenes + mark bodies discovered (prevents post-resolution loops)
+        for (const [, scenes] of ctx.crimeScenes) {
+          for (const scene of scenes) {
+            if (scene.perpetratorId !== suspectId) continue;
+            scene.active = false;
+            if (scene.victimId) {
+              for (const [agentId] of ctx.agents) {
+                ctx.bodyDiscoveries.add(`${agentId}:${scene.victimId}`);
+              }
+            }
+          }
+        }
+        console.log(`  [CaseResolution] ${verdict}: beliefs zeroed, scenes deactivated for ${suspectName}`);
+      } else if (verdict === 'fine') {
+        // PARTIAL resolution: reduce beliefs but don't zero — stigma remains
+        const suspect2 = ctx.agents.get(suspectId);
+        if (suspect2) {
+          for (const [, agent] of ctx.agents) {
+            if (!agent.state.beliefs) continue;
+            for (const b of agent.state.beliefs.getAllBeliefs()) {
+              if (!isTransferable(b.eventType)) continue;
+              if (b.subject === suspect2.profile.name || b.subject === suspectId) {
+                b.confidence = Math.max(0, b.confidence * 0.3); // reduce to 30%
+              }
+            }
+          }
+          console.log(`  [CaseResolution] fine: beliefs reduced for ${suspectName}`);
+        }
+      }
+      // warning, release: NO belief zeroing — suspicions remain
+    }
+
+    // 3. Trust evolution: verdict confirms or refutes player claims
     if (!suspectName) return;
     const player = findPlayerAgent(ctx.agents);
     if (!player) return;
@@ -163,14 +225,16 @@ export function registerCrimeEventHandlers(): void {
       const claims = findPlayerClaimsAbout(agent, playerId, suspectName);
       if (claims.length === 0) continue;
 
-      if (verdict === 'exile') {
-        // Conviction — player was right, strong trust increase
-        agent.state.relationships?.adjustTrust(playerId, 0.12);
-        console.log(`  [Trust] ${agent.profile.name} trust in player +0.12 (conviction confirmed claim about ${suspectName})`);
+      if (verdict === 'exile' || verdict === 'imprisonment') {
+        const boost = verdict === 'exile' ? 0.12 : 0.08;
+        agent.state.relationships?.adjustTrust(playerId, boost);
+        console.log(`  [Trust] ${agent.profile.name} trust +${boost} (${verdict} confirmed claim about ${suspectName})`);
+      } else if (verdict === 'fine' || verdict === 'warning') {
+        agent.state.relationships?.adjustTrust(playerId, 0.04);
+        console.log(`  [Trust] ${agent.profile.name} trust +0.04 (${verdict} partially confirmed claim about ${suspectName})`);
       } else if (verdict === 'release') {
-        // Acquittal — player was wrong (or lied), trust decrease
         agent.state.relationships?.adjustTrust(playerId, -0.15);
-        console.log(`  [Trust] ${agent.profile.name} trust in player -0.15 (acquittal refuted claim about ${suspectName})`);
+        console.log(`  [Trust] ${agent.profile.name} trust -0.15 (acquittal refuted claim about ${suspectName})`);
       }
     }
   });

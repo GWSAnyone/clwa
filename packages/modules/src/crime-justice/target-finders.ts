@@ -1,7 +1,7 @@
 import type { Agent, AffordanceContext, AffordanceDefinition, AffordanceTarget } from '@clwa/engine';
 import type { Belief } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
-import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel, isStatusAbsent, isPerpetrator, isFirsthand } from '@clwa/engine';
+import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel, isTransferable, isStatusAbsent, isPerpetrator, isFirsthand } from '@clwa/engine';
 
 // ─── Helpers ───
 
@@ -80,7 +80,19 @@ function findGossipTarget(npcId: string, agent: Agent, ctx: AffordanceContext): 
     for (const [otherId, other] of ctx.agents) {
       if (otherId === npcId || !other.state.alive || other.profile.isPlayer) continue;
       if (other.state.location === loc.name) {
-        return { targetId: otherId, targetName: other.profile.name, targetLocation: loc.name };
+        // Extract crime details from NPC's strongest transferable belief
+        const extra: Record<string, string> = {};
+        const crimeBeliefs = agent.state.beliefs?.getAllBeliefs()
+          .filter(b => isTransferable(b.eventType) && b.confidence >= 0.3)
+          .sort((a, b) => b.confidence - a.confidence) ?? [];
+        if (crimeBeliefs.length > 0) {
+          const top = crimeBeliefs[0];
+          extra.suspectName = top.subject ?? 'someone';
+          extra.victimName = top.object ?? 'someone';
+          extra.crimeType = getEventLabel(top.eventType) ?? 'crime';
+          if (top.location) extra.crimeLocation = top.location;
+        }
+        return { targetId: otherId, targetName: other.profile.name, targetLocation: loc.name, extra };
       }
     }
   }
@@ -170,7 +182,7 @@ function findInterrogationTarget(npcId: string, agent: Agent, ctx: AffordanceCon
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
-            crimeType: getEventLabel(belief.eventType),
+            crimeType: getEventLabel(belief.eventType) ?? 'crime',
             victimName: belief.object ?? 'someone',
             crimeLocation: belief.location,
           },
@@ -212,7 +224,7 @@ function findArrestTarget(npcId: string, agent: Agent, ctx: AffordanceContext, e
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
-            crimeType: getEventLabel(belief.eventType),
+            crimeType: getEventLabel(belief.eventType) ?? 'crime',
             victimName: belief.object ?? 'someone',
           },
         };
@@ -278,7 +290,7 @@ function findInvestigateTarget(npcId: string, agent: Agent, ctx: AffordanceConte
     targetName: agent.profile.name,
     targetLocation: belief.location!,
     extra: {
-      crimeType: getEventLabel(belief.eventType),
+      crimeType: getEventLabel(belief.eventType) ?? 'crime',
       victimName: belief.object ?? 'someone',
       crimeLocation: belief.location!,
       suspectName: belief.subject ?? 'an unknown suspect',
@@ -334,7 +346,13 @@ export function registerCrimeTargetFinders(): void {
   REACTIVE_TARGET_FINDERS.set('gossip', (npcId, agent, ctx, event) => {
     const target = findGossipTarget(npcId, agent, ctx);
     if (!target) return null;
-    target.extra = { ...target.extra, sourceEvent: event.type };
+    // Merge event payload crime details (more specific than belief-derived)
+    target.extra = {
+      ...target.extra,
+      suspectName: (event.payload?.suspectName as string) ?? target.extra?.suspectName ?? 'someone',
+      victimName: (event.payload?.victimName as string) ?? target.extra?.victimName ?? 'someone',
+      crimeLocation: (event.payload?.crimeLocation as string) ?? event.location ?? target.extra?.crimeLocation ?? '',
+    };
     return target;
   });
 

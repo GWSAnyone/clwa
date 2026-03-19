@@ -20,6 +20,14 @@ export interface TopicProposal {
   minImportance?: number;
   /** Maximum importance cap for conversation memory (optional) */
   maxImportance?: number;
+  /** If set, belief is transferred after conversation completes */
+  beliefTransfer?: {
+    eventType: string;
+    subject?: string;
+    object?: string;
+    /** Confidence multiplied by this (casual conversation = weaker than testimony) */
+    confidenceMultiplier: number;
+  };
 }
 
 export interface TopicContext {
@@ -50,6 +58,7 @@ const beliefTopics: TopicSource = (init, resp) => {
 
   for (const belief of initBeliefs) {
     const eventLabel = getEventLabel(belief.eventType);
+    if (!eventLabel) continue;
     const victim = belief.object ?? 'someone';
     const topicCategory = `event:${belief.eventType}`; // derived from data, not hardcoded
     const respKnows = respBeliefs.some(
@@ -75,6 +84,12 @@ const beliefTopics: TopicSource = (init, resp) => {
         responderHook: `This is the first you're hearing of this. React with genuine shock.`,
         category: topicCategory,
         minImportance: 6,
+        beliefTransfer: {
+          eventType: belief.eventType,
+          subject: belief.subject ?? undefined,
+          object: belief.object ?? undefined,
+          confidenceMultiplier: 0.5,
+        },
       });
     }
   }
@@ -164,9 +179,9 @@ const roleTopics: TopicSource = (init, _resp, ctx) => {
   const fresh = pool.filter(t =>
     !ctx.recentTopics.includes('role:' + t.subject),
   );
-  if (fresh.length === 0) return pool.map(t => ({ ...t, weight: 1, maxImportance: 3 }));
+  if (fresh.length === 0) return pool.map(t => ({ ...t, weight: 1 }));
 
-  return fresh.map(t => ({ ...t, maxImportance: 3 }));
+  return fresh.map(t => ({ ...t }));
 };
 
 /** Role-specific topic pools — declarative data */
@@ -237,7 +252,6 @@ const casualTopics: TopicSource = (init, resp) => {
       initiatorHook: `You enjoy ${resp.profile.name}'s company. Share something lighthearted — a memory, a joke, an observation about the weather or the village.`,
       responderHook: `Respond warmly. This is a pleasant moment between friends.`,
       category: 'casual_positive',
-      maxImportance: 3,
     });
   }
 
@@ -250,7 +264,6 @@ const casualTopics: TopicSource = (init, resp) => {
       initiatorHook: `Talk about your work — what you made today, a tricky order, the quality of materials. Professional pride.`,
       responderHook: `Share your own work experience. Mutual respect for each other's craft.`,
       category: 'casual_craft',
-      maxImportance: 2,
     });
   }
 
@@ -262,7 +275,6 @@ const casualTopics: TopicSource = (init, resp) => {
       weight: 1,
       initiatorHook: `Comment on something mundane — the weather, the market crowd, a funny thing you noticed today. Just small talk.`,
       category: 'casual_village',
-      maxImportance: 2,
     });
   }
 
@@ -294,17 +306,70 @@ TOPIC_SOURCE_REGISTRY.push(
   casualTopics,
 );
 
+// ─── Topic Groups (for diversity tracking + PM influence) ────────
+
+/** Derive a broad group from a topic category */
+export function getTopicGroup(category: string): string {
+  if (category.startsWith('casual')) return 'casual';
+  if (category.startsWith('event:')) return 'event';
+  if (category === 'relationship' || category === 'grief') return 'relationship';
+  if (category === 'mood') return 'mood';
+  if (category === 'inner') return 'inner';
+  if (category.startsWith('role:') || category.startsWith('fact:')) return 'knowledge';
+  if (category === 'justice' || category.startsWith('player_rumor')) return 'conflict';
+  if (category === 'idle') return 'casual';
+  return 'other';
+}
+
+/** Target distribution ratios for topic diversity */
+const DIVERSITY_TARGETS: Record<string, number> = {
+  casual: 0.35,
+  event: 0.25,
+  relationship: 0.15,
+  mood: 0.10,
+  knowledge: 0.10,
+  conflict: 0.05,
+};
+const DIVERSITY_STRENGTH = 4;
+
+/** PM-based multiplier for topic group affinity (wider range: 0.6-1.4) */
+function pmGroupMultiplier(group: string, pm: { extraversion: number; neuroticism: number; openness: number; agreeableness: number }): number {
+  switch (group) {
+    case 'casual':       return 0.6 + pm.extraversion * 0.8;      // E=0→0.6, E=1→1.4
+    case 'event':        return 1.0;                                // always important
+    case 'relationship': return 0.6 + pm.agreeableness * 0.8;     // A=0→0.6, A=1→1.4
+    case 'mood':         return 0.6 + pm.neuroticism * 0.8;       // N=0→0.6, N=1→1.4
+    case 'inner':        return 0.5 + pm.neuroticism * 0.9;       // N=0→0.5, N=1→1.4
+    case 'knowledge':    return 0.6 + pm.openness * 0.8;          // O=0→0.6, O=1→1.4
+    case 'conflict':     return 0.6 + (1 - pm.agreeableness) * 0.8; // low A → confrontational
+    default:             return 1.0;
+  }
+}
+
+/** Weighted random selection — proportional to weight, not winner-take-all */
+function weightedRandomSelect(proposals: TopicProposal[]): TopicProposal | null {
+  const valid = proposals.filter(p => p.weight > 0);
+  if (valid.length === 0) return null;
+
+  const totalWeight = valid.reduce((sum, p) => sum + p.weight, 0);
+  let roll = Math.random() * totalWeight;
+
+  for (const p of valid) {
+    roll -= p.weight;
+    if (roll <= 0) return p;
+  }
+
+  return valid[valid.length - 1];
+}
+
 // ─── Topic Engine ───────────────────────────────────────────────
 
 export class TopicEngine {
-  private sources: TopicSource[] = [...TOPIC_SOURCE_REGISTRY];
   /** pairKey → last N topic categories */
   private topicHistory: Map<string, string[]> = new Map();
-
-  /** Register a new topic source (e.g. from Trauma layer, Faction system) */
-  registerSource(source: TopicSource): void {
-    this.sources.push(source);
-  }
+  /** group → count this day (for diversity tracking) */
+  private dayDistribution: Map<string, number> = new Map();
+  private dayConversationCount = 0;
 
   /** Select the best conversation topic for a pair */
   selectTopic(
@@ -319,40 +384,64 @@ export class TopicEngine {
 
     const ctx: TopicContext = { recentTopics, gameDay, period, playerAgent };
 
-    // Collect all proposals from all sources
+    // Collect all proposals from all sources (reads TOPIC_SOURCE_REGISTRY directly)
     const allProposals: TopicProposal[] = [];
-    for (const source of this.sources) {
+    for (const source of TOPIC_SOURCE_REGISTRY) {
       allProposals.push(...source(initiator, responder, ctx));
     }
 
     if (allProposals.length === 0) return FALLBACK_TOPIC;
 
-    // Penalize recently discussed categories
+    // 1. Penalize recently discussed categories (per pair)
     for (const p of allProposals) {
       const recentCount = recentTopics.filter(t => t === p.category).length;
       p.weight -= recentCount * 3;
     }
 
-    // Sort by weight with small random noise for variety
-    allProposals.sort((a, b) =>
-      (b.weight + Math.random() * 1.5) - (a.weight + Math.random() * 1.5),
-    );
+    // 2. Apply PM influence — both participants' personality shapes topic preference
+    const pmInit = initiator.profile.bigFive;
+    const pmResp = responder.profile.bigFive;
+    if (pmInit || pmResp) {
+      for (const p of allProposals) {
+        const group = getTopicGroup(p.category);
+        const multInit = pmInit ? pmGroupMultiplier(group, pmInit) : 1.0;
+        const multResp = pmResp ? pmGroupMultiplier(group, pmResp) : 1.0;
+        p.weight *= (multInit + multResp) / 2; // average of both personalities
+      }
+    }
 
-    const winner = allProposals[0].weight > 0 ? allProposals[0] : FALLBACK_TOPIC;
+    // 3. Apply diversity bonus — push toward target distribution
+    if (this.dayConversationCount > 3) {
+      for (const p of allProposals) {
+        const group = getTopicGroup(p.category);
+        const actual = (this.dayDistribution.get(group) ?? 0) / this.dayConversationCount;
+        const target = DIVERSITY_TARGETS[group] ?? 0.1;
+        p.weight += (target - actual) * DIVERSITY_STRENGTH;
+      }
+    }
 
-    // Track this topic
+    // 4. Weighted random selection (proportional, not winner-take-all)
+    const winner = weightedRandomSelect(allProposals) ?? FALLBACK_TOPIC;
+
+    // Track this topic (per pair history)
     const history = this.topicHistory.get(key) ?? [];
     history.push(winner.category);
-    // Keep last 6 topics per pair
     if (history.length > 6) history.shift();
     this.topicHistory.set(key, history);
+
+    // Track day distribution (for diversity)
+    const winnerGroup = getTopicGroup(winner.category);
+    this.dayDistribution.set(winnerGroup, (this.dayDistribution.get(winnerGroup) ?? 0) + 1);
+    this.dayConversationCount++;
 
     return winner;
   }
 
-  /** Reset topic history (e.g. on day advance) */
+  /** Reset topic history + day distribution (e.g. on day advance) */
   resetHistory(): void {
     this.topicHistory.clear();
+    this.dayDistribution.clear();
+    this.dayConversationCount = 0;
   }
 
   toJSON(): object {
@@ -360,16 +449,27 @@ export class TopicEngine {
     for (const [key, val] of this.topicHistory) {
       history[key] = val;
     }
-    return { topicHistory: history };
+    const distribution: Record<string, number> = {};
+    for (const [key, val] of this.dayDistribution) {
+      distribution[key] = val;
+    }
+    return { topicHistory: history, dayDistribution: distribution, dayConversationCount: this.dayConversationCount };
   }
 
-  loadState(data: { topicHistory?: Record<string, string[]> }): void {
+  loadState(data: { topicHistory?: Record<string, string[]>; dayDistribution?: Record<string, number>; dayConversationCount?: number }): void {
     this.topicHistory.clear();
     if (data.topicHistory) {
       for (const [key, val] of Object.entries(data.topicHistory)) {
         this.topicHistory.set(key, val);
       }
     }
+    this.dayDistribution.clear();
+    if (data.dayDistribution) {
+      for (const [key, val] of Object.entries(data.dayDistribution)) {
+        this.dayDistribution.set(key, val);
+      }
+    }
+    this.dayConversationCount = data.dayConversationCount ?? 0;
   }
 }
 

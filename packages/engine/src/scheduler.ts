@@ -18,6 +18,8 @@ export class ConversationScheduler {
   private cooldowns: Map<string, number> = new Map();
   /** pairKey → conversation count today (for diversity) */
   private dailyCounts: Map<string, number> = new Map();
+  /** npcId → tick number of last conversation (for social hunger) */
+  private npcLastConversation: Map<string, number> = new Map();
   private config: WorldConfig;
 
   constructor(config: WorldConfig) {
@@ -55,8 +57,8 @@ export class ConversationScheduler {
         const lastTick = this.cooldowns.get(key) ?? -Infinity;
         if (currentTick - lastTick < this.config.pairCooldownTicks) continue;
 
-        // Score: based on recent memory importance
-        const score = await this.scorePair(agentA, agentB, key);
+        // Score: balanced social + information value
+        const score = this.scorePair(agentA, agentB, key, currentTick);
         if (score >= this.config.minConversationScore) {
           candidates.push({ a: idA, b: idB, score });
         }
@@ -74,18 +76,21 @@ export class ConversationScheduler {
     // Track daily count
     const key = pairKey(winner.a, winner.b);
     this.dailyCounts.set(key, (this.dailyCounts.get(key) ?? 0) + 1);
+    // Track individual NPC last conversation
+    this.npcLastConversation.set(winner.a, currentTick);
+    this.npcLastConversation.set(winner.b, currentTick);
 
     return winner;
   }
 
   /**
-   * Score a pair based on how much they have to discuss.
-   * Higher score = more urgent/interesting conversation.
+   * Score a pair — balanced between social connection and information exchange.
+   * Crime beliefs still matter but don't dominate.
    */
-  private async scorePair(agentA: Agent, agentB: Agent, key: string): Promise<number> {
-    let score = 1; // Base: NPCs in the same social space want to talk sometimes
+  private scorePair(agentA: Agent, agentB: Agent, key: string, currentTick: number): number {
+    let score = 3; // Base: NPCs share a social space (was 1 — too low)
 
-    // Belief-based scoring: unshared crime knowledge = high conversation value
+    // Belief-based scoring: information exchange value (reduced from +5/+2)
     const beliefsA = agentA.state.beliefs?.getAllBeliefs().filter(
       (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
     ) ?? [];
@@ -93,21 +98,34 @@ export class ConversationScheduler {
       (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
     ) ?? [];
 
-    // A knows something B doesn't
     for (const ba of beliefsA) {
       const bKnows = beliefsB.some((bb) => bb.eventType === ba.eventType && bb.object === ba.object);
-      score += bKnows ? 2 : 5; // Unshared = much higher value
+      score += bKnows ? 1 : 3; // Reduced from 2/5
     }
-
-    // B knows something A doesn't
     for (const bb of beliefsB) {
       const aKnows = beliefsA.some((ba) => ba.eventType === bb.eventType && ba.object === bb.object);
-      score += aKnows ? 2 : 5;
+      score += aKnows ? 1 : 3;
     }
 
-    // Relationship warmth bonus
+    // Relationship warmth (increased from +2)
     const rel = agentA.state.relationships?.getRelationship(agentB.profile.id);
-    if (rel && rel.sentiment > 0.2) score += 2;
+    if (rel) {
+      if (rel.sentiment > 0.3) score += 4;        // Close friends — strong pull
+      else if (rel.sentiment > 0.1) score += 2;   // Friendly
+      else if (rel.sentiment < -0.2) score += 1;   // Tension — still has conversation value
+    }
+
+    // Extraversion compatibility — extraverts seek conversation, introverts avoid it
+    const eA = agentA.profile.bigFive?.extraversion ?? 0.5;
+    const eB = agentB.profile.bigFive?.extraversion ?? 0.5;
+    score += ((eA - 0.3) + (eB - 0.3)) * 2; // E=0.9+0.9→+2.4, E=0.5+0.5→+0.8, E=0.2+0.2→-0.4
+
+    // Social hunger — NPC who hasn't talked recently wants to chat
+    const lastA = this.npcLastConversation.get(agentA.profile.id) ?? -Infinity;
+    const lastB = this.npcLastConversation.get(agentB.profile.id) ?? -Infinity;
+    const hungerA = Math.min(3, (currentTick - lastA) / 24); // max +3 after 24 ticks (6h game)
+    const hungerB = Math.min(3, (currentTick - lastB) / 24);
+    score += (hungerA + hungerB) * 0.5; // +0 to +3
 
     // Diversity penalty: each conversation today with same pair reduces score
     const todayCount = this.dailyCounts.get(key) ?? 0;

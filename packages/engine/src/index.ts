@@ -80,21 +80,15 @@ export type { InstinctInput } from './instinct-builder';
 export { GoalManager } from './goals';
 export type {
   AnnounceStep,
-  ArrestNpcStep,
-  AttackNpcStep,
-  DestroyEvidenceStep,
-  ExamineSceneStep,
-  FleeStep,
   GoalActionResult,
   GoalStep,
   InteractPresentStep,
   InteractStep,
   InteractionRunner,
+  ModuleStep,
   MoveStep,
   NpcFilter,
   NpcGoal,
-  SentenceNpcStep,
-  StealFromStep,
   WaitStep,
 } from './goals';
 
@@ -139,7 +133,7 @@ export { ConversationScheduler } from './scheduler';
 export type { ScoredPair } from './scheduler';
 
 // ─── Topic Engine ───
-export { TopicEngine, TOPIC_SOURCE_REGISTRY } from './topic-engine';
+export { TopicEngine, TOPIC_SOURCE_REGISTRY, getTopicGroup } from './topic-engine';
 export type { TopicSource } from './topic-engine';
 export type { TopicContext, TopicProposal } from './topic-engine';
 
@@ -181,7 +175,6 @@ export {
   BELIEF_SOURCE,
   registerEventLabels, getEventLabel,
   registerEventGoalCleanup, getGoalCleanupForEvent,
-  registerBeliefZeroingEvents, shouldZeroBeliefs,
   registerEventSceneTypes, getSceneTypeForEvent,
   registerDeathEvents, isDeathEvent, getDefaultDeathEvent,
   registerPursuitEvents, isPursuitEvent,

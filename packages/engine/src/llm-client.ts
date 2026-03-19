@@ -21,6 +21,12 @@ export interface LlmCallOptions {
   baseUrl?: string;
   /** Model override (default: from DEFAULT_WORLD_CONFIG) */
   model?: string;
+  /** Penalize repeated tokens (1.0 = none, >1.0 = penalty). Default from WorldConfig. */
+  repeatPenalty?: number;
+  /** Penalize tokens proportional to frequency. 0.0-2.0. Default from WorldConfig. */
+  frequencyPenalty?: number;
+  /** Penalize any token already present. 0.0-2.0. Default from WorldConfig. */
+  presencePenalty?: number;
 }
 
 export interface LlmJsonSchema {
@@ -55,6 +61,9 @@ export async function llmCall(options: LlmCallOptions): Promise<string | null> {
     ],
     temperature: options.temperature ?? 0.7,
     max_tokens: options.maxTokens ?? 200,
+    repeat_penalty: options.repeatPenalty ?? DEFAULT_WORLD_CONFIG.repeatPenalty ?? 1.0,
+    frequency_penalty: options.frequencyPenalty ?? DEFAULT_WORLD_CONFIG.frequencyPenalty ?? 0,
+    presence_penalty: options.presencePenalty ?? DEFAULT_WORLD_CONFIG.presencePenalty ?? 0,
   };
 
   if (options.jsonSchema) {

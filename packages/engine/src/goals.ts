@@ -58,55 +58,13 @@ export interface WaitStep {
   ticks: number;
 }
 
-/** Steal from a shop NPC at current location (no LLM) */
-export interface StealFromStep {
-  action: 'steal_from';
-  targetId: string;        // shop owner NPC id
-  importance: number;
+/** Generic step for module-registered actions (steal, arrest, trade, etc.) */
+export interface ModuleStep {
+  action: string;
+  [key: string]: unknown;
 }
 
-/** Attack an NPC at current location — non-lethal vigilante strike (no LLM) */
-export interface AttackNpcStep {
-  action: 'attack_npc';
-  targetId: string;
-  importance: number;
-  reason: string;          // e.g. "revenge for murder of Hilda"
-  lethal?: boolean;        // if true, this is a murder (target dies)
-}
-
-/** Arrest an NPC — changes their status to 'detained' */
-export interface ArrestNpcStep {
-  action: 'arrest_npc';
-  targetId: string;
-  importance: number;
-}
-
-/** Destroy evidence at current crime scene location */
-export interface DestroyEvidenceStep {
-  action: 'destroy_evidence';
-  importance: number;
-}
-
-/** Flee the town — NPC status becomes 'fled', removed from world */
-export interface FleeStep {
-  action: 'flee';
-  importance: number;
-}
-
-/** Guard examines crime scene — synthesizes suspicion beliefs from structured data */
-export interface ExamineSceneStep {
-  action: 'examine_scene';
-  importance: number;
-}
-
-/** Judge evaluates detained NPC — LLM decides sentence */
-export interface SentenceNpcStep {
-  action: 'sentence_npc';
-  targetId: string;
-  importance: number;
-}
-
-export type GoalStep = MoveStep | InteractStep | InteractPresentStep | AnnounceStep | WaitStep | StealFromStep | AttackNpcStep | ArrestNpcStep | DestroyEvidenceStep | FleeStep | ExamineSceneStep | SentenceNpcStep;
+export type GoalStep = MoveStep | InteractStep | InteractPresentStep | AnnounceStep | WaitStep | ModuleStep;
 
 // ─── NPC Filter ───
 
