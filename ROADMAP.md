@@ -391,6 +391,11 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - Affordance definitions с target finders
 - CG rules, EL rules, step handlers
 
+#### Architectural debt — module logic в engine
+- [ ] **Crime scene awareness** (world.ts:1225-1253) — engine iterates crime scenes, creates beliefs, checks locations. Должно быть tick phase handler в module (как belief zeroing)
+- [ ] **TopicEngine built-in sources** — 7 source functions в engine. Должны быть в social module
+- [ ] **Information spread** (world.ts, isInformationOnly block) — sentiment cascade для rumor spread. Module knowledge в engine
+
 Результат: `modules/millhaven/` → полный мир. `modules/pirate-cove/` → другой мир. Ноль изменений в engine/modules. Графический редактор читает/пишет JSON.
 
 ### Phase 2.5: Custom LLM — Qwen3.5-9B-CLWA

@@ -21,6 +21,7 @@ import {
   registerSourceDecayRates,
   registerSourceTransferWeights,
   registerBeliefSourceLabels,
+  getPassiveNoticeText,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -418,6 +419,43 @@ export function registerCrimeJusticeModule(): void {
       await ctx.processEvent(discoveryEvent);
 
       console.log(`  [Theft] ${owner.profile.name} discovered robbery at ${theft.location}!`);
+    }
+  });
+
+  // Crime scene awareness: NPCs at crime scene locations passively notice evidence
+  registerTickPhaseHandler(async (ctx) => {
+    for (const [locationId, scenes] of ctx.crimeScenes) {
+      for (const scene of scenes) {
+        if (!scene.active) continue;
+        // Find display name for location
+        let locationName = locationId;
+        for (const [, loc] of ctx.locations) {
+          if (loc.name === locationId || loc.id === locationId) { locationName = loc.name; break; }
+        }
+        for (const [agentId, agent] of ctx.agents) {
+          if (!agent.state.alive || isStatusAbsent(agent.state.status)) continue;
+          if (agent.state.location !== locationId) continue;
+          if (scene.noticedBy.has(agentId)) continue;
+
+          scene.noticedBy.add(agentId);
+          const noticeText = getPassiveNoticeText(scene, locationName);
+          await agent.observe(noticeText, 5);
+
+          agent.state.beliefs?.addBelief({
+            id: crypto.randomUUID(),
+            eventType: scene.eventType ?? scene.crimeType,
+            subject: scene.perpetratorId ? (ctx.agents.get(scene.perpetratorId)?.profile.name ?? null) : null,
+            object: scene.victimId ? (ctx.agents.get(scene.victimId)?.profile.name ?? null) : null,
+            location: locationName,
+            confidence: 0.8,
+            source: 'scene_notice',
+            sourceNpcId: null,
+            gameDay: ctx.currentDay,
+            lastUpdated: ctx.currentDay,
+          });
+          console.log(`  [CrimeScene] ${agent.profile.name} noticed ${scene.crimeType} scene at ${locationName}`);
+        }
+      }
     }
   });
 

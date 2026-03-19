@@ -22,7 +22,7 @@ import type {
 import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG } from './world-types';
 import { ScheduleManager, TICKS_PER_DAY, getTimePeriod } from './schedule';
 import type { ScheduleEntry } from './schedule';
-import { createCrimeScene, getPassiveNoticeText } from './crime-scene';
+import { createCrimeScene } from './crime-scene';
 import { PlayerJournal } from './journal';
 import { evaluateAllVolition, evaluateReactiveVolition } from './volition';
 import { AFFORDANCE_REGISTRY, checkRequirements, computeUtility } from './al';
@@ -547,10 +547,7 @@ export class World {
       this.callbacks.onMovement?.(allMovements);
     }
 
-    // 2.5. Check if NPCs notice crime scenes at their location
-    await this.checkCrimeScenes();
-
-    // 2.7. Module-registered tick phase handlers (e.g., theft discovery, NPC approach)
+    // 2.5-2.7: Module-registered tick phase handlers (crime scene awareness, theft discovery, NPC approach)
     const approachEvents: import('./world-types').ApproachEvent[] = [];
     const tickCtx = {
       agents: this.agents,
@@ -566,6 +563,8 @@ export class World {
       },
       discoveries: this.bodyDiscoveries,
       approaches: approachEvents,
+      crimeScenes: this.crimeScenes,
+      locations: this.locations,
     };
     for (const handler of getTickPhaseHandlers()) {
       await handler(tickCtx);
@@ -1205,53 +1204,9 @@ export class World {
   }
 
   /**
-   * Check if NPCs at crime scene locations passively notice evidence.
-   * Called during tick after movement phase.
+   * Crime scene awareness moved to module tick phase handler (crime-justice/index.ts).
+   * Engine provides crimeScenes + locations in TickPhaseContext.
    */
-  private async checkCrimeScenes(): Promise<void> {
-    for (const [locationId, scenes] of this.crimeScenes) {
-      for (const scene of scenes) {
-        if (!scene.active) continue;
-
-        // Find the location name for memory text
-        let locationName = locationId;
-        for (const [, loc] of this.locations) {
-          if (loc.name === locationId || loc.id === locationId) {
-            locationName = loc.name;
-            break;
-          }
-        }
-
-        for (const [agentId, agent] of this.agents) {
-          if (!isPresent(agent)) continue;
-          if (agent.state.location !== locationId) continue;
-          if (scene.noticedBy.has(agentId)) continue;
-
-          // NPC notices the crime scene
-          scene.noticedBy.add(agentId);
-
-          const noticeText = getPassiveNoticeText(scene, locationName);
-          await agent.observe(noticeText, 5);
-
-          // Add belief about the crime (scene_notice = passive, NOT firsthand witness)
-          agent.state.beliefs?.addBelief({
-            id: crypto.randomUUID(),
-            eventType: scene.eventType ?? scene.crimeType,
-            subject: scene.perpetratorId ? (this.agents.get(scene.perpetratorId)?.profile.name ?? null) : null,
-            object: scene.victimId ? (this.agents.get(scene.victimId)?.profile.name ?? null) : null,
-            location: locationName,
-            confidence: 0.8,
-            source: 'scene_notice',
-            sourceNpcId: null,
-            gameDay: this.getCurrentDay(),
-            lastUpdated: this.getCurrentDay(),
-          });
-
-          console.log(`  [CrimeScene] ${agent.profile.name} noticed ${scene.crimeType} scene at ${locationName}`);
-        }
-      }
-    }
-  }
 
   /** Process a kill event through the consequence engine.
    *  killerId is optional — defaults to 'player'. Pass NPC id for NPC-on-NPC kills.

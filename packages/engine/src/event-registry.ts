@@ -596,6 +596,10 @@ export interface TickPhaseContext {
   discoveries: Set<string>;
   /** NPC approach events — tick phase handlers push to this array */
   approaches: import('./world-types').ApproachEvent[];
+  /** Crime scenes — module tick handlers can check awareness, evidence */
+  crimeScenes: Map<string, import('./world-types').CrimeScene[]>;
+  /** Location graph for spatial queries */
+  locations: import('./world-types').LocationGraph;
 }
 
 export type TickPhaseHandlerFn = (ctx: TickPhaseContext) => Promise<void>;
