@@ -1233,7 +1233,7 @@ export class World {
           const noticeText = getPassiveNoticeText(scene, locationName);
           await agent.observe(noticeText, 5);
 
-          // Add belief about the crime
+          // Add belief about the crime (scene_notice = passive, NOT firsthand witness)
           agent.state.beliefs?.addBelief({
             id: crypto.randomUUID(),
             eventType: scene.eventType ?? scene.crimeType,
@@ -1241,7 +1241,7 @@ export class World {
             object: scene.victimId ? (this.agents.get(scene.victimId)?.profile.name ?? null) : null,
             location: locationName,
             confidence: 0.8,
-            source: BELIEF_SOURCE.OBSERVATION,
+            source: 'scene_notice',
             sourceNpcId: null,
             gameDay: this.getCurrentDay(),
             lastUpdated: this.getCurrentDay(),

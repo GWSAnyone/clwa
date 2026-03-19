@@ -69,6 +69,7 @@ export function registerCrimeJusticeModule(): void {
   // Source flags — engine checks boolean properties, not category names
   registerSourceFlags('perpetrator', { perpetrator: true });
   registerSourceFlags('observation', { firsthand: true });
+  registerSourceFlags('scene_notice', {}); // passive crime scene observation — NOT firsthand
   registerSourceFlags('body_discovery', { firsthand: true });
   registerSourceFlags('witness', { firsthand: true });
   registerSourceFlags('evidence', { firsthand: true });
@@ -120,14 +121,15 @@ export function registerCrimeJusticeModule(): void {
     testimony: 0.02, interrogation: 0.02, deduction: 0.03,
     rumor: 0.04, cover_up: 0.01, perpetrator: 0.01,
     evidence: 0.005,  // physical evidence fades very slowly
+    scene_notice: 0.02, // noticed aftermath — fades like testimony
     secret: 0,         // secret knowledge never decays
   });
 
   // Secret source: doesn't transfer through gossip (you don't casually share blackmail material)
   registerSourceTransferWeights({ secret: 0 });
 
-  // Secret source label for prompts
-  registerBeliefSourceLabels({ secret: 'personal knowledge' });
+  // Additional source labels for prompts
+  registerBeliefSourceLabels({ secret: 'personal knowledge', scene_notice: 'noticed at crime scene' });
 
   // Crime scene templates — examination points, passive notice text, profession clues
   const PROFESSION_CLUES: Record<string, { description: string; clueText: string }> = {
