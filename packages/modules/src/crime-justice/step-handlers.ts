@@ -188,13 +188,13 @@ export function registerCrimeStepHandlers(): void {
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const target = agents.get(step.targetId);
     if (!target || !target.state.alive) {
-      goal.currentStep++;
-      return { ...baseResult, action: 'steal_from', description: `${owner.profile.name}: target not available` };
+      goal.state = 'failed';
+      return { ...baseResult, action: 'steal_from', description: `${owner.profile.name}: target not available — steal failed` };
     }
     if (owner.state.location !== target.state.location) {
       const maxWait = goal.priority >= 7 ? 3 : goal.priority >= 4 ? 2 : 1;
       goal.waitTicks = (goal.waitTicks ?? 0) + 1;
-      if (goal.waitTicks >= maxWait) { goal.currentStep++; goal.waitTicks = 0; return { ...baseResult, action: 'steal_from', description: `${owner.profile.name}: target left` }; }
+      if (goal.waitTicks >= maxWait) { goal.state = 'failed'; goal.waitTicks = 0; return { ...baseResult, action: 'steal_from', description: `${owner.profile.name}: target left — steal failed` }; }
       return { ...baseResult, action: 'wait', description: `${owner.profile.name} waiting for opportunity` };
     }
     goal.waitTicks = 0;
@@ -211,11 +211,11 @@ export function registerCrimeStepHandlers(): void {
     const { goal, step, owner, agents } = ctx;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const target = agents.get(step.targetId);
-    if (!target || !target.state.alive) { goal.currentStep++; return { ...baseResult, action: 'attack_npc', description: `${owner.profile.name}: target not available` }; }
+    if (!target || !target.state.alive) { goal.state = 'failed'; return { ...baseResult, action: 'attack_npc', description: `${owner.profile.name}: target not available — attack failed` }; }
     if (owner.state.location !== target.state.location) {
       const maxWait = goal.priority >= 7 ? 3 : goal.priority >= 4 ? 2 : 1;
       goal.waitTicks = (goal.waitTicks ?? 0) + 1;
-      if (goal.waitTicks >= maxWait) { goal.currentStep++; goal.waitTicks = 0; return { ...baseResult, action: 'attack_npc', description: `${owner.profile.name}: ${target.profile.name} escaped` }; }
+      if (goal.waitTicks >= maxWait) { goal.state = 'failed'; goal.waitTicks = 0; return { ...baseResult, action: 'attack_npc', description: `${owner.profile.name}: ${target.profile.name} escaped — attack failed` }; }
       return { ...baseResult, action: 'wait', description: `${owner.profile.name} searching for ${target.profile.name}` };
     }
     goal.waitTicks = 0;

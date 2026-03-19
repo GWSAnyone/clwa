@@ -17,8 +17,8 @@ const DIALOGUE_SCHEMA: LlmJsonSchema = {
   schema: {
     type: 'object',
     properties: {
-      speech: { type: 'string', description: 'Spoken words only. MAXIMUM 12 words. No narration. Fresh wording.' },
-      gesture: { type: 'string', description: 'Brief gesture like *nods*. Max 4 words. Empty if none.' },
+      speech: { type: 'string', description: 'ONLY the words you speak aloud. No actions, no *gestures*. Max 12 words. Fresh wording.' },
+      gesture: { type: 'string', description: 'Physical action like *nods* or *sighs*. Max 4 words. Empty string if none.' },
     },
     required: ['speech', 'gesture'],
     additionalProperties: false,
@@ -176,10 +176,10 @@ function buildInitiatorPrompt(initiator: Agent, responder: Agent, topic: TopicPr
   const relNote = relationshipNote(initiator, responder);
   const speech = speechReminder(initiator);
 
-  return `You see ${responder.profile.name} the ${responder.profile.role} at ${initiator.state.location}.
+  return `You are at ${initiator.state.location}. ${responder.profile.name} the ${responder.profile.role} is here with you.
 ${topic.initiatorHook}
 ${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
-IMPORTANT: speech must be at most 12 words. Be brief. Only spoken words — no narration.`;
+IMPORTANT: speech must be at most 12 words. Only mention people who are HERE with you. No narration.`;
 }
 
 function buildResponderPrompt(
@@ -192,7 +192,7 @@ function buildResponderPrompt(
   return `${initiator.profile.name} the ${initiator.profile.role} says to you:
 "${initiatorLine}"
 ${topic.responderHook ? `${topic.responderHook}\n` : ''}${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
-IMPORTANT: speech must be at most 12 words. React briefly in character. No narration.`;
+IMPORTANT: speech must be at most 12 words. React with YOUR OWN words — do NOT repeat what they said. No narration.`;
 }
 
 function buildFollowUpPrompt(

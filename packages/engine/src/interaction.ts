@@ -13,8 +13,8 @@ const INTERACTION_DIALOGUE_SCHEMA: LlmJsonSchema = {
   schema: {
     type: 'object',
     properties: {
-      speech: { type: 'string', description: 'Spoken words only. MAXIMUM 20 words. No narration. Fresh wording.' },
-      gesture: { type: 'string', description: 'Brief gesture like *nods*. Max 5 words. Empty if none.' },
+      speech: { type: 'string', description: 'ONLY the words you speak aloud. No actions, no *gestures*. Max 20 words. Fresh wording.' },
+      gesture: { type: 'string', description: 'Physical action like *nods* or *slams fist*. Max 5 words. Empty string if none.' },
     },
     required: ['speech', 'gesture'],
     additionalProperties: false,
@@ -175,5 +175,5 @@ function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: str
 ${contextDirective}${beliefLine}
 
 (Your voice: ${speech})
-IMPORTANT: speech must be at most 20 words. React briefly in character. No narration.`;
+IMPORTANT: speech must be at most 20 words. React with YOUR OWN words — do NOT repeat what they said. No narration.`;
 }
