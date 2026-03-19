@@ -857,8 +857,8 @@ export class World {
 
       // LLM-assessed importance (content-aware, not just topic weight)
       const rawImportance = impact.importance ?? conversation.importance;
-      if (rawImportance < 0 || rawImportance > 10) {
-        console.warn(`  [Impact] LLM returned importance ${rawImportance} (out of 1-8 range), clamping`);
+      if (rawImportance < 1 || rawImportance > 8) {
+        console.warn(`  [Impact] LLM importance ${rawImportance} outside 1-8 range, clamping`);
       }
       const llmImportance = Math.max(1, Math.min(8, Math.round(rawImportance)));
       return { moodDelta, importance: llmImportance };
