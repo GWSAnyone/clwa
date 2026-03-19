@@ -85,8 +85,9 @@ const CONVERSATION_IMPACT_SCHEMA: LlmJsonSchema = {
       },
       mood_impact: { type: 'number' },
       importance: { type: 'number' },
+      secret_revealed: { type: 'string', description: 'If someone confessed or revealed hidden info: "NAME revealed about NAME: detail". Example: "Ted revealed about Ted: waters down ale". Empty string if none.' },
     },
-    required: ['mentions', 'mood_impact', 'importance'],
+    required: ['mentions', 'mood_impact', 'importance', 'secret_revealed'],
     additionalProperties: false,
   },
 };
@@ -791,6 +792,7 @@ export class World {
       `mood_impact: positive for warm/supportive/funny conversations, negative for tense/hostile/disturbing ones, near zero for neutral small talk.`,
       `importance: 1-2 for mundane small talk, 3-4 for interesting personal exchanges, 5-6 for emotionally significant revelations, 7-8 for shocking or life-changing information.`,
       `Only include NPCs explicitly discussed. Empty mentions array if just small talk.`,
+      `secret_revealed: If someone confessed or accidentally revealed hidden information, write exactly: "NAME revealed about NAME: what they revealed". Example: "Ted revealed about Ted: waters down his ale due to debts". Empty string if nothing secret was shared. Only genuine hidden info, not common knowledge.`,
     ].join('\n');
 
     await llmSemaphore.acquire();
@@ -804,7 +806,7 @@ export class World {
       });
       if (!content) return;
 
-      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; mood_impact: number; importance: number };
+      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; mood_impact: number; importance: number; secret_revealed?: string };
       try {
         impact = JSON.parse(content);
       } catch {
@@ -812,13 +814,14 @@ export class World {
         return { moodDelta: 0, importance: conversation.importance };
       }
 
+      // Resolve NPC names to IDs (used by mentions + secret discovery)
+      const nameToId = new Map<string, string>();
+      for (const [id, agent] of this.agents) {
+        nameToId.set(agent.profile.name.toLowerCase(), id);
+      }
+
       // Apply sentiment shifts to all listeners
       if (impact.mentions.length > 0) {
-        // Resolve NPC names to IDs
-        const nameToId = new Map<string, string>();
-        for (const [id, agent] of this.agents) {
-          nameToId.set(agent.profile.name.toLowerCase(), id);
-        }
 
         for (const mention of impact.mentions) {
           const mentionedId = nameToId.get(mention.npc_name.toLowerCase());
@@ -852,6 +855,43 @@ export class World {
         }
         if (moodDelta !== 0) {
           console.log(`  [Mood] Conversation mood impact: ${moodDelta > 0 ? '+' : ''}${moodDelta.toFixed(3)}`);
+        }
+      }
+
+      // Secret discovery: if LLM detected a speaker revealed hidden information
+      // Format: "SPEAKER revealed about ABOUT: DETAIL"
+      const secretStr = (impact as any).secret_revealed as string;
+      if (secretStr && secretStr.length > 5) {
+        const secretMatch = secretStr.match(/(\w[\w\s]*?)\s+revealed\s+about\s+(\w[\w\s]*?):\s*(.+)/i);
+        if (secretMatch) {
+          const [, speakerName, aboutName, detail] = secretMatch;
+          const aboutId = nameToId.get(aboutName.trim().toLowerCase());
+          const speakerId = nameToId.get(speakerName.trim().toLowerCase());
+          if (aboutId && speakerId) {
+            const aboutAgent = this.agents.get(aboutId);
+            for (const listenerId of listenerIds) {
+              if (listenerId === speakerId || listenerId === aboutId) continue;
+              const listener = this.agents.get(listenerId);
+              if (!listener?.state.beliefs) continue;
+              const alreadyKnows = listener.state.beliefs.getAllBeliefs().some(
+                b => b.source === 'secret' && b.subject === aboutAgent?.profile.name,
+              );
+              if (alreadyKnows) continue;
+              listener.state.beliefs.addBelief({
+                id: crypto.randomUUID(),
+                eventType: 'PERSONAL_SECRET',
+                subject: aboutAgent?.profile.name ?? aboutName.trim(),
+                object: detail.trim(),
+                location: conversation.location,
+                confidence: 0.4,
+                source: 'secret',
+                sourceNpcId: speakerId,
+                gameDay: conversation.gameDay,
+                lastUpdated: conversation.gameDay,
+              });
+              console.log(`  [SecretDiscovery] ${listener.profile.name} learned about ${aboutName.trim()}'s secret from ${speakerName.trim()}: "${detail.trim()}"`);
+            }
+          }
         }
       }
 

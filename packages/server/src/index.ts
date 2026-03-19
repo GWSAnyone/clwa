@@ -714,6 +714,54 @@ async function main() {
     });
   }
 
+  // ─── Secret knowledge beliefs (who knows whose secret) ───
+  const bessAgent = agents.get('bess');
+  if (bessAgent?.state.beliefs) {
+    bessAgent.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: 'PERSONAL_SECRET',
+      subject: 'Mark',
+      object: 'sells ordinary goods as exotic Valdris imports — overcharges everyone',
+      location: 'Market Square',
+      confidence: 0.9,
+      source: 'secret',
+      sourceNpcId: null,
+      gameDay: 1,
+      lastUpdated: 1,
+    });
+  }
+  const hildaAgent = agents.get('hilda');
+  if (hildaAgent?.state.beliefs) {
+    hildaAgent.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: 'PERSONAL_SECRET',
+      subject: 'Ted',
+      object: 'dilutes his ale with water to cover debts — regulars deserve better',
+      location: 'Silver Flagon Tavern',
+      confidence: 0.7,
+      source: 'secret',
+      sourceNpcId: null,
+      gameDay: 1,
+      lastUpdated: 1,
+    });
+  }
+  const elaraAgent = agents.get('elara');
+  if (elaraAgent?.state.beliefs) {
+    elaraAgent.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: 'PERSONAL_SECRET',
+      subject: 'Garrett',
+      object: 'once accepted a bribe to let someone pass the gate — his honor is a mask',
+      location: 'Town Gate',
+      confidence: 0.6,
+      source: 'secret',
+      sourceNpcId: null,
+      gameDay: 1,
+      lastUpdated: 1,
+    });
+  }
+  console.log('  [+] Secret knowledge seeded for 3 NPCs');
+
   // ─── Player Agent — full participant in the world ───
   {
     const playerProfile: AgentProfile = {

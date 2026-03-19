@@ -327,6 +327,20 @@ export function getSourceTransferWeight(source: string): number {
   return SOURCE_TRANSFER_WEIGHTS.get(source) ?? 0.6;
 }
 
+// ─── Belief Source Decay Rates ───
+// Per-source confidence decay per game day. Module registers all rates.
+const SOURCE_DECAY_RATES: Map<string, number> = new Map();
+
+export function registerSourceDecayRates(rates: Record<string, number>): void {
+  for (const [source, rate] of Object.entries(rates)) {
+    SOURCE_DECAY_RATES.set(source, rate);
+  }
+}
+
+export function getSourceDecayRate(source: string): number {
+  return SOURCE_DECAY_RATES.get(source) ?? 0.02;
+}
+
 // ─── Step Handlers Registry ───
 // Modules register custom goal step handlers. Engine handles universal primitives
 // (move_to, interact, announce, wait). Everything else → registry.

@@ -59,14 +59,21 @@ function findCrimeBeliefTarget(npcId: string, agent: Agent, ctx: AffordanceConte
 
 function findBlackmailTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
   if (!agent.state.beliefs) return null;
+  // Find secret knowledge beliefs (source: 'secret') — things NPC knows about others
   const secretBeliefs = agent.state.beliefs.getAllBeliefs().filter(
-    (b: Belief) => b.source === 'observation' && b.confidence >= 0.7 && b.subject !== agent.profile.name,
+    (b: Belief) => b.source === 'secret' && b.confidence >= 0.4 && b.subject !== agent.profile.name,
   );
   for (const belief of secretBeliefs) {
     for (const [otherId, other] of ctx.agents) {
-      if (otherId === npcId || !other.state.alive) continue;
+      if (otherId === npcId || !other.state.alive || other.profile.isPlayer) continue;
+      if (isStatusAbsent(other.state.status)) continue;
       if (matchesNpc(belief.subject, other)) {
-        return { targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location, extra: { secretBelief: belief.id } };
+        return {
+          targetId: otherId,
+          targetName: other.profile.name,
+          targetLocation: other.state.location,
+          extra: { secretDetail: belief.object ?? 'has a secret', secretBelief: belief.id },
+        };
       }
     }
   }

@@ -1,4 +1,4 @@
-import { getBeliefSourceLabel, getSourceTransferWeight, getEventLabel } from './event-registry';
+import { getBeliefSourceLabel, getSourceTransferWeight, getSourceDecayRate, getEventLabel } from './event-registry';
 
 // BeliefSource is a string — modules can add new sources via registry
 export type BeliefSource = string;
@@ -99,16 +99,12 @@ export class BeliefManager {
   }
 
   /** Decay all beliefs per day advance. Rumors fade faster, direct evidence holds longer. */
-  decayBeliefs(currentDay: number, _decayRate = 0.02): void {
-    const SOURCE_DECAY: Record<string, number> = {
-      witness: 0.01, body_discovery: 0.01, observation: 0.015,
-      testimony: 0.02, interrogation: 0.02, deduction: 0.03,
-      rumor: 0.04, cover_up: 0.01, perpetrator: 0.01,
-    };
+  decayBeliefs(currentDay: number): void {
     for (const b of this.beliefs.values()) {
       const daysSince = currentDay - b.lastUpdated;
       if (daysSince > 0) {
-        const rate = SOURCE_DECAY[b.source] ?? 0.02;
+        const rate = getSourceDecayRate(b.source);
+        if (rate === 0) continue; // source never decays (e.g. secret knowledge)
         b.confidence = Math.max(0.1, b.confidence - rate * daysSince);
       }
     }

@@ -18,6 +18,9 @@ import {
   isTransferable,
   isFirsthand,
   isStatusAbsent,
+  registerSourceDecayRates,
+  registerSourceTransferWeights,
+  registerBeliefSourceLabels,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -110,6 +113,21 @@ export function registerCrimeJusticeModule(): void {
   registerSourceCategory('guilt', ['perpetrator']);
   registerSourceCategory('direct_experience', ['witness', 'body_discovery']);
   registerSourceCategory('concealment', ['cover_up']);
+
+  // Belief source decay rates (per game day) — moved from engine hardcode to module registry
+  registerSourceDecayRates({
+    witness: 0.01, body_discovery: 0.01, observation: 0.015,
+    testimony: 0.02, interrogation: 0.02, deduction: 0.03,
+    rumor: 0.04, cover_up: 0.01, perpetrator: 0.01,
+    evidence: 0.005,  // physical evidence fades very slowly
+    secret: 0,         // secret knowledge never decays
+  });
+
+  // Secret source: doesn't transfer through gossip (you don't casually share blackmail material)
+  registerSourceTransferWeights({ secret: 0 });
+
+  // Secret source label for prompts
+  registerBeliefSourceLabels({ secret: 'personal knowledge' });
 
   // Crime scene templates — examination points, passive notice text, profession clues
   const PROFESSION_CLUES: Record<string, { description: string; clueText: string }> = {
