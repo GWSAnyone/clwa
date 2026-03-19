@@ -244,11 +244,24 @@ export class World {
           .find(([, a]) => a.profile.name === criminalName || a.profile.id === criminalName);
         if (criminalEntry) {
           const [criminalId] = criminalEntry;
+          const victimName = (event.payload?.victimName as string) ?? null;
           const affected = (event.payload?.affectedTargets as string[]) ?? [];
           for (const npcId of affected) {
             const agent = this.agents.get(npcId);
             if (agent?.state.relationships && npcId !== criminalId) {
-              agent.state.relationships.adjustSentiment(criminalId, -0.15);
+              // Base sentiment drop for learning about crime
+              let drop = -0.15;
+              // Stronger drop if NPC cared about the victim
+              if (victimName) {
+                const victimEntry = Array.from(this.agents.entries()).find(([, a]) => a.profile.name === victimName);
+                if (victimEntry) {
+                  const victimRel = agent.state.relationships.getRelationship(victimEntry[0]);
+                  if (victimRel && victimRel.sentiment > 0.1) {
+                    drop = -(0.25 + victimRel.sentiment * 0.3); // friend → -0.4, close friend → -0.55
+                  }
+                }
+              }
+              agent.state.relationships.adjustSentiment(criminalId, drop);
             }
           }
         }

@@ -136,8 +136,8 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   {
     id: 'confront',
     isDuty: true,
-    actionVerb: 'attack',
-    actionDescription: 'confront someone directly',
+    actionVerb: 'confront',
+    actionDescription: 'confront someone about their crime',
     label: 'Confront someone about their wrongdoing',
     targetFinder: 'crime_belief',
     category: 'social',
@@ -328,11 +328,11 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetRole: 'priest',
     category: 'social',
     severity: 1,
-    requires: { notGuard: true, period: ['dawn', 'morning', 'afternoon'], moodBelow: -0.1 },
+    requires: { isCriminal: true, notGuard: true, period: ['dawn', 'morning', 'afternoon'], moodBelow: -0.3 },
     weights: [
-      { trait: 'A', direction: 'high', multiplier: 0.3 },
-      { trait: 'H', direction: 'high', multiplier: 0.3 },
-      { trait: 'N', direction: 'high', multiplier: 0.1 },
+      { trait: 'N', direction: 'high', multiplier: 0.3 },  // anxiety drives guilt
+      { trait: 'A', direction: 'high', multiplier: 0.2 },  // empathy amplifies remorse
+      { trait: 'H', direction: 'high', multiplier: 0.1 },  // honesty helps but not primary
     ],
     moodWeight: 0.2,
     relationshipWeight: 0.0,
@@ -529,6 +529,8 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   {
     id: 'intimidate_witness',
     isDuty: true,
+    actionVerb: 'intimidate',
+    actionDescription: 'threaten a witness into silence',
     label: 'Threaten a witness into silence',
     targetFinder: 'witness_target',
     category: 'crime',
@@ -545,7 +547,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     relationshipWeight: 0.0,
     baseProbability: 0.25,
     goalType: 'intimidate_witness',
-    goalPriority: 7,
+    goalPriority: 8,
     eventBoost: {
       eventTypes: ['WANTED_STATUS'],
       boost: 0.3,
@@ -579,7 +581,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     goalType: 'flee_town',
     goalPriority: 8,
     eventBoost: {
-      eventTypes: ['NPC_ARRESTED'],
+      eventTypes: ['WANTED_STATUS'],
       boost: 0.5,
     },
     stepTemplates: [

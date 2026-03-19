@@ -183,9 +183,10 @@ export function evaluateReactiveVolition(
 ): NpcGoal[] {
   const goals: NpcGoal[] = [];
   const affectedTargets = (event.payload?.affectedTargets as string[]) ?? [];
-  // Include event subject for discovery events (discoverer should react)
-  // but NOT for crime events (killer should not get reactive report_crime goal)
+  // Reactors = affected targets + event object (target of the event can react: wanted→flee, arrested→resist)
+  // Subject excluded by default (killer shouldn't get report_crime), added only for body discovery
   const reactors = new Set(affectedTargets);
+  if (event.object) reactors.add(event.object);
   const bodyDiscoveryType = getBodyDiscoveryEventType();
   if (event.subject && bodyDiscoveryType && event.type === bodyDiscoveryType) {
     reactors.add(event.subject);
