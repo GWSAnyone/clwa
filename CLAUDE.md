@@ -98,6 +98,11 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 27. **Trust evolution**: NPC_ARRESTED → NPCs who received player claims about suspect get trust +0.08. NPC_SENTENCED exile → trust +0.12, release → trust -0.15. Only NPCs with `sourceNpcId === playerId` beliefs affected. Module code in event-handlers.ts.
 28. **NPC approach**: Tick phase handler checks co-located NPCs for urgent firsthand beliefs. Pushes to `TickPhaseContext.approaches[]`. Max 1 per tick. Cooldown 32 ticks per NPC. Server stores `promptContext`, injects into NPC system prompt when player opens chat.
 29. **Player rumor topics**: TopicSource in TOPIC_SOURCE_REGISTRY. NPC-NPC conversations can include topics about player (claims shared, negative sentiment, positive trust). TopicContext extended with `playerAgent`.
+30. **Structured dialogue**: NPC-NPC conversations use JSON schema (speech + gesture). Interactions too.
+31. **getEventLabel returns null**: not raw eventType. All callers handle null with `?? 'crime'` or skip.
+32. **Belief zeroing is module responsibility**: verdict-conditional in NPC_SENTENCED handler, not engine.
+33. **Generic ModuleStep**: engine knows only move_to/interact/announce/wait. All others via STEP_HANDLERS + generic buildSteps default.
+34. **Anti-repetition**: repeat_penalty, frequency_penalty, presence_penalty in DEFAULT_WORLD_CONFIG, passed to every llmCall.
 
 ## Tick System
 
@@ -105,7 +110,8 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 - **Auto-tick**: tick-when-ready pattern (setTimeout loop, not setInterval). Default interval 8s → 1 day ≈ 13 min.
 - **Speed control**: `POST /api/auto { seconds: N }` to start, same endpoint to stop (toggle).
 - **Cooldowns**: affordance=12 ticks (3h game), decision=4 ticks (1h game), conversation pair=16 ticks (4h game). All configurable via WorldConfig.
+- **Conversation flow**: runConversation → analyzeConversationImpact → processOverhear (overhear happens AFTER impact analysis).
 
 ## Current Status
 
-v0.9.4-dev. Scoring v2 (non-linear curves, bidirectional mood/sentiment, trust, DEBT_PRESSURE). Instinct builder v2 (7 tiers × 3 textures × Enneagram × resistance). No reflex bypass — LLM always decides. Centralized llm-client.ts (OpenAI endpoint, structured output json_schema). Abliterated model (GGUF patched, no RP framing in volition). World lore + background memories. suspectName normalization. Trust evolution, NPC approach, player rumors. Belief injection in interactions. Dynamic action enum.
+v0.9.5-dev. Scoring v2 (non-linear curves, bidirectional mood/sentiment, trust, DEBT_PRESSURE). Instinct builder v2 (7 tiers × 3 textures × Enneagram × resistance). No reflex bypass — LLM always decides. Centralized llm-client.ts (OpenAI endpoint, structured output json_schema). Abliterated model (GGUF patched, no RP framing in volition). World lore + background memories. suspectName normalization. Trust evolution, NPC approach, player rumors. Belief injection in interactions. Dynamic action enum. TopicEngine v2 (weighted random, PM influence, diversity tracking, belief transfer in conversations). Structured dialogue output (JSON schema for NPC-NPC conversations + interactions). Punishment system v2 (graduated verdicts, evidence quality, judge PM). Generic ModuleStep (engine no longer knows module step types). Anti-repetition (repeat_penalty 1.1, frequency_penalty 0.3, presence_penalty 0.2).
