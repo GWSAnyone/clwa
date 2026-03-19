@@ -451,10 +451,11 @@ Interact step поддерживает `beliefTransferDirection`:
 - [x] **Body discovery at 0.6** — до goals/movement, NPC обнаруживают тела на своих позициях
 - [x] **Suspect interrogation** (v0.5.1) — допрос подозреваемого (H trait → confession/denial → confidence change)
 - [x] **Full judicial chain test** (v0.5.2) — murder → report → investigate → interrogate → arrest → trial → sentence
+- [x] **Punishment system v2** (v0.9.5) — graduated verdicts (release/warning/fine/imprisonment/exile), crime severity mapping, evidence quality grouping, judge PM, suspect defense, imprisonment timer. Belief zeroing verdict-conditional (module-owned).
 
-#### LLM Decision — формат DO/WHY
+#### LLM Decision — structured output (v0.9.5)
 
-Один LLM call на решение. Формат простой, надёжно работает на Qwen 9B (~70 tok/s, <0.5s):
+Один LLM call на решение. JSON schema с dynamic action enum. Beliefs + relationships в **user prompt** (не system — avoids "lost middle"). Volition "talk" использует WHY reason как purpose (не "general conversation").
 
 ```
 You are [name], a [role]. [PM context: mood, fears, desires, stress/growth]
@@ -639,14 +640,17 @@ Guard получает цель: move → interact → announce → return (аг
 Каждый шаг порождает новые события (назад в Event Store)
 ```
 
-**7 типов шагов** (универсальные примитивы):
+**5 engine step types** (универсальные примитивы):
 - `move_to` — перемещение по графу (1 шаг/тик, BFS pathfinding)
-- `interact` — LLM-диалог с конкретным NPC
+- `interact` — LLM-диалог с конкретным NPC (structured output)
 - `interact_present` — LLM-диалог со ВСЕМИ NPC на локации (1/тик)
 - `announce` — объявление всем на локации (без LLM, через observe)
 - `wait` — ожидание N тиков
-- `steal_from` — кража из магазина NPC → GOODS_STOLEN event
-- `attack_npc` — атака NPC (lethal → NPC_KILLED, non-lethal → SELF_JUSTICE)
+
+**Module step types** (через `registerStepHandler` + generic `ModuleStep`):
+- `steal_from`, `attack_npc`, `arrest_npc`, `destroy_evidence`, `flee`, `examine_scene`, `sentence_npc`
+- `StepTemplate.action: string` — engine не знает конкретных типов. buildSteps() generic handler resolves $target, interpolates strings.
+- Новый модуль добавляет step type = `registerStepHandler('trade', ...)` + affordance template. Ноль engine changes.
 
 **Priority preemption**: высокоприоритетная цель переводит текущую active → pending.
 
@@ -714,21 +718,34 @@ interface TopicProposal {
 
 **Anti-repeat**: трекинг последних 6 тем на пару, пенализация повторных категорий.
 
+**Topic selection v2 (v0.9.5):**
+- **Weighted random** — пропорциональный выбор, не sort-and-pick
+- **PM influence** — OCEAN traits обоих участников: E→casual, N→mood, O→knowledge, A→relationship
+- **Diversity tracking** — target ratios: 35% casual, 25% event, 15% relationship, 10% mood, 10% knowledge, 5% conflict
+- **Belief transfer** — `TopicProposal.beliefTransfer` → `addBelief` после разговора (bidirectional, conf × 0.5)
+
 ##### Conversation Flow
 
-- `ConversationScheduler`: пары NPC по proximity + importance scoring, **cooldown 8 тиков**, diversity penalty (каждый разговор пары за день снижает score на 3)
-- `TopicEngine.selectTopic()`: выбор грounded темы перед разговором
-- `runConversation()`: 2 LLM-вызова на обмен (initiator + responder), **maxTokens: 55**
-- Промпты включают: topic hook + speech style reminder + action beats
-- `analyzeConversationImpact()`: LLM анализирует sentiment mentions + tension → mood/sentiment сдвиги
+- `ConversationScheduler`: social scoring (relationship, extraversion, social hunger, crime beliefs). **Cooldown 16 тиков**
+- `TopicEngine.selectTopic()`: weighted random с PM influence и diversity tracking
+- `runConversation()`: structured dialogue JSON schema, **maxTokens: 80**
+- Belief transfer (bidirectional initiator↔responder + overhear conf × 0.3)
+- `analyzeConversationImpact()`: sentiment + mood + **importance** (content-aware)
+- `observe()` **после** impact analysis (LLM-assessed importance)
+- `processOverhear()` **после** impact (finalized importance + belief transfer)
+
+##### Structured Dialogue (v0.9.5)
+
+JSON schema: `{ "speech": "...", "gesture": "..." }`. Casual: max 12w speech. Goal interactions: max 20w speech.
+Anti-repetition: `repeat_penalty: 1.1`, `frequency_penalty: 0.3`, `presence_penalty: 0.2`.
+Robust fallback parser для malformed JSON. Player chat — свободный формат.
 
 ##### Conversation Prompts — принципы
 
-**Topic-directed**: промпт даёт конкретную тему + эмоциональное направление вместо "chat casually"
-**Speech reminder**: первая строка speechStyle в user prompt — `(Your voice: blunt, short sentences. Says "aye".)`
-**Action beats**: `*wipes counter*`, `*sighs*` — NPC имеют тела и манеры
-**Length control**: "ONE or TWO short sentences (under 25 words)" + maxTokens: 55
-**Grounded memory**: `"Talked with Hilda about a missing regular. They seemed tense."` вместо verbatim dump
+**Structural constraint**: "IMPORTANT: speech must be at most 12 words. Only spoken words — no narration."
+**Anti-hallucination**: "CRITICAL: Do NOT invent names, locations, or details" — первое правило system prompt
+**Topic-directed**: конкретная тема + hook
+**Grounded memory**: mood-based format, key quote truncated to 80 chars
 
 ### 3.4 Intent Detection
 
