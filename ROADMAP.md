@@ -325,27 +325,27 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 > Стабилизировать систему, расширить контент, подготовить демку.
 
 #### E2E тест с prompt fix
-- [ ] Прогнать 3+ чистых запуска по 100+ тиков — проверить что steal выбирается LLM (prompt framing fix)
-- [ ] Проверить что murder chain работает без reflex
-- [ ] Проверить разнообразие между runs (разные жертвы, разные преступления)
-- [ ] Проверить что instinct builder descriptions корректно генерируются для всех tiers
+- [x] Прогнать 3+ чистых запуска по 100+ тиков — steal выбирается LLM ✅
+- [x] Проверить что murder chain работает без reflex — полная chain steal→investigate→arrest→sentence ✅
+- [ ] Проверить разнообразие между runs (разные жертвы, разные преступления) — в процессе
+- [x] Проверить что instinct builder descriptions корректно генерируются для всех tiers ✅
 
 #### TopicEngine — критические фиксы + расширение
 Аудит выявил 8 проблем. 3 критические, 3 высокие, 2 средние. Сначала фиксы, потом новый контент.
 
-**Критические фиксы:**
-- [ ] **Scheduler rebalance** — scorePair() даёт +5 за crime beliefs, подавляя все casual пары. Добавить social scoring (relationship warmth, extraversion, "social hunger" — давно не общались), снизить crime bonus
-- [ ] **Belief transfer в разговорах** — beliefTopics говорит "расскажи про убийство" но responder НЕ получает belief. TopicProposal.beliefTransfer? → после разговора engine делает addBelief
-- [ ] **PM-influenced topic selection** — OCEAN не влияет на выбор тем. E → casual/gossip, N → concern/worry, O → curiosity/questions, A → comfort/support
+**Критические фиксы (v0.9.5):**
+- [x] **Scheduler rebalance** — social scoring (relationship, extraversion, social hunger), crime bonus 5/2→3/1
+- [x] **Belief transfer в разговорах** — TopicProposal.beliefTransfer, bidirectional, overhear ×0.3
+- [x] **PM-influenced topic selection** — OCEAN обоих участников, range 0.6-1.4
 
-**Высокие фиксы:**
-- [ ] **Weighted random selection** — заменить sort-and-pick на пропорциональный выбор. Weight 9 = 3x вероятнее weight 3, не 100% доминирование
-- [ ] **Topic diversity tracking** — считать % casual/event/relationship за день, давать бонус недопредставленным категориям
-- [ ] **Content-aware importance** — использовать mood_impact из analyzeConversationImpact как сигнал важности (сейчас _lines игнорируется)
+**Высокие фиксы (v0.9.5):**
+- [x] **Weighted random selection** — пропорциональный выбор вместо sort-and-pick
+- [x] **Topic diversity tracking** — target ratios (35/25/15/10/10/5%), diversity bonus
+- [x] **Content-aware importance** — observe() после analyzeConversationImpact, LLM-assessed importance
 
-**Средние фиксы:**
-- [ ] **Типизация** — ROLE_TOPIC_POOLS `any[]` → `TopicProposal[]`
-- [ ] **Убрать dual registration** — registerSource() не используется, TopicEngine читает TOPIC_SOURCE_REGISTRY напрямую
+**Средние фиксы (v0.9.5):**
+- [x] **Типизация** — ROLE_TOPIC_POOLS `any[]` → `RoleTopicDef[]`
+- [x] **Убрать dual registration** — registerSource() удалён, TopicEngine читает TOPIC_SOURCE_REGISTRY напрямую
 
 **Новые topic sources:**
 - [ ] **seasonalTopics** — погода, урожай, праздники. Привязка к gameDay. Создают ощущение времени
@@ -354,9 +354,13 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [ ] **questionTopics** — NPC спрашивает о том чего НЕ знает (gaps в beliefs). Информационный обмен
 
 #### Conversation quality
-- [ ] **Conversation impact calibration** — mood_impact слишком часто негативный. Тестировать с casualTopics — должен быть net positive для дружеских разговоров
-- [ ] **Repeat phrase reduction** — repeat_penalty 1.15 в LM Studio. Тестировать — "Valdris", "the soil changes" не должны повторяться
-- [ ] **NPC speech consistency** — NPC иногда теряют speech style на длинных промптах. Убедиться что speechStyle reminder в conversation prompt достаточно видим
+- [x] **Structured dialogue** — JSON schema (speech + gesture), anti-narration, anti-echo. Research-backed "at most" phrasing
+- [x] **Anti-repetition** — repeat_penalty 1.1 / frequency_penalty 0.3 / presence_penalty 0.2 (A/B tested, confirmed optimal)
+- [x] **Anti-hallucination** — CRITICAL rule first in system prompt, beliefs in user prompt (not lost middle), gossip grounded with crime details
+- [x] **Responder echo fix** — "React with YOUR OWN words — do NOT repeat"
+- [x] **False testimony fix** — scene_notice source (not firsthand), only real witnesses can testify
+- [ ] **Conversation impact calibration** — mood_impact слишком часто негативный, нужно тестировать
+- [ ] **NPC speech consistency** — speechStyle reminder проверить на длинных промптах
 
 #### Godot клиент
 - [ ] Стены/крыши зданий на тайлмапе
@@ -392,7 +396,10 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - CG rules, EL rules, step handlers
 
 #### Architectural debt — module logic в engine
-- [ ] **Crime scene awareness** (world.ts:1225-1253) — engine iterates crime scenes, creates beliefs, checks locations. Должно быть tick phase handler в module (как belief zeroing)
+- [x] **Crime scene awareness** — moved to module tick phase handler ✅ (v0.9.5)
+- [x] **Belief zeroing** — moved to module NPC_SENTENCED handler, verdict-conditional ✅ (v0.9.5)
+- [x] **SOURCE_DECAY** — moved from engine hardcode to registry pattern ✅ (v0.9.5)
+- [x] **Module step types** — generic ModuleStep, engine no longer knows steal/arrest/etc ✅ (v0.9.5)
 - [ ] **TopicEngine built-in sources** — 7 source functions в engine. Должны быть в social module
 - [ ] **Information spread** (world.ts, isInformationOnly block) — sentiment cascade для rumor spread. Module knowledge в engine
 

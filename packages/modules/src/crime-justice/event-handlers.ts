@@ -45,7 +45,7 @@ export function registerCrimeEventHandlers(): void {
   });
 
   // WANTED_STATUS: investigator sentiment + criminal awareness
-  registerEventHandler('WANTED_STATUS', (event: WorldEvent, ctx: EventHandlerContext) => {
+  registerEventHandler('WANTED_STATUS', async (event: WorldEvent, ctx: EventHandlerContext) => {
     const criminalName = (event.payload?.suspectName as string);
     if (!criminalName) return;
 
@@ -77,7 +77,45 @@ export function registerCrimeEventHandlers(): void {
       gameDay: ctx.getCurrentDay(),
       lastUpdated: ctx.getCurrentDay(),
     });
+
+    // Criminal gets reactive goals (flee, lay_low, seek_forgiveness, destroy_evidence, intimidate).
+    // All criminal affordances have eventBoost on WANTED_STATUS — this is the trigger point.
+    // Engine's main reactive evaluation excludes event.subject (killer shouldn't get report_crime),
+    // so module explicitly triggers evaluation for the criminal here.
+    await ctx.triggerReactiveEvaluation(criminalId, event);
   });
+
+  // Information spread: sentiment toward criminal drops for affected NPCs
+  // Registered for all informational event types — module decides the effects
+  const informationSentimentHandler = (event: WorldEvent, ctx: EventHandlerContext) => {
+    const criminalName = (event.payload?.suspectName as string);
+    if (!criminalName) return;
+    const criminalEntry = Array.from(ctx.agents.entries())
+      .find(([, a]) => a.profile.name === criminalName || a.profile.id === criminalName);
+    if (!criminalEntry) return;
+    const [criminalId] = criminalEntry;
+    const victimName = (event.payload?.victimName as string) ?? null;
+    const affected = (event.payload?.affectedTargets as string[]) ?? [];
+    for (const npcId of affected) {
+      const agent = ctx.agents.get(npcId);
+      if (agent?.state.relationships && npcId !== criminalId) {
+        let drop = -0.15;
+        if (victimName) {
+          const victimEntry = Array.from(ctx.agents.entries()).find(([, a]) => a.profile.name === victimName);
+          if (victimEntry) {
+            const victimRel = agent.state.relationships.getRelationship(victimEntry[0]);
+            if (victimRel && victimRel.sentiment > 0.1) {
+              drop = -(0.25 + victimRel.sentiment * 0.3);
+            }
+          }
+        }
+        agent.state.relationships.adjustSentiment(criminalId, drop);
+      }
+    }
+  };
+  registerEventHandler('RUMOR_SPREAD', informationSentimentHandler);
+  registerEventHandler('WITNESS_MEMORY', informationSentimentHandler);
+  registerEventHandler('THEFT_DISCOVERED', informationSentimentHandler);
 
   // EVIDENCE_DESTROYED: degrade crime scene
   registerEventHandler('EVIDENCE_DESTROYED', (event: WorldEvent, ctx: EventHandlerContext) => {

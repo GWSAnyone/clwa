@@ -30,7 +30,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine, getTopicGroup } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isPursuitEvent, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers, isInformationOnly, isTransferable, BELIEF_SOURCE } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, BELIEF_SOURCE } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -237,39 +237,10 @@ export class World {
     // by module event handlers (crime-justice/event-handlers.ts) which know verdict-specific logic.
     // Engine provides: agents, crimeScenes, bodyDiscoveries via EventHandlerContext.
 
-    // Information spread → sentiment toward criminal drops for affected NPCs
-    if (isInformationOnly(event.type)) {
-      const criminalName = (event.payload?.suspectName as string);
-      if (criminalName) {
-        const criminalEntry = Array.from(this.agents.entries())
-          .find(([, a]) => a.profile.name === criminalName || a.profile.id === criminalName);
-        if (criminalEntry) {
-          const [criminalId] = criminalEntry;
-          const victimName = (event.payload?.victimName as string) ?? null;
-          const affected = (event.payload?.affectedTargets as string[]) ?? [];
-          for (const npcId of affected) {
-            const agent = this.agents.get(npcId);
-            if (agent?.state.relationships && npcId !== criminalId) {
-              // Base sentiment drop for learning about crime
-              let drop = -0.15;
-              // Stronger drop if NPC cared about the victim
-              if (victimName) {
-                const victimEntry = Array.from(this.agents.entries()).find(([, a]) => a.profile.name === victimName);
-                if (victimEntry) {
-                  const victimRel = agent.state.relationships.getRelationship(victimEntry[0]);
-                  if (victimRel && victimRel.sentiment > 0.1) {
-                    drop = -(0.25 + victimRel.sentiment * 0.3); // friend → -0.4, close friend → -0.55
-                  }
-                }
-              }
-              agent.state.relationships.adjustSentiment(criminalId, drop);
-            }
-          }
-        }
-      }
-    }
+    // Information spread sentiment + criminal reactive goals — moved to module event handlers.
+    // Engine provides triggerReactiveEvaluation callback for modules that need AL reactive evaluation.
 
-    // Module-registered event handlers (belief creation, state changes)
+    // Module-registered event handlers (belief creation, sentiment, state changes, reactive evaluation)
     const handlers = getEventHandlers(event.type);
     if (handlers.length > 0) {
       const handlerCtx: EventHandlerContext = {
@@ -278,33 +249,19 @@ export class World {
         crimeScenes: this.crimeScenes,
         getCurrentDay: () => this.getCurrentDay(),
         bodyDiscoveries: this.bodyDiscoveries,
+        triggerReactiveEvaluation: async (npcId: string, triggerEvent: WorldEvent) => {
+          const modifiedEvent: WorldEvent = { ...triggerEvent, payload: { ...triggerEvent.payload, affectedTargets: [npcId] } };
+          const goals = evaluateReactiveVolition(
+            modifiedEvent, reactiveCtx,
+            (id) => this.goalManager.getGoals(id).filter(g => g.state !== 'completed' && g.state !== 'failed').map(g => g.type),
+          );
+          for (const goal of goals) {
+            this.goalManager.addGoal(goal);
+          }
+        },
       };
       for (const handler of handlers) {
         await handler(event, handlerCtx);
-      }
-    }
-
-    // WANTED_STATUS reactive: criminal gets reactive goals (lay_low, seek_forgiveness)
-    // This stays in engine because it uses evaluateReactiveVolition (engine function)
-    if (isInformationOnly(event.type) || isPursuitEvent(event.type)) {
-      const criminalName = (event.payload?.suspectName as string);
-      if (criminalName && isPursuitEvent(event.type)) {
-        const criminalEntry = Array.from(this.agents.entries())
-          .find(([, a]) => a.profile.name === criminalName || a.profile.id === criminalName);
-        if (criminalEntry) {
-          const [criminalId] = criminalEntry;
-          const criminalEvent: WorldEvent = {
-            ...event,
-            payload: { ...event.payload, affectedTargets: [criminalId] },
-          };
-          const criminalGoals = evaluateReactiveVolition(
-            criminalEvent, reactiveCtx,
-            (id) => this.goalManager.getGoals(id).filter(g => g.state !== 'completed' && g.state !== 'failed').map(g => g.type),
-          );
-          for (const goal of criminalGoals) {
-            this.goalManager.addGoal(goal);
-          }
-        }
       }
     }
   }

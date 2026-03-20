@@ -191,6 +191,8 @@ export interface EventHandlerContext {
   getCurrentDay: () => number;
   /** Body discovery tracking — module can mark bodies as discovered to prevent re-discovery loops */
   bodyDiscoveries: Set<string>;
+  /** Trigger reactive affordance evaluation for a specific NPC on this event. Engine handles AL mechanics. */
+  triggerReactiveEvaluation: (npcId: string, event: WorldEvent) => Promise<void>;
 }
 
 export type EventHandlerFn = (event: WorldEvent, ctx: EventHandlerContext) => void | Promise<void>;
