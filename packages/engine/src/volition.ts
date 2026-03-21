@@ -444,6 +444,13 @@ function buildDecisionPrompt(
   // ── Instinct descriptions (procedural, personality-driven) ──
   const instincts: string[] = [];
   for (const sa of scored) {
+    // Interpolate situational context from affordance instinctContext template + target.extra
+    let context: string | undefined;
+    if (sa.definition.instinctContext) {
+      const vars = buildVarMap(sa.target);
+      context = interpolate(sa.definition.instinctContext, vars);
+    }
+
     const desc = buildInstinctDescription(
       {
         id: sa.definition.id,
@@ -453,6 +460,7 @@ function buildDecisionPrompt(
         targetName: sa.target.targetName,
         resistTraits: sa.definition.resistTraits,
         considerationCount: getConsiderationCount(npcId, sa.definition.id),
+        context,
       },
       agent.profile,
       agent.state.mood,

@@ -31,6 +31,8 @@ export interface InstinctInput {
   resistTraits?: Array<{ trait: keyof BigFiveTraits; direction: 'high' | 'low' }>;
   /** How many times this affordance appeared but NPC didn't choose it */
   considerationCount: number;
+  /** Situational grounding — interpolated instinctContext from affordance (module data) */
+  context?: string;
 }
 
 interface BigFiveTraits {
@@ -273,8 +275,9 @@ export function buildInstinctDescription(
   // 5. Mood coloring
   const moodColor = getMoodColoring(mood, tier);
 
-  // Compose: [escalation] base [motivation] [resistance] [mood]
-  const parts = [escalation, base, motivation, resistance, moodColor].filter(Boolean);
+  // Compose: [escalation] base [context] [motivation] [resistance] [mood]
+  // Flow: emotional intensity → situational grounding → enneagram drive → counter-voice → physical state
+  const parts = [escalation, base, input.context, motivation, resistance, moodColor].filter(Boolean);
   return parts.join(' ');
 }
 

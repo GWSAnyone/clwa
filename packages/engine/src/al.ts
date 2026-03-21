@@ -153,6 +153,9 @@ export interface AffordanceDefinition {
   resistTraits?: Array<{ trait: 'openness' | 'conscientiousness' | 'extraversion' | 'agreeableness' | 'neuroticism' | 'honesty'; direction: 'high' | 'low' }>;
   /** Trust contribution to scoring. Negative = trust inhibits (crime: -0.1). Positive = trust boosts (duty: 0.05). */
   trustWeight?: number;
+  /** Situational context template for instinct description. Interpolated with target.extra vars.
+   *  Grounds abstract emotional instinct in concrete situation. E.g. "You know that {targetName} {secretDetail:has a secret}." */
+  instinctContext?: string;
 }
 
 // ─── Mutable Registries (populated by modules at startup) ───
@@ -267,7 +270,7 @@ export function checkRequirements(
   const req = aff.requires;
 
   if (req.notGuard && agent.profile.investigator) return null;
-  if (req.isGuard && !agent.profile.investigator) return null; // deprecated: use isInvestigator
+  if (req.isGuard && !agent.profile.investigator) return null;
   if (req.isInvestigator && !agent.profile.investigator) return null;
   if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
