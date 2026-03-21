@@ -53,6 +53,13 @@ export function registerCrimeJusticeModule(): void {
       (b: any) => isSourceCategory(b.source, 'guilt'),
     );
   });
+  REQUIREMENT_CHECKERS.set('hasCrimeBelief', (agent, _ctx, params) => {
+    if (!agent.state.beliefs) return false;
+    const minConf = (params?.minConfidence as number) ?? 0.3;
+    return agent.state.beliefs.getAllBeliefs().some(
+      (b: any) => isTransferable(b.eventType) && b.confidence >= minConf && b.subject !== agent.profile.name,
+    );
+  });
 
   // Event registries — declare module-specific event metadata for engine
   registerEventCategory('crime', ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE']);

@@ -244,7 +244,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     label: 'Share alarming news with others',
     category: 'social',
     severity: 1,
-    requires: { notGuard: true },
+    requires: { notGuard: true, hasCrimeBelief: true, beliefConfidence: 0.3 },
     weights: [
       { trait: 'E', direction: 'high', multiplier: 0.3 },
       { trait: 'N', direction: 'high', multiplier: 0.1 },

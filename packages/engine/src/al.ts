@@ -213,7 +213,7 @@ export const REACTIVE_TARGET_FINDERS: Map<string, ReactiveTargetFinderFn> = new 
 // ─── Requirement Checker Hooks (populated by modules) ───
 
 /** Module-provided requirement checkers. Key = requirement field name */
-export const REQUIREMENT_CHECKERS: Map<string, (agent: Agent, ctx: AffordanceContext) => boolean> = new Map();
+export const REQUIREMENT_CHECKERS: Map<string, (agent: Agent, ctx: AffordanceContext, params?: Record<string, unknown>) => boolean> = new Map();
 
 // ─── Universal Role-Based Finder (proximity-aware, enriches with crime beliefs) ───
 
@@ -295,6 +295,10 @@ export function checkRequirements(
     const checker = REQUIREMENT_CHECKERS.get('notPerpetrator');
     if (!checker || !checker(agent, ctx)) return null;
   }
+  if (req.hasCrimeBelief) {
+    const checker = REQUIREMENT_CHECKERS.get('hasCrimeBelief');
+    if (!checker || !checker(agent, ctx, { minConfidence: req.beliefConfidence ?? 0.3 })) return null;
+  }
 
   const target = findTarget(aff, npcId, agent, ctx);
   if (!target) return null;
@@ -366,6 +370,10 @@ export function checkRequirementsReactive(
   if (req.notPerpetrator) {
     const checker = REQUIREMENT_CHECKERS.get('notPerpetrator');
     if (!checker || !checker(agent, ctx)) return null;
+  }
+  if (req.hasCrimeBelief) {
+    const checker = REQUIREMENT_CHECKERS.get('hasCrimeBelief');
+    if (!checker || !checker(agent, ctx, { minConfidence: req.beliefConfidence ?? 0.3 })) return null;
   }
 
   const target = findReactiveTarget(aff, npcId, agent, ctx, event);
