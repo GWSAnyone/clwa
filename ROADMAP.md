@@ -327,7 +327,13 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 #### E2E тест с prompt fix
 - [x] Прогнать 3+ чистых запуска по 100+ тиков — steal выбирается LLM ✅
 - [x] Проверить что murder chain работает без reflex — полная chain steal→investigate→arrest→sentence ✅
-- [ ] Проверить разнообразие между runs (разные жертвы, разные преступления) — в процессе
+- [ ] Проверить разнообразие affordances (6 не протестированы в реальном прогоне):
+  - [ ] `leverage` (blackmail) — score passes (0.60), LLM picks ~40% full prompt. Model limitation.
+  - [ ] `flee_town` — eventBoost fixed (WANTED_STATUS), event.object in reactors. Needs: wanted + delay before arrest
+  - [ ] `confront` — verb collision fixed. Needs: crime belief + low sentiment to suspect, no guard nearby
+  - [ ] `vigilante` — victim-rel sentiment fixed. Needs: strong crime belief + very low sentiment + bad mood
+  - [ ] `seek_forgiveness` — N-driven weights. Needs: criminal free until morning (daytime only)
+  - [ ] `intimidate_witness` — priority 8, own verb. Needs: criminal + witness same location at night + no guard
 - [x] Проверить что instinct builder descriptions корректно генерируются для всех tiers ✅
 
 #### TopicEngine — критические фиксы + расширение
