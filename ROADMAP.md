@@ -380,7 +380,11 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [ ] 2-3 полных прогона с Godot клиентом (наблюдение, взаимодействие с NPC, осмотр crime scene)
 
 #### NPC config externalization
-- [ ] Вынести NPC профили (PROFILES, RELATIONSHIP_DEFS, NPC_SCHEDULES, STARTING_MOODS, BACKGROUND_MEMORIES, WORLD_LORE) в JSON/YAML файлы вместо TypeScript constants
+- [x] World data externalized to `worlds/millhaven/` JSON files ✅ (v0.9.6)
+  - world.json (locations, lore, config), npcs/*.json (8 NPC files), relationships.json, topics.json, secrets.json
+  - World loader (`server/world-loader.ts`) reads JSON → creates engine structures
+  - `--world=path` CLI argument, default `worlds/millhaven`
+  - Zero TypeScript constants needed for world data. Scenario designer edits JSON only.
 - [ ] Сценарист редактирует JSON без программиста → ноль code changes для нового мира
 
 #### World Content Architecture (будущее — после externalization)

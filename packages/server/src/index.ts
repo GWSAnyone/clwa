@@ -8,6 +8,7 @@ import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from
 import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from '@clwa/engine';
 import { broadcast } from './ws';
 import { startServer } from './server';
+import { loadWorld } from './world-loader';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 
@@ -16,46 +17,7 @@ registerSocialModule();          // universal social topic sources
 registerCrimeJusticeModule();    // crime & justice affordances, CG rules, topic sources
 registerEventCategory('player_action', [PLAYER_ACTION_EVENT]);
 
-// ─── Register Role Topic Pools (world-specific conversation content) ───
-registerRoleTopicPool('bartender', [
-  { subject: 'a regular who hasn\'t come in lately', tone: 'mildly concerned', weight: 2, initiatorHook: 'You haven\'t seen a regular customer in days. Ask if they know anything.', category: 'role:bartender' },
-  { subject: 'the ale quality this week', tone: 'professional', weight: 2, initiatorHook: 'The latest batch turned out different. Mention it in passing.', category: 'role:bartender' },
-  { subject: 'something overheard last night', tone: 'gossipy, leaning in', weight: 2, initiatorHook: 'You overheard something interesting at the bar. Share it casually.', category: 'role:bartender' },
-]);
-registerRoleTopicPool('merchant', [
-  { subject: 'a tricky customer earlier today', tone: 'amused or exasperated', weight: 2, initiatorHook: 'A farmer tried to pay you in chickens. Tell them about it.', category: 'role:merchant' },
-  { subject: 'a missing shipment', tone: 'worried, business-like', weight: 2, initiatorHook: 'A crate you expected hasn\'t arrived. You\'re worried.', category: 'role:merchant' },
-  { subject: 'whether people appreciate quality goods', tone: 'slightly bitter', weight: 2, initiatorHook: 'Nobody here understands what fine goods cost.', category: 'role:merchant' },
-]);
-registerRoleTopicPool('guard', [
-  { subject: 'suspicious footprints near the gate', tone: 'alert, dutiful', weight: 2, initiatorHook: 'You noticed something odd during patrol.', category: 'role:guard' },
-  { subject: 'how quiet the roads have been', tone: 'contemplative', weight: 2, initiatorHook: 'It\'s been unusually quiet. Not sure if that\'s good.', category: 'role:guard' },
-  { subject: 'the paperwork piling up', tone: 'weary sigh', weight: 2, initiatorHook: 'Duty weighs on you today.', category: 'role:guard' },
-]);
-registerRoleTopicPool('priest', [
-  { subject: 'a parishioner who came for counsel', tone: 'thoughtful', weight: 2, initiatorHook: 'A young couple came with a disagreement. It made you think.', category: 'role:priest' },
-  { subject: 'the temple roof needing repair', tone: 'practical concern', weight: 2, initiatorHook: 'Rain leaked through the roof last night.', category: 'role:priest' },
-  { subject: 'a dream you had last night', tone: 'unsettled, reflective', weight: 2, initiatorHook: 'A strange dream won\'t leave you.', category: 'role:priest' },
-]);
-registerRoleTopicPool('bard', [
-  { subject: 'a melody that keeps coming back', tone: 'playful, humming', weight: 2, initiatorHook: 'A tune is stuck in your head.', category: 'role:bard' },
-  { subject: 'an old man\'s story at the tavern', tone: 'theatrical', weight: 2, initiatorHook: 'An old man told you something strange.', category: 'role:bard' },
-  { subject: 'whether anyone even listens anymore', tone: 'wistful', weight: 2, initiatorHook: 'You played your heart out and nobody clapped.', category: 'role:bard' },
-]);
-registerRoleTopicPool('blacksmith', [
-  { subject: 'a difficult piece you\'re working on', tone: 'focused', weight: 2, initiatorHook: 'A commission is giving you trouble.', category: 'role:blacksmith' },
-  { subject: 'the price of iron going up', tone: 'annoyed', weight: 2, initiatorHook: 'Materials are getting expensive.', category: 'role:blacksmith' },
-  { subject: 'a blade you\'re proud of', tone: 'quiet pride', weight: 2, initiatorHook: 'You finished something exceptional.', category: 'role:blacksmith' },
-]);
-registerRoleTopicPool('judge', [
-  { subject: 'a difficult case from the past', tone: 'thoughtful, burdened', weight: 2, initiatorHook: 'A case from years ago still troubles you.', category: 'role:judge' },
-  { subject: 'the burden of judgment', tone: 'weary, philosophical', weight: 2, initiatorHook: 'Deciding someone\'s fate weighs on you.', category: 'role:judge' },
-]);
-registerRoleTopicPool('herbalist', [
-  { subject: 'a rare herb you found at dawn', tone: 'mysterious, pleased', weight: 2, initiatorHook: 'You found something unusual in the wild.', category: 'role:herbalist' },
-  { subject: 'someone who came for a remedy', tone: 'knowing, cryptic', weight: 2, initiatorHook: 'Someone visited for help. Hint at what ailed them.', category: 'role:herbalist' },
-  { subject: 'the weather changing', tone: 'observant', weight: 2, initiatorHook: 'Signs in the weather mean something for the herbs.', category: 'role:herbalist' },
-]);
+// ─── Role Topic Pools — now loaded from worlds/*/topics.json by world-loader ───
 
 // ─── Secret Directive Builders (player interaction effects) ───
 registerSecretDirectiveBuilder(({ agent, agents, eventStore }) => {
@@ -190,10 +152,10 @@ const LOCATIONS: LocationDef[] = [
   },
 ];
 
-function buildLocationGraph(): LocationGraph {
+function buildLocationGraph(locs?: LocationDef[]): LocationGraph {
   const graph: LocationGraph = new Map();
-  for (const loc of LOCATIONS) {
-    graph.set(loc.id, loc);
+  for (const loc of (locs ?? LOCATIONS)) {
+    graph.set(loc.id ?? loc.name, loc);
   }
   return graph;
 }
@@ -616,17 +578,38 @@ const BACKGROUND_MEMORIES: Record<string, string[]> = {
   ],
 };
 
-function makeState(location: string, npcId: string): AgentState {
+function makeState(location: string, npcId: string, wd?: import('./world-loader').LoadedWorld): AgentState {
+  const moods = wd?.startingMoods ?? STARTING_MOODS;
+  const lore = wd?.lore ?? WORLD_LORE;
+  const profiles = wd?.profiles ?? PROFILES;
+  const rels = wd?.relationships ?? RELATIONSHIP_DEFS;
   return {
     alive: true,
     status: undefined,
     location,
-    mood: STARTING_MOODS[npcId] ?? 0.2,
+    mood: moods[npcId] ?? 0.2,
     currentDay: 1,
-    knownFacts: WORLD_LORE.slice(), // each NPC gets a copy of shared world knowledge
+    knownFacts: lore.slice(),
     beliefs: new BeliefManager(),
-    relationships: buildRelationships(npcId, PROFILES),
+    relationships: buildRelationshipsFromData(npcId, profiles, rels),
   };
+}
+
+function buildRelationshipsFromData(npcId: string, profiles: AgentProfile[], rels: Array<{from: string; to: string; type: string; sentiment?: number; trust?: number}>): RelationshipGraph {
+  const graph = new RelationshipGraph();
+  for (const def of rels) {
+    if (def.from !== npcId) continue;
+    const target = profiles.find(p => p.id === def.to);
+    if (!target) continue;
+    graph.addRelationship({
+      targetId: def.to,
+      targetName: target.name,
+      type: def.type as RelationType,
+      sentiment: def.sentiment ?? DEFAULT_SENTIMENT[def.type as RelationType],
+      trust: def.trust ?? DEFAULT_TRUST[def.type as RelationType],
+    });
+  }
+  return graph;
 }
 
 // ─── Bootstrap ───
@@ -636,6 +619,11 @@ const PORT = parseInt(process.env.PORT ?? '3000');
 async function main() {
   console.log('=== CLWA Server — Starting ===');
   console.log();
+
+  // ─── Load world from JSON files ───
+  const worldPath = process.argv.find(a => a.startsWith('--world='))?.split('=')[1]
+    ?? join(dirname(dirname(dirname(import.meta.dir))), 'worlds', 'millhaven');
+  const worldData = loadWorld(worldPath);
 
   const savedData = loadFromDisk();
   if (savedData) {
@@ -650,16 +638,16 @@ async function main() {
     console.log('  [+] Event Store');
   }
 
-  const locationGraph = buildLocationGraph();
+  const locationGraph = buildLocationGraph(worldData.locations);
   console.log(`  [+] Location Graph — ${locationGraph.size} locations`);
 
   const agents = new Map<string, Agent>();
   const shouldResetMemory = !savedData;
-  for (const npc of NPC_LOCATIONS) {
-    const profile = PROFILES.find((p) => p.id === npc.id)!;
+  for (const profile of worldData.profiles) {
+    const npcLocation = worldData.startingLocations.get(profile.id) ?? profile.id;
     const memory = new VectorMemory(profile.id);
     await memory.init(shouldResetMemory ? { reset: true } : undefined);
-    const agent = new Agent(profile, makeState(npc.location, npc.id), memory, {
+    const agent = new Agent(profile, makeState(npcLocation, profile.id, worldData), memory, {
       reflection: { threshold: 30 },
       onReflection: (name, text) => {
         console.log(`  [Reflection] ${name}: "${text}"`);
@@ -667,20 +655,21 @@ async function main() {
       },
     });
     agents.set(profile.id, agent);
-    console.log(`  [+] ${profile.name} the ${profile.role} @ ${npc.location}`);
+    console.log(`  [+] ${profile.name} the ${profile.role} @ ${npcLocation}`);
   }
 
   // ─── Seed background memories (unchangeable past) ───
   // Use memory.store() directly — NOT observe() — to avoid triggering reflection on startup
   if (!savedData) {
+    const bgMemories = worldData.backgroundMemories;
     for (const [npcId, agent] of agents) {
-      const memories = BACKGROUND_MEMORIES[npcId];
+      const memories = bgMemories[npcId];
       if (!memories || !agent.memory) continue;
       for (const memText of memories) {
-        await agent.memory.store(memText, 6, 0); // gameDay 0 = before simulation, importance 6
+        await agent.memory.store(memText, 6, 0);
       }
     }
-    console.log(`  [+] Background memories seeded for ${Object.keys(BACKGROUND_MEMORIES).length} NPCs`);
+    console.log(`  [+] Background memories seeded for ${Object.keys(bgMemories).length} NPCs`);
   }
 
   // ─── Starting beliefs (economic pressure, secrets) ───
@@ -715,53 +704,27 @@ async function main() {
     });
   }
 
-  // ─── Secret knowledge beliefs (who knows whose secret) ───
-  const bessAgent = agents.get('bess');
-  if (bessAgent?.state.beliefs) {
-    bessAgent.state.beliefs.addBelief({
-      id: crypto.randomUUID(),
-      eventType: 'PERSONAL_SECRET',
-      subject: 'Mark',
-      object: 'sells ordinary goods as exotic Valdris imports — overcharges everyone',
-      location: 'Market Square',
-      confidence: 0.9,
-      source: 'secret',
-      sourceNpcId: null,
-      gameDay: 1,
-      lastUpdated: 1,
-    });
+  // ─── Secret knowledge beliefs (from world data) ───
+  for (const secret of worldData.secrets) {
+    const npcAgent = agents.get(secret.npcId);
+    if (npcAgent?.state.beliefs) {
+      npcAgent.state.beliefs.addBelief({
+        id: crypto.randomUUID(),
+        eventType: secret.eventType,
+        subject: secret.subject,
+        object: secret.object,
+        location: null,
+        confidence: secret.confidence,
+        source: secret.source,
+        sourceNpcId: null,
+        gameDay: 1,
+        lastUpdated: 1,
+      });
+    }
   }
-  const hildaAgent = agents.get('hilda');
-  if (hildaAgent?.state.beliefs) {
-    hildaAgent.state.beliefs.addBelief({
-      id: crypto.randomUUID(),
-      eventType: 'PERSONAL_SECRET',
-      subject: 'Ted',
-      object: 'dilutes his ale with water to cover debts — regulars deserve better',
-      location: 'Silver Flagon Tavern',
-      confidence: 0.7,
-      source: 'secret',
-      sourceNpcId: null,
-      gameDay: 1,
-      lastUpdated: 1,
-    });
+  if (worldData.secrets.length > 0) {
+    console.log(`  [+] Secret knowledge seeded for ${worldData.secrets.length} NPCs`);
   }
-  const elaraAgent = agents.get('elara');
-  if (elaraAgent?.state.beliefs) {
-    elaraAgent.state.beliefs.addBelief({
-      id: crypto.randomUUID(),
-      eventType: 'PERSONAL_SECRET',
-      subject: 'Garrett',
-      object: 'once accepted a bribe to let someone pass the gate — his honor is a mask',
-      location: 'Town Gate',
-      confidence: 0.6,
-      source: 'secret',
-      sourceNpcId: null,
-      gameDay: 1,
-      lastUpdated: 1,
-    });
-  }
-  console.log('  [+] Secret knowledge seeded for 3 NPCs');
 
   // ─── Player Agent — full participant in the world ───
   {
@@ -776,7 +739,7 @@ async function main() {
       isPlayer: true,
     };
     const playerRelationships = new RelationshipGraph();
-    for (const p of PROFILES) {
+    for (const p of worldData.profiles) {
       playerRelationships.addRelationship({
         targetId: p.id,
         targetName: p.name,
@@ -890,13 +853,13 @@ async function main() {
       },
     },
     locationGraph,
-    { mobileNpcs: MOBILE_NPCS, moveProbability: 0.08 },
-    NPC_SCHEDULES,
-    NPC_HOMES,
+    { mobileNpcs: worldData.mobileNpcs, moveProbability: 0.08 },
+    worldData.schedules,
+    worldData.homes,
   );
   console.log('  [+] World orchestrator');
-  console.log(`  [+] NPC schedules: ${NPC_SCHEDULES.length} entries for ${new Set(NPC_SCHEDULES.map((s) => s.npcId)).size} NPCs`);
-  console.log(`  [+] Mobile NPCs: ${Array.from(MOBILE_NPCS).join(', ')}`);
+  console.log(`  [+] NPC schedules: ${worldData.schedules.length} entries for ${new Set(worldData.schedules.map((s) => s.npcId)).size} NPCs`);
+  console.log(`  [+] Mobile NPCs: ${Array.from(worldData.mobileNpcs).join(', ')}`);
 
   if (savedData) {
     world.loadState(savedData.world);

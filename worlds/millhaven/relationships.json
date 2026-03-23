@@ -1,0 +1,194 @@
+[
+  {
+    "from": "ted",
+    "to": "hilda",
+    "type": "friend",
+    "note": "old drinking buddies"
+  },
+  {
+    "from": "ted",
+    "to": "elara",
+    "type": "colleague",
+    "note": "performs at his tavern"
+  },
+  {
+    "from": "ted",
+    "to": "garrett",
+    "type": "acquaintance",
+    "note": "occasional tavern visitor"
+  },
+  {
+    "from": "ted",
+    "to": "aldric",
+    "type": "acquaintance",
+    "note": "comes for counsel sometimes"
+  },
+  {
+    "from": "ted",
+    "to": "mark",
+    "type": "acquaintance",
+    "note": "owes Mark money from gambling debts",
+    "sentiment": -0.15,
+    "trust": 0.3
+  },
+  {
+    "from": "ted",
+    "to": "bess",
+    "type": "acquaintance",
+    "note": "buys remedies for hangovers"
+  },
+  {
+    "from": "mark",
+    "to": "bess",
+    "type": "acquaintance",
+    "note": "she knows too much about herbs",
+    "sentiment": -0.7,
+    "trust": 0.0
+  },
+  {
+    "from": "mark",
+    "to": "hilda",
+    "type": "colleague",
+    "note": "resents paying full price for materials",
+    "sentiment": -0.15,
+    "trust": 0.3
+  },
+  {
+    "from": "mark",
+    "to": "elara",
+    "type": "acquaintance",
+    "note": "entertains at the tavern"
+  },
+  {
+    "from": "mark",
+    "to": "garrett",
+    "type": "acquaintance",
+    "note": "avoids the guard when possible",
+    "sentiment": -0.1
+  },
+  {
+    "from": "mark",
+    "to": "ted",
+    "type": "acquaintance",
+    "note": "Ted still owes him money",
+    "sentiment": -0.1,
+    "trust": 0.2
+  },
+  {
+    "from": "elara",
+    "to": "ted",
+    "type": "friend",
+    "note": "her favorite stage"
+  },
+  {
+    "from": "elara",
+    "to": "aldric",
+    "type": "acquaintance",
+    "note": "visits the temple for stories"
+  },
+  {
+    "from": "elara",
+    "to": "bess",
+    "type": "acquaintance",
+    "note": "fascinated by her riddles"
+  },
+  {
+    "from": "elara",
+    "to": "garrett",
+    "type": "acquaintance",
+    "note": "he asks too many questions, she is wary",
+    "sentiment": -0.1,
+    "trust": 0.3
+  },
+  {
+    "from": "garrett",
+    "to": "aldric",
+    "type": "colleague",
+    "note": "both serve the town"
+  },
+  {
+    "from": "garrett",
+    "to": "hilda",
+    "type": "acquaintance",
+    "note": "respects her work"
+  },
+  {
+    "from": "garrett",
+    "to": "elara",
+    "type": "acquaintance",
+    "note": "something about her does not add up",
+    "sentiment": -0.1,
+    "trust": 0.3
+  },
+  {
+    "from": "garrett",
+    "to": "magistrate",
+    "type": "colleague",
+    "note": "brings cases to the judge"
+  },
+  {
+    "from": "aldric",
+    "to": "bess",
+    "type": "friend",
+    "note": "elderly companionship, share tea"
+  },
+  {
+    "from": "aldric",
+    "to": "garrett",
+    "type": "colleague",
+    "note": "both protectors of the town"
+  },
+  {
+    "from": "aldric",
+    "to": "magistrate",
+    "type": "colleague",
+    "note": "fellow pillars of the community"
+  },
+  {
+    "from": "hilda",
+    "to": "ted",
+    "type": "friend",
+    "note": "old drinking buddies, but her father died in his tavern",
+    "sentiment": -0.2,
+    "trust": 0.4
+  },
+  {
+    "from": "hilda",
+    "to": "mark",
+    "type": "colleague",
+    "note": "trades materials, resents his haggling",
+    "sentiment": -0.1
+  },
+  {
+    "from": "bess",
+    "to": "aldric",
+    "type": "friend",
+    "note": "share wisdom and tea"
+  },
+  {
+    "from": "bess",
+    "to": "mark",
+    "type": "acquaintance",
+    "note": "his spices smell like common weeds",
+    "sentiment": -0.3,
+    "trust": 0.1
+  },
+  {
+    "from": "magistrate",
+    "to": "garrett",
+    "type": "colleague",
+    "note": "law enforcement partnership"
+  },
+  {
+    "from": "magistrate",
+    "to": "aldric",
+    "type": "colleague",
+    "note": "both serve the town, mutual respect"
+  },
+  {
+    "from": "magistrate",
+    "to": "ted",
+    "type": "acquaintance",
+    "note": "evening tavern visitor"
+  }
+]

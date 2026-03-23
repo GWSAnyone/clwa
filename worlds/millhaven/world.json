@@ -1,0 +1,89 @@
+{
+  "name": "Millhaven",
+  "description": "A small frontier village at a crossroads. Eight souls, each with secrets.",
+  "locations": [
+    {
+      "name": "Silver Flagon Tavern",
+      "description": "A warm tavern where Ted serves drinks and stories flow freely.",
+      "connections": [
+        "Town Square",
+        "Residential Lane"
+      ]
+    },
+    {
+      "name": "Town Square",
+      "description": "The central hub of town.",
+      "connections": [
+        "Silver Flagon Tavern",
+        "Market Square",
+        "Town Gate",
+        "Temple of Dawn",
+        "Blacksmith",
+        "Courthouse"
+      ]
+    },
+    {
+      "name": "Town Gate",
+      "description": "The main entrance to town. Garrett patrols here.",
+      "connections": [
+        "Town Square"
+      ]
+    },
+    {
+      "name": "Market Square",
+      "description": "Where merchants sell their wares.",
+      "connections": [
+        "Town Square",
+        "Residential Lane"
+      ]
+    },
+    {
+      "name": "Blacksmith",
+      "description": "Hilda's forge. The sound of hammering fills the air.",
+      "connections": [
+        "Town Square"
+      ]
+    },
+    {
+      "name": "Temple of Dawn",
+      "description": "A stone temple where Aldric performs the rites.",
+      "connections": [
+        "Town Square"
+      ]
+    },
+    {
+      "name": "Residential Lane",
+      "description": "Quiet homes where several townsfolk live.",
+      "connections": [
+        "Silver Flagon Tavern",
+        "Market Square"
+      ]
+    },
+    {
+      "name": "Courthouse",
+      "description": "Where Theron delivers justice.",
+      "connections": [
+        "Town Square"
+      ]
+    }
+  ],
+  "lore": [
+    "Millhaven is a small frontier village, founded over 200 years ago by settlers from the eastern kingdoms.",
+    "The village has 8 locations: Silver Flagon Tavern (the social heart), Town Square (the central hub), Town Gate (the only way in or out), Market Square (trade and commerce), Blacksmith (Hilda's forge), Temple of Dawn (worship and counsel), Residential Lane (homes), and the Courthouse (law and order).",
+    "The road to Valdris — the nearest city — is a week's journey through highlands known for bandits.",
+    "The Silver Flagon has served ale since the village founding. It's where everyone gathers in the evenings.",
+    "Magistrate Theron was sent here five years ago from the capital. Nobody knows exactly why.",
+    "Market days draw a few traders from surrounding farms, but Millhaven is mostly self-sufficient.",
+    "The Temple of Dawn was built by Brother Celwyn two generations ago. Father Aldric is his successor.",
+    "Winters are harsh. The village depends on stored grain, preserved meat, and whatever Bess can grow.",
+    "There is no formal jail — the courthouse has a holding cell used maybe once a year.",
+    "Everyone knows everyone. Secrets don't stay hidden long in a village this small."
+  ],
+  "config": {
+    "startTick": 28,
+    "ticksPerDay": 96,
+    "autoTickIntervalSeconds": 8,
+    "exchangeCount": 2,
+    "moodBias": 0
+  }
+}
