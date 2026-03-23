@@ -110,6 +110,9 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 36. **hasCrimeBelief**: checked via REQUIREMENT_CHECKERS registry with per-affordance beliefConfidence params. Was declared but never checked until v0.9.5 fix.
 37. **triggerReactiveEvaluation**: callback in EventHandlerContext. Module handler triggers AL reactive evaluation for specific NPC. Engine provides mechanics.
 38. **Information spread**: sentiment cascade for RUMOR_SPREAD/WITNESS_MEMORY/THEFT_DISCOVERED handled by module event handlers, not engine.
+39. **World data = JSON**: all NPC profiles, locations, relationships, schedules, memories, lore, secrets in `worlds/millhaven/`. Server reads via `world-loader.ts`. Zero TypeScript constants for world content.
+40. **TopicEngine v3**: 13 sources (11 social + 2 crime). Bidirectional beliefs, recency weighting, location context, cross-source dedup (topicKey), death-aware opinions. Location hooks via `registerLocationHook` registry.
+41. **Location hooks**: `conversationHook` field in world.json locations → `registerLocationHook` registry → `getLocationHook` in topic sources. No hardcoded location names in modules.
 
 ## Tick System
 

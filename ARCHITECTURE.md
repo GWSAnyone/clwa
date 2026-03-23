@@ -1138,13 +1138,21 @@ CLWA/
     ├── server/                     # @clwa/server — платформа
     │   ├── public/                 # Web UI (vanilla JS)
     │   └── src/
-    │       ├── index.ts            # Bootstrap: NPC profiles, schedules, relationships, persistence
+    │       ├── index.ts            # Bootstrap: loads world JSON, creates agents, starts server
+    │       ├── world-loader.ts     # Reads worlds/*/JSON → engine-compatible structures
     │       ├── server.ts           # Bun.serve: HTTP + WebSocket + static + player chat
     │       ├── routes.ts           # REST API handlers
     │       └── ws.ts               # WebSocket: broadcast, sendTo
+    └── worlds/                     # World data (JSON, editable by scenario designer)
+        └── millhaven/
+            ├── world.json          # 8 locations + lore + config + conversationHooks
+            ├── npcs/*.json         # 8 NPC files (profile, schedule, memories, mood, shop)
+            ├── relationships.json  # 29 initial relationships
+            ├── topics.json         # 8 role topic pools
+            └── secrets.json        # 5 starting beliefs (secrets + debt pressure)
 ```
 
-> **Принцип разделения**: Engine содержит пустые реестры. Modules заполняет их при регистрации (`registerCrimeJusticeModule()`). Зависимость: modules → engine, server → engine + modules. Engine НЕ зависит от modules.
+> **Принцип разделения**: Engine содержит пустые реестры. Modules заполняет их при регистрации (`registerSocialModule()`, `registerCrimeJusticeModule()`). World data — JSON файлы, не код. Server загружает через `world-loader.ts`. Зависимость: modules → engine, server → engine + modules + world data. Engine НЕ зависит от modules.
 
 ### Открытые вопросы
 
