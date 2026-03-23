@@ -543,7 +543,7 @@ export class World {
       // Select topic using TopicEngine
       const tickInDay = this.tickCount % TICKS_PER_DAY;
       const period = getTimePeriod(tickInDay);
-      const topic = this.topicEngine.selectTopic(initiator, responder, gameDay, period, this.playerAgent ?? undefined);
+      const topic = this.topicEngine.selectTopic(initiator, responder, gameDay, period, initiator.state.location, this.playerAgent ?? undefined);
 
       this.callbacks.onLlmCall?.('Casual conversation', `${initiator.profile.name} ↔ ${responder.profile.name} [${topic.subject}]`);
       conversation = await runConversation(

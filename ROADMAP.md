@@ -406,7 +406,7 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Belief zeroing** — moved to module NPC_SENTENCED handler, verdict-conditional ✅ (v0.9.5)
 - [x] **SOURCE_DECAY** — moved from engine hardcode to registry pattern ✅ (v0.9.5)
 - [x] **Module step types** — generic ModuleStep, engine no longer knows steal/arrest/etc ✅ (v0.9.5)
-- [ ] **TopicEngine built-in sources** — 7 source functions в engine. Должны быть в social module
+- [x] **TopicEngine built-in sources** — 7 source functions migrated from engine to `modules/social/` ✅ (v0.9.6)
 - [ ] **Information spread** (world.ts, isInformationOnly block) — sentiment cascade для rumor spread. Module knowledge в engine
 
 Результат: `modules/millhaven/` → полный мир. `modules/pirate-cove/` → другой мир. Ноль изменений в engine/modules. Графический редактор читает/пишет JSON.

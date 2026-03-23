@@ -685,9 +685,9 @@ Guard получает цель: move → interact → announce → return (аг
 
 #### Conversations
 
-##### Topic Engine (`topic-engine.ts`)
+##### Topic Engine (`engine/topic-engine.ts`)
 
-Plugin-архитектура выбора тем. Перед каждым NPC-NPC разговором TopicEngine выбирает **о чём** говорить на основе реального состояния мира (ноль LLM вызовов).
+Plugin-архитектура выбора тем. Перед каждым NPC-NPC разговором TopicEngine выбирает **о чём** говорить на основе реального состояния мира (ноль LLM вызовов). Engine содержит только механику выбора — все topic sources живут в модулях.
 
 **Архитектура:**
 ```typescript
@@ -700,29 +700,57 @@ interface TopicProposal {
   initiatorHook: string;  // направление для промпта инициатора
   responderHook?: string; // направление для респондера
   category: string;       // для трекинга повторов
+  topicKey?: string;      // dedup между sources (одно событие из разных sources → один proposal)
+  beliefTransfer?: { ... } // передача beliefs после разговора
+}
+
+interface TopicContext {
+  recentTopics: string[];  // anti-repeat per pair
+  gameDay: number;
+  period: string;          // dawn/morning/afternoon/evening/night
+  location: string;        // where conversation happens
+  playerAgent?: Agent;
 }
 ```
 
-**6 встроенных источников (по приоритету):**
+**13 topic sources в двух модулях:**
 
-| Source | Данные | Weight | Пример |
-|---|---|---|---|
-| **BeliefSource** | beliefs обоих NPC | 7-9 | *"murder of Bess → break the news"* |
-| **RelationshipSource** | sentiment, grief | 4-6 | *"tension → barely civil"* |
-| **InnerConflictSource** | innerConflict + trust | 4 | *"guilt leaks through in hints"* |
-| **MoodSource** | mood + trust | 2-4 | *"shaken, seeking comfort"* |
-| **WorldFactSource** | knownFacts | 2 | *"common knowledge"* |
-| **RoleSource** | role → declarative pool | 2 | *"bartender: missing regular"* |
+| Module | Source | Данные | Weight | Пример |
+|---|---|---|---|---|
+| **social** | **beliefTopics** | beliefs обоих NPC (bidirectional) | 6-12 | *"murder of Bess → break the news"* |
+| **social** | **relationshipTopics** | sentiment, grief | 4-6 | *"tension → barely civil"* |
+| **social** | **innerConflictTopics** | innerConflict + trust | 4 | *"guilt leaks through in hints"* |
+| **social** | **moodTopics** | mood обоих NPC (bidirectional) | 2-4 | *"you both feel the weight"* |
+| **social** | **roleTopics** | role → declarative pool | 2 | *"bartender: missing regular"* |
+| **social** | **worldFactTopics** | knownFacts | 2 | *"common knowledge"* |
+| **social** | **casualTopics** | relationships + location | 1-3 | *"comment on the ale" (location-aware)* |
+| **social** | **seasonalTopics** | period + gameDay | 1-2 | *"night makes people honest"* |
+| **social** | **memoryTopics** | old beliefs (2+ days) | 2 | *"remember what happened to Bess..."* |
+| **social** | **opinionTopics** | shared relationships (death-aware) | 2-4 | *"what do you think about Mark?"* |
+| **social** | **questionTopics** | low-conf beliefs, info gaps | 2 | *"heard rumors about... true?"* |
+| **crime** | **justiceTopics** | arrest/sentence/fled beliefs (bidirectional) | 5-11 | *"Mark was arrested!"* |
+| **crime** | **playerRumorTopics** | player claims + sentiment (bidirectional) | 3-6 | *"what did the stranger tell you?"* |
 
-**Расширяемость**: `topicEngine.registerSource(traumaTopics)` — новая система = новый источник тем, ноль изменений ядра. Аналогично AFFORDANCE_REGISTRY.
+**Расширяемость**: `TOPIC_SOURCE_REGISTRY.push(myTopics)` — новый модуль = новые темы, ноль изменений engine. Аналогично AFFORDANCE_REGISTRY.
+
+**Key design decisions (v0.9.6):**
+- **Bidirectional** — и initiator, и responder's beliefs/mood генерируют proposals. Три ветки hooks: initiator knows / responder knows / both know.
+- **Recency weighting** — beliefs от сегодня +4, от вчера +2, старые +0
+- **Location context** — belief связан с текущей локацией → +2 weight. Location-specific casual hooks.
+- **Cross-source dedup** — `topicKey` на TopicProposal. Одно событие из beliefTopics + memoryTopics → один proposal (highest weight wins).
+- **Death-aware opinions** — opinionTopics не предлагает "как дела у X" если X мёртв.
+- **Category→Group mapping** — все categories маппятся в groups для PM influence и diversity: `memory→event, opinion→relationship, question→knowledge, conflict→conflict, inner→inner`.
 
 **Anti-repeat**: трекинг последних 6 тем на пару, пенализация повторных категорий.
 
-**Topic selection v2 (v0.9.5):**
-- **Weighted random** — пропорциональный выбор, не sort-and-pick
-- **PM influence** — OCEAN traits обоих участников: E→casual, N→mood, O→knowledge, A→relationship
-- **Diversity tracking** — target ratios: 35% casual, 25% event, 15% relationship, 10% mood, 10% knowledge, 5% conflict
-- **Belief transfer** — `TopicProposal.beliefTransfer` → `addBelief` после разговора (bidirectional, conf × 0.5)
+**Selection pipeline (v0.9.6):**
+1. Collect all proposals from TOPIC_SOURCE_REGISTRY
+2. **Dedup by topicKey** — keep highest weight per key
+3. Penalize recently discussed categories (per pair)
+4. **PM influence** — OCEAN traits обоих участников: E→casual, N→mood/inner, O→knowledge, A→relationship, low A→conflict
+5. **Diversity tracking** — target ratios: 35% casual, 25% event, 15% relationship, 10% mood, 10% knowledge, 5% conflict
+6. **Weighted random selection** (proportional, not winner-take-all)
+7. Track history (per pair + day distribution)
 
 ##### Conversation Flow
 
@@ -1089,7 +1117,7 @@ CLWA/
     │       ├── secret-directives.ts # buildSecretDirectives()
     │       ├── intent.ts           # classifyIntent()
     │       ├── conversation.ts     # runConversation(), structured importance
-    │       ├── topic-engine.ts     # TopicEngine — 7 plugin sources, anti-repeat
+    │       ├── topic-engine.ts     # TopicEngine — selection engine only, 0 sources (modules fill registry)
     │       ├── scheduler.ts        # ConversationScheduler — pair selection
     │       ├── crime-scene.ts      # createCrimeScene(), templates
     │       ├── journal.ts          # PlayerJournal
@@ -1098,10 +1126,14 @@ CLWA/
     ├── modules/                    # @clwa/modules — мировой контент (данные)
     │   └── src/
     │       ├── index.ts            # Re-exports
+    │       ├── social/             # Universal social behavior
+    │       │   ├── index.ts        # registerSocialModule() — 11 topic sources
+    │       │   └── topic-sources.ts # belief, relationship, mood, casual, seasonal, memory, opinion, question topics
     │       └── crime-justice/
     │           ├── index.ts        # registerCrimeJusticeModule() — заполняет реестры engine
     │           ├── affordances.ts  # CRIME_AFFORDANCES (19 определений)
     │           ├── target-finders.ts # 14 finder-функций + REQUIREMENT_CHECKERS
+    │           ├── topic-sources.ts # justiceTopics + playerRumorTopics (bidirectional, recency, topicKey)
     │           └── cg-rules.ts     # CRIME_CG_RULES (14 правил)
     ├── server/                     # @clwa/server — платформа
     │   ├── public/                 # Web UI (vanilla JS)

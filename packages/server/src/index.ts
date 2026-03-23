@@ -4,7 +4,7 @@ import { InMemoryEventStore } from '@clwa/engine';
 import { World } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
-import { registerCrimeJusticeModule, CRIME_CG_RULES } from '@clwa/modules';
+import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
 import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from '@clwa/engine';
 import { broadcast } from './ws';
 import { startServer } from './server';
@@ -12,7 +12,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 
 // ─── Register World Modules ───
-registerCrimeJusticeModule();
+registerSocialModule();          // universal social topic sources
+registerCrimeJusticeModule();    // crime & justice affordances, CG rules, topic sources
 registerEventCategory('player_action', [PLAYER_ACTION_EVENT]);
 
 // ─── Register Role Topic Pools (world-specific conversation content) ───
