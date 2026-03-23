@@ -414,17 +414,87 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 ### Phase 2.5: Custom LLM — Qwen3.5-9B-CLWA
 > Своя модель, заточенная под движок. Uncensored + наш формат.
 
-Текущая Qwen3.5-9B имеет safety alignment который блокирует NPC от выбора тёмных действий (steal, kill, attack) даже когда характер и ситуация требуют. Reflex tier (bypass LLM) — временный хак, не решение.
+Текущая Qwen3.5-9B-abliterated избегает тёмных action verbs (steal, kill, leverage) в ~60% случаев из-за prompt dilution + остаточного safety alignment. LoRA fine-tuning научит модель **связи между параметрами личности и поведением**, а не запомненным ответам.
 
-**Цель**: Qwen3.5-9B-CLWA — abliterated + fine-tuned на наших данных. Uncensored, заточена под DO/WHY, JSON extraction, dark RP. Vision и reasoning toggle сохранены.
+**Цель**: Qwen3.5-9B-CLWA — abliterated + LoRA fine-tuned. Модель понимает: Big Five → behavioral threshold, mood → amplifier, instinct tier → action urgency.
 
-- [ ] **Abliteration** — удалить refusal vector из весов. Инструмент: OBLITERATUS / NousResearch. ~30 мин на GPU с 4-bit load. Сохраняет все capabilities.
-- [ ] **Датасет** (~1000 примеров): DO/WHY volition decisions (вкл. steal/kill/attack), conversation impact JSON (mood_impact), IL extraction (DialogueMeaning), dark RP dialogue, sentence verdicts
-- [ ] **LoRA fine-tune** — Unsloth, bf16 LoRA (не QLoRA — Qwen3.5 плохо переносит 4-bit training). GPU: Colab T4 16GB или Vast.ai A100. ~2-3 часа.
-- [ ] **Export GGUF** — Q4_K_M (~5GB) для LM Studio
-- [ ] **Тестирование** — прогнать E2E: steal выбирается при urge tier, JSON парсится, диалоги in-character
+**Инфраструктура** (готово):
+- [x] Unsloth 2026.3.8 + conda env `unsloth` (Python 3.12)
+- [x] Модель: `C:\Ledevia\Projects\Models\Qwen3.5-9B-abliterated\` (17GB safetensors)
+- [x] QLoRA 4-bit loading verified: 7.1 GB VRAM на RTX 3080, 2.9 GB свободно для адаптеров
+- [x] GGUF thinking patch: `training/patch-gguf-thinking.py`
 
-**Результат**: NPC выбирают steal/kill/attack когда PM instincts указывают, без reflex hack. Лучше structured output для наших форматов.
+#### Датасет: слоёная архитектура (~740 примеров)
+
+Зеркалит архитектуру CLWA: **Base (engine)** — фундаментальное понимание, не меняется при добавлении модулей. **Module** — поведение конкретного модуля, расширяется независимо.
+
+**Ключевые принципы** (на основе research: BIG5-CHAT ACL 2025, OpenCharacter, 500+ LoRA experience):
+- **Контрастивные пары** — одна ситуация + разная личность = разное решение. Учит СВЯЗЬ параметров и поведения, не {имя}→{действие}
+- **Качество > количество** — каждый пример вручную с полным психологическим обоснованием
+- **LoRA учит паттерны** — стиль, формат, behavioral reasoning. Не инъекция знаний
+- **70% наших NPC + 30% вымышленных** — для генерализации personality→behavior mapping
+
+**Base Layer (~330 примеров)** — универсальные, работают для ЛЮБОГО модуля:
+
+| Тема | Кол-во | Что учит |
+|---|---|---|
+| **B1: Big Five → решения** | 120 | Контрастивные пары: H(16), C(16), A(16), N(16), E(16), O(12), multi-trait(28) |
+| **B2: Enneagram → мотивация** | 30 | coreFear/coreDesire формируют reason в решениях |
+| **B3: Mood → амплификатор** | 40 | Positive mood ингибирует crime, negative → enables |
+| **B4: Tier → порог действия** | 40 | whisper=ignore, torrent=hard to resist |
+| **B5: Dialogue quality** | 60 | ≤12/20 слов, без нарратива, per-personality voice |
+| **B6: Impact analysis** | 40 | importance calibration 1-8, secret detection |
+
+**Module: Crime & Justice (~410 примеров)** — специфичны для этого модуля:
+
+| Тема | Кол-во | Содержание |
+|---|---|---|
+| **C1: Criminal actions** | 95 | steal(25), attack(25), leverage(20), intimidate(15), destroy_evidence(10) |
+| **C2: Duty actions** | 50 | investigate(15), arrest(15), evaluate(10), interrogate(10) |
+| **C3: Social actions** | 90 | confront, flee, vigilante, seek_forgiveness, testify, report, gossip, demand_justice |
+| **C4: Crime dialogue** | 60 | murder/theft/suspicion/grief/cover-up темы |
+| **C5: Crime interactions** | 55 | report/interrogate/confront/intimidate/leverage |
+| **C6: Verdicts** | 60 | 5 типов × 12, varying evidence/severity/judge PM |
+
+**Расширяемость**: добавить Economy = создать `modules/economy/` → combine с base → retrain. Base и Crime не трогаем.
+
+```
+training/dataset/
+├── base/                          ← Universal, module-independent
+│   ├── b1-personality/            ← Big Five → behavioral mapping
+│   │   ├── honesty.jsonl
+│   │   ├── conscientiousness.jsonl
+│   │   ├── agreeableness.jsonl
+│   │   ├── neuroticism.jsonl
+│   │   ├── extraversion.jsonl
+│   │   ├── openness.jsonl
+│   │   └── multi-trait.jsonl
+│   ├── b2-enneagram.jsonl
+│   ├── b3-mood.jsonl
+│   ├── b4-tier-threshold.jsonl
+│   ├── b5-dialogue.jsonl
+│   └── b6-impact.jsonl
+├── modules/
+│   └── crime-justice/
+│       ├── c1-criminal.jsonl
+│       ├── c2-duty.jsonl
+│       ├── c3-social.jsonl
+│       ├── c4-dialogue.jsonl
+│       ├── c5-interactions.jsonl
+│       └── c6-verdicts.jsonl
+├── combine.ts                     ← base + modules → output JSONL
+└── output/
+    └── clwa-v1.jsonl
+```
+
+#### Training pipeline
+
+- [ ] **Датасет** — ~740 hand-crafted примеров в ChatML формате, контрастивные пары, per-NPC voice
+- [ ] **QLoRA fine-tune** — Unsloth, 4-bit, RTX 3080. ~1-2 часа. Fallback: cloud bf16 LoRA если QLoRA degraded
+- [ ] **Export GGUF** — Q4_K_M (~5GB) + thinking patch для LM Studio
+- [ ] **Тестирование** — E2E: steal/leverage выбираются при high tier, JSON парсится, dialogue ≤12w, per-NPC voice
+
+**Результат**: модель понимает personality→behavior mapping. Тёмные глаголы выбираются когда PM + mood + tier указывают. Dialogue quality. Расширяемый датасет для будущих модулей.
 
 ### Phase 3: World Expansion
 > Новые подсистемы движка + модули контента. 4 engine-подсистемы разблокируют десятки модулей.

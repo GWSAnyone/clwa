@@ -6,3 +6,7 @@ bun.lock
 packages/server/data/
 .serena/
 godot/.godot/
+unsloth_compiled_cache/
+training/dataset/output/
+training/output/
+test-run.jsonl
