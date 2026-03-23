@@ -8,7 +8,8 @@
       "connections": [
         "Town Square",
         "Residential Lane"
-      ]
+      ],
+      "conversationHook": "Comment on the ale, the crowd, or something funny a customer did."
     },
     {
       "name": "Town Square",
@@ -20,14 +21,16 @@
         "Temple of Dawn",
         "Blacksmith",
         "Courthouse"
-      ]
+      ],
+      "conversationHook": "Comment on who you see passing through, the weather, or a notice on the board."
     },
     {
       "name": "Town Gate",
       "description": "The main entrance to town. Garrett patrols here.",
       "connections": [
         "Town Square"
-      ]
+      ],
+      "conversationHook": "Comment on travelers, the road, or the weather outside."
     },
     {
       "name": "Market Square",
@@ -35,21 +38,24 @@
       "connections": [
         "Town Square",
         "Residential Lane"
-      ]
+      ],
+      "conversationHook": "Comment on the goods, the prices, or who you saw shopping today."
     },
     {
       "name": "Blacksmith",
       "description": "Hilda's forge. The sound of hammering fills the air.",
       "connections": [
         "Town Square"
-      ]
+      ],
+      "conversationHook": "Comment on the heat, the sound of hammering, or a well-made blade."
     },
     {
       "name": "Temple of Dawn",
       "description": "A stone temple where Aldric performs the rites.",
       "connections": [
         "Town Square"
-      ]
+      ],
+      "conversationHook": "Comment on the peace here, a prayer, or a candle that burned brightly."
     },
     {
       "name": "Residential Lane",
@@ -57,14 +63,16 @@
       "connections": [
         "Silver Flagon Tavern",
         "Market Square"
-      ]
+      ],
+      "conversationHook": "Comment on the quiet, a neighbor you passed, or something domestic."
     },
     {
       "name": "Courthouse",
       "description": "Where Theron delivers justice.",
       "connections": [
         "Town Square"
-      ]
+      ],
+      "conversationHook": "Comment on the weight of the building, a case you overheard, or the magistrate."
     }
   ],
   "lore": [

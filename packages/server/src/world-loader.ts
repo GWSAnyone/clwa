@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { AgentProfile, LocationDef, ScheduleEntry, NpcHome } from '@clwa/engine';
-import { registerRoleTopicPool } from '@clwa/engine';
+import { registerRoleTopicPool, registerLocationHook } from '@clwa/engine';
 
 // ─── JSON Schemas ──────────────────────────────────────────────
 
@@ -50,6 +50,7 @@ interface LocationJson {
   name: string;
   description: string;
   connections: string[];
+  conversationHook?: string;
 }
 
 interface WorldJson {
@@ -136,6 +137,13 @@ export function loadWorld(worldDir: string): LoadedWorld {
     isPublic: true,
     description: loc.description,
   }));
+
+  // Register location conversation hooks (for casual topic sources)
+  for (const loc of worldJson.locations) {
+    if (loc.conversationHook) {
+      registerLocationHook(nameToId.get(loc.name)!, loc.conversationHook);
+    }
+  }
 
   // ─── NPC files ───
   const npcsDir = join(worldDir, 'npcs');

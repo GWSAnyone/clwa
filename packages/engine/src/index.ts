@@ -193,6 +193,7 @@ export {
   registerGoalMoodBoost, getGoalMoodBoost,
   registerBodyDiscoveryEventType, getBodyDiscoveryEventType,
   registerRoleTopicPool, getRoleTopicPool,
+  registerLocationHook, getLocationHook,
   registerRumorEventType, getRumorEventType,
   registerBeliefCreator, getBeliefCreator,
   registerMemoryTextBuilder, getMemoryTextBuilder,

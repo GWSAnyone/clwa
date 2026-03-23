@@ -12,7 +12,7 @@ import {
   type TopicContext,
   TOPIC_SOURCE_REGISTRY,
 } from '@clwa/engine';
-import { getEventLabel, isDeathEvent, getRoleTopicPool } from '@clwa/engine';
+import { getEventLabel, isDeathEvent, getRoleTopicPool, getLocationHook } from '@clwa/engine';
 
 // ─── Belief Topics ─────────────────────────────────────────────
 // NPC shares or discusses structured beliefs about world events.
@@ -324,16 +324,9 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
     });
   }
 
-  // Location-specific small talk
+  // Location-specific small talk (hooks from world data via registry)
   if (init.state.mood > -0.2) {
-    const locationHooks: Record<string, string> = {
-      'Silver Flagon Tavern': 'Comment on the ale, the crowd, or something funny a customer did.',
-      'Market Square': 'Comment on the goods, the prices, or who you saw shopping today.',
-      'Town Gate': 'Comment on travelers, the road, or the weather outside.',
-      'Temple of Dawn': 'Comment on the peace here, a prayer, or a candle that burned brightly.',
-      'Blacksmith': 'Comment on the heat, the sound of hammering, or a well-made blade.',
-    };
-    const hook = locationHooks[ctx.location]
+    const hook = getLocationHook(ctx.location)
       ?? 'Comment on something mundane — the weather, the village, something you noticed today.';
     proposals.push({
       subject: 'village life',

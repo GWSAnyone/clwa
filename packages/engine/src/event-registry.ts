@@ -505,6 +505,17 @@ export function registerRoleTopicPool(role: string, topics: RoleTopicDef[]): voi
   ROLE_TOPIC_POOLS.set(role, topics);
 }
 
+// ─── Location conversation hooks (casual small talk grounding per location) ───
+const LOCATION_HOOKS: Map<string, string> = new Map();
+
+export function registerLocationHook(locationId: string, hook: string): void {
+  LOCATION_HOOKS.set(locationId, hook);
+}
+
+export function getLocationHook(locationId: string): string | undefined {
+  return LOCATION_HOOKS.get(locationId);
+}
+
 export function getRoleTopicPool(role: string): RoleTopicDef[] {
   return ROLE_TOPIC_POOLS.get(role) ?? [];
 }
