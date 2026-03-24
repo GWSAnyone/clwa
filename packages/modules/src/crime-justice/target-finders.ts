@@ -329,7 +329,7 @@ export function registerCrimeTargetFinders(): void {
   TARGET_FINDERS.set('gossip', findGossipTarget);
   TARGET_FINDERS.set('crime_scene', findCrimeSceneForCriminal);
   TARGET_FINDERS.set('witness_target', findWitnessTarget);
-  TARGET_FINDERS.set('self_gate', (npcId, agent) => ({ targetId: npcId, targetName: agent.profile.name, targetLocation: 'Town Gate' }));
+  TARGET_FINDERS.set('self_gate', (npcId, agent) => ({ targetId: npcId, targetName: agent.profile.name, targetLocation: 'town-gate' }));
   TARGET_FINDERS.set('detained', (_npcId, _agent, ctx) => findDetainedTarget(ctx));
 
   // Reactive finders (used when events trigger affordance evaluation)
@@ -435,7 +435,7 @@ export function registerCrimeTargetFinders(): void {
   REACTIVE_TARGET_FINDERS.set('flee_town', (npcId, agent, _ctx, event) => {
     const criminalName = (event.payload?.suspectName as string) ?? event.subject;
     if (agent.profile.name !== criminalName && agent.profile.id !== criminalName) return null;
-    return { targetId: npcId, targetName: agent.profile.name, targetLocation: 'Town Gate' };
+    return { targetId: npcId, targetName: agent.profile.name, targetLocation: 'town-gate' };
   });
 
   REACTIVE_TARGET_FINDERS.set('evaluate_case', (_npcId, agent, ctx) => {

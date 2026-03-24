@@ -495,7 +495,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
       requiresRelationToVictim: true,
     },
     stepTemplates: [
-      { action: 'move_to', location: 'Town Square', skipIfAt: true },
+      { action: 'move_to', location: 'town-square', skipIfAt: true },
       { action: 'announce', message: 'demands justice for the {crimeType:crime} against {victimName:the victim}! Someone must answer for this!', importance: 5 },
       { action: 'move_to', location: '$target', skipIfAt: true },
       { action: 'interact', targetId: '$target', purpose: 'Demand that the guard investigate the {crimeType:crime} against {victimName:your loved one}. You are emotional and insistent.', importance: 6 },
@@ -582,7 +582,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     suppressNearPlayer: true,
     severity: 3,
     resistTraits: [{ trait: 'conscientiousness', direction: 'high' }],
-    requires: { isCriminal: true, isWanted: true, moodBelow: -0.5 },
+    requires: { isCriminal: true, isWanted: true, moodBelow: -0.3 },
     weights: [
       { trait: 'N', direction: 'high', multiplier: 0.3 },
       { trait: 'C', direction: 'low', multiplier: 0.2 },
@@ -597,7 +597,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
       boost: 0.5,
     },
     stepTemplates: [
-      { action: 'move_to', location: 'Town Gate', skipIfAt: true },
+      { action: 'move_to', location: '$target', skipIfAt: true },
       { action: 'flee', importance: 8 },
     ],
   },
@@ -633,7 +633,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
       role: 'judge',
     },
     stepTemplates: [
-      { action: 'move_to', location: 'Courthouse', skipIfAt: true },
+      { action: 'move_to', location: '$home', skipIfAt: true },
       { action: 'wait', ticks: 4 }, // Wait for testimony/evidence to arrive before sentencing
       { action: 'sentence_npc', targetId: '$target', importance: 9 },
     ],
