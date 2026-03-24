@@ -239,7 +239,7 @@ LLM отвечает свободно. Может последовать инс�
 | `steal` | crime | 4 | noGuard, shop nearby, mood<-0.6 | H↓, N↑ inhibit, C↓ | — |
 | `kill` | crime | 10 | motive, night/evening, mood<-0.3, sentiment<-0.3 | A↓, H↑ inhibit, C↓, N↑ | — |
 | `vigilante` | crime | 8 | crimeBelief≥0.6, mood<-0.4, sentiment<-0.4 | A↓, H↓, E↑ | — |
-| `blackmail` | crime | 5 | mood<-0.3 | H↓, E↑, N↑ inhibit | — |
+| `leverage` (blackmail) | crime | 5 | mood<-0.3 | H↓, E↑, N↑ inhibit | — |
 | `confront` | social | 3 | crimeBelief≥0.5, sentiment<-0.2 | E↑, A↓, N↓, H↑ | — |
 | `report_crime` | duty | 2 | notGuard, witnessBelief | C↑, H↑, N↑ inhibit | WITNESS_MEMORY, THEFT_DISCOVERED (+0.4) |
 | `investigate` | duty | 2 | isInvestigator | C↑, O↑ | WANTED_STATUS (+0.5) |
@@ -257,7 +257,7 @@ LLM отвечает свободно. Может последовать инс�
 | `evaluate_case` | duty | 3 | canSentence, hasDetainedNpc | C↑, H↑ | NPC_ARRESTED (+0.5) |
 | `socialize` | social | 0 | notGuard | E↑ (0.4), A↑ (0.1) | — (social module) |
 
-**socialize** (v0.9.7): социальный fallback — обеспечивает LLM volition для экстравертных NPC даже без crime events. Нет actionVerb — невидим для LLM. Instinct pressure only. `socialOnly` flag: "talk" = move-only → TopicEngine handles conversation. Priority 2 (ниже schedule).
+**socialize** (v0.9.7+): социальный fallback — обеспечивает LLM volition для экстравертных NPC даже без crime events. Нет actionVerb — невидим для LLM. Instinct pressure only. `socialOnly: true` on AffordanceDefinition — engine checks this flag (not affordance ID) for social-only detection: "talk" = move-only → TopicEngine handles conversation. Priority 2 (ниже schedule).
 
 #### DISCOVERY_HANDLERS (v0.9.7)
 
@@ -665,7 +665,7 @@ Guard получает цель: move → interact → announce → return (аг
 **Priority preemption**: высокоприоритетная цель переводит текущую active → pending.
 
 **Триггеры целей (реализованы через AL):**
-- **Proactive**: AL фильтрует affordances → PM scores → LLM DO/WHY → goal steps (steal, kill, vigilante, blackmail, confront)
+- **Proactive**: AL фильтрует affordances → PM scores → LLM DO/WHY → goal steps (steal, kill, vigilante, leverage, confront)
 - **Reactive** (на CE event): investigate (guard, WANTED_STATUS), report_crime (WITNESS_MEMORY), gossip (RUMOR_SPREAD), grieve (relation to victim), lay_low / seek_forgiveness (criminal on WANTED_STATUS)
 - Legacy triggers удалены (goal-triggers.ts, crime-triggers.ts) — полностью заменены AL reactive system
 

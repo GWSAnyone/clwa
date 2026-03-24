@@ -344,7 +344,7 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
   - [ ] `confront` — verb registered, score computable. Needs: longer WANTED→arrest window (currently ~20 ticks). Low priority — mechanically identical to interact
   - [ ] `vigilante` — verb registered. Same timing issue as confront. Needs: NPC with crime belief + very low sentiment + bad mood
   - [ ] `intimidate_witness` — verb registered. Needs: criminal + witness co-located at night + no guard. Rare natural conditions
-  - [ ] `destroy_evidence` — Score 0.72 when Mark WANTED. Available but outscored by blackmail. Needs: criminal at crime scene at night
+  - [x] `destroy_evidence` — Score 0.72 when Mark WANTED. Available, observed in previous test sessions. Outscored by blackmail in most runs ✅
 - [x] Проверить что instinct builder descriptions корректно генерируются для всех tiers ✅
 
 #### TopicEngine — критические фиксы + расширение
@@ -436,6 +436,10 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Body discovery** — hardcoded memory/mood/belief in checkBodyDiscovery → DISCOVERY_HANDLERS registry. Module owns response ✅ (v0.9.7)
 - [x] **Dead code** — checkMurderMotivation, askMurderDecision, spreadRumorsOnDayAdvance removed (~130 lines) ✅ (v0.9.7)
 - [x] **Engine purity audit** — exhaustive check of all 18 World methods + 6 CG methods. ZERO module-specific content confirmed ✅ (v0.9.7)
+- [x] **Action verb registration** — missing verbs (intimidate, confront) registered + runtime validation at startup ✅ (v0.9.7+)
+- [x] **Location IDs in affordances** — evaluate_case, flee_town, demand_justice used display names instead of slugs ✅ (v0.9.7+)
+- [x] **Location IDs in target-finders** — findGossipTarget returned display name, crime scene awareness belief.location used display name ✅ (v0.9.7+)
+- [x] **socialOnly flag** — engine volition.ts had hardcoded `'socialize'` string. Replaced with `socialOnly` flag on AffordanceDefinition. Economy Module Test passes ✅ (v0.9.7+)
 
 Результат: `modules/millhaven/` → полный мир. `modules/pirate-cove/` → другой мир. Ноль изменений в engine/modules. Графический редактор читает/пишет JSON.
 
