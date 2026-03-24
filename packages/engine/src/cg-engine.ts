@@ -243,14 +243,4 @@ export class ConsequenceEngine {
    * Uses STRUCTURED BELIEFS (not text matching) to find crime knowledge.
    * NPCs with crime beliefs in public places spread to those who don't know yet.
    */
-  // spreadRumorsOnDayAdvance has been moved to the crime-justice module
-  // via registerDayAdvanceHandler(). See packages/modules/src/crime-justice/index.ts.
-  // This placeholder method is kept for backward compatibility during transition.
-  async spreadRumorsOnDayAdvance(
-    _ctx: WorldContext,
-    _currentDay: number,
-    _eventStore?: { query: (q: any) => WorldEvent[] },
-  ): Promise<ConsequenceResult[]> {
-    return []; // Logic moved to DAY_ADVANCE_HANDLERS registered by modules
-  }
 }

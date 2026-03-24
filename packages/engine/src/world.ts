@@ -30,7 +30,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine, getTopicGroup } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, BELIEF_SOURCE } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -88,19 +88,6 @@ const CONVERSATION_IMPACT_SCHEMA: LlmJsonSchema = {
       secret_revealed: { type: 'string', description: 'If someone confessed or revealed hidden info: "NAME revealed about NAME: detail". Example: "Ted revealed about Ted: waters down ale". Empty string if none.' },
     },
     required: ['mentions', 'mood_impact', 'importance', 'secret_revealed'],
-    additionalProperties: false,
-  },
-};
-
-const MURDER_DECISION_SCHEMA: LlmJsonSchema = {
-  name: 'murder_decision',
-  strict: true,
-  schema: {
-    type: 'object',
-    properties: {
-      answer: { type: 'string', enum: ['yes', 'no'] },
-    },
-    required: ['answer'],
     additionalProperties: false,
   },
 };
@@ -868,117 +855,7 @@ export class World {
     }
   }
 
-  /**
-   * Murder motivation check — runs during night ticks.
-   * For each NPC with a motive: if conditions align (sentiment, mood, same location,
-   * night, no witnesses or low risk), ask LLM whether NPC acts on their grudge.
-   * NOT a script — the murder only happens when emergent conditions converge.
-   */
-  private async checkMurderMotivation(): Promise<{ killerId: string; victimId: string } | null> {
-    const period = this.currentPeriod;
-    // Only late evening or night — darkness provides cover
-    if (period !== 'night' && period !== 'evening') return null;
-
-    for (const [id, agent] of this.agents) {
-      if (!isActive(agent)) continue;
-      const motive = agent.profile.motive;
-      if (!motive) continue;
-
-      const target = this.agents.get(motive.targetId);
-      if (!target || !target.state.alive) continue;
-
-      // Condition checks — all must be true
-      // 1. Same location
-      if (agent.state.location !== target.state.location) continue;
-
-      // 2. Mood threshold — NPC must be distressed (< -0.3)
-      if (agent.state.mood >= -0.3) continue;
-
-      // 3. Sentiment toward target — must be negative (< -0.3)
-      const rel = agent.state.relationships?.getRelationship(motive.targetId);
-      if (!rel || rel.sentiment >= -0.3) continue;
-
-      // 4. No other NPCs at the same location (reduce witness risk)
-      //    OR mood is so bad they don't care (< -0.7)
-      const othersPresent = Array.from(this.agents.values()).filter(
-        (a) => a !== agent && a !== target && a.state.alive && a.state.location === agent.state.location,
-      );
-      if (othersPresent.length > 0 && agent.state.mood >= -0.7) continue;
-
-      // 5. Player not present (NPC wouldn't kill in front of a stranger)
-      if (this.playerLocation === agent.state.location) continue;
-
-      // All conditions met — ask LLM for final decision
-      console.log(`  [Motive] ${agent.profile.name} has opportunity against ${target.profile.name} — consulting LLM...`);
-      this.callbacks.onLlmCall?.('Murder decision', `${agent.profile.name} → ${target.profile.name}`);
-      const shouldAct = await this.askMurderDecision(agent, target, motive.reason, othersPresent.length);
-      if (shouldAct) {
-        return { killerId: id, victimId: motive.targetId };
-      } else {
-        console.log(`  [Motive] ${agent.profile.name} decided not to act tonight`);
-        // Small mood recovery — they chose restraint
-        agent.state.mood = Math.min(1, agent.state.mood + 0.05);
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Ask LLM whether an NPC would act on their murderous grudge tonight.
-   * Returns true if the NPC decides to kill. The LLM must reply with YES or NO.
-   */
-  private async askMurderDecision(
-    killer: Agent,
-    victim: Agent,
-    motiveReason: string,
-    witnessCount: number,
-  ): Promise<boolean> {
-    const beliefs = killer.state.beliefs?.summarizeForPrompt() ?? '';
-    const relSummary = killer.state.relationships?.summarizeForPrompt() ?? '';
-
-    const prompt = [
-      `You are deciding whether ${killer.profile.name} the ${killer.profile.role} would commit murder tonight.`,
-      ``,
-      `CONTEXT:`,
-      `- Motive: ${motiveReason}`,
-      `- Current mood: ${killer.state.mood.toFixed(2)} (scale: -1 to 1, very negative = deeply distressed)`,
-      `- Location: ${killer.state.location} (it is nighttime)`,
-      `- Target: ${victim.profile.name} the ${victim.profile.role}`,
-      witnessCount > 0 ? `- WARNING: ${witnessCount} other NPC(s) present at this location` : `- They are alone with the target`,
-      `- ${killer.profile.name}'s personality: ${killer.profile.background}`,
-      `- Inner conflict: ${killer.profile.innerConflict ?? 'none'}`,
-      beliefs ? `- Current beliefs: ${beliefs}` : '',
-      relSummary ? `- Relationships: ${relSummary}` : '',
-      ``,
-      `Would ${killer.profile.name} act on their grudge tonight? Consider their personality, emotional state,`,
-      `and whether the circumstances push them past their breaking point. This is not guaranteed — most nights`,
-      `they would hold back. Only answer YES if the combination of factors is truly overwhelming.`,
-      ``,
-      `Answer ONLY "YES" or "NO".`,
-    ].filter(Boolean).join('\n');
-
-    await llmSemaphore.acquire();
-    try {
-      const content = await llmCall({
-        system: 'You are a narrative decision engine.',
-        user: prompt,
-        temperature: 0.7,
-        maxTokens: 30,
-        jsonSchema: MURDER_DECISION_SCHEMA,
-      });
-      if (!content) return false;
-
-      const decision = JSON.parse(content) as { answer: string };
-      console.log(`  [Motive] LLM decision for ${killer.profile.name}: ${decision.answer}`);
-      return decision.answer.toUpperCase() === 'YES';
-    } catch (err) {
-      console.error(`  [Motive] LLM call failed:`, err);
-      return false;
-    } finally {
-      llmSemaphore.release();
-    }
-  }
+  // Legacy checkMurderMotivation + askMurderDecision removed — replaced by AL volition `kill` affordance
 
   /**
    * Check if any alive NPC is at a location with a dead NPC they haven't discovered yet.
@@ -1044,28 +921,17 @@ export class World {
 
         this.eventStore.append(discoveryEvent);
 
-        // Discoverer gets memory + belief directly (not through cascade)
-        const discoveryText = `I discovered the body of ${victimName} at ${agent.state.location}! They appear to have been murdered. I need to tell someone about this immediately.`;
-        await agent.observe(discoveryText, 8);
-        agent.state.mood = Math.max(-1, agent.state.mood - 0.35);
-        if (agent.state.beliefs && deathEventType) {
-          agent.state.beliefs.addBelief({
-            id: crypto.randomUUID(),
-            eventType: deathEventType,
-            subject: null,
-            object: victimName,
+        // Module-registered handler processes discoverer's response (memory, mood, belief, grief)
+        const discoveryHandler = getDiscoveryHandler(bodyDiscoveryType!);
+        if (discoveryHandler) {
+          await discoveryHandler({
+            discoverer: agent,
+            victimId: dead.id,
+            victimName,
             location: agent.state.location,
-            confidence: 0.7,
-            source: BELIEF_SOURCE.BODY_DISCOVERY,
-            sourceNpcId: null,
             gameDay: this.getCurrentDay(),
-            lastUpdated: this.getCurrentDay(),
+            deathEventType: deathEventType ?? null,
           });
-        }
-        // Grief if related
-        if (agent.state.relationships) {
-          const grief = agent.state.relationships.getGriefPenalty(dead.id);
-          if (grief !== 0) agent.state.mood = Math.max(-1, agent.state.mood + grief);
         }
         // Mark discoverer as already witnessed (so cascade skips them)
         sharedCtx.witnessIds!.add(id);

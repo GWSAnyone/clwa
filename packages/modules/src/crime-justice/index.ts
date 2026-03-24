@@ -4,7 +4,7 @@ import {
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
   registerAbsentStatuses, registerStepHandler, registerInteractPostHook,
   registerWitnessEventType, registerEventMoodShifts, registerGoalMoodBoost,
-  registerBodyDiscoveryEventType, registerRumorEventType,
+  registerBodyDiscoveryEventType, registerRumorEventType, registerDiscoveryHandler, BELIEF_SOURCE,
   registerBeliefCreator, registerMemoryTextBuilder,
   registerSourceCategory,
   registerCrimeSceneTemplate,
@@ -115,6 +115,36 @@ export function registerCrimeJusticeModule(): void {
   registerPursuitEvents(['WANTED_STATUS']);
   registerWitnessEventType('WITNESS_MEMORY');
   registerBodyDiscoveryEventType('BODY_DISCOVERED');
+  registerDiscoveryHandler('BODY_DISCOVERED', async (ctx) => {
+    // Memory: discoverer's first-person account
+    const locationName = ctx.location; // ID — engine resolves display name in prompt
+    await ctx.discoverer.observe(
+      `I discovered the body of ${ctx.victimName} at ${locationName}! They appear to have been murdered. I need to tell someone about this immediately.`,
+      8,
+    );
+    // Mood: direct trauma (stronger than cascade's -0.15)
+    ctx.discoverer.state.mood = Math.max(-1, ctx.discoverer.state.mood - 0.35);
+    // Belief: discoverer knows someone died, but not who did it
+    if (ctx.discoverer.state.beliefs && ctx.deathEventType) {
+      ctx.discoverer.state.beliefs.addBelief({
+        id: crypto.randomUUID(),
+        eventType: ctx.deathEventType,
+        subject: null, // suspect unknown
+        object: ctx.victimName,
+        location: ctx.location,
+        confidence: 0.7,
+        source: BELIEF_SOURCE.BODY_DISCOVERY,
+        sourceNpcId: null,
+        gameDay: ctx.gameDay,
+        lastUpdated: ctx.gameDay,
+      });
+    }
+    // Grief: relationship-based mood penalty
+    if (ctx.discoverer.state.relationships) {
+      const grief = ctx.discoverer.state.relationships.getGriefPenalty(ctx.victimId);
+      if (grief !== 0) ctx.discoverer.state.mood = Math.max(-1, ctx.discoverer.state.mood + grief);
+    }
+  });
   registerRumorEventType('RUMOR_SPREAD');
   registerAbsentStatuses(['detained', 'exiled', 'fled', 'imprisoned']);
 

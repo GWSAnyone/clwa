@@ -520,6 +520,30 @@ export function getRoleTopicPool(role: string): RoleTopicDef[] {
   return ROLE_TOPIC_POOLS.get(role) ?? [];
 }
 
+// ─── Discovery Handlers ───
+// Modules register how to process discoveries (e.g., body found → memory, mood, belief, grief).
+// Engine detects discovery condition (dead+alive co-location). Module defines the response.
+export interface DiscoveryContext {
+  discoverer: Agent;
+  victimId: string;
+  victimName: string;
+  location: string;
+  gameDay: number;
+  /** Event type from associated scene (e.g., 'NPC_KILLED'). null if no scene. */
+  deathEventType: string | null;
+}
+export type DiscoveryHandlerFn = (ctx: DiscoveryContext) => Promise<void>;
+
+const DISCOVERY_HANDLERS: Map<string, DiscoveryHandlerFn> = new Map();
+
+export function registerDiscoveryHandler(eventType: string, handler: DiscoveryHandlerFn): void {
+  DISCOVERY_HANDLERS.set(eventType, handler);
+}
+
+export function getDiscoveryHandler(eventType: string): DiscoveryHandlerFn | null {
+  return DISCOVERY_HANDLERS.get(eventType) ?? null;
+}
+
 // ─── Rumor Event Type ───
 let RUMOR_EVENT_TYPE: string | null = null;
 
