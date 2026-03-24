@@ -60,6 +60,7 @@ export function registerSocialModule(): void {
     baseProbability: 1.0,
     goalType: 'visit',
     goalPriority: 2,              // below schedule(3), doesn't interfere with routine
+    socialOnly: true,             // engine uses this flag for social-only detection (no hardcoded IDs)
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
     ],

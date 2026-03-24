@@ -99,7 +99,7 @@ function findGossipTarget(npcId: string, agent: Agent, ctx: AffordanceContext): 
           extra.crimeType = getEventLabel(top.eventType) ?? 'crime';
           if (top.location) extra.crimeLocation = top.location;
         }
-        return { targetId: otherId, targetName: other.profile.name, targetLocation: loc.name, extra };
+        return { targetId: otherId, targetName: other.profile.name, targetLocation: locId, extra };
       }
     }
   }

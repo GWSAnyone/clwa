@@ -494,7 +494,7 @@ export function registerCrimeJusticeModule(): void {
             eventType: scene.eventType ?? scene.crimeType,
             subject: scene.perpetratorId ? (ctx.agents.get(scene.perpetratorId)?.profile.name ?? null) : null,
             object: scene.victimId ? (ctx.agents.get(scene.victimId)?.profile.name ?? null) : null,
-            location: locationName,
+            location: locationId,
             confidence: 0.8,
             source: 'scene_notice',
             sourceNpcId: null,

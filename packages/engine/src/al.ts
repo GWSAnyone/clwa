@@ -156,6 +156,9 @@ export interface AffordanceDefinition {
   /** Situational context template for instinct description. Interpolated with target.extra vars.
    *  Grounds abstract emotional instinct in concrete situation. E.g. "You know that {targetName} {secretDetail:has a secret}." */
   instinctContext?: string;
+  /** If true, this affordance is social-only (e.g. socialize). Engine uses this flag
+   *  instead of checking affordance IDs — keeps engine module-agnostic. */
+  socialOnly?: boolean;
 }
 
 // ─── Mutable Registries (populated by modules at startup) ───

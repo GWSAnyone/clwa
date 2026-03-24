@@ -833,7 +833,7 @@ function intentionToGoal(
 
       // Social-only context (only socialize affordance scored): move to target, let TopicEngine handle conversation
       // Purposeful context (crime/duty affordances scored): move + interact with specific purpose
-      const socialOnly = scored.every(s => s.definition.id === 'socialize');
+      const socialOnly = scored.every(s => s.definition.socialOnly === true);
 
       const steps: GoalStep[] = [];
       if (agent.state.location !== targetAgent.state.location) {

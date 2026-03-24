@@ -154,7 +154,7 @@ interface ResistanceThreshold {
 }
 
 const RESISTANCE_TEMPLATES: Record<string, ResistanceThreshold[]> = {
-  // Honesty resisting crime (steal, blackmail)
+  // Honesty resisting crime (theft, deception)
   H_high: [
     { min: 0.0, text: '' }, // silence — no conscience
     { min: 0.3, text: 'A knot of guilt sits in your stomach. Easy to push aside — but it\'s there.' },
