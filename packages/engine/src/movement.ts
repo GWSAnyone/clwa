@@ -2,10 +2,14 @@ import type { Agent } from './agent';
 import type { LocationGraph, NpcMovementConfig, MovementResult } from './world-types';
 import { isStatusAbsent } from './event-registry';
 
-/** Find a LocationDef by its name in the graph (keyed by id) */
-function findByName(locations: LocationGraph, name: string) {
-  for (const loc of locations.values()) {
-    if (loc.name === name) return loc;
+/** Find a LocationDef by ID or display name (backwards compat) */
+function findLocation(locations: LocationGraph, idOrName: string) {
+  // Try ID first (primary lookup)
+  const byId = locations.get(idOrName);
+  if (byId) return { id: idOrName, loc: byId };
+  // Fallback: search by display name
+  for (const [id, loc] of locations) {
+    if (loc.name === idOrName) return { id, loc };
   }
   return null;
 }
@@ -30,24 +34,24 @@ export function processMovement(
     if (excludeIds?.has(id)) continue;
     if (Math.random() > config.moveProbability) continue;
 
-    const currentLoc = findByName(locations, agent.state.location);
-    if (!currentLoc || currentLoc.connections.length === 0) continue;
+    const found = findLocation(locations, agent.state.location);
+    if (!found || found.loc.connections.length === 0) continue;
 
     // Pick a random adjacent location
-    const targetId = currentLoc.connections[
-      Math.floor(Math.random() * currentLoc.connections.length)
+    const targetId = found.loc.connections[
+      Math.floor(Math.random() * found.loc.connections.length)
     ];
     const targetLoc = locations.get(targetId);
     if (!targetLoc) continue;
 
     const from = agent.state.location;
-    agent.state.location = targetLoc.name;
+    agent.state.location = targetId;
 
     results.push({
       agentId: id,
       agentName: agent.profile.name,
       from,
-      to: targetLoc.name,
+      to: targetId,
     });
   }
 

@@ -12,6 +12,11 @@ Optimized for 10GB VRAM:
 
 import os
 os.environ["UNSLOTH_DISABLE_FUSED_CE"] = "1"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:128,garbage_collection_threshold:0.6"
+os.environ["TORCHDYNAMO_DISABLE"] = "1"  # disable torch.compile — saves ~2-4 GB VRAM from compiled graph caches
+# expandable_segments — VRAM блоки могут расширяться, меньше фрагментация
+# max_split_size_mb:128 — не дробить блоки крупнее 128MB, лучше reuse
+# garbage_collection_threshold:0.6 — при 60% занятости VRAM начинать сборку мусора (дефолт слишком поздно для 10GB)
 
 from unsloth import FastLanguageModel
 from datasets import Dataset
@@ -26,7 +31,7 @@ MODEL_PATH = "C:/Ledevia/Projects/Models/Qwen3.5-9B-abliterated"
 DATASET_PATH = "C:/Ledevia/Projects/CLWA/training/dataset/output/clwa-v1.jsonl"
 OUTPUT_DIR = "C:/Ledevia/Projects/CLWA/training/output/clwa-lora-v1"
 
-MAX_SEQ_LENGTH = 768   # all examples ≤703 tokens, 768 covers 100%
+MAX_SEQ_LENGTH = 384   # aggressive reduction for 10GB VRAM
 LOAD_IN_4BIT = True
 
 # LoRA config — r=8 sufficient for behavioral fine-tuning
@@ -46,7 +51,7 @@ LEARNING_RATE = 2e-4
 WARMUP_RATIO = 0.1
 LR_SCHEDULER = "cosine"
 LOGGING_STEPS = 10
-SAVE_STEPS = 100
+SAVE_STEPS = 10
 
 # ============================================================
 # LOAD MODEL
@@ -203,10 +208,11 @@ trainer = SFTTrainer(
     ),
     dataset_text_field="text",
     max_seq_length=MAX_SEQ_LENGTH,
-    packing=True,  # pack short examples into sequences
+    packing=False,  # disabled — packing increases peak activation memory
 )
 
 print("Training...")
+torch.cuda.empty_cache()  # free any leftover allocations before training
 stats = trainer.train()
 
 print(f"\n{'=' * 50}")

@@ -2,9 +2,16 @@ import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { InteractionRunner, GoalStep } from './goals';
-import type { ConversationLine } from './world-types';
+import type { ConversationLine, LocationGraph } from './world-types';
 import type { LlmJsonSchema } from './llm-client';
 import { getInteractionResultHooks } from './event-registry';
+
+/** Resolve location ID to display name. */
+function locName(id: string, locations?: LocationGraph): string {
+  if (!locations) return id;
+  const loc = locations.get(id);
+  return loc ? loc.name : id;
+}
 
 /** Structured output for goal-driven NPC dialogue (allows slightly longer speech) */
 const INTERACTION_DIALOGUE_SCHEMA: LlmJsonSchema = {
@@ -13,30 +20,25 @@ const INTERACTION_DIALOGUE_SCHEMA: LlmJsonSchema = {
   schema: {
     type: 'object',
     properties: {
-      speech: { type: 'string', description: 'ONLY the words you speak aloud. No actions, no *gestures*. Max 20 words. Fresh wording.' },
-      gesture: { type: 'string', description: 'Physical action like *nods* or *slams fist*. Max 5 words. Empty string if none.' },
+      speech: { type: 'string', description: 'ONLY spoken words. No actions, no narration, no parentheses. Max 20 words.' },
+      gesture: { type: 'string', description: 'One word: nods, shrugs, smiles, frowns, laughs, sighs. Empty if none.' },
     },
     required: ['speech', 'gesture'],
     additionalProperties: false,
   },
 };
 
-/** Parse structured dialogue JSON → display text. Handles malformed JSON from LLM. */
+/** Parse structured dialogue JSON → clean speech only. Gesture is metadata, not display text. */
 function parseInteractionDialogue(raw: string): string {
   try {
     const d = JSON.parse(raw);
     const speech = (d.speech ?? '').trim().replace(/^["']+|["']+$/g, '');
-    const gesture = (d.gesture ?? '').trim();
-    if (!speech) return gesture || '...';
-    return gesture ? `${gesture} ${speech}` : speech;
+    return speech || '...';
   } catch {
     // Fallback: extract speech from malformed JSON via regex
     const speechMatch = raw.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (speechMatch) {
-      const speech = speechMatch[1].replace(/\\"/g, '"').replace(/^["']+|["']+$/g, '').trim();
-      const gestureMatch = raw.match(/"gesture"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-      const gesture = gestureMatch?.[1]?.trim() || '';
-      return gesture ? `${gesture} ${speech}` : speech;
+      return speechMatch[1].replace(/\\"/g, '"').replace(/^["']+|["']+$/g, '').trim() || '...';
     }
     return raw.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').trim() || '...';
   }
@@ -56,6 +58,7 @@ export function createInteractionRunner(
   options?: {
     onLine?: (line: ConversationLine) => void;
     onExtraEvent?: (event: WorldEvent) => Promise<void>;
+    locations?: LocationGraph;
   },
 ): InteractionRunner {
   return async (initiator, target, purpose, importance) => {
@@ -69,7 +72,7 @@ export function createInteractionRunner(
     const targetCtx = targetBeliefs ? `\n## What you know (facts, not speculation):\n${targetBeliefs}\nOnly reference these facts. Do not invent details.` : '';
 
     // --- Initiator speaks (with purpose + beliefs, structured output) ---
-    const initiatorPrompt = buildPurposePrompt(initiator, target, cleanPurpose);
+    const initiatorPrompt = buildPurposePrompt(initiator, target, cleanPurpose, options?.locations);
     const ownerRaw = await initiator.generateResponse(initiatorPrompt, { maxTokens: 100, additionalContext: initiatorCtx || undefined, jsonSchema: INTERACTION_DIALOGUE_SCHEMA });
     const ownerLine = parseInteractionDialogue(ownerRaw);
 
@@ -141,16 +144,16 @@ export function createInteractionRunner(
   };
 }
 
-/** Extract compact speech style reminder (first line only) */
+/** Extract speech style description (L0 — style guidance without copyable phrases). */
 function speechReminder(agent: Agent): string {
-  return agent.profile.speechStyle.split('\n')[0];
+  return agent.profile.speechStyle.split('\n')[0] ?? '';
 }
 
-function buildPurposePrompt(initiator: Agent, target: Agent, purpose: string): string {
+function buildPurposePrompt(initiator: Agent, target: Agent, purpose: string, locations?: LocationGraph): string {
   const speech = speechReminder(initiator);
   const beliefContext = initiator.state.beliefs?.summarizeForPrompt(2);
   const beliefLine = beliefContext ? `\nWhat you know: ${beliefContext}` : '';
-  return `You are at ${initiator.state.location}. You approach ${target.profile.name} the ${target.profile.role}.${beliefLine}
+  return `You are at ${locName(initiator.state.location, locations)}. You approach ${target.profile.name} the ${target.profile.role}.${beliefLine}
 
 YOUR GOAL: ${purpose}
 

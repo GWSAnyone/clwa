@@ -84,7 +84,7 @@ export function getTopicGroup(category: string): string {
   if (category === 'opinion') return 'relationship';       // opinions about third NPC = social dynamics
   if (category === 'mood') return 'mood';
   if (category === 'inner') return 'inner';                // separate PM multiplier (0.5 + N*0.9)
-  if (category.startsWith('role:') || category.startsWith('fact:')) return 'knowledge';
+  if (category.startsWith('role:') || category === 'fact' || category.startsWith('fact:')) return 'knowledge';
   if (category === 'question') return 'knowledge';         // seeking information
   if (category === 'justice' || category === 'conflict' || category.startsWith('player_rumor')) return 'conflict';
   if (category === 'idle') return 'casual';

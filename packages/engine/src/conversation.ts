@@ -1,11 +1,18 @@
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
-import type { ConversationResult, ConversationLine, WorldConfig } from './world-types';
+import type { ConversationResult, ConversationLine, WorldConfig, LocationGraph } from './world-types';
 import type { TopicProposal } from './topic-engine';
 import type { LlmJsonSchema } from './llm-client';
 import { getRelationshipLabel } from './event-registry';
 import { buildSecretDirectives } from './secret-directives';
+
+/** Resolve location ID to display name. */
+function locName(id: string, locations?: LocationGraph): string {
+  if (!locations) return id;
+  const loc = locations.get(id);
+  return loc ? loc.name : id;
+}
 
 /** Max tokens for structured dialogue output (JSON overhead ~20 + speech ~25 + gesture ~5) */
 const CONVERSATION_MAX_TOKENS = 80;
@@ -17,22 +24,21 @@ const DIALOGUE_SCHEMA: LlmJsonSchema = {
   schema: {
     type: 'object',
     properties: {
-      speech: { type: 'string', description: 'ONLY the words you speak aloud. No actions, no *gestures*. Max 12 words. Fresh wording.' },
-      gesture: { type: 'string', description: 'Physical action like *nods* or *sighs*. Max 4 words. Empty string if none.' },
+      speech: { type: 'string', description: 'ONLY spoken words. No actions, no narration, no parentheses. Max 12 words.' },
+      gesture: { type: 'string', description: 'One word: nods, shrugs, smiles, frowns, laughs, sighs. Empty if none.' },
     },
     required: ['speech', 'gesture'],
     additionalProperties: false,
   },
 };
 
-/** Parse structured dialogue JSON → display text. Handles malformed JSON from LLM. */
+/** Parse structured dialogue JSON → clean speech only. Gesture is metadata, not display text. */
 function parseDialogue(raw: string): string {
   try {
     const d = JSON.parse(raw);
     const speech = (d.speech ?? '').trim().replace(/^["']+|["']+$/g, '');
-    const gesture = (d.gesture ?? '').trim();
-    if (!speech) return gesture || '...';
-    return gesture ? `${gesture} ${speech}` : speech;
+    // Return ONLY speech — gesture is for future animation/UI, not text display
+    return speech || '...';
   } catch {
     // Fallback: extract speech from malformed JSON via regex
     const speechMatch = raw.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
@@ -69,6 +75,7 @@ export async function runConversation(
   options?: {
     onLine?: (line: ConversationLine) => void;
     agents?: Map<string, Agent>;
+    locations?: LocationGraph;
   },
 ): Promise<ConversationResult> {
   const lines: ConversationLine[] = [];
@@ -83,7 +90,7 @@ export async function runConversation(
   for (let exchange = 0; exchange < config.exchangeCount; exchange++) {
     // --- Initiator speaks ---
     const initiatorPrompt = exchange === 0
-      ? buildInitiatorPrompt(initiator, responder, topic)
+      ? buildInitiatorPrompt(initiator, responder, topic, options?.locations)
       : buildFollowUpPrompt(initiator, responder, lines, topic);
 
     const initiatorRaw = await initiator.generateResponse(initiatorPrompt, {
@@ -149,10 +156,10 @@ export async function runConversation(
 
 // ─── Prompt Builders ────────────────────────────────────────────
 
-/** Extract compact speech style reminder (first line only) */
+/** Extract speech style description (L0 — style guidance without copyable phrases).
+ *  Full examples are already in system prompt via ## Speech style section. */
 function speechReminder(agent: Agent): string {
-  const firstLine = agent.profile.speechStyle.split('\n')[0];
-  return firstLine;
+  return agent.profile.speechStyle.split('\n')[0] ?? '';
 }
 
 /** Relationship note for conversation prompt */
@@ -172,14 +179,14 @@ function relationshipNote(from: Agent, to: Agent): string {
   return parts.length > 0 ? parts.join('. ') + '.' : '';
 }
 
-function buildInitiatorPrompt(initiator: Agent, responder: Agent, topic: TopicProposal): string {
+function buildInitiatorPrompt(initiator: Agent, responder: Agent, topic: TopicProposal, locations?: LocationGraph): string {
   const relNote = relationshipNote(initiator, responder);
   const speech = speechReminder(initiator);
 
-  return `You are at ${initiator.state.location}. ${responder.profile.name} the ${responder.profile.role} is here with you.
-${topic.initiatorHook}
+  return `YOUR TOPIC: ${topic.initiatorHook}
+You are at ${locName(initiator.state.location, locations)}. ${responder.profile.name} the ${responder.profile.role} is here with you.
 ${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
-IMPORTANT: speech must be at most 12 words. Only mention people who are HERE with you. No narration.`;
+speech must be at most 12 words. No narration, no parentheses.`;
 }
 
 function buildResponderPrompt(
@@ -191,8 +198,9 @@ function buildResponderPrompt(
 
   return `${initiator.profile.name} the ${initiator.profile.role} says to you:
 "${initiatorLine}"
-${topic.responderHook ? `${topic.responderHook}\n` : ''}${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
-IMPORTANT: speech must be at most 12 words. React with YOUR OWN words — do NOT repeat what they said. No narration.`;
+YOUR TOPIC: ${topic.subject}. ${topic.responderHook ?? ''}
+${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
+speech must be at most 12 words. Do NOT repeat their words. No narration, no parentheses.`;
 }
 
 function buildFollowUpPrompt(

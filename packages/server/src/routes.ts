@@ -80,7 +80,7 @@ export function handleRequest(
       connections: loc.connections,
       isPublic: loc.isPublic,
       npcs: Array.from(agents.entries())
-        .filter(([, a]) => a.state.location === loc.name)
+        .filter(([, a]) => a.state.location === loc.id)
         .map(([id, a]) => ({ id, name: a.profile.name, role: a.profile.role, alive: a.state.alive })),
     }));
     return Response.json(locations, { headers: cors });

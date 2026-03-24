@@ -2,32 +2,25 @@ import type { LocationGraph } from './world-types';
 
 /**
  * BFS pathfinding through the location graph.
- * Returns array of location NAMES from start to end (inclusive).
+ * Accepts location IDs (graph keys). Returns array of IDs from start to end (inclusive).
+ * Falls back to name→id lookup if input is a display name (backwards compat).
  * Returns empty array if no path exists.
  */
 export function findPath(
   graph: LocationGraph,
-  fromName: string,
-  toName: string,
+  from: string,
+  to: string,
 ): string[] {
-  if (fromName === toName) return [fromName];
-
-  // Build name→id and id→name maps
-  const nameToId = new Map<string, string>();
-  const idToName = new Map<string, string>();
-  for (const [id, loc] of graph) {
-    nameToId.set(loc.name, id);
-    idToName.set(id, loc.name);
-  }
-
-  const startId = nameToId.get(fromName);
-  const endId = nameToId.get(toName);
-  if (!startId || !endId) return [];
+  // Resolve input: accept both IDs and display names
+  const fromId = graph.has(from) ? from : resolveNameToId(graph, from);
+  const toId = graph.has(to) ? to : resolveNameToId(graph, to);
+  if (!fromId || !toId) return [];
+  if (fromId === toId) return [fromId];
 
   // BFS
-  const visited = new Set<string>([startId]);
+  const visited = new Set<string>([fromId]);
   const parent = new Map<string, string>();
-  const queue: string[] = [startId];
+  const queue: string[] = [fromId];
 
   while (queue.length > 0) {
     const current = queue.shift()!;
@@ -39,12 +32,12 @@ export function findPath(
       visited.add(neighborId);
       parent.set(neighborId, current);
 
-      if (neighborId === endId) {
-        // Reconstruct path
+      if (neighborId === toId) {
+        // Reconstruct path (IDs)
         const path: string[] = [];
-        let node: string | undefined = endId;
+        let node: string | undefined = toId;
         while (node !== undefined) {
-          path.unshift(idToName.get(node) ?? node);
+          path.unshift(node);
           node = parent.get(node);
         }
         return path;
@@ -55,6 +48,14 @@ export function findPath(
   }
 
   return []; // no path
+}
+
+/** Resolve a display name to a graph ID */
+function resolveNameToId(graph: LocationGraph, name: string): string | null {
+  for (const [id, loc] of graph) {
+    if (loc.name === name) return id;
+  }
+  return null;
 }
 
 /**

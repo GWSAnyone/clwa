@@ -179,9 +179,9 @@ const innerConflictTopics: TopicSource = (init, resp) => {
   if (!init.profile.innerConflict) return [];
 
   const rel = init.state.relationships?.getRelationship(resp.profile.id);
-  const trust = rel?.sentiment ?? 0;
+  const trust = rel?.trust ?? 0.3;
 
-  if (trust > 0.3) {
+  if (trust >= 0.3) {
     return [{
       subject: 'a worry you\'ve been carrying',
       tone: 'hesitant, almost confiding',
@@ -275,20 +275,26 @@ const roleTopics: TopicSource = (init, _resp, ctx) => {
 // ─── World Fact Topics ─────────────────────────────────────────
 // Common knowledge / world lore that NPCs can discuss.
 
-const worldFactTopics: TopicSource = (init, _resp, ctx) => {
+const worldFactTopics: TopicSource = (init, resp, ctx) => {
+  // 40% chance to even propose a fact — prevents knowledge flooding
+  if (Math.random() > 0.4) return [];
+
   const facts = init.state.knownFacts ?? [];
   const interesting = facts.filter(f =>
     !f.startsWith('#') &&
-    !ctx.recentTopics.includes('fact:' + f.slice(0, 30)),
+    !ctx.recentTopics.includes('fact'),
   );
+  if (interesting.length === 0) return [];
 
-  return interesting.map(f => ({
-    subject: f,
+  // Pick ONE random fact
+  const fact = interesting[Math.floor(Math.random() * interesting.length)];
+  return [{
+    subject: fact,
     tone: 'matter-of-fact',
-    weight: 2,
-    initiatorHook: `This is common knowledge. Bring it up naturally.`,
-    category: 'fact:' + f.slice(0, 30),
-  }));
+    weight: 0.5,
+    initiatorHook: `Bring up this topic naturally — share your opinion or ask ${resp.profile.name} what they think.`,
+    category: 'fact', // shared category — repeat penalty applies to ALL facts
+  }];
 };
 
 // ─── Casual Topics ─────────────────────────────────────────────
@@ -310,14 +316,13 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
     });
   }
 
-  // Craft/profession talk (boosted at workplace locations)
+  // Craft/profession talk (boosted if location has a conversation hook — workplace)
   if (rel && rel.type === 'colleague') {
-    const atWork = ctx.location === 'Blacksmith' || ctx.location === 'Silver Flagon Tavern'
-      || ctx.location === 'Market Square' || ctx.location === 'Courthouse';
+    const hasHook = !!getLocationHook(ctx.location);
     proposals.push({
       subject: `work and craft`,
       tone: 'practical, companionable',
-      weight: atWork ? 3 : 2,
+      weight: hasHook ? 3 : 2,
       initiatorHook: `Talk about your work — what you made today, a tricky order, the quality of materials.`,
       responderHook: `Share your own work experience. Mutual respect for each other's craft.`,
       category: 'casual_craft',
@@ -325,7 +330,7 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
   }
 
   // Location-specific small talk (hooks from world data via registry)
-  if (init.state.mood > -0.2) {
+  if (init.state.mood > -0.5) {
     const hook = getLocationHook(ctx.location)
       ?? 'Comment on something mundane — the weather, the village, something you noticed today.';
     proposals.push({

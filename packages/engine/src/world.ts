@@ -350,10 +350,10 @@ export class World {
           const walkChance = Math.min(0.1, Math.abs(agent.state.mood) * 0.08);
           if (Math.random() < walkChance) {
             // Pick a random public location to wander to
-            const publicLocations = Array.from(this.locations.values())
-              .filter((loc) => loc.isPublic && loc.name !== agent.state.location);
+            const publicLocations = Array.from(this.locations.entries())
+              .filter(([, loc]) => loc.isPublic && loc.id !== agent.state.location);
             if (publicLocations.length > 0) {
-              const target = publicLocations[Math.floor(Math.random() * publicLocations.length)];
+              const [targetId] = publicLocations[Math.floor(Math.random() * publicLocations.length)];
               this.goalManager.addGoal({
                 id: crypto.randomUUID(),
                 type: 'night_walk',
@@ -361,7 +361,7 @@ export class World {
                 priority: 2, // lower than schedule (3), much lower than events
                 state: 'pending',
                 steps: [
-                  { action: 'move_to', location: target.name },
+                  { action: 'move_to', location: targetId },
                   { action: 'wait', ticks: 2 },
                   // Return home if they have one
                   ...(this.npcHomes.has(id)
@@ -403,6 +403,7 @@ export class World {
     // 1. Process goal-driven actions (highest priority)
     const interactionRunner = createInteractionRunner(this.eventStore, {
       onLine: this.callbacks.onLine,
+      locations: this.locations,
       onExtraEvent: async (event) => {
         const results = await this.engine.process(event, this.buildCgContext());
         await this.handleEventForGoals(event);
@@ -552,7 +553,7 @@ export class World {
         this.eventStore,
         this.config,
         topic,
-        { onLine: this.callbacks.onLine, agents: this.agents },
+        { onLine: this.callbacks.onLine, agents: this.agents, locations: this.locations },
       );
       conversation.topic = topic.subject;
       conversation.topicGroup = getTopicGroup(topic.category);
@@ -746,6 +747,7 @@ export class World {
       ``,
       `Return mentions of NPCs with sentiment valence (-0.15 to 0.15), overall mood_impact (-0.08 to 0.06), and importance (1-8).`,
       `mood_impact: positive for warm/supportive/funny conversations, negative for tense/hostile/disturbing ones, near zero for neutral small talk.`,
+      `CALIBRATION: Most casual friendly conversations should have mood_impact between -0.01 and +0.03. Only genuinely hostile, threatening, or disturbing exchanges warrant mood_impact below -0.04. Friends chatting = near zero or slightly positive.`,
       `importance: 1-2 for mundane small talk, 3-4 for interesting personal exchanges, 5-6 for emotionally significant revelations, 7-8 for shocking or life-changing information.`,
       `Only include NPCs explicitly discussed. Empty mentions array if just small talk.`,
       `secret_revealed: If someone confessed or accidentally revealed hidden information, write exactly: "NAME revealed about NAME: what they revealed". Example: "Ted revealed about Ted: waters down his ale due to debts". Empty string if nothing secret was shared. Only genuine hidden info, not common knowledge.`,

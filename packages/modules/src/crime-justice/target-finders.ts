@@ -82,11 +82,11 @@ function findBlackmailTarget(npcId: string, agent: Agent, ctx: AffordanceContext
 
 /** Find a public location with other NPCs for gossip */
 function findGossipTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
-  for (const loc of ctx.locations.values()) {
-    if (!loc.isPublic || loc.name === agent.state.location) continue;
+  for (const [locId, loc] of ctx.locations) {
+    if (!loc.isPublic || locId === agent.state.location) continue;
     for (const [otherId, other] of ctx.agents) {
       if (otherId === npcId || !other.state.alive || other.profile.isPlayer) continue;
-      if (other.state.location === loc.name) {
+      if (other.state.location === locId) {
         // Extract crime details from NPC's strongest transferable belief
         const extra: Record<string, string> = {};
         const crimeBeliefs = agent.state.beliefs?.getAllBeliefs()

@@ -18,6 +18,24 @@ import {
 } from './al';
 import { getAffordanceIdsForVerb, getRelationshipLabel, isStatusAbsent, getBodyDiscoveryEventType } from './event-registry';
 
+// ─── Location helpers ───
+
+/** Resolve display name → location ID. Returns input unchanged if already an ID. */
+function resolveLocationId(name: string, locations: Map<string, import('./world-types').LocationDef>): string {
+  if (locations.has(name)) return name; // already an ID
+  for (const [id, loc] of locations) {
+    if (loc.name === name) return id;
+  }
+  return name; // fallback
+}
+
+/** Resolve location ID → display name for LLM prompts. */
+function locationDisplayName(idOrName: string, locations: Map<string, import('./world-types').LocationDef>): string {
+  const loc = locations.get(idOrName);
+  if (loc) return loc.name;
+  return idOrName; // already a display name or unknown
+}
+
 // ─── Constants ───
 
 /** Default cooldown in ticks after an affordance fires (overridden by ctx.affordanceCooldownTicks) */
@@ -515,18 +533,19 @@ function buildDecisionPrompt(
 
   // ── Build neighbor lines ──
   const neighborLines: string[] = [];
-  for (const [locName, npcs] of neighborInfo) {
+  for (const [locId, npcs] of neighborInfo) {
+    const displayName = locationDisplayName(locId, ctx.locations);
     if (npcs.length > 0) {
-      neighborLines.push(`  ${locName}: ${npcs.join(', ')}`);
+      neighborLines.push(`  ${displayName}: ${npcs.join(', ')}`);
     } else {
-      neighborLines.push(`  ${locName}: empty`);
+      neighborLines.push(`  ${displayName}: empty`);
     }
   }
 
   // ── User prompt (beliefs + relationships near instincts for attention) ──
   const userParts = [
     `SITUATION:`,
-    `You are at ${agent.state.location}. Time: ${ctx.period}.`,
+    `You are at ${locationDisplayName(agent.state.location, ctx.locations)}. Time: ${ctx.period}.`,
     nearbyNpcs.length > 0
       ? `Nearby: ${nearbyNpcs.join(', ')}.`
       : 'You are alone here.',
@@ -789,14 +808,15 @@ function intentionToGoal(
 
     case 'go': {
       if (!parsed.target) return null;
-      if (parsed.target === agent.state.location) return null; // already there
+      const targetLocId = resolveLocationId(parsed.target, ctx.locations);
+      if (targetLocId === agent.state.location) return null; // already there
       return {
         id: crypto.randomUUID(),
         type: 'wander',
         ownerId: npcId,
         priority: 2,
         state: 'pending',
-        steps: [{ action: 'move_to', location: parsed.target }],
+        steps: [{ action: 'move_to', location: targetLocId }],
         currentStep: 0,
         data: { reason: parsed.why },
         createdAtTick: 0,
@@ -810,21 +830,31 @@ function intentionToGoal(
       const targetEntry = findNpcByName(parsed.target, npcId, ctx);
       if (!targetEntry) return null;
       const [targetId, targetAgent] = targetEntry;
+
+      // Social-only context (only socialize affordance scored): move to target, let TopicEngine handle conversation
+      // Purposeful context (crime/duty affordances scored): move + interact with specific purpose
+      const socialOnly = scored.every(s => s.definition.id === 'socialize');
+
       const steps: GoalStep[] = [];
       if (agent.state.location !== targetAgent.state.location) {
         steps.push({ action: 'move_to', location: targetAgent.state.location });
       }
-      steps.push({
-        action: 'interact',
-        targetId,
-        purpose: parsed.detail ?? 'general conversation',
-        importance: 4,
-      });
+      if (!socialOnly) {
+        // Purposeful talk — directed interaction with specific topic
+        steps.push({
+          action: 'interact',
+          targetId,
+          purpose: parsed.detail ?? 'general conversation',
+          importance: 4,
+        });
+      }
+      // Social-only: goal is just movement. TopicEngine picks up co-located pair next tick.
+      if (steps.length === 0) return null; // already at same location + social only = nothing to do
       return {
         id: crypto.randomUUID(),
-        type: 'social',
+        type: socialOnly ? 'visit' : 'social',
         ownerId: npcId,
-        priority: 3,
+        priority: socialOnly ? 2 : 3,
         state: 'pending',
         steps,
         currentStep: 0,

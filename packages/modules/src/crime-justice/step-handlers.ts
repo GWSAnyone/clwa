@@ -257,7 +257,12 @@ export function registerCrimeStepHandlers(): void {
     }
     goal.waitTicks = 0;
     target.state.status = 'detained';
-    target.state.location = 'Courthouse';
+    // Resolve courthouse location ID from graph (never hardcode display names)
+    let courthouseId = 'courthouse';
+    for (const [id, loc] of locations) {
+      if (id === 'courthouse' || loc.name === 'Courthouse') { courthouseId = id; break; }
+    }
+    target.state.location = courthouseId;
     ctx.goalManager.clearGoals(step.targetId);
     await owner.observe(`I arrested ${target.profile.name} and escorted them to the Courthouse. Justice will be served.`, step.importance);
     await target.observe(`${owner.profile.name} arrested me. I am being held at the Courthouse awaiting judgment.`, step.importance);

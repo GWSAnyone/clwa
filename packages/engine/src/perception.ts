@@ -42,9 +42,9 @@ export function canHear(
   if (observer.state.location === location) return true;
 
   // Adjacent location check
-  const observerLoc = findLocationByName(observer.state.location, locations);
+  const observerLoc = findLocation(observer.state.location, locations);
   if (!observerLoc) return false;
-  const targetLoc = findLocationByName(location, locations);
+  const targetLoc = findLocation(location, locations);
   if (!targetLoc) return false;
   return observerLoc.connections.includes(targetLoc.id);
 }
@@ -108,9 +108,14 @@ export function getNpcsAt(
 
 // ─── Helpers ───
 
-function findLocationByName(name: string, locations: LocationGraph) {
+/** Find location by ID (primary) or display name (fallback). */
+function findLocation(idOrName: string, locations: LocationGraph) {
+  // Try ID first (primary lookup — locations keyed by ID)
+  const byId = locations.get(idOrName);
+  if (byId) return byId;
+  // Fallback: search by display name
   for (const loc of locations.values()) {
-    if (loc.name === name) return loc;
+    if (loc.name === idOrName) return loc;
   }
   return null;
 }

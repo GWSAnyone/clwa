@@ -176,6 +176,7 @@ async function main() {
         console.log(`  [Reflection] ${name}: "${text}"`);
         broadcast({ type: 'reflection', data: { agentName: name, text } });
       },
+      locationResolver: (id) => locationGraph.get(id)?.name ?? id,
     });
     agents.set(profile.id, agent);
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npcLocation}`);
@@ -254,7 +255,7 @@ async function main() {
     const playerAgent = new Agent(playerProfile, {
       alive: true,
       status: undefined,
-      location: 'Town Square',
+      location: worldData.locationNameToId.get('Town Square') ?? 'town-square',
       mood: 0.3,
       currentDay: 1,
       knownFacts: [
@@ -262,14 +263,16 @@ async function main() {
       ],
       beliefs: new BeliefManager(),
       relationships: playerRelationships,
-    }, playerMemory);
+    }, playerMemory, {
+      locationResolver: (id) => locationGraph.get(id)?.name ?? id,
+    });
     agents.set('player', playerAgent);
     console.log('  [+] Player Agent (Traveler) @ Town Square');
   }
 
   const publicPlaces = new Set<string>();
-  for (const loc of locationGraph.values()) {
-    if (loc.isPublic) publicPlaces.add(loc.name);
+  for (const [id, loc] of locationGraph) {
+    if (loc.isPublic) publicPlaces.add(id);
   }
 
   let world: World;

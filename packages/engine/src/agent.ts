@@ -43,6 +43,8 @@ export interface AgentOptions {
   model?: string;
   reflection?: Partial<ReflectionConfig>;
   onReflection?: (agentName: string, text: string) => void;
+  /** Resolve location ID to display name for LLM prompts */
+  locationResolver?: (id: string) => string;
 }
 
 export class Agent {
@@ -53,6 +55,7 @@ export class Agent {
   private model: string;
   private reflectionTracker: ReflectionTracker;
   private onReflection?: (agentName: string, text: string) => void;
+  private locationResolver: (id: string) => string;
   /** Short-term conversation buffer for multi-turn player chat (last N exchanges) */
   private _chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
@@ -72,6 +75,7 @@ export class Agent {
     this.memory = memory;
     this.model = options?.model ?? DEFAULT_WORLD_CONFIG.model;
     this.baseUrl = options?.lmStudioUrl ?? 'http://localhost:1234';
+    this.locationResolver = options?.locationResolver ?? ((id) => id);
     this.reflectionTracker = new ReflectionTracker({
       lmStudioUrl: this.baseUrl,
       model: this.model,
@@ -255,14 +259,12 @@ export class Agent {
       ? memories.map((m) => {
           const daysAgo = this.state.currentDay - m.gameDay;
           const timeLabel = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
-          return `- [${timeLabel}, significance: ${m.decayedImportance.toFixed(1)}/10] ${m.text}`;
+          const vividness = m.decayedImportance >= 7 ? 'vivid' : m.decayedImportance >= 4 ? 'clear' : 'fading';
+          return `- (${timeLabel}, ${vividness}) ${m.text}`;
         }).join('\n')
       : 'No relevant memories.';
 
-    // Fix #3: dynamic facts based on current day
-    const dynamicFacts = this.buildDynamicFacts();
-
-    // Fix #4: role-specific directives
+    // Role-specific directives (beliefs, crime awareness, relationships)
     const roleDirective = this.buildRoleDirective(memories);
 
     // Enneagram motivational core
@@ -289,10 +291,8 @@ ${motivationBlock}
 ${this.profile.speechStyle}
 
 ## Current state
-- Location: ${this.state.location}${this.state.currentActivity ? `\n- Activity: ${this.state.currentActivity}` : ''}
+- Location: ${this.locationResolver(this.state.location)}${this.state.currentActivity ? `\n- Activity: ${this.state.currentActivity}` : ''}
 - Mood: ${this.moodDescription()}
-- Current day: ${this.state.currentDay}
-- Current facts: ${dynamicFacts}
 ${roleDirective}
 ${stressGrowthBlock}## Your memories (most relevant to this conversation)
 ${memoryBlock}
@@ -305,10 +305,6 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
 - Keep responses concise — speak naturally, not in essays.`;
   }
 
-  private buildDynamicFacts(): string {
-    const facts = this.state.knownFacts.map(f => f.startsWith('# ') ? f.slice(2) : f);
-    return facts.length > 0 ? facts.join('; ') : 'nothing noteworthy';
-  }
 
   private buildRoleDirective(memories: ScoredMemory[]): string {
     const sections: string[] = [];
