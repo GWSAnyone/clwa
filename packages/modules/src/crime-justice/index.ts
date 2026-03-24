@@ -22,6 +22,7 @@ import {
   registerSourceTransferWeights,
   registerBeliefSourceLabels,
   getPassiveNoticeText,
+  getAffordanceIdsForVerb,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -294,15 +295,25 @@ export function registerCrimeJusticeModule(): void {
   registerActionVerbs({
     steal: ['steal'],
     kill: ['kill'],
-    attack: ['vigilante', 'confront'],
+    attack: ['vigilante'],
+    confront: ['confront'],
+    intimidate: ['intimidate_witness'],
     investigate: ['investigate'],
     interrogate: ['interrogate'],
     arrest: ['arrest'],
     report: ['report_crime', 'testify'],
     testify: ['testify', 'report_crime'],
+    leverage: ['blackmail'],
     flee: ['flee_town'],
     evaluate: ['evaluate_case'],
   });
+
+  // Validate: every actionVerb must be registered in ACTION_VERB_MAP
+  for (const aff of CRIME_AFFORDANCES) {
+    if (aff.actionVerb && getAffordanceIdsForVerb(aff.actionVerb).length === 0) {
+      console.warn(`[WARN] Affordance '${aff.id}' has actionVerb '${aff.actionVerb}' not in ACTION_VERB_MAP — LLM cannot select it`);
+    }
+  }
 
   // Event handlers for belief creation and state changes
   registerCrimeEventHandlers();
