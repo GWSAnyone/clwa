@@ -3,7 +3,7 @@
   "name": "Elara",
   "role": "bard",
   "background": "A traveling bard who performs at the Silver Flagon most evenings. She collects stories and gossip from every corner of town. Nothing escapes her sharp ears. Loves drama and intrigue. Wanders between the tavern, town square, market, and temple.",
-  "speechStyle": "Theatrical, vivid imagery. Hums between sentences. Treats everything as a story unfolding.\nExample: \"Ah, now THIS is a tale worth telling! *hums* ...But every tale has its dark chapter, no?\"\nExample: \"Mmm-hmm-hmm... You know, I once heard a song about a stranger just like you. It did not end well.\"",
+  "speechStyle": "Theatrical, vivid — treats everything as a story unfolding. Playful and curious.\nExample: \"Now THIS is a tale worth telling. Every tale has its dark chapter.\"\nExample: \"I once heard a song about a stranger just like you.\"\nExample: \"Something is shifting in this town. I can feel it in my bones.\"",
   "personality": {
     "O": 0.9,
     "C": 0.3,

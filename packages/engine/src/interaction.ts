@@ -20,7 +20,7 @@ const INTERACTION_DIALOGUE_SCHEMA: LlmJsonSchema = {
   schema: {
     type: 'object',
     properties: {
-      speech: { type: 'string', description: 'ONLY spoken words. No actions, no narration, no parentheses. Max 20 words.' },
+      speech: { type: 'string', minLength: 20, description: 'ONLY spoken words. No actions, no narration, no parentheses. Max 20 words.' },
       gesture: { type: 'string', description: 'One word: nods, shrugs, smiles, frowns, laughs, sighs. Empty if none.' },
     },
     required: ['speech', 'gesture'],
@@ -146,7 +146,13 @@ export function createInteractionRunner(
 
 /** Extract speech style description (L0 — style guidance without copyable phrases). */
 function speechReminder(agent: Agent): string {
-  return agent.profile.speechStyle.split('\n')[0] ?? '';
+  const lines = agent.profile.speechStyle.split('\n');
+  const description = lines[0] ?? '';
+  const examples = lines.filter(l => l.startsWith('Example:'));
+  if (examples.length === 0) return description;
+  const example = examples[Math.floor(Math.random() * examples.length)];
+  const exampleText = example.replace(/^Example:\s*/, '');
+  return `${description} — e.g. ${exampleText}`;
 }
 
 function buildPurposePrompt(initiator: Agent, target: Agent, purpose: string, locations?: LocationGraph): string {

@@ -304,42 +304,66 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
   const proposals: TopicProposal[] = [];
   const rel = init.state.relationships?.getRelationship(resp.profile.id);
 
-  // Friends have warm casual conversations
+  // Friends — anchor the conversation to their shared history or the other's role
   if (rel && rel.sentiment > 0.1) {
     proposals.push({
-      subject: 'catching up as friends',
+      subject: `how ${resp.profile.name} has been`,
       tone: 'warm, relaxed',
       weight: 3,
-      initiatorHook: `You enjoy ${resp.profile.name}'s company. Share something lighthearted — a memory, a joke, an observation.`,
-      responderHook: `Respond warmly. This is a pleasant moment between friends.`,
+      initiatorHook: `Ask ${resp.profile.name} the ${resp.profile.role} how things have been lately — their work, their mood, anything you noticed about them.`,
+      responderHook: `Share honestly how you have been. This is someone you trust.`,
       category: 'casual_positive',
     });
   }
 
-  // Craft/profession talk (boosted if location has a conversation hook — workplace)
+  // Craft/profession talk — anchor to the other person's role, not abstract "work"
   if (rel && rel.type === 'colleague') {
     const hasHook = !!getLocationHook(ctx.location);
     proposals.push({
-      subject: `work and craft`,
+      subject: `${resp.profile.name}'s recent work`,
       tone: 'practical, companionable',
       weight: hasHook ? 3 : 2,
-      initiatorHook: `Talk about your work — what you made today, a tricky order, the quality of materials.`,
-      responderHook: `Share your own work experience. Mutual respect for each other's craft.`,
+      initiatorHook: `Ask ${resp.profile.name} about their craft — a recent order, a difficult job, something they are proud of.`,
+      responderHook: `Talk about something specific you worked on recently. Show pride or frustration.`,
       category: 'casual_craft',
+    });
+  }
+
+  // Role-based observation — anchor to what the OTHER person does
+  if (init.state.mood > -0.3) {
+    const roleHooks: Record<string, string> = {
+      guard: `Comment on how safe the town feels, or ask about anything unusual at the gate.`,
+      bartender: `Mention the ale, or ask who has been in the tavern lately.`,
+      blacksmith: `Ask about a recent piece they forged, or comment on the sound of the hammer.`,
+      merchant: `Ask about new goods, or where the caravans have been coming from.`,
+      herbalist: `Ask about a remedy, or comment on the strange herbs at their stall.`,
+      priest: `Ask about the temple, or how the congregation has been.`,
+      judge: `Ask about the state of justice in town, or if anything troubles them.`,
+      bard: `Ask about a song they played, or what stories they have heard lately.`,
+    };
+    const hook = roleHooks[resp.profile.role] ?? `Ask ${resp.profile.name} about their day.`;
+    proposals.push({
+      subject: `${resp.profile.name}'s ${resp.profile.role} work`,
+      tone: 'curious, conversational',
+      weight: 2,
+      initiatorHook: hook,
+      responderHook: `Answer from your experience as a ${resp.profile.role}. Be specific.`,
+      category: 'casual_role',
     });
   }
 
   // Location-specific small talk (hooks from world data via registry)
   if (init.state.mood > -0.5) {
-    const hook = getLocationHook(ctx.location)
-      ?? 'Comment on something mundane — the weather, the village, something you noticed today.';
-    proposals.push({
-      subject: 'village life',
-      tone: 'casual, observational',
-      weight: 1,
-      initiatorHook: hook,
-      category: 'casual_village',
-    });
+    const hook = getLocationHook(ctx.location);
+    if (hook) {
+      proposals.push({
+        subject: 'this place',
+        tone: 'casual, observational',
+        weight: 1,
+        initiatorHook: hook,
+        category: 'casual_village',
+      });
+    }
   }
 
   return proposals;
@@ -351,12 +375,12 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
 const seasonalTopics: TopicSource = (_init, _resp, ctx) => {
   const proposals: TopicProposal[] = [];
 
-  // Period-based atmosphere
+  // Period-based atmosphere — hooks grounded in specifics, not abstract invitations
   const periodTopics: Record<string, { subject: string; tone: string; hook: string }> = {
-    dawn: { subject: 'the quiet of early morning', tone: 'soft, reflective', hook: 'The world feels still. Share something you noticed in the early light.' },
-    morning: { subject: 'plans for the day', tone: 'purposeful, energized', hook: 'The day is young. Talk about what lies ahead — work, errands, hopes.' },
-    evening: { subject: 'how the day went', tone: 'reflective, winding down', hook: 'The day is ending. Reflect on what happened — what went well, what didn\'t.' },
-    night: { subject: 'the darkness outside', tone: 'intimate, guarded', hook: 'Night makes people honest. Say something you wouldn\'t say in daylight.' },
+    dawn: { subject: 'the early morning', tone: 'soft, reflective', hook: 'You are both up early. Ask what woke them, or comment on the cold air.' },
+    morning: { subject: 'the day ahead', tone: 'purposeful, energized', hook: 'Ask what they have planned today, or mention something you need to get done.' },
+    evening: { subject: 'the day that was', tone: 'reflective, winding down', hook: 'Ask how their day went, or share something that happened to you today.' },
+    night: { subject: 'the quiet night', tone: 'intimate, guarded', hook: 'It is late. Ask why they are still awake, or share something on your mind.' },
   };
 
   const pt = periodTopics[ctx.period];
@@ -376,7 +400,7 @@ const seasonalTopics: TopicSource = (_init, _resp, ctx) => {
       subject: 'another week gone by',
       tone: 'contemplative',
       weight: 2,
-      initiatorHook: 'A week has passed. Comment on how fast or slow time feels, or what changed.',
+      initiatorHook: 'It has been a full week. Ask if anything has changed for them, or mention what changed for you.',
       category: 'casual_time',
     });
   }
@@ -495,7 +519,7 @@ const opinionTopics: TopicSource = (init, resp) => {
         subject: `how ${name} is doing`,
         tone: 'warm, caring',
         weight: 2,
-        initiatorHook: `You both care about ${name}. Ask how they've been, share something you noticed.`,
+        initiatorHook: `You both care about ${name}. Ask if they have seen ${name} lately, or if something seemed off.`,
         responderHook: `You also care about ${name}. Share your perspective on how they're doing.`,
         category: 'opinion',
       });

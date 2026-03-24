@@ -24,7 +24,7 @@ const DIALOGUE_SCHEMA: LlmJsonSchema = {
   schema: {
     type: 'object',
     properties: {
-      speech: { type: 'string', description: 'ONLY spoken words. No actions, no narration, no parentheses. Max 12 words.' },
+      speech: { type: 'string', minLength: 20, description: 'ONLY spoken words. No actions, no narration, no parentheses. 5 to 12 words.' },
       gesture: { type: 'string', description: 'One word: nods, shrugs, smiles, frowns, laughs, sighs. Empty if none.' },
     },
     required: ['speech', 'gesture'],
@@ -34,22 +34,26 @@ const DIALOGUE_SCHEMA: LlmJsonSchema = {
 
 /** Parse structured dialogue JSON → clean speech only. Gesture is metadata, not display text. */
 function parseDialogue(raw: string): string {
+  // Clean common LLM artifacts before parsing: trailing whitespace, extra commas
+  const cleaned = raw.trim().replace(/,\s*}/g, '}').replace(/,\s*$/g, '');
   try {
-    const d = JSON.parse(raw);
-    const speech = (d.speech ?? '').trim().replace(/^["']+|["']+$/g, '');
+    const d = JSON.parse(cleaned);
+    let speech = (d.speech ?? '').trim();
+    // Strip XML/HTML tags (e.g. <speaker>...</speaker>)
+    speech = speech.replace(/<[^>]+>/g, '').trim();
+    // Strip curly-brace narrative blocks (e.g. {Father Aldric's eyes are clouded...})
+    speech = speech.replace(/\{[^}]*\}/g, '').trim();
+    speech = speech.replace(/^["']+|["']+$/g, '');
     // Return ONLY speech — gesture is for future animation/UI, not text display
     return speech || '...';
   } catch {
     // Fallback: extract speech from malformed JSON via regex
-    const speechMatch = raw.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    const speechMatch = cleaned.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (speechMatch) {
-      const speech = speechMatch[1].replace(/\\"/g, '"').replace(/^["']+|["']+$/g, '').trim();
-      const gestureMatch = raw.match(/"gesture"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-      const gesture = gestureMatch?.[1]?.trim() || '';
-      return gesture ? `${gesture} ${speech}` : speech;
+      return speechMatch[1].replace(/\\"/g, '"').replace(/<[^>]+>/g, '').replace(/\{[^}]*\}/g, '').replace(/^["']+|["']+$/g, '').trim() || '...';
     }
     // Last resort: strip JSON artifacts and return cleaned text
-    return raw.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').trim() || '...';
+    return cleaned.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').replace(/<[^>]+>/g, '').trim() || '...';
   }
 }
 
@@ -87,6 +91,12 @@ export async function runConversation(
   const initSecrets = buildSecretDirectives(initiator, allAgents, eventStore);
   const respSecrets = buildSecretDirectives(responder, allAgents, eventStore);
 
+  // Dialogue rule lives in system prompt (additionalContext) so it gets equal attention weight
+  // with personality — prevents long system prompts from drowning out speech constraints
+  const DIALOGUE_RULE = '\nDIALOGUE: Every speech line must be a complete thought of 5–12 words. Never just a name or one-word answer.';
+  const initContext = (initSecrets || '') + DIALOGUE_RULE;
+  const respContext = (respSecrets || '') + DIALOGUE_RULE;
+
   for (let exchange = 0; exchange < config.exchangeCount; exchange++) {
     // --- Initiator speaks ---
     const initiatorPrompt = exchange === 0
@@ -95,7 +105,7 @@ export async function runConversation(
 
     const initiatorRaw = await initiator.generateResponse(initiatorPrompt, {
       maxTokens: CONVERSATION_MAX_TOKENS,
-      additionalContext: initSecrets || undefined,
+      additionalContext: initContext,
       jsonSchema: DIALOGUE_SCHEMA,
     });
     const initiatorLine = parseDialogue(initiatorRaw);
@@ -111,7 +121,7 @@ export async function runConversation(
     const responderPrompt = buildResponderPrompt(responder, initiator, initiatorLine, topic);
     const responderRaw = await responder.generateResponse(responderPrompt, {
       maxTokens: CONVERSATION_MAX_TOKENS,
-      additionalContext: respSecrets || undefined,
+      additionalContext: respContext,
       jsonSchema: DIALOGUE_SCHEMA,
     });
     const responderLine = parseDialogue(responderRaw);
@@ -159,7 +169,14 @@ export async function runConversation(
 /** Extract speech style description (L0 — style guidance without copyable phrases).
  *  Full examples are already in system prompt via ## Speech style section. */
 function speechReminder(agent: Agent): string {
-  return agent.profile.speechStyle.split('\n')[0] ?? '';
+  const lines = agent.profile.speechStyle.split('\n');
+  const description = lines[0] ?? '';
+  // Include one random example prefixed with "e.g." to prevent verbatim copying
+  const examples = lines.filter(l => l.startsWith('Example:'));
+  if (examples.length === 0) return description;
+  const example = examples[Math.floor(Math.random() * examples.length)];
+  const exampleText = example.replace(/^Example:\s*/, '');
+  return `${description} — e.g. ${exampleText}`;
 }
 
 /** Relationship note for conversation prompt */
@@ -186,7 +203,7 @@ function buildInitiatorPrompt(initiator: Agent, responder: Agent, topic: TopicPr
   return `YOUR TOPIC: ${topic.initiatorHook}
 You are at ${locName(initiator.state.location, locations)}. ${responder.profile.name} the ${responder.profile.role} is here with you.
 ${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
-speech must be at most 12 words. No narration, no parentheses.`;
+Say 5–12 words out loud to them — a complete thought, never just a name or greeting. Only dialogue, no narration or descriptions.`;
 }
 
 function buildResponderPrompt(
@@ -196,11 +213,12 @@ function buildResponderPrompt(
   const relNote = relationshipNote(responder, initiator);
   const speech = speechReminder(responder);
 
-  return `${initiator.profile.name} the ${initiator.profile.role} says to you:
+  return `React from YOUR OWN perspective — never mirror their phrasing.
+${initiator.profile.name} the ${initiator.profile.role} says to you:
 "${initiatorLine}"
 YOUR TOPIC: ${topic.subject}. ${topic.responderHook ?? ''}
 ${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
-speech must be at most 12 words. Do NOT repeat their words. No narration, no parentheses.`;
+Say 5–12 words out loud — a complete thought, never just a name or greeting. Only dialogue, no narration or descriptions.`;
 }
 
 function buildFollowUpPrompt(
@@ -212,7 +230,7 @@ function buildFollowUpPrompt(
 
   return `${other.profile.name} just said: "${lastLine.text}"
 Topic: ${topic.subject}. (Your voice: ${speech})
-IMPORTANT: speech at most 12 words. Continue briefly.`;
+IMPORTANT: say 5–12 words out loud — a complete thought, never just a name. Only dialogue, no narration.`;
 }
 
 // ─── Memory & Importance ────────────────────────────────────────

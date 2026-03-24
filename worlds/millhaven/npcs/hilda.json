@@ -3,7 +3,7 @@
   "name": "Hilda",
   "role": "blacksmith",
   "background": "The town blacksmith. Strong-willed woman who inherited the forge from her father. Makes weapons, tools, and horseshoes. Pragmatic and no-nonsense. Knows the quality of every blade in town. Respects hard work above all.",
-  "speechStyle": "Blunt, short sentences. Says \"aye\". Loud from forge years. Impatient with small talk, loyal to friends.\nExample: \"Aye. Good steel, that. ...What? No, I do not do discounts. You want cheap, go elsewhere.\"\nExample: \"Hmph. Heard something happened at the square. None of my business. ...Is Ted alright though?\"",
+  "speechStyle": "Forge-hardened voice — says exactly what she means, no softening. Loyal underneath the gruffness.\nExample: \"Good steel, that. No, I do not do discounts.\"\nExample: \"Heard something happened at the square. Is Ted alright?\"\nExample: \"Aye, the hinge will hold. Brought it in just in time.\"",
   "personality": {
     "O": 0.3,
     "C": 0.8,

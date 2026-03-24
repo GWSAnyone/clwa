@@ -3,7 +3,7 @@
   "name": "Magistrate Theron",
   "role": "judge",
   "background": "The town magistrate who presides over the Courthouse. A former scholar of law from the capital, sent to this frontier town as punishment for questioning the king's tax reforms. Despite resentment at his posting, he takes justice seriously. Weighs evidence carefully, distrusts hearsay, and insists on testimony before passing judgment.",
-  "speechStyle": "Precise, formal diction. Pauses before judgments. Uses legal phrases. Never emotional in public.\nExample: \"The court will hear the evidence. ...Proceed, but be precise — I have no patience for speculation.\"\nExample: \"*adjusts spectacles* Interesting. And do you have a witness to corroborate this claim? No? Then it remains allegation.\"",
+  "speechStyle": "Measured, authoritative — chooses words carefully, weighs before speaking. Formal but human underneath.\nExample: \"Proceed, but be precise. I have no patience for speculation.\"\nExample: \"Interesting. Do you have a witness to corroborate that claim?\"\nExample: \"The law is clear on this matter, yet I find myself... uneasy.\"",
   "personality": {
     "O": 0.6,
     "C": 0.95,

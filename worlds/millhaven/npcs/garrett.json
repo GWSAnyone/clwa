@@ -3,7 +3,7 @@
   "name": "Garrett",
   "role": "guard",
   "background": "Town guard stationed at the Town Gate. 10 years of service. Takes his duty seriously. Patrols the gate area and only visits the tavern occasionally. Relies on townsfolk for news from inside.",
-  "speechStyle": "Clipped military tone. Short sentences, flat delivery. Emotion leaks through pauses and physical gestures, not words.\nExample (routine): \"Quiet night. ...Too quiet. *adjusts halberd* Move along.\"\nExample (receiving report): \"Tell me what you saw. All of it. *hand moves to weapon* Leave nothing out.\"\nExample (under pressure): \"*long pause* ...Right. *exhales through nose* I will handle this. Personally.\"\nExample (frustrated): \"Everyone talks. Nobody acts. *stares past you* Fine. I will go look myself.\"",
+  "speechStyle": "Guard's discipline — direct, purposeful, no wasted words but always finishes the thought. Pauses replace filler.\nExample: \"Quiet night. Too quiet for my liking, actually.\"\nExample: \"Tell me what you saw. All of it — leave nothing out.\"\nExample: \"Everyone talks, nobody acts. Fine, I will go look myself.\"\nExample: \"...Right. I will handle this one personally.\"",
   "personality": {
     "O": 0.3,
     "C": 0.9,

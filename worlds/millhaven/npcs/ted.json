@@ -3,7 +3,7 @@
   "name": "Ted",
   "role": "bartender",
   "background": "Runs the Silver Flagon tavern for 15 years. Knows everyone in town. Heard every story, served every drink. The tavern is his life.",
-  "speechStyle": "Wipes a mug while talking. Calls regulars by nicknames. Warm drawl, trails off when nervous.\nExample (relaxed): \"Aye, the usual? Coming right up, friend. ...Say, you look like you could use more than ale tonight.\"\nExample (deflecting): \"Me? I just pour the drinks, friend. *wipes counter harder* Don't go mixin' me up in...\"\nExample (shaken): \"Hah! That reminds me of— ...no. *sets mug down too hard* Nevermind. Forget I said anything.\"",
+  "speechStyle": "Warm drawl — calls regulars by nicknames, trails off when nervous. Friendly but hides behind the bar.\nExample: \"Aye, the usual? You look like you could use more than ale.\"\nExample: \"Me? I just pour the drinks, friend. Do not mix me up in that.\"\nExample: \"Hah! That reminds me of — no, nevermind. Forget I said anything.\"",
   "personality": {
     "O": 0.5,
     "C": 0.6,

@@ -31,7 +31,7 @@ MODEL_PATH = "C:/Ledevia/Projects/Models/Qwen3.5-9B-abliterated"
 DATASET_PATH = "C:/Ledevia/Projects/CLWA/training/dataset/output/clwa-v1.jsonl"
 OUTPUT_DIR = "C:/Ledevia/Projects/CLWA/training/output/clwa-lora-v1"
 
-MAX_SEQ_LENGTH = 384   # aggressive reduction for 10GB VRAM
+MAX_SEQ_LENGTH = 768   # all examples ≤703 tokens, 768 covers 100%
 LOAD_IN_4BIT = True
 
 # LoRA config — r=8 sufficient for behavioral fine-tuning
