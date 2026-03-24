@@ -54,17 +54,17 @@ docker compose up -d                          # Qdrant (vector memory)
 bun install && bun run packages/server/src/index.ts  # → http://localhost:3000
 ```
 - **Runtime**: Bun | **LLM**: LM Studio, `qwen3.5-9b-abliterated` (lukey03, patched GGUF) | **Embeddings**: raw fetch (NOT OpenAI SDK)
-- **LLM API**: переход на OpenAI-compatible `/v1/chat/completions` с `response_format: json_schema` для structured output
+- **LLM API**: OpenAI-compatible `/v1/chat/completions` с `response_format: json_schema` для structured output
 - **GGUF Patch**: thinking отключён патчем в GGUF binary. В chat template заменено `enable_thinking is defined and` → `if true` (same-length binary replace). Backup: `.bak`. Если нужно перепатчить новый GGUF — см. `training/patch-gguf-thinking.py`
 - **Godot**: 4.6.1, WS on `127.0.0.1` (NOT localhost) | **Save**: `packages/server/data/save.json`
 
 ## Architecture
 
 ```
-Engine  (packages/engine/)  — universal subsystems, 30+ empty registries
+Engine  (packages/engine/)  — universal subsystems, 30+ empty registries, ZERO module-specific content
 Modules (packages/modules/) — world content via registration functions
-  ├── social/              — universal social topic sources (11 sources)
-  └── crime-justice/       — crime affordances, CG rules, step handlers
+  ├── social/              — universal social topic sources (11 sources) + socialize affordance
+  └── crime-justice/       — crime affordances, CG rules, step handlers, discovery handler
 Server  (packages/server/)  — HTTP/WS, world-loader, bootstrap
 Worlds  (worlds/millhaven/) — JSON world data (NPC profiles, locations, relationships)
 ```
@@ -101,18 +101,22 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 27. **Trust evolution**: NPC_ARRESTED → NPCs who received player claims about suspect get trust +0.08. NPC_SENTENCED exile → trust +0.12, release → trust -0.15. Only NPCs with `sourceNpcId === playerId` beliefs affected. Module code in event-handlers.ts.
 28. **NPC approach**: Tick phase handler checks co-located NPCs for urgent firsthand beliefs. Pushes to `TickPhaseContext.approaches[]`. Max 1 per tick. Cooldown 32 ticks per NPC. Server stores `promptContext`, injects into NPC system prompt when player opens chat.
 29. **Player rumor topics**: TopicSource in TOPIC_SOURCE_REGISTRY. NPC-NPC conversations can include topics about player (claims shared, negative sentiment, positive trust). TopicContext extended with `playerAgent`.
-30. **Structured dialogue**: NPC-NPC conversations use JSON schema (speech + gesture). Interactions too.
+30. **Structured dialogue**: NPC-NPC conversations use JSON schema (speech + gesture). parseDialogue returns speech only — gesture is metadata for future animation, not display text.
 31. **getEventLabel returns null**: not raw eventType. All callers handle null with `?? 'crime'` or skip.
 32. **Belief zeroing is module responsibility**: verdict-conditional in NPC_SENTENCED handler, not engine.
 33. **Generic ModuleStep**: engine knows only move_to/interact/announce/wait. All others via STEP_HANDLERS + generic buildSteps default.
 34. **Anti-repetition**: repeat_penalty, frequency_penalty, presence_penalty in DEFAULT_WORLD_CONFIG, passed to every llmCall.
 35. **instinctContext**: AffordanceDefinition field, interpolated with target.extra vars. Grounds emotional instinct in concrete situation (e.g. "You know Garrett accepted a bribe"). Module data, engine mechanism.
-36. **hasCrimeBelief**: checked via REQUIREMENT_CHECKERS registry with per-affordance beliefConfidence params. Was declared but never checked until v0.9.5 fix.
+36. **hasCrimeBelief**: checked via REQUIREMENT_CHECKERS registry with per-affordance beliefConfidence params.
 37. **triggerReactiveEvaluation**: callback in EventHandlerContext. Module handler triggers AL reactive evaluation for specific NPC. Engine provides mechanics.
 38. **Information spread**: sentiment cascade for RUMOR_SPREAD/WITNESS_MEMORY/THEFT_DISCOVERED handled by module event handlers, not engine.
 39. **World data = JSON**: all NPC profiles, locations, relationships, schedules, memories, lore, secrets in `worlds/millhaven/`. Server reads via `world-loader.ts`. Zero TypeScript constants for world content.
 40. **TopicEngine v3**: 13 sources (11 social + 2 crime). Bidirectional beliefs, recency weighting, location context, cross-source dedup (topicKey), death-aware opinions. Location hooks via `registerLocationHook` registry.
 41. **Location hooks**: `conversationHook` field in world.json locations → `registerLocationHook` registry → `getLocationHook` in topic sources. No hardcoded location names in modules.
+42. **Location IDs**: internal state uses slug IDs (`market-square`). LLM prompts use display names (`Market Square`) via `locationResolver` on Agent and `locName()` helpers. world-loader.ts maps JSON names → slugs. pathfinding/movement/perception all work with IDs.
+43. **Discovery handlers**: engine detects discovery condition (dead+alive co-location), creates event. Module owns the response (memory, mood, belief, grief) via DISCOVERY_HANDLERS registry. Engine has zero hardcoded discovery behavior.
+44. **Socialize affordance**: social module registers `socialize` — triggers LLM volition for extraverted NPCs (E>0.7) without crime events. No actionVerb (invisible to LLM). `socialOnly` flag in volition: "talk" becomes move-only → TopicEngine handles conversation.
+45. **Conversation prompts**: `YOUR TOPIC:` prefix in initiator/responder prompts. Topic hook first, then context. Gesture schema constrained to one word. knownFacts removed from buildSystemPrompt. Memory format: `(today, vivid)` not numeric scores. Mood calibration in impact analysis.
 
 ## Tick System
 
@@ -124,4 +128,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.9.6-dev. World data externalized to JSON (`worlds/millhaven/` — 12 files, world-loader.ts). Social module (11 topic sources, 4 new). TopicEngine v3 (bidirectional beliefs, recency, location, cross-source dedup). LoRA training dataset v1 (740 examples). Scoring v2 (non-linear curves, bidirectional mood/sentiment, trust, DEBT_PRESSURE). Instinct builder v2 (7 tiers × 3 textures × Enneagram × resistance × instinctContext grounding). No reflex bypass — LLM always decides. Centralized llm-client.ts (OpenAI endpoint, structured output json_schema). Abliterated model (GGUF patched, no RP framing in volition). World lore + background memories. suspectName normalization. Trust evolution, NPC approach, player rumors. Belief injection in interactions. Dynamic action enum. TopicEngine v2 (weighted random, PM influence, diversity tracking, belief transfer in conversations). Structured dialogue output (JSON schema for NPC-NPC conversations + interactions). Punishment system v2 (graduated verdicts, evidence quality, judge PM, imprisonment timer). Generic ModuleStep (engine no longer knows module step types). Blackmail system (secret knowledge beliefs, discovery via conversation impact, verb='leverage'). SOURCE_DECAY registry. Anti-repetition (1.1/0.3/0.2 A/B tested). 5 affordance fixes (flee, confront, vigilante, seek_forgiveness, intimidate). hasCrimeBelief fix (was never checked, moved to REQUIREMENT_CHECKERS). False testimony fix (scene_notice source). Crime scene awareness + information spread → module. triggerReactiveEvaluation callback in EventHandlerContext.
+v0.9.7-dev. Location IDs (slugs internal, display names in prompts via locationResolver). Dialogue quality overhaul (parseDialogue speech-only, gesture stripped; YOUR TOPIC: prefix; knownFacts removed from system prompt; memory format vivid/clear/fading; mood calibration in impact analysis; gesture schema one-word). Socialize affordance in social module (E-trait driven, visit goals, socialOnly → TopicEngine). DISCOVERY_HANDLERS registry (module-owned body discovery response). Dead code removed (checkMurderMotivation, askMurderDecision, spreadRumorsOnDayAdvance — ~130 lines). TopicEngine v3.1 (worldFactTopics reduced: 1 proposal w=0.5 40% chance; innerConflict trust>=0.3; shared 'fact' category). Engine world.ts has ZERO module-specific content — exhaustive audit confirmed all 18 methods clean. LoRA training dataset v1 (740 examples, base 330 + crime 410). Training in progress (step 70/279, resume from checkpoint). World data externalized to JSON (`worlds/millhaven/` — 12 files). Social module (11 topic sources). Scoring v2. Instinct builder v2. Structured dialogue (JSON schema). Punishment system v2. Blackmail system. Anti-repetition (1.1/0.3/0.2).

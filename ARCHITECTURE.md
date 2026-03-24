@@ -3,7 +3,7 @@
 > **Цель:** Архитектура симуляции живого игрового мира с причинно-следственной историей, многоуровневыми агентами и LLM-диалогом
 > **Вдохновение:** Disco Elysium (процесс расследования важнее результата), Dwarf Fortress (глубина симуляции), Stanford Generative Agents (архитектура памяти), Shangri-La Frontier (необратимые события)
 > **Принцип вех:** Каждая веха — демонстрация возможностей технологии CLWA. Мы строим **возможности**, не сценарии — сценарии это конфигурации начальных условий + правил поверх песочницы
-> **Дата начала:** Март 2026 | **Последнее обновление:** 19 марта 2026
+> **Дата начала:** Март 2026 | **Последнее обновление:** 24 марта 2026
 
 ---
 
@@ -255,6 +255,16 @@ LLM отвечает свободно. Может последовать инс�
 | `intimidate_witness` | crime | 5 | isCriminal, noGuard, night/evening | H↓, A↓, E↑ | WANTED_STATUS (+0.3) |
 | `flee_town` | crime | 3 | isCriminal, isWanted, mood<-0.5 | N↑, C↓ | NPC_ARRESTED (+0.5) |
 | `evaluate_case` | duty | 3 | canSentence, hasDetainedNpc | C↑, H↑ | NPC_ARRESTED (+0.5) |
+| `socialize` | social | 0 | notGuard | E↑ (0.4), A↑ (0.1) | — (social module) |
+
+**socialize** (v0.9.7): социальный fallback — обеспечивает LLM volition для экстравертных NPC даже без crime events. Нет actionVerb — невидим для LLM. Instinct pressure only. `socialOnly` flag: "talk" = move-only → TopicEngine handles conversation. Priority 2 (ниже schedule).
+
+#### DISCOVERY_HANDLERS (v0.9.7)
+
+Engine detects discovery (dead NPC + alive NPC at same location). Module owns response:
+- `registerDiscoveryHandler('BODY_DISCOVERED', handler)` in crime-justice module
+- Handler: memory text + mood -0.35 (direct trauma) + belief (conf 0.7, source body_discovery) + grief penalty
+- Engine has zero hardcoded discovery behavior
 
 #### Механизмы стабильности
 
@@ -733,7 +743,7 @@ interface TopicContext {
 
 **Расширяемость**: `TOPIC_SOURCE_REGISTRY.push(myTopics)` — новый модуль = новые темы, ноль изменений engine. Аналогично AFFORDANCE_REGISTRY.
 
-**Key design decisions (v0.9.6):**
+**Key design decisions (v0.9.7):**
 - **Bidirectional** — и initiator, и responder's beliefs/mood генерируют proposals. Три ветки hooks: initiator knows / responder knows / both know.
 - **Recency weighting** — beliefs от сегодня +4, от вчера +2, старые +0
 - **Location context** — belief связан с текущей локацией → +2 weight. Location-specific casual hooks.
@@ -743,7 +753,7 @@ interface TopicContext {
 
 **Anti-repeat**: трекинг последних 6 тем на пару, пенализация повторных категорий.
 
-**Selection pipeline (v0.9.6):**
+**Selection pipeline (v0.9.7):**
 1. Collect all proposals from TOPIC_SOURCE_REGISTRY
 2. **Dedup by topicKey** — keep highest weight per key
 3. Penalize recently discussed categories (per pair)
@@ -762,10 +772,15 @@ interface TopicContext {
 - `observe()` **после** impact analysis (LLM-assessed importance)
 - `processOverhear()` **после** impact (finalized importance + belief transfer)
 
-##### Structured Dialogue (v0.9.5)
+##### Structured Dialogue (v0.9.7)
 
 JSON schema: `{ "speech": "...", "gesture": "..." }`. Casual: max 12w speech. Goal interactions: max 20w speech.
+**parseDialogue returns speech ONLY** — gesture is metadata for future animation, not display text. Gesture schema constrained to one word (`nods`, `shrugs`, `smiles`).
 Anti-repetition: `repeat_penalty: 1.1`, `frequency_penalty: 0.3`, `presence_penalty: 0.2`.
+**Conversation prompts**: `YOUR TOPIC:` prefix — topic hook first, then context. Topic subject in responder prompt. speechReminder = L0 description (style guidance, not copyable example).
+**knownFacts removed from buildSystemPrompt** — lore was 25% of system prompt, caused model to obsess over world facts instead of following topic hooks.
+**Memory format**: `(today, vivid)` instead of `significance: 7.2/10` — immersive, not meta-gaming.
+**Mood calibration**: impact analysis prompt instructs "casual friendly conversations = mood_impact near zero".
 Robust fallback parser для malformed JSON. Player chat — свободный формат.
 
 ##### Conversation Prompts — принципы
@@ -1127,7 +1142,7 @@ CLWA/
     │   └── src/
     │       ├── index.ts            # Re-exports
     │       ├── social/             # Universal social behavior
-    │       │   ├── index.ts        # registerSocialModule() — 11 topic sources
+    │       │   ├── index.ts        # registerSocialModule() — 11 topic sources + socialize affordance
     │       │   └── topic-sources.ts # belief, relationship, mood, casual, seasonal, memory, opinion, question topics
     │       └── crime-justice/
     │           ├── index.ts        # registerCrimeJusticeModule() — заполняет реестры engine

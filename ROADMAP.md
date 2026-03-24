@@ -365,8 +365,18 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Anti-hallucination** — CRITICAL rule first in system prompt, beliefs in user prompt (not lost middle), gossip grounded with crime details
 - [x] **Responder echo fix** — "React with YOUR OWN words — do NOT repeat"
 - [x] **False testimony fix** — scene_notice source (not firsthand), only real witnesses can testify
-- [ ] **Conversation impact calibration** — mood_impact слишком часто негативный, нужно тестировать
-- [ ] **NPC speech consistency** — speechStyle reminder проверить на длинных промптах
+- [x] **Conversation impact calibration** — mood calibration instruction added ("casual friendly = near zero") ✅ (v0.9.7)
+- [x] **NPC speech consistency** — speechReminder = L0 description (style guidance), not L1 example (prevents verbatim copying) ✅ (v0.9.7)
+- [x] **Dialogue quality overhaul** (v0.9.7):
+  - parseDialogue returns speech only (gesture stripped from display)
+  - Gesture schema constrained to one word (nods/shrugs/smiles)
+  - YOUR TOPIC: prefix in initiator/responder prompts (topic hook first)
+  - Topic subject added to responder prompt
+  - knownFacts removed from buildSystemPrompt (-200 tokens lore noise)
+  - Memory format: (today, vivid) instead of significance scores
+  - Anti-parentheses in speech schema
+- [x] **Socialize affordance** — social module, E-trait driven, socialOnly→visit goals, TopicEngine handles conversations ✅ (v0.9.7)
+- [x] **TopicEngine v3.1** — worldFactTopics (1 proposal, w=0.5, 40% chance, shared category), innerConflict trust>=0.3 ✅ (v0.9.7)
 
 #### Godot клиент
 - [ ] Стены/крыши зданий на тайлмапе
@@ -412,7 +422,9 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Module step types** — generic ModuleStep, engine no longer knows steal/arrest/etc ✅ (v0.9.5)
 - [x] **TopicEngine built-in sources** — 7→11 topic sources migrated to `modules/social/`, 4 new added ✅ (v0.9.6)
 - [x] **Location hooks** — casualTopics hardcoded strings → `registerLocationHook` registry + world.json `conversationHook` ✅ (v0.9.6)
-- [ ] **Information spread** (world.ts, isInformationOnly block) — sentiment cascade для rumor spread. Module knowledge в engine
+- [x] **Body discovery** — hardcoded memory/mood/belief in checkBodyDiscovery → DISCOVERY_HANDLERS registry. Module owns response ✅ (v0.9.7)
+- [x] **Dead code** — checkMurderMotivation, askMurderDecision, spreadRumorsOnDayAdvance removed (~130 lines) ✅ (v0.9.7)
+- [x] **Engine purity audit** — exhaustive check of all 18 World methods + 6 CG methods. ZERO module-specific content confirmed ✅ (v0.9.7)
 
 Результат: `modules/millhaven/` → полный мир. `modules/pirate-cove/` → другой мир. Ноль изменений в engine/modules. Графический редактор читает/пишет JSON.
 
@@ -494,8 +506,9 @@ training/dataset/
 
 #### Training pipeline
 
-- [ ] **Датасет** — ~740 hand-crafted примеров в ChatML формате, контрастивные пары, per-NPC voice
-- [ ] **QLoRA fine-tune** — Unsloth, 4-bit, RTX 3080. ~1-2 часа. Fallback: cloud bf16 LoRA если QLoRA degraded
+- [x] **Датасет** — 740 hand-crafted примеров в ChatML формате, контрастивные пары, per-NPC voice ✅
+- [x] **train.py** — Unsloth QLoRA, 4-bit, RTX 3080 10GB. VRAM optimizations: TORCHDYNAMO_DISABLE, expandable_segments, garbage_collection_threshold:0.6, empty_cache. save_steps=10 ✅
+- [ ] **QLoRA fine-tune** — training in progress (step 70/279, 3 epochs). ~35 hours on RTX 3080 (shared memory). Resume from checkpoint supported.
 - [ ] **Export GGUF** — Q4_K_M (~5GB) + thinking patch для LM Studio
 - [ ] **Тестирование** — E2E: steal/leverage выбираются при high tier, JSON парсится, dialogue ≤12w, per-NPC voice
 
