@@ -69,7 +69,7 @@ export { canSee, canInteract, canHear, getCoPresent, getWitnesses, getPlayerAgen
 
 // ─── Volition ───
 export { evaluateAllVolition, evaluateReactiveVolition, createGoalFromRequest } from './volition';
-export { llmCall, llmStream } from './llm-client';
+export { llmCall, llmStream, truncateToFirstJsonObject } from './llm-client';
 export type { LlmCallOptions, LlmStreamOptions, LlmJsonSchema } from './llm-client';
 export type { ParsedIntention } from './volition';
 export { resetConsideration } from './volition';

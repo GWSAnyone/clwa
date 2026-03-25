@@ -3,6 +3,7 @@ import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { ConversationResult, ConversationLine, WorldConfig, LocationGraph } from './world-types';
 import type { TopicProposal } from './topic-engine';
+import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 import { getRelationshipLabel } from './event-registry';
 import { buildSecretDirectives } from './secret-directives';
@@ -34,8 +35,9 @@ const DIALOGUE_SCHEMA: LlmJsonSchema = {
 
 /** Parse structured dialogue JSON → clean speech only. Gesture is metadata, not display text. */
 function parseDialogue(raw: string): string {
-  // Clean common LLM artifacts before parsing: trailing whitespace, extra commas
-  const cleaned = raw.trim().replace(/,\s*}/g, '}').replace(/,\s*$/g, '');
+  // Truncate to first JSON object (handles multi-object LLM output)
+  const cleaned = truncateToFirstJsonObject(raw);
+
   try {
     const d = JSON.parse(cleaned);
     let speech = (d.speech ?? '').trim();

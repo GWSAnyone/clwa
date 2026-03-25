@@ -505,6 +505,24 @@ export function handleRequest(
     }, { headers: cors });
   }
 
+  // ─── GET /api/debug/belief/:id/:eventType/:subject/:confidence ───
+  const beliefMatch = path.match(/^\/api\/debug\/belief\/([^/]+)\/([^/]+)\/([^/]+)\/([\d.]+)$/);
+  if (method === 'GET' && beliefMatch) {
+    const agent = agents.get(beliefMatch[1]);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    const eventType = beliefMatch[2];
+    const subjectRaw = decodeURIComponent(beliefMatch[3]);
+    const subject = subjectRaw === 'null' ? null : subjectRaw;
+    const confidence = Math.max(0, Math.min(1, parseFloat(beliefMatch[4])));
+    const objectName = new URL(req.url).searchParams.get('object') ?? null;
+    const source = new URL(req.url).searchParams.get('source') ?? 'rumor';
+    agent.state.beliefs?.addBelief({
+      eventType, subject, object: objectName, confidence,
+      source: source as any, sourceNpcId: null, location: agent.state.location, gameDay: world.gameDay,
+    });
+    return Response.json({ id: beliefMatch[1], eventType, subject, object: objectName, confidence, source }, { headers: cors });
+  }
+
   // ─── 404 ───
   return Response.json({ error: 'Not found' }, { status: 404, headers: cors });
 }

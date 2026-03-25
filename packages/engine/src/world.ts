@@ -12,7 +12,7 @@ import { ConversationScheduler } from './scheduler';
 import { runConversation, buildMemoryText } from './conversation';
 import { processMovement } from './movement';
 import { GoalManager } from './goals';
-import type { GoalActionResult } from './goals';
+import type { GoalActionResult, NpcGoal } from './goals';
 import { createInteractionRunner } from './interaction';
 import type {
   WorldConfig, TickResult, ConversationLine, ConversationResult,
@@ -210,9 +210,7 @@ export class World {
       event, reactiveCtx,
       (npcId) => this.goalManager.getGoals(npcId).filter(g => g.state !== 'completed' && g.state !== 'failed').map(g => g.type),
     );
-    for (const goal of reactiveGoals) {
-      this.goalManager.addGoal(goal);
-    }
+    this.addReactiveGoalsFiltered(reactiveGoals);
 
     // Registry-based goal cleanup: modules declare which goals to complete per event type
     const goalsToClean = getGoalCleanupForEvent(event.type);
@@ -242,14 +240,34 @@ export class World {
             modifiedEvent, reactiveCtx,
             (id) => this.goalManager.getGoals(id).filter(g => g.state !== 'completed' && g.state !== 'failed').map(g => g.type),
           );
-          for (const goal of goals) {
-            this.goalManager.addGoal(goal);
-          }
+          this.addReactiveGoalsFiltered(goals);
         },
       };
       for (const handler of handlers) {
         await handler(event, handlerCtx);
       }
+    }
+  }
+
+  /**
+   * Add reactive goals with priority filtering: if an NPC already has a pending/active
+   * reactive goal, only replace it if the new one has higher priority.
+   * Prevents low-priority reactive events (gossip from RUMOR_SPREAD) from
+   * overshadowing high-priority ones (report_crime from WITNESS_MEMORY).
+   */
+  private addReactiveGoalsFiltered(goals: NpcGoal[]): void {
+    for (const goal of goals) {
+      // Only add if NPC has no active/pending goal of equal or higher priority
+      // (prevents low-priority reactive cascades from overshadowing higher-priority ones)
+      const existingGoals = this.goalManager.getGoals(goal.ownerId);
+      const higherPriorityExists = existingGoals.some(
+        g => g.state !== 'completed' && g.state !== 'failed' && g.priority >= goal.priority,
+      );
+      if (higherPriorityExists) {
+        console.log(`  [AL:reactive:skip] ${goal.ownerId} — ${goal.type}(pri=${goal.priority}) skipped, higher-priority goal exists`);
+        continue;
+      }
+      this.goalManager.addGoal(goal);
     }
   }
 
@@ -1095,11 +1113,14 @@ export class World {
     const elCtx: EvidenceContext = { event: killEvent, agents: this.agents, crimeScenes: this.crimeScenes };
     this.evidence.generate(killEvent, elCtx);
 
-    // Process consequences — the engine's onEvent callback will call handleEventForGoals
+    // Process consequences (CG cascade: WITNESS_MEMORY, RUMOR_SPREAD, etc.)
     const results = await this.engine.process(killEvent, this.buildCgContext());
 
-    // Also feed the kill event itself into goals
-    this.handleEventForGoals(killEvent);
+    // Feed the kill event + all consequence events into goal/reactive evaluation
+    await this.handleEventForGoals(killEvent);
+    for (const r of results) {
+      await this.handleEventForGoals(r.event);
+    }
 
     return { killEvent, results };
   }

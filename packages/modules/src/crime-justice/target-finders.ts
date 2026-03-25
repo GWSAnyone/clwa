@@ -260,9 +260,17 @@ function findCrimeSceneForCriminal(npcId: string, agent: Agent, ctx: AffordanceC
 /** Find a witness to intimidate */
 function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
   // Find NPCs who have witness beliefs about this NPC's crime
+  // Prioritize co-located > adjacent > anywhere (proximity preference)
+  let bestTarget: AffordanceTarget | null = null;
+  let bestProximity = Infinity; // 0=co-located, 1=adjacent, 2=anywhere
+
+  const agentLocation = agent.state.location;
+  const agentLoc = ctx.locations.get(agentLocation);
+  const adjacentLocations = agentLoc ? new Set(agentLoc.connections) : new Set<string>();
+
   for (const [otherId, other] of ctx.agents) {
     if (otherId === npcId || !other.state.alive || other.profile.isPlayer || other.profile.investigator) continue;
-    if (other.state.status) continue; // only free NPCs can be intimidated
+    if (isStatusAbsent(other.state.status)) continue; // only free NPCs can be intimidated
 
     const otherBeliefs = other.state.beliefs?.getAllBeliefs() ?? [];
     const witnessOfMyCrime = otherBeliefs.find(
@@ -271,13 +279,19 @@ function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext):
         b.confidence >= 0.3,
     );
     if (witnessOfMyCrime) {
-      return {
-        targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
-        extra: { crimeType: witnessOfMyCrime.eventType === 'NPC_KILLED' ? 'murder' : 'crime' },
-      };
+      const proximity = other.state.location === agentLocation ? 0
+        : adjacentLocations.has(other.state.location) ? 1 : 2;
+      if (proximity < bestProximity) {
+        bestTarget = {
+          targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
+          extra: { crimeType: witnessOfMyCrime.eventType === 'NPC_KILLED' ? 'murder' : 'crime' },
+        };
+        bestProximity = proximity;
+        if (proximity === 0) break; // co-located is optimal, stop searching
+      }
     }
   }
-  return null;
+  return bestTarget;
 }
 
 /** Find a crime scene to investigate — returns the crime location as target, with crimeLocation in extra */

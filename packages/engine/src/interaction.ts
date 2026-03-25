@@ -3,6 +3,7 @@ import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { InteractionRunner, GoalStep } from './goals';
 import type { ConversationLine, LocationGraph } from './world-types';
+import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 import { getInteractionResultHooks } from './event-registry';
 
@@ -30,17 +31,22 @@ const INTERACTION_DIALOGUE_SCHEMA: LlmJsonSchema = {
 
 /** Parse structured dialogue JSON → clean speech only. Gesture is metadata, not display text. */
 function parseInteractionDialogue(raw: string): string {
+  // Truncate to first JSON object (handles multi-object LLM output)
+  const cleaned = truncateToFirstJsonObject(raw);
+
   try {
-    const d = JSON.parse(raw);
-    const speech = (d.speech ?? '').trim().replace(/^["']+|["']+$/g, '');
+    const d = JSON.parse(cleaned);
+    let speech = (d.speech ?? '').trim().replace(/^["']+|["']+$/g, '');
+    // Strip XML/HTML tags and curly-brace narrative blocks
+    speech = speech.replace(/<[^>]+>/g, '').replace(/\{[^}]*\}/g, '').trim();
     return speech || '...';
   } catch {
     // Fallback: extract speech from malformed JSON via regex
-    const speechMatch = raw.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    const speechMatch = cleaned.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (speechMatch) {
-      return speechMatch[1].replace(/\\"/g, '"').replace(/^["']+|["']+$/g, '').trim() || '...';
+      return speechMatch[1].replace(/\\"/g, '"').replace(/<[^>]+>/g, '').replace(/\{[^}]*\}/g, '').replace(/^["']+|["']+$/g, '').trim() || '...';
     }
-    return raw.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').trim() || '...';
+    return cleaned.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').replace(/<[^>]+>/g, '').trim() || '...';
   }
 }
 
