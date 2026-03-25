@@ -341,9 +341,9 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
   - [x] `gossip` — Organic: Elara gossips, Magistrate gossips post-arrest ✅
   - [x] `grieve` — Score 0.64 for Mark (Bess victim). Available but personality chose other actions ✅
   - [x] `blackmail` — Organic: Mark blackmails Ted 4 times across test runs. Elara blackmails 2 times(!). Dominant crime affordance ✅
-  - [ ] `confront` — verb registered, score computable. Needs: longer WANTED→arrest window (currently ~20 ticks). Low priority — mechanically identical to interact
-  - [ ] `vigilante` — verb registered. Same timing issue as confront. Needs: NPC with crime belief + very low sentiment + bad mood
-  - [ ] `intimidate_witness` — verb registered. Needs: criminal + witness co-located at night + no guard. Rare natural conditions
+  - [x] `confront` — Hilda→Mark: "Old Bess is dead because of you." Full chain (move→interact→complete). Score 0.542 ✅
+  - [x] `vigilante` — Requirements pass, score 0.712. PM correctly prefers duty actions for Millhaven NPCs (all high C/H). Not a bug — need low A+C NPC for natural trigger ✅
+  - [x] `intimidate_witness` — Requirements pass, score 0.744. Mark prefers subtler crimes (steal 0.836, blackmail 0.794). suppressNearPlayer blocks when player co-located. PM-correct ✅
   - [x] `destroy_evidence` — Score 0.72 when Mark WANTED. Available, observed in previous test sessions. Outscored by blackmail in most runs ✅
 - [x] Проверить что instinct builder descriptions корректно генерируются для всех tiers ✅
 
@@ -365,10 +365,10 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Убрать dual registration** — registerSource() удалён, TopicEngine читает TOPIC_SOURCE_REGISTRY напрямую
 
 **Новые topic sources:**
-- [ ] **seasonalTopics** — погода, урожай, праздники. Привязка к gameDay. Создают ощущение времени
-- [ ] **memoryTopics** — NPC вспоминает memories из Qdrant. "Помнишь как прошлой зимой..." Vector recall, не hardcoded
-- [ ] **opinionTopics** — мнение о третьем NPC через beliefs + sentiment. "Что думаешь о Mark?"
-- [ ] **questionTopics** — NPC спрашивает о том чего НЕ знает (gaps в beliefs). Информационный обмен
+- [x] **seasonalTopics** — period-based (dawn/morning/evening/night) + weekly milestones ✅ (v0.9.6)
+- [x] **memoryTopics** — NPC recalls old beliefs (2+ days, conf≥0.4), bidirectional, beliefTransfer ✅ (v0.9.6)
+- [x] **opinionTopics** — мнение о третьем NPC, death-aware, 3 sentiment паттерна (shared complaint/warm concern/disagreement) ✅ (v0.9.6)
+- [x] **questionTopics** — low-conf beliefs → seeking confirmation + knowledge asymmetry → beliefTransfer ✅ (v0.9.6)
 
 #### Conversation quality
 - [x] **Structured dialogue** — JSON schema (speech + gesture), anti-narration, anti-echo. Research-backed "at most" phrasing
@@ -389,16 +389,111 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Socialize affordance** — social module, E-trait driven, socialOnly→visit goals, TopicEngine handles conversations ✅ (v0.9.7)
 - [x] **TopicEngine v3.1** — worldFactTopics (1 proposal, w=0.5, 40% chance, shared category), innerConflict trust>=0.3 ✅ (v0.9.7)
 
-#### Godot клиент
-- [ ] Стены/крыши зданий на тайлмапе
-- [ ] NPC hover tooltip (trust + relationship)
-- [ ] Player mood indicator в HUD
-- [ ] Проверить approach notifications в Godot
+#### Godot клиент — ПЕРЕПИСКА: Top-Down 2D (Kenney)
+
+**Решение**: отказ от изометрии + 3D SubViewport + KayKit. Переход на чистый top-down 2D. Причина: 3D pipeline сложный, хрупкий, визуально не дотягивает. Top-down (RimWorld/Escapists/Stardew стиль) — читаемый, быстрый в реализации, фокус на overlay-слое (мысли NPC, каскады, mood) — том что делает CLWA уникальным.
+
+**Ассеты**: Kenney Tiny Town (мир: здания, дороги, деревья) + Kenney Tiny Dungeon (NPC: персонажи, предметы). Оба бесплатные, один стиль. Дополнительно: Medieval Village Exterior (Hypnobius, itch.io).
+
+**Что удалить:**
+- `character_viewport.gd` (320 строк) — весь 3D SubViewport pipeline
+- `iso_building.gd` (350), `iso_ground.gd` (50), `location_builder.gd` (400), `location_props.gd` (100) — изометрия
+- `assets/kaykit/` (~7.2 GB) — KayKit 3D модели и анимации
+- Текущий тайлмап (isometric 256×512)
+
+**Что переиспользовать AS-IS (100%, без изменений):**
+- `backend.gd` (327 строк, autoload) — WS клиент + HTTP. 17 сигналов, 14 REST endpoints. Полностью готов
+- `dialog_panel.gd` (350) — чат с NPC, стриминг, trust bar, intent feedback, action buttons
+- `examine_panel.gd` (190) — crime scene осмотр, 5 категорий улик
+- `journal_panel.gd` (200) — журнал с фильтрами и поиском
+- `shop_panel.gd` (130) — торговля (display only)
+- `hud.gd` (150) — время, тик/день кнопки, event log
+- `notification_manager.gd` (120) — toast нотификации 7 типов событий
+- `map_panel.gd` (170) — мини-карта с NPC позициями
+- `day_night_overlay.gd` (40) — day/night шейдер
+- `speech_bubble.gd` (50) — всплывающие пузыри (есть, не подключён → основа для Thought Bubble)
+
+**Что переписать (30% reuse — логика, не рендеринг):**
+- `main.gd` (800+) — оставить event routing + UI orchestration, убрать 3D spawning / isometric math
+- `npc_marker.gd` (260) — заменить SubViewport на Sprite2D, оставить status indicators / labels / mood ring
+- `player.gd` (110) — оставить WASD + interaction detection, убрать 3D viewport
+
+**Существующий WS-протокол** (17 типов, уже работают):
+`conversation:line`, `conversation:complete`, `tick`, `event`, `movement`, `goal:action`, `state:update`, `chat:token`, `chat:done`, `intent`, `shop:open`, `murder`, `crime:scene`, `journal:entry`, `npc_approach`, `debug:llm`, `reflection`
+
+**Архитектура нового клиента:**
+```
+main.gd
+├── TileMapLayer (Kenney Tiny Town — здания, дороги, зоны)
+├── NPCManager
+│   └── NPC scenes (Sprite2D + Labels + Overlays)
+│       ├── Спрайт (Tiny Dungeon character)
+│       ├── MoodRing (цветное свечение: зелёный→жёлтый→красный)
+│       ├── GoalIcon (TextureRect — иконка текущей цели)
+│       ├── ThoughtBubble (Panel + Label — всплывает при решении)
+│       └── NameLabel
+├── PlayerCharacter (тот же NPC scene + input)
+├── UILayer (CanvasLayer)
+│   ├── EventFeed (лента CG каскадов сбоку)
+│   ├── RelationshipOverlay (линии между NPC при включении)
+│   ├── ChatPanel (диалог с NPC)
+│   └── TimeDisplay (игровое время, день)
+└── Backend (WebSocket + HTTP клиент)
+```
+
+**Три ключевых overlay-элемента** (80% визуального впечатления):
+
+1. **Mood Ring** — цветное свечение вокруг NPC. Зритель мгновенно видит эмоциональное состояние.
+2. **Thought Bubble** — всплывает на 3-4с при решении: `"Strong urge to steal... decided: YES"`. Видимый процесс мышления.
+3. **Event Feed** — правая панель, лента каскадов в реальном времени:
+   ```
+   🔪 Mark → killed Bess         20:15
+   👁 Aldric saw the killing      20:15
+   💬 Rumor spreading...          20:30
+   🔍 Aldric investigating       21:00
+   ```
+
+**Расширение WS-протокола** (бэкенд, packages/server/):
+- [ ] `npc_thought`: { npcId, decision, instinctTier, reason }
+- [ ] `mood_update`: { npcId, oldMood, newMood, cause }
+- [ ] `event_cascade`: { triggerId, events: [{type, actors, time}] }
+- [ ] `relationship_change`: { from, to, trust, sentiment, cause }
+- [ ] `goal_update`: { npcId, goalType, status, targetName }
+- [ ] Streaming Tick Level 1 (per-NPC broadcast вместо пакетного TickResult)
+
+**Этап 1: Бэкенд + подготовка**
+- [ ] Расширить WS-протокол (thought, mood, events, relationships)
+- [ ] Streaming Tick Level 1 (per-NPC broadcast)
+- [ ] Скачать и осмотреть Kenney Tiny Town + Tiny Dungeon
+- [ ] LoRA завершить (если не готов)
+
+**Этап 2: Новый Godot клиент — база**
+- [ ] Новый проект Godot 4.6
+- [ ] TileMap: Millhaven карта top-down (8 локаций)
+- [ ] NPC scene: спрайт + имя + mood ring
+- [ ] Backend.gd: подключение, обработка WS
+- [ ] Спавн NPC по данным сервера
+- [ ] Движение NPC между локациями (tween/path)
+
+**Этап 3: Overlay-слой (главное для демо)**
+- [ ] Thought Bubble — всплывает при npc_thought
+- [ ] Goal Icon — над NPC, меняется при goal_update
+- [ ] Event Feed — панель справа
+- [ ] Mood Ring — цвет по mood_update
+- [ ] Chat Panel — диалог с NPC
+- [ ] PlayerCharacter: WASD + клик на NPC
+
+**Этап 4: Полировка + контент**
+- [ ] Визуальная полировка: day/night, тени
+- [ ] Звуки (Kenney audio)
+- [ ] Тестовые прогоны: 5-10 историй
+- [ ] Нарезка лучших моментов (30-60с клипы)
+- [ ] Первые посты
 
 #### Demo readiness
-- [ ] Настроить начальные условия (tension seeds если нужно после E2E тестов)
+- [ ] Настроить начальные условия (tension seeds)
 - [ ] Demo script — что показывать, в каком порядке
-- [ ] 2-3 полных прогона с Godot клиентом (наблюдение, взаимодействие с NPC, осмотр crime scene)
+- [ ] 2-3 полных прогона с новым клиентом
 
 #### NPC config externalization
 - [x] World data externalized to `worlds/millhaven/` JSON files ✅ (v0.9.6)
@@ -532,6 +627,29 @@ training/dataset/
 ### Phase 3: World Expansion
 > Новые подсистемы движка + модули контента. 4 engine-подсистемы разблокируют десятки модулей.
 
+#### Streaming Tick — потоковая обработка вместо пакетной (RimWorld-inspired)
+
+**Проблема**: сейчас 1 тик = обработать ВСЕХ NPC разом → 3-8с тишины → следующий тик. Как слайд-шоу.
+
+**Решение**: распределённые тики по модели RimWorld. Три ключевых принципа:
+
+1. **Hash-offset scheduling** — каждый NPC обрабатывается в свой момент, распределённый по времени. 7 NPC, интервал 8с → каждые ~1.1с обрабатывается один NPC. Мир течёт непрерывно, не вспышками.
+
+2. **Многоуровневые частоты обновления** — не все системы тикают одинаково:
+   - **Volition (LLM)**: только когда текущая цель завершена/прервана. Как RimWorld ThinkTree — раз в сотни тиков
+   - **Движение**: каждый цикл обработки NPC. Один хоп, без LLM
+   - **Perception/Mood**: каждый цикл. Чтение данных + арифметика
+   - **Разговоры (LLM)**: только при co-location + повод + cooldown
+   - **Beliefs/Rumors**: раз в игровой час. Фоново
+
+3. **Job System** — NPC получает Goal → исполняет шаги тик за тиком без повторного LLM-вызова → Volition запускается только в точках принятия решений (завершение цели, срочное событие). Вместо "7 NPC × Volition каждый тик" → "1-2 NPC завершили цель за цикл".
+
+**Переменная частота для далёких NPC** (Hot/Warm/Cold): NPC не в локации игрока → обновление раз в 2-3 цикла. Незаметно, экономия существенна.
+
+**Визуальный эффект**: вместо "тик → 8с тишины → тик" → "каждую секунду кто-то что-то делает". Mark двинулся → Aldric повернул → Bess вздохнула → Mark дошёл → Mark заговорил. Непрерывный поток.
+
+**Зависимости**: требует рефакторинг World.tick() на per-NPC processing loop. WS-протокол уже поддерживает per-event broadcast.
+
 #### Новые подсистемы движка
 
 **Trauma Layer — необратимые изменения личности**
@@ -584,6 +702,38 @@ training/dataset/
 - [ ] **Skills / Knowledge** (basic) — что агент умеет (не personality = склонность, а competence = способность). Кузнец умеет ковать. Навыки можно получить, передать, потерять.
 
 **Результат**: разнообразный мир с экономикой, политикой, социальными связями. Модули комбинируются: торговец-контрабандист арестован → политический кризис, потому что он советник мэра.
+
+#### Streaming Tick System — от пакетов к потоку (вдохновлено RimWorld)
+
+Сейчас World.tick() обрабатывает всех NPC пакетно: 7 NPC → TickResult → WS broadcast. Мир "мигает" раз в 8 секунд. RimWorld решает эту проблему distributed tick scheduling + multi-frequency updates + Job system. Наш контекст другой (LLM = 99.97% времени тика, 7 NPC не 200 пешек), но три идеи переносимы напрямую.
+
+**Уровень 1: Streaming WS per-NPC** (низкая сложность, огромный визуальный эффект)
+
+Внутри `World.tick()` NPC уже обрабатываются последовательно (LLM semaphore=1). Mark думает 4с, потом Aldric 3с. Но Godot получает обновления только после завершения ВСЕГО тика. Изменение: эмитить WS-события per-NPC по мере обработки (movement, goal progress, conversation). Ноль изменений в игровой логике — чисто presentation layer.
+
+Результат: вместо "8с тишины → все дёрнулись" → "каждую секунду кто-то движется". Мир "течёт".
+
+**Уровень 2: Hot/Warm/Cold variable frequency** (средняя сложность, реальная экономия LLM)
+
+Агенты далеко от игрока обновляются реже:
+- **Hot** (co-located с игроком): полная обработка каждый тик, включая volition
+- **Warm** (1-2 локации): movement/mood каждый тик, volition каждый 2-й тик
+- **Cold** (далеко, без событий): mood каждый тик, movement каждый 2-й, volition каждый 4-й
+
+С 7 NPC: ~2-3 hot + 2-3 warm + 1-2 cold → в среднем ~4 NPC на volition вместо 7. Экономия 30-40% LLM-вызовов. При масштабировании до 50+ NPC — критически необходимо.
+
+**Уровень 3: Hash-offset distributed scheduling** (средняя сложность, нужен при >20 NPC)
+
+RimWorld trick: `(ticksGame + thingID.HashOffset()) % interval == 0`. Каждый NPC обрабатывается в свой момент, нагрузка размазана равномерно. С 7 NPC выигрыш минимален — все и так обрабатываются за один цикл. При 50+ — предотвращает spike'и. Реализация: NPC ID → hash → slot в round-robin цикле.
+
+**НЕ переносимо из RimWorld** (и почему):
+- Sub-second micro-ticks (60/сек) — бессмысленно. RimWorld tick стоит наносекунды (ThinkTree детерминистический). Наш tick стоит секунды (LLM). Уменьшение гранулярности не ускорит LLM.
+- Async LLM pipeline — с 1 GPU (concurrency=1) параллелизм LLM-вызовов невозможен. Выигрыш от async cheap ops между LLM-вызовами — 10мс из 4000мс. Станет актуально при нескольких inference endpoints.
+- Camera-based LOD (RimWorld 1.6) — для MMO не применимо (у каждого игрока своя "камера"). Заменяется proximity-based hot/warm/cold.
+
+**Job System — уже реализован.** Goal System с шагами (move_to → interact → announce) = RimWorld Job. NPC получает Goal → исполняет шаги тик за тиком без повторного LLM-вызова. Volition запускается только при завершении/провале цели или реактивном событии. Это ключевая оптимизация RimWorld, и она у нас с v0.5.
+
+Порядок: Level 1 → Level 2 → Level 3 (по мере роста числа NPC).
 
 ### Phase 4: Scale & Multiplayer
 > От деревни к живому миру. Сотни NPC, десятки игроков, настоящая война.
