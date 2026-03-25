@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://cnp7pof2t2fc7"]
+
+[ext_resource type="Script" uid="uid://b5iagrrw2udmn" path="res://scripts/main.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://becy5bal8n1dn" path="res://tile_map_layer.tscn" id="2_hmx62"]
+
+[node name="World" type="Node2D" unique_id=993206155]
+script = ExtResource("1")
+
+[node name="main_topdown" parent="." unique_id=1793099886 instance=ExtResource("2_hmx62")]
+
+[node name="Buildings" type="Node2D" parent="." unique_id=1552271986]
+
+[node name="NPCs" type="Node2D" parent="." unique_id=1755804222]
+
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=839965911]
+layer = 10

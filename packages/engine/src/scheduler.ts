@@ -40,6 +40,7 @@ export class ConversationScheduler {
       .filter(([id, a]) => {
         if (!a.state.alive || excludeIds?.has(id)) return false;
         if (a.profile.isPlayer) return false; // Player initiates conversations manually
+        if (a.state.inTransit) return false; // NPC still walking — can't talk
         return !isStatusAbsent(a.state.status);
       });
 

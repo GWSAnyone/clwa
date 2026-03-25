@@ -15,8 +15,8 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="CLWA - Living World"
-config/description="Causal Living World Architecture - 2D Isometric Client"
-run/main_scene="uid://cmufm4kcgpqlw"
+config/description="Causal Living World Architecture - Top-Down 2D Client"
+run/main_scene="uid://cnp7pof2t2fc7"
 config/features=PackedStringArray("4.6")
 config/icon="res://icon.svg"
 
@@ -36,4 +36,5 @@ enabled=PackedStringArray("res://addons/YATI/plugin.cfg", "res://addons/godot_mc
 
 [rendering]
 
+textures/canvas_textures/default_texture_filter=0
 renderer/rendering_method="gl_compatibility"

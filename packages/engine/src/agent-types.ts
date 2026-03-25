@@ -89,6 +89,8 @@ export interface AgentState {
   inPlayerChat?: boolean;
   /** Current emotional motive from AL decision (WHY). Cleared on goal completion */
   currentMotive?: string;
+  /** NPC is moving between locations — not yet arrived. Transient, not persisted. */
+  inTransit?: boolean;
 }
 
 export interface Memory {

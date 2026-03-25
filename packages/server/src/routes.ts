@@ -4,9 +4,11 @@ import type { IEventStore } from '@clwa/engine';
 import type { EventType } from '@clwa/engine';
 import type { LocationGraph } from '@clwa/engine';
 import { broadcast } from './ws';
+import type { PositionManager } from './position-manager';
 
 export interface RouteOptions {
   onSave?: () => void;
+  positionManager?: PositionManager;
 }
 
 /** Build all REST route handlers */
@@ -35,23 +37,30 @@ export function handleRequest(
 
   // ─── GET /api/agents ───
   if (method === 'GET' && path === '/api/agents') {
+    const pm = options?.positionManager;
     const list = Array.from(agents.entries())
       .filter(([, agent]) => !agent.profile.isPlayer)
-      .map(([id, agent]) => ({
-      id,
-      name: agent.profile.name,
-      role: agent.profile.role,
-      location: agent.state.location,
-      alive: agent.state.alive,
-      status: agent.state.status ?? 'free',
-      mood: agent.state.mood,
-      currentDay: agent.state.currentDay,
-      reflection: agent.getReflectionStatus(),
-      background: agent.profile.background,
-      speechStyle: agent.profile.speechStyle,
-      beliefCount: agent.state.beliefs?.getAllBeliefs().length ?? 0,
-      relationshipCount: agent.state.relationships?.getAllRelationships().length ?? 0,
-    }));
+      .map(([id, agent]) => {
+        const pos = pm?.getPosition(id);
+        return {
+          id,
+          name: agent.profile.name,
+          role: agent.profile.role,
+          location: agent.state.location,
+          alive: agent.state.alive,
+          status: agent.state.status ?? 'free',
+          mood: agent.state.mood,
+          currentDay: agent.state.currentDay,
+          x: pos?.x ?? 0,
+          y: pos?.y ?? 0,
+          inTransit: pos?.inTransit ?? false,
+          reflection: agent.getReflectionStatus(),
+          background: agent.profile.background,
+          speechStyle: agent.profile.speechStyle,
+          beliefCount: agent.state.beliefs?.getAllBeliefs().length ?? 0,
+          relationshipCount: agent.state.relationships?.getAllRelationships().length ?? 0,
+        };
+      });
     return Response.json(list, { headers: cors });
   }
 

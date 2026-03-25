@@ -51,6 +51,7 @@ interface LocationJson {
   description: string;
   connections: string[];
   conversationHook?: string;
+  zone?: { center: [number, number]; polygon: [number, number][] };
 }
 
 interface WorldJson {
@@ -104,6 +105,8 @@ export interface LoadedWorld {
   config: WorldJson['config'];
   /** Map location display names → internal IDs */
   locationNameToId: Map<string, string>;
+  /** Zone data for position management (pixel polygons per location) */
+  zones: { id: string; zone?: { center: [number, number]; polygon: [number, number][] } }[];
 }
 
 // ─── Loader ────────────────────────────────────────────────────
@@ -262,5 +265,9 @@ export function loadWorld(worldDir: string): LoadedWorld {
     secrets,
     config: worldJson.config,
     locationNameToId: nameToId,
+    zones: worldJson.locations.map(loc => ({
+      id: nameToId.get(loc.name) || loc.name.toLowerCase().replace(/\s+/g, '-'),
+      zone: loc.zone,
+    })),
   };
 }

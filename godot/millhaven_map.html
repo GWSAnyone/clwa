@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Millhaven Map Layout</title></head>
+<body style="margin:0;background:#111;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif">
+<canvas id="c" width="1200" height="800"></canvas>
+<script>
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+const T = 38; // tile display size (64px game tiles shown at 38px for overview)
+const COLS = 30, ROWS = 20;
+const OX = 30, OY = 40; // offset for grid numbers
+
+// ═══ BACKGROUND ═══
+ctx.fillStyle = '#1a2a3a';
+ctx.fillRect(0, 0, 1200, 800);
+
+// ═══ WATER (full grid) ═══
+for (let x = 0; x < COLS; x++) {
+  for (let y = 0; y < ROWS; y++) {
+    const px = OX + x * T, py = OY + y * T;
+    ctx.fillStyle = (x + y) % 2 === 0 ? '#2a4a5a' : '#2e4e5e';
+    ctx.fillRect(px, py, T, T);
+  }
+}
+
+// ═══ GRID LINES ═══
+ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+ctx.lineWidth = 0.5;
+for (let x = 0; x <= COLS; x++) {
+  ctx.beginPath(); ctx.moveTo(OX + x*T, OY); ctx.lineTo(OX + x*T, OY + ROWS*T); ctx.stroke();
+}
+for (let y = 0; y <= ROWS; y++) {
+  ctx.beginPath(); ctx.moveTo(OX, OY + y*T); ctx.lineTo(OX + COLS*T, OY + y*T); ctx.stroke();
+}
+
+// ═══ GRID NUMBERS ═══
+ctx.font = '9px monospace'; ctx.fillStyle = '#556'; ctx.textAlign = 'center';
+for (let x = 0; x <= COLS; x += 1) {
+  if (x % 5 === 0) { ctx.fillStyle = '#99a'; ctx.font = 'bold 10px monospace'; }
+  else { ctx.fillStyle = '#445'; ctx.font = '8px monospace'; }
+  ctx.fillText(x, OX + x * T, OY - 6);
+}
+ctx.textAlign = 'right';
+for (let y = 0; y <= ROWS; y += 1) {
+  if (y % 5 === 0) { ctx.fillStyle = '#99a'; ctx.font = 'bold 10px monospace'; }
+  else { ctx.fillStyle = '#445'; ctx.font = '8px monospace'; }
+  ctx.fillText(y, OX - 5, OY + y * T + 4);
+}
+
+// ═══ LOCATION ZONES (irregular polygons in tile coords) ═══
+const zones = {
+  'Town Gate': {
+    color: '#3a6a3a', border: '#2a5a2a',
+    poly: [[21,1],[25,1],[26,2],[26,4],[25,5],[21,5],[20,4],[20,2]],
+    icon: '🏰', label: 'Town Gate'
+  },
+  'Market Square': {
+    color: '#4a7a3a', border: '#3a6a2a',
+    poly: [[4,2],[9,2],[10,3],[10,7],[9,7],[7,6],[4,6],[3,5],[3,3]],
+    icon: '🏪', label: 'Market Square'
+  },
+  'Blacksmith': {
+    color: '#3a6a3a', border: '#2a5a2a',
+    poly: [[0,7],[4,7],[4,8],[5,9],[5,11],[4,12],[0,12]],
+    icon: '⚒️', label: 'Blacksmith'
+  },
+  'Town Square': {
+    color: '#5a9a4a', border: '#4a8a3a',
+    poly: [[11,5],[19,5],[20,6],[20,7],[19,9],[20,10],[20,11],[11,11],[10,10],[10,7],[11,6]],
+    icon: '⛲', label: 'Town Square'
+  },
+  'Temple of Dawn': {
+    color: '#4a7a3a', border: '#3a6a2a',
+    poly: [[24,6],[28,6],[29,7],[29,10],[28,11],[24,11],[23,10],[23,7]],
+    icon: '⛪', label: 'Temple of Dawn'
+  },
+  'Tavern': {
+    color: '#3a6a3a', border: '#2a5a2a',
+    poly: [[3,13],[8,13],[9,14],[9,17],[8,18],[3,18],[2,17],[2,14]],
+    icon: '🍺', label: 'Silver Flagon\nTavern'
+  },
+  'Residential Lane': {
+    color: '#4a7a3a', border: '#3a6a2a',
+    poly: [[12,14],[19,14],[19,15],[20,16],[20,18],[19,19],[12,19],[11,18],[11,16],[12,15]],
+    icon: '🏠', label: 'Residential\nLane'
+  },
+  'Courthouse': {
+    color: '#3a6a3a', border: '#2a5a2a',
+    poly: [[22,12],[28,12],[29,13],[29,17],[28,18],[22,18],[21,17],[21,13]],
+    icon: '⚖️', label: 'Courthouse'
+  },
+};
+
+// ═══ ROADS (wider paths with texture) ═══
+function zoneCenter(z) {
+  let sx=0,sy=0;
+  for(const p of z.poly){sx+=p[0];sy+=p[1];}
+  return [sx/z.poly.length, sy/z.poly.length];
+}
+
+const roadPairs = [
+  ['Town Square','Town Gate'],
+  ['Town Square','Market Square'],
+  ['Town Square','Temple of Dawn'],
+  ['Town Square','Residential Lane'],
+  ['Town Square','Courthouse'],
+  ['Town Square','Tavern'],
+  ['Market Square','Blacksmith'],
+  ['Residential Lane','Courthouse'],
+];
+
+// Road shadow
+for (const [a,b] of roadPairs) {
+  const ca = zoneCenter(zones[a]), cb = zoneCenter(zones[b]);
+  ctx.strokeStyle = '#2a3a1a';
+  ctx.lineWidth = T * 2.2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(OX + ca[0]*T, OY + ca[1]*T);
+  ctx.lineTo(OX + cb[0]*T, OY + cb[1]*T);
+  ctx.stroke();
+}
+// Road dirt
+for (const [a,b] of roadPairs) {
+  const ca = zoneCenter(zones[a]), cb = zoneCenter(zones[b]);
+  ctx.strokeStyle = '#7a6a40';
+  ctx.lineWidth = T * 1.6;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(OX + ca[0]*T, OY + ca[1]*T);
+  ctx.lineTo(OX + cb[0]*T, OY + cb[1]*T);
+  ctx.stroke();
+}
+// Road surface
+for (const [a,b] of roadPairs) {
+  const ca = zoneCenter(zones[a]), cb = zoneCenter(zones[b]);
+  ctx.strokeStyle = '#b0a060';
+  ctx.lineWidth = T * 1.0;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(OX + ca[0]*T, OY + ca[1]*T);
+  ctx.lineTo(OX + cb[0]*T, OY + cb[1]*T);
+  ctx.stroke();
+}
+// Road center line (subtle)
+for (const [a,b] of roadPairs) {
+  const ca = zoneCenter(zones[a]), cb = zoneCenter(zones[b]);
+  ctx.strokeStyle = 'rgba(200,180,120,0.3)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,6]);
+  ctx.beginPath();
+  ctx.moveTo(OX + ca[0]*T, OY + ca[1]*T);
+  ctx.lineTo(OX + cb[0]*T, OY + cb[1]*T);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// ═══ DRAW ZONE POLYGONS ═══
+for (const [name, z] of Object.entries(zones)) {
+  // Fill
+  ctx.beginPath();
+  ctx.moveTo(OX + z.poly[0][0]*T, OY + z.poly[0][1]*T);
+  for (let i = 1; i < z.poly.length; i++) {
+    ctx.lineTo(OX + z.poly[i][0]*T, OY + z.poly[i][1]*T);
+  }
+  ctx.closePath();
+  ctx.fillStyle = z.color;
+  ctx.fill();
+
+  // Border
+  ctx.strokeStyle = z.border;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Grass texture dots
+  const c = zoneCenter(z);
+  const cx = OX + c[0]*T, cy = OY + c[1]*T;
+  for (let i = 0; i < 15; i++) {
+    const dx = (Math.sin(i*7.3+c[0])*0.4) * z.poly.length * T * 0.3;
+    const dy = (Math.cos(i*5.1+c[1])*0.4) * z.poly.length * T * 0.2;
+    ctx.fillStyle = 'rgba(100,180,80,0.3)';
+    ctx.beginPath();
+    ctx.arc(cx + dx, cy + dy, 2, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+// ═══ ZONE LABELS + ICONS ═══
+for (const [name, z] of Object.entries(zones)) {
+  const c = zoneCenter(z);
+  const cx = OX + c[0]*T, cy = OY + c[1]*T;
+
+  // Icon
+  ctx.font = '22px serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(z.icon, cx, cy - 8);
+
+  // Label background
+  const lines = z.label.split('\n');
+  const lh = 13;
+  const ly = cy + 12;
+
+  ctx.font = 'bold 11px sans-serif';
+  for (let i = 0; i < lines.length; i++) {
+    const tw = ctx.measureText(lines[i]).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(cx - tw/2 - 4, ly + i*lh - 9, tw + 8, lh + 2);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(lines[i], cx, ly + i*lh);
+  }
+
+  // Tile coord badge
+  const bounds = getBounds(z.poly);
+  ctx.font = '8px monospace';
+  ctx.fillStyle = '#ff8';
+  ctx.fillText(`${bounds.x},${bounds.y} → ${bounds.x2},${bounds.y2}`, cx, cy + 12 + lines.length * lh + 4);
+}
+
+function getBounds(poly) {
+  let minX=99,minY=99,maxX=0,maxY=0;
+  for(const[x,y]of poly){minX=Math.min(minX,x);minY=Math.min(minY,y);maxX=Math.max(maxX,x);maxY=Math.max(maxY,y);}
+  return {x:minX,y:minY,x2:maxX,y2:maxY};
+}
+
+// ═══ TITLE ═══
+ctx.textAlign = 'center';
+ctx.font = 'bold 15px sans-serif';
+ctx.fillStyle = '#ddc';
+ctx.fillText('MILLHAVEN — Grid 30×20 tiles (64px each) — Total 1920×1280px', 600, 20);
+
+ctx.font = '11px sans-serif';
+ctx.fillStyle = '#998';
+ctx.fillText('Yellow coords = tile range (x,y → x2,y2). Zones are Area2D + CollisionPolygon2D in Godot editor.', 600, 790);
+</script></body></html>

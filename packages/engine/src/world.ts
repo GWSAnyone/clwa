@@ -341,6 +341,11 @@ export class World {
     const allMovements: MovementResult[] = [];
     const goalActions: GoalActionResult[] = [];
 
+    // Clear inTransit for all agents — each tick starts fresh, movement sets it
+    for (const [, agent] of this.agents) {
+      agent.state.inTransit = false;
+    }
+
     // 0. Auto advance day when a new day starts (tick rolls over to 0)
     let dayAdvanced = false;
     if (tickInDay === 0 && this.tickCount > 1) {

@@ -323,6 +323,7 @@ export class GoalManager {
         if (owner.state.location === step.location) {
           // Already there, advance
           goal.currentStep++;
+          owner.state.inTransit = false;
           return { ...baseResult, action: 'move_to', description: `${owner.profile.name} arrived at ${step.location}` };
         }
 
@@ -330,11 +331,13 @@ export class GoalManager {
         if (!next) {
           // No path — skip step
           goal.currentStep++;
+          owner.state.inTransit = false;
           return { ...baseResult, action: 'move_to', description: `${owner.profile.name} cannot reach ${step.location}` };
         }
 
         const from = owner.state.location;
         owner.state.location = next;
+        owner.state.inTransit = true;
         goal.currentStep = next === step.location ? goal.currentStep + 1 : goal.currentStep;
 
         return {

@@ -16,6 +16,11 @@ signal crime_scene_created(location_id: String, crime_type: String, point_count:
 signal debug_llm(reason: String, target: String)
 signal journal_entry_added(entry: Dictionary)
 signal npc_approach(npc_id: String, npc_name: String, display_text: String, urgency: float)
+signal npc_thought(data: Dictionary)
+signal mood_updated(npc_id: String, npc_name: String, old_mood: float, new_mood: float)
+signal goal_changed(data: Dictionary)
+signal event_cascaded(data: Dictionary)
+signal relationship_changed(data: Dictionary)
 signal connected
 signal disconnected
 
@@ -119,7 +124,9 @@ func _handle_ws_message(text: String) -> void:
 
 		"movement":
 			if raw_data is Array:
+				print("[Backend] Movement received: %d entries" % raw_data.size())
 				for m: Dictionary in raw_data:
+					print("[Backend]   %s: %s -> %s" % [m.get("agentName", "?"), m.get("from", "?"), m.get("to", "?")])
 					npc_moved.emit(m.get("agentName", ""), m.get("from", ""), m.get("to", ""))
 
 		"goal:action":
@@ -198,6 +205,31 @@ func _handle_ws_message(text: String) -> void:
 				var agent_name: String = raw_data.get("agentName", "")
 				var refl_text: String = raw_data.get("text", "")
 				event_received.emit({"type": "reflection", "subject": agent_name, "text": refl_text})
+
+		"npc_thought":
+			if raw_data is Dictionary:
+				npc_thought.emit(raw_data)
+
+		"mood_update":
+			if raw_data is Dictionary:
+				mood_updated.emit(
+					raw_data.get("npcId", ""),
+					raw_data.get("npcName", ""),
+					raw_data.get("oldMood", 0.0),
+					raw_data.get("newMood", 0.0)
+				)
+
+		"goal_update":
+			if raw_data is Dictionary:
+				goal_changed.emit(raw_data)
+
+		"event_cascade":
+			if raw_data is Dictionary:
+				event_cascaded.emit(raw_data)
+
+		"relationship_change":
+			if raw_data is Dictionary:
+				relationship_changed.emit(raw_data)
 
 
 # --- REST API ---

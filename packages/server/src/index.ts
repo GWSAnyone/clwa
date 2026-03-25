@@ -9,6 +9,7 @@ import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCat
 import { broadcast } from './ws';
 import { startServer } from './server';
 import { loadWorld } from './world-loader';
+import { PositionManager } from './position-manager';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 
@@ -69,7 +70,10 @@ interface SaveData {
   savedAt: string;
   world: ReturnType<World['toJSON']>;
   events: ReturnType<InMemoryEventStore['toJSON']>;
+  positions?: Record<string, { x: number; y: number }>;
 }
+
+let _positionManager: PositionManager | null = null;
 
 function saveToDisk(world: World, eventStore: InMemoryEventStore): void {
   const data: SaveData = {
@@ -77,6 +81,7 @@ function saveToDisk(world: World, eventStore: InMemoryEventStore): void {
     savedAt: new Date().toISOString(),
     world: world.toJSON(),
     events: eventStore.toJSON(),
+    positions: _positionManager?.toJSON(),
   };
   mkdirSync(SAVE_DIR, { recursive: true });
   writeFileSync(SAVE_PATH, JSON.stringify(data, null, 2));
@@ -180,6 +185,26 @@ async function main() {
     });
     agents.set(profile.id, agent);
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npcLocation}`);
+  }
+
+  // ─── Position Manager (server-authoritative pixel positions) ───
+  const positionManager = new PositionManager();
+  _positionManager = positionManager;
+  positionManager.loadZones(worldData.zones);
+
+  // Restore positions from save or compute initial
+  if (savedData?.positions) {
+    positionManager.loadFromJSON(savedData.positions);
+    console.log(`  [+] Positions restored from save (${Object.keys(savedData.positions).length} entities)`);
+  }
+  // Fill missing positions (new entities or missing from save)
+  for (const [id, agent] of agents) {
+    if (!positionManager.getPosition(id)) {
+      positionManager.initPosition(id, agent.state.location);
+    }
+  }
+  if (!savedData?.positions) {
+    console.log(`  [+] Positions initialized for ${agents.size} entities`);
   }
 
   // ─── Seed background memories (unchangeable past) ───
@@ -301,7 +326,14 @@ async function main() {
         broadcast({ type: 'conversation:line', data: line });
       },
       onConversation: (result) => {
-        broadcast({ type: 'conversation:complete', data: result });
+        // Compute approach points — NPCs walk toward each other
+        const initId = [...agents.entries()].find(([, a]) => a.profile.name === result.initiator)?.[0];
+        const respId = [...agents.entries()].find(([, a]) => a.profile.name === result.responder)?.[0];
+        let approachPoints = null;
+        if (initId && respId) {
+          approachPoints = positionManager.computeApproachPoints(initId, respId);
+        }
+        broadcast({ type: 'conversation:complete', data: { ...result, approachPoints } });
       },
       onTick: (result) => {
         if (result.time) {
@@ -321,10 +353,13 @@ async function main() {
         broadcast({ type: 'tick', data: result });
       },
       onMovement: (movements) => {
-        for (const m of movements) {
-          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to}`);
-        }
-        broadcast({ type: 'movement', data: movements });
+        const enriched = movements.map(m => {
+          const target = positionManager.startMovement(m.agentId, m.to);
+          const pos = positionManager.getPosition(m.agentId);
+          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to} (${pos?.x},${pos?.y} → ${target.targetX},${target.targetY})`);
+          return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: target.targetX, targetY: target.targetY };
+        });
+        broadcast({ type: 'movement', data: enriched });
       },
       onGoalAction: (action) => {
         console.log(`  [Goal] ${action.ownerName}: ${action.description}`);
@@ -384,6 +419,7 @@ async function main() {
 
   const server = startServer(world, eventStore, agents, { port: PORT }, {
     onSave: () => saveToDisk(world, eventStore),
+    positionManager,
   }, approachContexts);
   console.log();
   console.log(`  HTTP:  http://localhost:${server.port}/api/agents`);

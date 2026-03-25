@@ -5,74 +5,58 @@
     {
       "name": "Silver Flagon Tavern",
       "description": "A warm tavern where Ted serves drinks and stories flow freely.",
-      "connections": [
-        "Town Square",
-        "Residential Lane"
-      ],
-      "conversationHook": "Comment on the ale, the crowd, or something funny a customer did."
+      "connections": ["Town Square", "Residential Lane"],
+      "conversationHook": "Comment on the ale, the crowd, or something funny a customer did.",
+      "zone": { "center": [422, -486], "polygon": [[640,-576],[640,-320],[320,-320],[320,-384],[256,-384],[256,-512],[320,-512],[320,-640],[576,-640],[576,-576]] }
     },
     {
       "name": "Town Square",
       "description": "The central hub of town.",
-      "connections": [
-        "Silver Flagon Tavern",
-        "Market Square",
-        "Town Gate",
-        "Temple of Dawn",
-        "Blacksmith",
-        "Courthouse"
-      ],
-      "conversationHook": "Comment on who you see passing through, the weather, or a notice on the board."
+      "connections": ["Silver Flagon Tavern", "Market Square", "Town Gate", "Temple of Dawn", "Blacksmith", "Courthouse"],
+      "conversationHook": "Comment on who you see passing through, the weather, or a notice on the board.",
+      "zone": { "center": [188, 316], "polygon": [[0,0],[256,0],[256,64],[320,64],[320,128],[320,320],[256,320],[256,384],[384,384],[384,576],[192,576],[192,512],[128,512],[128,576],[-64,576],[-64,384],[-64,0]] }
     },
     {
       "name": "Town Gate",
       "description": "The main entrance to town. Garrett patrols here.",
-      "connections": [
-        "Town Square"
-      ],
-      "conversationHook": "Comment on travelers, the road, or the weather outside."
+      "connections": ["Town Square"],
+      "conversationHook": "Comment on travelers, the road, or the weather outside.",
+      "zone": { "center": [-384, 320], "polygon": [[-256,128],[-256,512],[-512,512],[-512,128]] }
     },
     {
       "name": "Market Square",
       "description": "Where merchants sell their wares.",
-      "connections": [
-        "Town Square",
-        "Residential Lane"
-      ],
-      "conversationHook": "Comment on the goods, the prices, or who you saw shopping today."
+      "connections": ["Town Square", "Residential Lane"],
+      "conversationHook": "Comment on the goods, the prices, or who you saw shopping today.",
+      "zone": { "center": [-208, -352], "polygon": [[0,-512],[0,-192],[-256,-192],[-256,-256],[-320,-256],[-320,-448],[-256,-448],[-256,-512]] }
     },
     {
       "name": "Blacksmith",
       "description": "Hilda's forge. The sound of hammering fills the air.",
-      "connections": [
-        "Town Square"
-      ],
-      "conversationHook": "Comment on the heat, the sound of hammering, or a well-made blade."
+      "connections": ["Town Square"],
+      "conversationHook": "Comment on the heat, the sound of hammering, or a well-made blade.",
+      "zone": { "center": [21, -896], "polygon": [[256,-1088],[256,-768],[-64,-768],[-64,-832],[-128,-832],[-128,-1088]] }
     },
     {
       "name": "Temple of Dawn",
       "description": "A stone temple where Aldric performs the rites.",
-      "connections": [
-        "Town Square"
-      ],
-      "conversationHook": "Comment on the peace here, a prayer, or a candle that burned brightly."
+      "connections": ["Town Square"],
+      "conversationHook": "Comment on the peace here, a prayer, or a candle that burned brightly.",
+      "zone": { "center": [128, 1141], "polygon": [[320,1216],[256,1216],[256,1344],[0,1344],[0,1280],[-64,1280],[-64,1024],[0,1024],[0,960],[256,960],[256,1024],[320,1024]] }
     },
     {
       "name": "Residential Lane",
       "description": "Quiet homes where several townsfolk live.",
-      "connections": [
-        "Silver Flagon Tavern",
-        "Market Square"
-      ],
-      "conversationHook": "Comment on the quiet, a neighbor you passed, or something domestic."
+      "connections": ["Silver Flagon Tavern", "Market Square"],
+      "conversationHook": "Comment on the quiet, a neighbor you passed, or something domestic.",
+      "zone": { "center": [800, 192], "polygon": [[1024,64],[1024,320],[960,320],[960,384],[896,384],[896,448],[576,448],[576,384],[512,384],[512,0],[576,0],[576,-64],[896,-64],[896,0],[960,0],[960,64]] }
     },
     {
       "name": "Courthouse",
       "description": "Where Theron delivers justice.",
-      "connections": [
-        "Town Square"
-      ],
-      "conversationHook": "Comment on the weight of the building, a case you overheard, or the magistrate."
+      "connections": ["Town Square"],
+      "conversationHook": "Comment on the weight of the building, a case you overheard, or the magistrate.",
+      "zone": { "center": [768, 896], "polygon": [[960,1088],[576,1088],[576,704],[960,704]] }
     }
   ],
   "lore": [

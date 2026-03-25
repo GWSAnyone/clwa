@@ -54,6 +54,15 @@ export function startServer(
         return new Response(file);
       }
 
+      // Serve game assets from godot/assets/
+      if (url.pathname.startsWith('/assets/')) {
+        const assetPath = resolve(PUBLIC_DIR, '..', '..', '..', 'godot', decodeURIComponent(url.pathname.slice(1)));
+        const assetFile = Bun.file(assetPath);
+        if (await assetFile.exists()) {
+          return new Response(assetFile);
+        }
+      }
+
       return new Response('Not found', { status: 404 });
     },
 
@@ -74,6 +83,24 @@ export function startServer(
           const msg: WSClientMessage = JSON.parse(
             typeof raw === 'string' ? raw : raw.toString(),
           );
+
+          if (msg.type === 'player_move') {
+            const pm = routeOptions?.positionManager;
+            if (pm && world.playerAgent) {
+              // Validate and update player position
+              if (pm.validatePosition(msg.x, msg.y)) {
+                pm.setPosition('player', msg.x, msg.y);
+                // Update player location slug from zone detection
+                const locSlug = pm.getLocationAtPoint(msg.x, msg.y);
+                if (locSlug && world.playerAgent.state.location !== locSlug) {
+                  world.playerAgent.state.location = locSlug;
+                }
+                // Broadcast to other clients
+                broadcast({ type: 'player_position', data: { x: msg.x, y: msg.y } });
+              }
+            }
+            return;
+          }
 
           if (msg.type === 'chat') {
             chatAgentId = msg.agentId;

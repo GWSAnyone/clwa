@@ -46,6 +46,7 @@ export function processMovement(
 
     const from = agent.state.location;
     agent.state.location = targetId;
+    agent.state.inTransit = true;
 
     results.push({
       agentId: id,
