@@ -337,6 +337,28 @@ async function main() {
       onLlmCall: (reason, target) => {
         broadcast({ type: 'debug:llm', data: { reason, target } });
       },
+      onRelationshipChange: (fromId, fromName, toId, toName, field, oldVal, newVal) => {
+        broadcast({ type: 'relationship_change', data: { fromId, fromName, toId, toName, field, oldVal: +oldVal.toFixed(2), newVal: +newVal.toFixed(2) } });
+      },
+      onCascade: (trigger, consequences) => {
+        if (consequences.length > 0) {
+          broadcast({ type: 'event_cascade', data: {
+            triggerId: trigger.id, triggerType: trigger.type,
+            consequences: consequences.map(e => ({ type: e.type, subject: e.subject, object: e.object, importance: e.importance })),
+          }});
+        }
+      },
+      onGoalChange: (data) => {
+        const agent = agents.get(data.npcId);
+        broadcast({ type: 'goal_update', data: { ...data, npcName: agent?.profile.name ?? data.npcId } });
+      },
+      onMoodChange: (npcId, npcName, oldMood, newMood) => {
+        broadcast({ type: 'mood_update', data: { npcId, npcName, oldMood: +oldMood.toFixed(2), newMood: +newMood.toFixed(2) } });
+      },
+      onDecision: (data) => {
+        console.log(`  [Decision] ${data.npcName} → ${data.action}${data.target ? ' ' + data.target : ''} (${data.instinctTier}, ${data.topScore.toFixed(2)})`);
+        broadcast({ type: 'npc_thought', data });
+      },
       onCrimeScene: (scene) => {
         broadcast({ type: 'crime:scene', data: {
           id: scene.id,

@@ -127,6 +127,7 @@ export function createGoalFromRequest(
 export async function evaluateAllVolition(
   ctx: AffordanceContext,
   onLlmCall?: (label: string, detail: string) => void,
+  onDecision?: (data: { npcId: string; npcName: string; action: string; target?: string; reason: string; topScore: number; instinctTier: string; alternatives: { verb: string; score: number }[] }) => void,
 ): Promise<NpcGoal[]> {
   const goals: NpcGoal[] = [];
 
@@ -170,7 +171,7 @@ export async function evaluateAllVolition(
     console.log(`  [AL:debug] ${agent.profile.name}: ${scored.length} affordances → ${scored.map(s => `${s.definition.id}:${s.score.toFixed(2)}`).join(', ')}`);
 
     // ── ALL decisions through LLM — instinct builder provides pressure, NPC always has final say ──
-    const goal = await llmDecideAndBuild(scored, npcId, agent, ctx, onLlmCall);
+    const goal = await llmDecideAndBuild(scored, npcId, agent, ctx, onLlmCall, onDecision);
 
     if (goal) {
       goal.createdAtTick = ctx.currentTick;
@@ -282,6 +283,7 @@ async function llmDecideAndBuild(
   agent: Agent,
   ctx: AffordanceContext,
   onLlmCall?: (label: string, detail: string) => void,
+  onDecision?: (data: { npcId: string; npcName: string; action: string; target?: string; reason: string; topScore: number; instinctTier: string; alternatives: { verb: string; score: number }[] }) => void,
 ): Promise<NpcGoal | null> {
   scored.sort((a, b) => b.score - a.score);
 
@@ -334,6 +336,18 @@ async function llmDecideAndBuild(
   }
 
   console.log(`  [AL:llm] ${agent.profile.name} → ${parsed.action}${parsed.target ? ' ' + parsed.target : ''} | ${parsed.why}`);
+
+  // Emit decision for overlay UI
+  onDecision?.({
+    npcId,
+    npcName: agent.profile.name,
+    action: parsed.action,
+    target: parsed.target || undefined,
+    reason: parsed.why,
+    topScore: scored[0].score,
+    instinctTier: getTierName(scored[0].score),
+    alternatives: scored.slice(0, 5).map(s => ({ verb: s.definition.id, score: Math.round(s.score * 100) / 100 })),
+  });
 
   // Set current motive on agent regardless of action (even wait carries emotional context)
   agent.state.currentMotive = parsed.why || undefined;

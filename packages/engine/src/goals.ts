@@ -129,6 +129,7 @@ export interface GoalActionResult {
 /** Gather evidence about a detained NPC from all agents' beliefs */
 export class GoalManager {
   private goals: Map<string, NpcGoal[]> = new Map(); // ownerId → goals
+  onGoalChange?: (data: { npcId: string; goalType: string; status: 'created' | 'completed' | 'failed'; targetName?: string }) => void;
 
   /** Add a goal for an NPC */
   addGoal(goal: NpcGoal): void {
@@ -137,6 +138,7 @@ export class GoalManager {
     // Sort by priority descending
     list.sort((a, b) => b.priority - a.priority);
     this.goals.set(goal.ownerId, list);
+    this.onGoalChange?.({ npcId: goal.ownerId, goalType: goal.type, status: 'created', targetName: goal.data?.targetName as string });
   }
 
   /** Get all active/pending goals for an NPC */
@@ -269,12 +271,14 @@ export class GoalManager {
     if (!owner || !owner.state.alive) {
       goal.state = 'failed';
       if (owner) owner.state.currentMotive = undefined;
+      this.onGoalChange?.({ npcId: ownerId, goalType: goal.type, status: 'failed' });
       return null;
     }
 
     // Check if all steps are done
     if (goal.currentStep >= goal.steps.length) {
       goal.state = 'completed';
+      this.onGoalChange?.({ npcId: ownerId, goalType: goal.type, status: 'completed' });
       // Clear current motive — goal fulfilled, emotional context no longer active
       if (owner.state.currentMotive && goal.data?.reason) {
         owner.state.currentMotive = undefined;

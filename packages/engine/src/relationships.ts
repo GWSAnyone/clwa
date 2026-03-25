@@ -41,6 +41,7 @@ export const DEFAULT_SENTIMENT: Record<RelationType, number> = {
 
 export class RelationshipGraph {
   private relationships: Map<string, Relationship> = new Map(); // targetId -> Relationship
+  onChange?: (targetId: string, targetName: string, field: 'trust' | 'sentiment', oldVal: number, newVal: number) => void;
 
   addRelationship(rel: Relationship): void {
     this.relationships.set(rel.targetId, rel);
@@ -57,14 +58,18 @@ export class RelationshipGraph {
   adjustSentiment(targetId: string, delta: number): void {
     const rel = this.relationships.get(targetId);
     if (rel) {
+      const old = rel.sentiment;
       rel.sentiment = Math.max(-1, Math.min(1, rel.sentiment + delta));
+      if (Math.abs(old - rel.sentiment) > 0.001) this.onChange?.(targetId, rel.targetName, 'sentiment', old, rel.sentiment);
     }
   }
 
   adjustTrust(targetId: string, delta: number): void {
     const rel = this.relationships.get(targetId);
     if (rel) {
+      const old = rel.trust;
       rel.trust = Math.max(0, Math.min(1, rel.trust + delta));
+      if (Math.abs(old - rel.trust) > 0.001) this.onChange?.(targetId, rel.targetName, 'trust', old, rel.trust);
     }
   }
 

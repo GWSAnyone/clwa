@@ -50,6 +50,16 @@ export interface WorldCallbacks {
   onCrimeScene?: (scene: CrimeScene) => void;
   /** Called before an LLM call (for debug UI) */
   onLlmCall?: (reason: string, target?: string) => void;
+  /** Called when an NPC makes a volition decision (for overlay UI) */
+  onDecision?: (data: { npcId: string; npcName: string; action: string; target?: string; reason: string; topScore: number; instinctTier: string; alternatives: { verb: string; score: number }[] }) => void;
+  /** Called when any agent's mood changes (intercepted via property setter) */
+  onMoodChange?: (npcId: string, npcName: string, oldMood: number, newMood: number) => void;
+  /** Called when a goal is created, completed, or failed */
+  onGoalChange?: (data: { npcId: string; goalType: string; status: 'created' | 'completed' | 'failed'; targetName?: string }) => void;
+  /** Called after a CG cascade completes with trigger + consequences */
+  onCascade?: (trigger: WorldEvent, consequences: WorldEvent[]) => void;
+  /** Called when any NPC relationship changes (trust or sentiment) */
+  onRelationshipChange?: (fromId: string, fromName: string, toId: string, toName: string, field: 'trust' | 'sentiment', oldVal: number, newVal: number) => void;
 }
 
 /** Check if NPC can act: alive AND no special status (null = default/free = active) */
@@ -164,6 +174,37 @@ export class World {
 
     // Goal system
     this.goalManager = new GoalManager();
+    if (this.callbacks.onGoalChange) {
+      this.goalManager.onGoalChange = (data) => {
+        const agent = this.agents.get(data.npcId);
+        this.callbacks.onGoalChange?.({ ...data, npcId: data.npcId });
+      };
+    }
+
+    // Install mood interceptors — captures all mood changes (engine + modules) via property setter
+    this.installMoodInterceptors();
+    // Install relationship change callbacks on each agent's graph
+    this.installRelationshipCallbacks();
+  }
+
+  /** Intercept mood property on each agent's state to emit onMoodChange callback */
+  private installMoodInterceptors(): void {
+    if (!this.callbacks.onMoodChange) return;
+    for (const [id, agent] of this.agents) {
+      let _mood = agent.state.mood;
+      const cb = this.callbacks.onMoodChange;
+      const name = agent.profile.name;
+      Object.defineProperty(agent.state, 'mood', {
+        get: () => _mood,
+        set: (v: number) => {
+          const old = _mood;
+          _mood = v;
+          if (Math.abs(old - v) > 0.001) cb(id, name, old, v);
+        },
+        enumerable: true,
+        configurable: true,
+      });
+    }
   }
 
   /** Resolve and cache the player Agent (isPlayer flag on profile) */
@@ -400,7 +441,7 @@ export class World {
       decisionCooldownTicks: this.config.decisionCooldownTicks,
       isArrestTarget: (npcId) => this.goalManager.isTargetOfGoalType(npcId, 'arrest'),
     };
-    const volitionGoals = await evaluateAllVolition(volitionCtx, this.callbacks.onLlmCall);
+    const volitionGoals = await evaluateAllVolition(volitionCtx, this.callbacks.onLlmCall, this.callbacks.onDecision);
     for (const goal of volitionGoals) {
       this.goalManager.addGoal(goal);
     }
@@ -410,7 +451,7 @@ export class World {
       onLine: this.callbacks.onLine,
       locations: this.locations,
       onExtraEvent: async (event) => {
-        const results = await this.engine.process(event, this.buildCgContext());
+        const results = await this.processCascade(event);
         await this.handleEventForGoals(event);
         for (const r of results) {
           await this.handleEventForGoals(r.event);
@@ -461,7 +502,7 @@ export class World {
             this.evidence.generate(crimeEvent, elCtx);
 
             // Process through CE for cascading consequences
-            const results = await this.engine.process(crimeEvent, this.buildCgContext());
+            const results = await this.processCascade(crimeEvent);
             await this.handleEventForGoals(crimeEvent);
             for (const r of results) {
               await this.handleEventForGoals(r.event);
@@ -518,7 +559,7 @@ export class World {
       currentDay: this.getCurrentDay(),
       tickCount: this.tickCount,
       processEvent: async (event: WorldEvent) => {
-        const results = await this.engine.process(event, this.buildCgContext());
+        const results = await this.processCascade(event);
         await this.handleEventForGoals(event);
         for (const r of results) {
           await this.handleEventForGoals(r.event);
@@ -956,6 +997,9 @@ export class World {
 
         // Process through consequence engine with shared ctx (dedup witnesses)
         const results = await this.engine.process(discoveryEvent, sharedCtx);
+        if (results.length > 0 && this.callbacks.onCascade) {
+          this.callbacks.onCascade(discoveryEvent, results.map(r => r.event));
+        }
 
         // Feed into goal system
         await this.handleEventForGoals(discoveryEvent);
@@ -1114,7 +1158,7 @@ export class World {
     this.evidence.generate(killEvent, elCtx);
 
     // Process consequences (CG cascade: WITNESS_MEMORY, RUMOR_SPREAD, etc.)
-    const results = await this.engine.process(killEvent, this.buildCgContext());
+    const results = await this.processCascade(killEvent);
 
     // Feed the kill event + all consequence events into goal/reactive evaluation
     await this.handleEventForGoals(killEvent);
@@ -1185,6 +1229,28 @@ export class World {
   /** Build WorldContext for ConsequenceEngine.process() */
   private buildCgContext(): import('./cg-engine').WorldContext {
     return { agents: this.agents, publicPlaces: this.config.publicPlaces || new Set() };
+  }
+
+  /** Install onChange callbacks on each agent's RelationshipGraph */
+  private installRelationshipCallbacks(): void {
+    if (!this.callbacks.onRelationshipChange) return;
+    for (const [id, agent] of this.agents) {
+      if (!agent.state.relationships) continue;
+      const cb = this.callbacks.onRelationshipChange;
+      const name = agent.profile.name;
+      agent.state.relationships.onChange = (targetId, targetName, field, oldVal, newVal) => {
+        cb(id, name, targetId, targetName, field, oldVal, newVal);
+      };
+    }
+  }
+
+  /** Process CG cascade and emit onCascade callback */
+  private async processCascade(event: WorldEvent): Promise<{ event: WorldEvent; rule: string }[]> {
+    const results = await this.processCascade(event);
+    if (results.length > 0 && this.callbacks.onCascade) {
+      this.callbacks.onCascade(event, results.map(r => r.event));
+    }
+    return results;
   }
 
   private getCurrentDay(): number {
