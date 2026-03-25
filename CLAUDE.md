@@ -56,7 +56,9 @@ bun install && bun run packages/server/src/index.ts  # → http://localhost:3000
 - **Runtime**: Bun | **LLM**: LM Studio, `qwen3.5-9b-abliterated` (lukey03, patched GGUF) | **Embeddings**: raw fetch (NOT OpenAI SDK)
 - **LLM API**: OpenAI-compatible `/v1/chat/completions` с `response_format: json_schema` для structured output
 - **GGUF Patch**: thinking отключён патчем в GGUF binary. В chat template заменено `enable_thinking is defined and` → `if true` (same-length binary replace). Backup: `.bak`. Если нужно перепатчить новый GGUF — см. `training/patch-gguf-thinking.py`
-- **Godot**: 4.6.1, WS on `127.0.0.1` (NOT localhost) | **Save**: `packages/server/data/save.json`
+- **Web UI**: `http://localhost:3000/game.html` — Canvas2D, Tiny Swords sprites, A* pathfinding. Primary demo client
+- **Godot**: 4.6.1, deferred. Top-down 2D scenes preserved in `godot/`. Old 3D archived to `_archive/clwa-godot-3d/`
+- **Save**: `packages/server/data/save.json` (includes positions)
 
 ## Architecture
 
@@ -117,6 +119,9 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 43. **Discovery handlers**: engine detects discovery condition (dead+alive co-location), creates event. Module owns the response (memory, mood, belief, grief) via DISCOVERY_HANDLERS registry. Engine has zero hardcoded discovery behavior.
 44. **Socialize affordance**: social module registers `socialize` with `socialOnly: true` on AffordanceDefinition — triggers LLM volition for extraverted NPCs (E>0.7) without crime events. No actionVerb (invisible to LLM). Engine checks `definition.socialOnly` flag (not affordance ID) in volition: "talk" becomes move-only → TopicEngine handles conversation.
 45. **Conversation prompts**: `YOUR TOPIC:` prefix in initiator/responder prompts. Topic hook first, then context. Gesture schema constrained to one word. knownFacts removed from buildSystemPrompt. Memory format: `(today, vivid)` not numeric scores. Mood calibration in impact analysis.
+46. **PositionManager**: server-level (NOT engine). Stores pixel positions per entity. Engine never knows about pixels — only location slugs. Zone polygons in world.json. Seeded random for deterministic NPC placement. save.json includes positions section.
+47. **inTransit flag**: boolean on AgentState (like inPlayerChat). Set by movement.ts and goals.ts on move_to. Cleared for ALL agents at start of each `_tick()`. Scheduler skips inTransit NPCs from conversation pairing. Transient — not persisted.
+48. **WS overlay types**: 5 callbacks on WorldCallbacks (onDecision, onMoodChange, onGoalChange, onCascade, onRelationshipChange). Mood via Object.defineProperty interceptor (zero callsite changes). Relationship via RelationshipGraph.onChange. CG cascade via processCascade() helper.
 
 ## Tick System
 
