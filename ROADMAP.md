@@ -389,111 +389,49 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Socialize affordance** — social module, E-trait driven, socialOnly→visit goals, TopicEngine handles conversations ✅ (v0.9.7)
 - [x] **TopicEngine v3.1** — worldFactTopics (1 proposal, w=0.5, 40% chance, shared category), innerConflict trust>=0.3 ✅ (v0.9.7)
 
-#### Godot клиент — ПЕРЕПИСКА: Top-Down 2D (Kenney)
+#### Web UI клиент ← ОСНОВНАЯ ДЕМО-ПЛАТФОРМА (v0.9.8)
 
-**Решение**: отказ от изометрии + 3D SubViewport + KayKit. Переход на чистый top-down 2D. Причина: 3D pipeline сложный, хрупкий, визуально не дотягивает. Top-down (RimWorld/Escapists/Stardew стиль) — читаемый, быстрый в реализации, фокус на overlay-слое (мысли NPC, каскады, mood) — том что делает CLWA уникальным.
+**Решение**: Canvas2D в браузере вместо Godot. Причина: полный контроль из кода, мгновенная итерация, не нужен editor. Godot клиент сохранён но отложен.
 
-**Ассеты**: Kenney Tiny Town (мир: здания, дороги, деревья) + Kenney Tiny Dungeon (NPC: персонажи, предметы). Оба бесплатные, один стиль. Дополнительно: Medieval Village Exterior (Hypnobius, itch.io).
+**Ассеты**: Tiny Swords (здания, юниты, terrain) из `godot/assets/tinyswords/`. Отдаются сервером через `/assets/`.
 
-**Что удалить:**
-- `character_viewport.gd` (320 строк) — весь 3D SubViewport pipeline
-- `iso_building.gd` (350), `iso_ground.gd` (50), `location_builder.gd` (400), `location_props.gd` (100) — изометрия
-- `assets/kaykit/` (~7.2 GB) — KayKit 3D модели и анимации
-- Текущий тайлмап (isometric 256×512)
+**Что работает (✅):**
+- [x] Canvas2D карта с Tiny Swords tileset (тайлмап из Godot data) ✅
+- [x] Animated NPC спрайты (Warrior/Pawn/Monk по роли, 5 фракций по цвету) ✅
+- [x] A* pathfinding по tile grid (NPC и игрок не ходят по воде) ✅
+- [x] WASD + клик-движение игрока (рыцарь Blue) ✅
+- [x] Zoom колёсиком, плавная камера ✅
+- [x] Speech bubbles с typewriter эффектом (NPC-NPC разговоры) ✅
+- [x] Thought bubbles для volition decisions (crime/duty, не talk) ✅
+- [x] Event feed (движения, разговоры, mood, thoughts, cascades) ✅
+- [x] Auto-tick с localStorage persistence ✅
+- [x] 5 WS типов: npc_thought, mood_update, goal_update, event_cascade, relationship_change ✅
+- [x] Server-authoritative positions (PositionManager, NOT in engine) ✅
+- [x] Seeded random для детерминированных NPC позиций ✅
+- [x] Zone polygons в world.json ✅
+- [x] Player position WS sync (5/sec throttle + validation) ✅
+- [x] Conversation approach points от сервера ✅
+- [x] save.json включает positions ✅
+- [x] inTransit flag в engine (scheduler пропускает, clear at tick start) ✅
 
-**Что переиспользовать AS-IS (100%, без изменений):**
-- `backend.gd` (327 строк, autoload) — WS клиент + HTTP. 17 сигналов, 14 REST endpoints. Полностью готов
-- `dialog_panel.gd` (350) — чат с NPC, стриминг, trust bar, intent feedback, action buttons
-- `examine_panel.gd` (190) — crime scene осмотр, 5 категорий улик
-- `journal_panel.gd` (200) — журнал с фильтрами и поиском
-- `shop_panel.gd` (130) — торговля (display only)
-- `hud.gd` (150) — время, тик/день кнопки, event log
-- `notification_manager.gd` (120) — toast нотификации 7 типов событий
-- `map_panel.gd` (170) — мини-карта с NPC позициями
-- `day_night_overlay.gd` (40) — day/night шейдер
-- `speech_bubble.gd` (50) — всплывающие пузыри (есть, не подключён → основа для Thought Bubble)
+**Что нужно доделать:**
+- [ ] Chat panel полировка: стриминг ответа NPC, close по Escape
+- [ ] Декор: камни, кусты из Tiny Swords на карте
+- [ ] Day/night overlay (время суток влияет на визуал)
+- [ ] Minimap
+- [ ] NPC hover tooltip с подробной инфой (beliefs, relationships)
+- [ ] Relationship graph overlay (линии между NPC)
+- [ ] Crime scene маркеры на карте
+- [ ] TileMap доработка: edge-тайлы, клифы
 
-**Что переписать (30% reuse — логика, не рендеринг):**
-- `main.gd` (800+) — оставить event routing + UI orchestration, убрать 3D spawning / isometric math
-- `npc_marker.gd` (260) — заменить SubViewport на Sprite2D, оставить status indicators / labels / mood ring
-- `player.gd` (110) — оставить WASD + interaction detection, убрать 3D viewport
+#### Godot клиент (ОТЛОЖЕН)
 
-**Существующий WS-протокол** (17 типов, уже работают):
-`conversation:line`, `conversation:complete`, `tick`, `event`, `movement`, `goal:action`, `state:update`, `chat:token`, `chat:done`, `intent`, `shop:open`, `murder`, `crime:scene`, `journal:entry`, `npc_approach`, `debug:llm`, `reflection`
-
-**Архитектура нового клиента:**
-```
-main.gd
-├── TileMapLayer (Kenney Tiny Town — здания, дороги, зоны)
-├── NPCManager
-│   └── NPC scenes (Sprite2D + Labels + Overlays)
-│       ├── Спрайт (Tiny Dungeon character)
-│       ├── MoodRing (цветное свечение: зелёный→жёлтый→красный)
-│       ├── GoalIcon (TextureRect — иконка текущей цели)
-│       ├── ThoughtBubble (Panel + Label — всплывает при решении)
-│       └── NameLabel
-├── PlayerCharacter (тот же NPC scene + input)
-├── UILayer (CanvasLayer)
-│   ├── EventFeed (лента CG каскадов сбоку)
-│   ├── RelationshipOverlay (линии между NPC при включении)
-│   ├── ChatPanel (диалог с NPC)
-│   └── TimeDisplay (игровое время, день)
-└── Backend (WebSocket + HTTP клиент)
-```
-
-**Три ключевых overlay-элемента** (80% визуального впечатления):
-
-1. **Mood Ring** — цветное свечение вокруг NPC. Зритель мгновенно видит эмоциональное состояние.
-2. **Thought Bubble** — всплывает на 3-4с при решении: `"Strong urge to steal... decided: YES"`. Видимый процесс мышления.
-3. **Event Feed** — правая панель, лента каскадов в реальном времени:
-   ```
-   🔪 Mark → killed Bess         20:15
-   👁 Aldric saw the killing      20:15
-   💬 Rumor spreading...          20:30
-   🔍 Aldric investigating       21:00
-   ```
-
-**Расширение WS-протокола** (бэкенд, packages/server/):
-- [ ] `npc_thought`: { npcId, decision, instinctTier, reason }
-- [ ] `mood_update`: { npcId, oldMood, newMood, cause }
-- [ ] `event_cascade`: { triggerId, events: [{type, actors, time}] }
-- [ ] `relationship_change`: { from, to, trust, sentiment, cause }
-- [ ] `goal_update`: { npcId, goalType, status, targetName }
-- [ ] Streaming Tick Level 1 (per-NPC broadcast вместо пакетного TickResult)
-
-**Этап 1: Бэкенд + подготовка**
-- [ ] Расширить WS-протокол (thought, mood, events, relationships)
-- [ ] Streaming Tick Level 1 (per-NPC broadcast)
-- [ ] Скачать и осмотреть Kenney Tiny Town + Tiny Dungeon
-- [ ] LoRA завершить (если не готов)
-
-**Этап 2: Новый Godot клиент — база**
-- [ ] Новый проект Godot 4.6
-- [ ] TileMap: Millhaven карта top-down (8 локаций)
-- [ ] NPC scene: спрайт + имя + mood ring
-- [ ] Backend.gd: подключение, обработка WS
-- [ ] Спавн NPC по данным сервера
-- [ ] Движение NPC между локациями (tween/path)
-
-**Этап 3: Overlay-слой (главное для демо)**
-- [ ] Thought Bubble — всплывает при npc_thought
-- [ ] Goal Icon — над NPC, меняется при goal_update
-- [ ] Event Feed — панель справа
-- [ ] Mood Ring — цвет по mood_update
-- [ ] Chat Panel — диалог с NPC
-- [ ] PlayerCharacter: WASD + клик на NPC
-
-**Этап 4: Полировка + контент**
-- [ ] Визуальная полировка: day/night, тени
-- [ ] Звуки (Kenney audio)
-- [ ] Тестовые прогоны: 5-10 историй
-- [ ] Нарезка лучших моментов (30-60с клипы)
-- [ ] Первые посты
+Сохранён в `godot/scenes/main_topdown.tscn` + `npc.tscn`. Старые 3D ассеты архивированы в `_archive/clwa-godot-3d/`. Может вернуться когда Web UI дойдёт до production quality и нужен будет нативный клиент.
 
 #### Demo readiness
 - [ ] Настроить начальные условия (tension seeds)
 - [ ] Demo script — что показывать, в каком порядке
-- [ ] 2-3 полных прогона с новым клиентом
+- [ ] 2-3 полных прогона с Web UI клиентом
 
 #### NPC config externalization
 - [x] World data externalized to `worlds/millhaven/` JSON files ✅ (v0.9.6)
