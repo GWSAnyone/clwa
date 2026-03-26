@@ -450,13 +450,12 @@ async function main() {
   console.log();
   console.log('  Server ready. Waiting for connections...');
 
-  // Start Game Clock — runs independently of processing ticks (auto-tick)
-  world.startGameClock();
+  // Start Master Clock — unified timer for time + processing
+  world.startMasterClock();
 
   const shutdown = async () => {
     console.log('\n  [Save] Shutting down — flushing pending work...');
-    world.stopAutoTick();
-    world.stopGameClock();
+    world.stopMasterClock();
     await world.flushPending();
     saveToDisk(world, eventStore);
     process.exit(0);

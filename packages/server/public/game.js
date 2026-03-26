@@ -385,7 +385,7 @@ async function init() {
   }
   // Check server auto-tick state
   fetch('/api/auto-state').then(r => r.json()).then(d => {
-    state.autoTick = d.autoTick;
+    state.autoTick = d.running;
     if (state.autoTick) {
       document.getElementById('btn-auto').textContent = 'Auto: ON';
       document.getElementById('btn-auto').classList.add('active');
@@ -1377,9 +1377,9 @@ function appendChatToken(token) {
 
 // ─── AUTO TICK (server-authoritative) ───
 async function toggleAuto() {
-  const res = await fetch('/api/auto', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ seconds: 0 }) });
+  const res = await fetch('/api/auto', { method: 'POST' });
   const data = await res.json();
-  state.autoTick = data.autoTick;
+  state.autoTick = data.running;
   const btn = document.getElementById('btn-auto');
   btn.textContent = state.autoTick ? 'Auto: ON' : 'Auto';
   btn.classList.toggle('active', state.autoTick);

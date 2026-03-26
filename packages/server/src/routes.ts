@@ -451,20 +451,17 @@ export function handleRequest(
 
   // ─── GET /api/auto-state ───
   if (method === 'GET' && path === '/api/auto-state') {
-    return Response.json({ autoTick: world.isAutoTicking }, { headers: cors });
+    return Response.json({ running: world.isAutoTicking, gameSpeed: world.gameSpeed }, { headers: cors });
   }
 
   // ─── POST /api/auto ───
   if (method === 'POST' && path === '/api/auto') {
-    return req.json().then((body: { seconds?: number }) => {
-      if (world.isAutoTicking) {
-        world.stopAutoTick();
-        return Response.json({ autoTick: false }, { headers: cors });
-      }
-      const seconds = body.seconds ?? 8;
-      world.startAutoTick(seconds * 1000);
-      return Response.json({ autoTick: true, intervalSeconds: seconds, gameSpeed: world.gameSpeed }, { headers: cors });
-    });
+    if (world.isAutoTicking) {
+      world.stopMasterClock();
+      return Response.json({ running: false }, { headers: cors });
+    }
+    world.startMasterClock();
+    return Response.json({ running: true, gameSpeed: world.gameSpeed }, { headers: cors });
   }
 
   // ─── POST /api/speed ───

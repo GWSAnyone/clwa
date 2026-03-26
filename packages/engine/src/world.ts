@@ -122,8 +122,6 @@ export class World {
   private callbacks: WorldCallbacks;
   /** Processing tick counter (how many times _tick() was called). NOT time — use gameMinute. */
   private tickCount: number = 0;
-  private autoTickTimer: ReturnType<typeof setTimeout> | null = null;
-  private autoTickInterval: number = 5000;
   /** Absolute game minute counter (grows indefinitely). minuteOfDay = gameMinute % 1440. */
   private _gameMinute: number = 0;
   /** Game speed multiplier: 1=1min/sec, 2=2min/sec, 3=3min/sec, 0=paused */
@@ -364,42 +362,129 @@ export class World {
 
   // ─── Game Clock ───
 
-  /** Start the Game Clock — advances gameMinute in real-time */
-  startGameClock(): void {
+  /** Start the Master Clock — advances time and triggers processing when needed */
+  startMasterClock(): void {
     if (this._gameClockTimer) return;
     if (this._gameSpeed <= 0) return;
     const intervalMs = Math.round(1000 / this._gameSpeed);
-    this._gameClockTimer = setInterval(() => this._advanceGameMinute(), intervalMs);
-    console.log(`  [GameClock] Started (speed=${this._gameSpeed}x, interval=${intervalMs}ms)`);
+    this._gameClockTimer = setInterval(() => this._onClockTick(), intervalMs);
+    console.log(`  [MasterClock] Started (speed=${this._gameSpeed}x, interval=${intervalMs}ms)`);
   }
 
-  /** Stop the Game Clock */
-  stopGameClock(): void {
+  /** Stop the Master Clock — freezes time and processing */
+  stopMasterClock(): void {
     if (this._gameClockTimer) {
       clearInterval(this._gameClockTimer);
       this._gameClockTimer = null;
-      console.log('  [GameClock] Stopped');
+      console.log('  [MasterClock] Stopped');
     }
   }
 
-  /** Set game speed and restart clock if running */
+  /** Set game speed and restart Master Clock if running */
   setGameSpeed(speed: number): void {
     const wasRunning = this._gameClockTimer !== null;
-    this.stopGameClock();
+    this.stopMasterClock();
     this._gameSpeed = Math.max(0, Math.min(10, speed));
     if (wasRunning && this._gameSpeed > 0) {
-      this.startGameClock();
+      this.startMasterClock();
     }
   }
 
-  /** Advance game time by 1 minute. Called by Game Clock timer. */
-  private _advanceGameMinute(): void {
+  /**
+   * Master Clock heartbeat — called every game minute.
+   * Advances time, broadcasts updates, triggers processing when needed.
+   */
+  private _onClockTick(): void {
     this._gameMinute++;
+
     // Broadcast time update every 5 game minutes (throttle at high speeds)
     if (this._gameMinute % 5 === 0) {
       const currentDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
       this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, currentDay);
     }
+
+    // Trigger processing if needed and not already running
+    if (!this.tickInProgress && this._needsProcessing()) {
+      this.tickInProgress = true;
+      this._tick()
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[MasterClock] Processing error: ${msg}`);
+        })
+        .finally(() => {
+          this.tickInProgress = false;
+          // Check again — state may have changed during processing
+          if (this._gameClockTimer && this._needsProcessing()) {
+            setTimeout(() => {
+              if (!this.tickInProgress && this._needsProcessing()) {
+                this.tickInProgress = true;
+                this._tick()
+                  .catch((err: unknown) => console.error(`[MasterClock] Chain error:`, err))
+                  .finally(() => { this.tickInProgress = false; });
+              }
+            }, 0);
+          }
+        });
+    }
+  }
+
+  /**
+   * Check if any NPC needs processing. O(N) — microseconds for 8-50 NPCs.
+   * Called every game minute by Master Clock.
+   */
+  private _needsProcessing(): boolean {
+    // Day advance pending
+    if (Math.floor(this._gameMinute / MINUTES_PER_DAY) > this._lastKnownDay) return true;
+
+    const locationGroups = new Map<string, string[]>(); // location → npcIds[]
+
+    for (const [id, agent] of this.agents) {
+      if (agent.profile.isPlayer) continue;
+      if (!agent.state.alive || agent.state.inPlayerChat || agent.state.inTransit) continue;
+      if (isStatusAbsent(agent.state.status)) continue;
+
+      // Track by location for pair checks
+      const loc = agent.state.location;
+      if (!locationGroups.has(loc)) locationGroups.set(loc, []);
+      locationGroups.get(loc)!.push(id);
+
+      // Volition check: NPC idle + decision cooldown expired
+      if (!this.goalManager.hasActiveGoal(id)) {
+        const expires = this.decisionCooldowns.get(id) ?? 0;
+        if (this._gameMinute >= expires) return true;
+      }
+    }
+
+    // Conversation pair check: co-located idle pairs with expired cooldown
+    for (const [, npcIds] of locationGroups) {
+      if (npcIds.length < 2) continue;
+      for (let i = 0; i < npcIds.length; i++) {
+        if (this.goalManager.hasActiveGoal(npcIds[i])) continue;
+        for (let j = i + 1; j < npcIds.length; j++) {
+          if (this.goalManager.hasActiveGoal(npcIds[j])) continue;
+          // Pair cooldown check (simplified — full scoring in _tick)
+          const key = [npcIds[i], npcIds[j]].sort().join(':');
+          // ConversationScheduler tracks cooldowns internally, but we can't access them here.
+          // Instead, return true if any idle co-located pair exists — _tick() will do full scoring.
+          return true;
+        }
+      }
+    }
+
+    // Body discovery: alive NPC co-located with dead NPC
+    for (const [, agent] of this.agents) {
+      if (!agent.state.alive) continue;
+      if (agent.state.inPlayerChat || agent.state.inTransit) continue;
+      for (const [, other] of this.agents) {
+        if (other.state.alive || other.profile.isPlayer) continue;
+        if (agent.state.location === other.state.location) {
+          const key = `${agent.profile.id}:${other.profile.id}`;
+          if (!this.bodyDiscoveries.has(key)) return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   /** Run a single world tick */
@@ -1278,38 +1363,19 @@ export class World {
     return { killEvent, results };
   }
 
-  /** Start auto-ticking at the given interval */
-  startAutoTick(intervalMs: number): void {
-    this.stopAutoTick();
-    this.autoTickInterval = intervalMs;
-    const loop = async () => {
-      if (!this.autoTickTimer) return; // stopped
-      try {
-        await this.tick();
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes('already in progress')) {
-          console.error(`[Auto-tick error]: ${msg}`);
-        }
-      }
-      // Schedule next tick AFTER current completes (tick-when-ready)
-      if (this.autoTickTimer) {
-        this.autoTickTimer = setTimeout(loop, this.autoTickInterval);
-      }
-    };
-    this.autoTickTimer = setTimeout(loop, intervalMs);
+  /** @deprecated Use startMasterClock(). Kept for API compat. */
+  startAutoTick(_intervalMs?: number): void {
+    this.startMasterClock();
   }
 
-  /** Stop auto-ticking */
+  /** @deprecated Use stopMasterClock(). Kept for API compat. */
   stopAutoTick(): void {
-    if (this.autoTickTimer) {
-      clearTimeout(this.autoTickTimer);
-      this.autoTickTimer = null;
-    }
+    this.stopMasterClock();
   }
 
+  /** Whether the Master Clock is running (time flowing + processing triggered) */
   get isAutoTicking(): boolean {
-    return this.autoTickTimer !== null;
+    return this._gameClockTimer !== null;
   }
 
   /** Await any pending async work (deferred impact analysis). Call before save. */
