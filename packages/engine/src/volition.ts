@@ -38,11 +38,11 @@ function locationDisplayName(idOrName: string, locations: Map<string, import('./
 
 // ─── Constants ───
 
-/** Default cooldown in ticks after an affordance fires (overridden by ctx.affordanceCooldownTicks) */
-const DEFAULT_AFFORDANCE_COOLDOWN = 12;
+/** Default cooldown in game minutes after an affordance fires (overridden by ctx.affordanceCooldownMinutes) */
+const DEFAULT_AFFORDANCE_COOLDOWN = 180;
 
-/** Default cooldown in ticks between LLM decision calls per NPC (overridden by ctx.decisionCooldownTicks) */
-const DEFAULT_DECISION_COOLDOWN = 4;
+/** Default cooldown in game minutes between LLM decision calls per NPC (overridden by ctx.decisionCooldownMinutes) */
+const DEFAULT_DECISION_COOLDOWN = 60;
 
 /** Score threshold — affordances below this are filtered out */
 const MIN_SCORE = 0.3;
@@ -117,7 +117,7 @@ export function createGoalFromRequest(
       requestedBy: Array.from(ctx.agents.values()).find(a => a.profile.isPlayer)?.profile.id,
       ...target.extra,
     },
-    createdAtTick: ctx.currentTick,
+    createdAtMinute: ctx.gameMinute,
     homeLocation: home,
   };
 }
@@ -141,7 +141,7 @@ export async function evaluateAllVolition(
     // Decision cooldown — don't re-evaluate too frequently
     if (ctx.decisionCooldowns) {
       const expires = ctx.decisionCooldowns.get(npcId);
-      if (expires !== undefined && ctx.currentTick < expires) continue;
+      if (expires !== undefined && ctx.gameMinute < expires) continue;
     }
 
     // Evaluate all affordances proactively (including those with eventBoost — NPC may have beliefs to act on)
@@ -151,7 +151,7 @@ export async function evaluateAllVolition(
       // Skip if on affordance cooldown
       if (npcCooldowns) {
         const expires = npcCooldowns.get(aff.id);
-        if (expires !== undefined && ctx.currentTick < expires) continue;
+        if (expires !== undefined && ctx.gameMinute < expires) continue;
       }
       const target = checkRequirements(aff, npcId, agent, ctx);
       if (!target) continue;
@@ -174,14 +174,14 @@ export async function evaluateAllVolition(
     const goal = await llmDecideAndBuild(scored, npcId, agent, ctx, onLlmCall, onDecision);
 
     if (goal) {
-      goal.createdAtTick = ctx.currentTick;
+      goal.createdAtMinute = ctx.gameMinute;
       goals.push(goal);
-      setDecisionCooldown(ctx, npcId, ctx.currentTick);
+      setDecisionCooldown(ctx, npcId, ctx.gameMinute);
       const affDef = AFFORDANCE_REGISTRY.find(a => a.id === goal.data?.affordanceId);
-      setAffordanceCooldown(ctx, npcId, goal.data?.affordanceId as string, ctx.currentTick, affDef);
+      setAffordanceCooldown(ctx, npcId, goal.data?.affordanceId as string, ctx.gameMinute, affDef);
     } else {
       // NPC chose "wait" — apply extended cooldown (×3) so they don't re-evaluate every tick
-      setDecisionCooldownExtended(ctx, npcId, ctx.currentTick);
+      setDecisionCooldownExtended(ctx, npcId, ctx.gameMinute);
     }
   }
 
@@ -238,7 +238,7 @@ export function evaluateReactiveVolition(
         const npcCooldowns = ctx.cooldowns.get(npcId);
         if (npcCooldowns) {
           const expires = npcCooldowns.get(aff.id);
-          if (expires !== undefined && ctx.currentTick < expires) continue;
+          if (expires !== undefined && ctx.gameMinute < expires) continue;
         }
       }
 
@@ -262,12 +262,12 @@ export function evaluateReactiveVolition(
         { definition: aff, score: boostedScore, target },
         npcId, agent, ctx,
       );
-      goal.createdAtTick = ctx.currentTick;
+      goal.createdAtMinute = ctx.gameMinute;
       // Set current motive on agent so all LLM calls carry emotional context
       agent.state.currentMotive = goal.data?.reason as string | undefined;
       goals.push(goal);
       // Apply cooldown so reactive doesn't fire again for this affordance
-      setAffordanceCooldown(ctx, npcId, aff.id, ctx.currentTick, aff);
+      setAffordanceCooldown(ctx, npcId, aff.id, ctx.gameMinute, aff);
       break; // One reactive goal per NPC per event
     }
   }
@@ -354,7 +354,7 @@ async function llmDecideAndBuild(
 
   // Record talk target for anti-repeat
   if (parsed.action === 'talk' && parsed.target) {
-    recordTalkTarget(npcId, parsed.target, ctx.currentTick);
+    recordTalkTarget(npcId, parsed.target, ctx.gameMinute);
   }
 
   return intentionToGoal(parsed, npcId, agent, scored, ctx);
@@ -576,7 +576,7 @@ function buildDecisionPrompt(
     '',
     ...(dutyConstraintLines.length > 0 ? ['DUTY CONSTRAINTS:', ...dutyConstraintLines, ''] : []),
     `LOCATIONS: ${locationNames.join(', ')}`,
-    `NPCs: ${aliveNpcNames.map(n => hasRecentTalk(npcId, n, ctx.currentTick) ? `${n} (spoke recently — try someone else)` : n).join(', ')}`,
+    `NPCs: ${aliveNpcNames.map(n => hasRecentTalk(npcId, n, ctx.gameMinute) ? `${n} (spoke recently — try someone else)` : n).join(', ')}`,
     '',
     'Choose ONE action. Use EXACTLY the action words listed above.',
     'Respond with: action (verb), target (NPC name or location), reason (one sentence in character).',
@@ -587,18 +587,18 @@ function buildDecisionPrompt(
 
 // ─── Recent Talk Target Tracking (anti-repeat) ───
 
-const _recentTalkTargets = new Map<string, Map<string, number>>(); // npcId → targetName → lastTick
+const _recentTalkTargets = new Map<string, Map<string, number>>(); // npcId → targetName → lastGameMinute
 
-/** Check if NPC talked to this target recently (within 8 ticks) */
-function hasRecentTalk(npcId: string, targetName: string, currentTick: number): boolean {
-  const lastTick = _recentTalkTargets.get(npcId)?.get(targetName) ?? -Infinity;
-  return currentTick - lastTick < 8;
+/** Check if NPC talked to this target recently (within 120 game minutes = 2h) */
+function hasRecentTalk(npcId: string, targetName: string, gameMinute: number): boolean {
+  const lastMinute = _recentTalkTargets.get(npcId)?.get(targetName) ?? -Infinity;
+  return gameMinute - lastMinute < 120;
 }
 
 /** Record that NPC talked to target */
-export function recordTalkTarget(npcId: string, targetName: string, tick: number): void {
+export function recordTalkTarget(npcId: string, targetName: string, gameMinute: number): void {
   if (!_recentTalkTargets.has(npcId)) _recentTalkTargets.set(npcId, new Map());
-  _recentTalkTargets.get(npcId)!.set(targetName, tick);
+  _recentTalkTargets.get(npcId)!.set(targetName, gameMinute);
 }
 
 // ─── Consideration Tracking (escalation) ───
@@ -833,7 +833,7 @@ function intentionToGoal(
         steps: [{ action: 'move_to', location: targetLocId }],
         currentStep: 0,
         data: { reason: parsed.why },
-        createdAtTick: 0,
+        createdAtMinute: 0,
         homeLocation: home,
       };
     }
@@ -873,7 +873,7 @@ function intentionToGoal(
         steps,
         currentStep: 0,
         data: { targetName: parsed.target, topic: parsed.detail, reason: parsed.why },
-        createdAtTick: 0,
+        createdAtMinute: 0,
         homeLocation: home,
       };
     }
@@ -889,7 +889,7 @@ function intentionToGoal(
         steps: [{ action: 'announce', message: parsed.detail, importance: 3 }],
         currentStep: 0,
         data: { reason: parsed.why },
-        createdAtTick: 0,
+        createdAtMinute: 0,
         homeLocation: home,
       };
     }
@@ -945,7 +945,7 @@ function buildGoalFromAffordance(scored: ScoredAffordance, npcId: string, agent:
       score: scored.score,
       ...target.extra,
     },
-    createdAtTick: 0,
+    createdAtMinute: 0,
     homeLocation: home,
   };
 }
@@ -1099,24 +1099,24 @@ function interpolate(template: string, vars: Record<string, string>): string {
 
 // ─── Cooldown Helpers ───
 
-function setAffordanceCooldown(ctx: AffordanceContext, npcId: string, affordanceId: string, currentTick: number, aff?: AffordanceDefinition): void {
+function setAffordanceCooldown(ctx: AffordanceContext, npcId: string, affordanceId: string, gameMinute: number, aff?: AffordanceDefinition): void {
   if (!ctx.cooldowns || !affordanceId) return;
   let npcMap = ctx.cooldowns.get(npcId);
   if (!npcMap) {
     npcMap = new Map();
     ctx.cooldowns.set(npcId, npcMap);
   }
-  const cooldown = aff?.cooldownOverride ?? ctx.affordanceCooldownTicks ?? DEFAULT_AFFORDANCE_COOLDOWN;
-  npcMap.set(affordanceId, currentTick + cooldown);
+  const cooldown = aff?.cooldownOverride ?? ctx.affordanceCooldownMinutes ?? DEFAULT_AFFORDANCE_COOLDOWN;
+  npcMap.set(affordanceId, gameMinute + cooldown);
 }
 
-function setDecisionCooldown(ctx: AffordanceContext, npcId: string, currentTick: number): void {
+function setDecisionCooldown(ctx: AffordanceContext, npcId: string, gameMinute: number): void {
   if (!ctx.decisionCooldowns) return;
-  ctx.decisionCooldowns.set(npcId, currentTick + (ctx.decisionCooldownTicks ?? DEFAULT_DECISION_COOLDOWN));
+  ctx.decisionCooldowns.set(npcId, gameMinute + (ctx.decisionCooldownMinutes ?? DEFAULT_DECISION_COOLDOWN));
 }
 
-function setDecisionCooldownExtended(ctx: AffordanceContext, npcId: string, currentTick: number): void {
+function setDecisionCooldownExtended(ctx: AffordanceContext, npcId: string, gameMinute: number): void {
   if (!ctx.decisionCooldowns) return;
-  const base = ctx.decisionCooldownTicks ?? DEFAULT_DECISION_COOLDOWN;
-  ctx.decisionCooldowns.set(npcId, currentTick + base * 3);
+  const base = ctx.decisionCooldownMinutes ?? DEFAULT_DECISION_COOLDOWN;
+  ctx.decisionCooldowns.set(npcId, gameMinute + base * 3);
 }

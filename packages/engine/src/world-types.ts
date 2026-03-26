@@ -66,9 +66,11 @@ export interface ApproachEvent {
 /** Result of a single world tick */
 export interface TickResult {
   tickNumber: number;
+  /** Absolute game minute (for cooldowns, time display) */
+  gameMinute: number;
   gameDay: number;
   /** Current time of day info */
-  time?: { tickInDay: number; period: string; hour: string };
+  time?: { minuteOfDay: number; period: string; hour: string };
   /** Whether a new day started on this tick */
   dayAdvanced?: boolean;
   conversation: ConversationResult | null;
@@ -110,7 +112,8 @@ export interface CrimeScene {
   points: ExaminationPoint[];
   /** When the crime happened */
   gameDay: number;
-  tick: number;
+  /** Game minute when the crime occurred (absolute, not minute-of-day) */
+  gameMinute: number;
   /** NPCs who already passively noticed this scene */
   noticedBy: Set<string>;
   /** Whether the scene is still active (evidence not cleaned up) */
@@ -131,7 +134,7 @@ export interface CrimeSceneJSON {
   eventType?: string;
   points: ExaminationPoint[];
   gameDay: number;
-  tick: number;
+  gameMinute: number;
   noticedBy: string[];
   active: boolean;
   perpetratorId?: string;
@@ -150,8 +153,8 @@ export interface NpcHome {
 export interface WorldConfig {
   /** Minimum score for a pair to have a conversation (default: 2) */
   minConversationScore: number;
-  /** Cooldown in ticks before same pair can talk again */
-  pairCooldownTicks: number;
+  /** Cooldown in game minutes before same pair can talk again (default: 240 = 4h) */
+  pairCooldownMinutes: number;
   /** Number of exchanges per conversation: 1 = each speaks once (default: 1) */
   exchangeCount: number;
   /** LM Studio base URL */
@@ -160,12 +163,14 @@ export interface WorldConfig {
   model: string;
   /** Public gathering places where information spreads (used by day advance handlers) */
   publicPlaces?: Set<string>;
-  /** Cooldown in ticks before same NPC can use the same affordance again */
-  affordanceCooldownTicks?: number;
-  /** Cooldown in ticks before same NPC re-evaluates volition (LLM decision) */
-  decisionCooldownTicks?: number;
-  /** Starting tick (default 0). Set to 28 for morning start (07:00 with 96 ticks/day) */
-  startTick?: number;
+  /** Cooldown in game minutes before same NPC can use the same affordance again (default: 180 = 3h) */
+  affordanceCooldownMinutes?: number;
+  /** Cooldown in game minutes before same NPC re-evaluates volition (LLM decision) (default: 60 = 1h) */
+  decisionCooldownMinutes?: number;
+  /** Starting game minute (default 420 = 07:00). Absolute minute of day. */
+  startMinute?: number;
+  /** Game speed multiplier: 1 = 1 game min per real sec, 2 = 2/sec, 3 = 3/sec, 0 = paused */
+  gameSpeed?: number;
   /** Mood bias applied to every conversation mood_impact. Negative = darker world, positive = lighter.
    *  Default 0 (neutral). Demo: -0.02 (crime within ~1 day). Peaceful: +0.02. */
   moodBias?: number;
@@ -175,16 +180,117 @@ export interface WorldConfig {
   frequencyPenalty?: number;
   /** Penalize any token already present in output. 0.0-2.0. */
   presencePenalty?: number;
+  /** Intent Layer configuration — player speech → engine effects */
+  il?: Partial<ILConfig>;
+  /** NPC-NPC conversation behavioral constants */
+  conversationBehavior?: Partial<ConversationConfig>;
+}
+
+// ─── IL Config ───
+
+/** Effect multiplier per emotional pressure type (scaled by intensity 0-1) */
+export interface PressureEffect { mood: number; sentiment: number; trust: number; }
+
+/** Importance value for memory storage */
+export interface ImportanceConfig { base: number; intensityMultiplier?: number; }
+
+/** Intent Layer behavioral parameters */
+export interface ILConfig {
+  /** Minimum NPC→Player trust to accept player action requests */
+  trustThresholdForGoals: number;
+  /** Minimum effective confidence (claim.conf × trust) to create belief */
+  beliefConfidenceFloor: number;
+  /** Player-side relationship delta multiplier (NPC reacts fully, player partially) */
+  bilateralFactor: number;
+  /** Emotional pressure multipliers keyed by pressure type, scaled by intensity */
+  pressureEffects: Record<string, PressureEffect>;
+  /** Bare speech act effects (flat, not scaled by intensity) */
+  speechActEffects: Record<string, PressureEffect>;
+  /** Memory importance values for player actions */
+  importanceValues: Record<string, ImportanceConfig>;
+}
+
+export const DEFAULT_IL_CONFIG: ILConfig = {
+  trustThresholdForGoals: 0.4,
+  beliefConfidenceFloor: 0.1,
+  bilateralFactor: 0.5,
+  pressureEffects: {
+    threat:       { mood: -0.20, sentiment: -0.15, trust: -0.10 },
+    bribe:        { mood:  0,    sentiment:  0,    trust:  0    },
+    flattery:     { mood:  0.10, sentiment:  0.05, trust:  0.05 },
+    guilt:        { mood: -0.10, sentiment:  0,    trust:  0    },
+    intimidation: { mood: -0.15, sentiment: -0.10, trust: -0.10 },
+  },
+  speechActEffects: {
+    compliment: { mood:  0.08, sentiment:  0.05, trust:  0.03 },
+    insult:     { mood: -0.08, sentiment: -0.08, trust: -0.05 },
+  },
+  importanceValues: {
+    threat:     { base: 3, intensityMultiplier: 4 },
+    bribe:      { base: 5 },
+    compliment: { base: 2 },
+    insult:     { base: 3 },
+  },
+};
+
+/** Resolve partial IL config with defaults */
+export function resolveILConfig(partial?: Partial<ILConfig>): ILConfig {
+  if (!partial) return DEFAULT_IL_CONFIG;
+  return {
+    trustThresholdForGoals: partial.trustThresholdForGoals ?? DEFAULT_IL_CONFIG.trustThresholdForGoals,
+    beliefConfidenceFloor: partial.beliefConfidenceFloor ?? DEFAULT_IL_CONFIG.beliefConfidenceFloor,
+    bilateralFactor: partial.bilateralFactor ?? DEFAULT_IL_CONFIG.bilateralFactor,
+    pressureEffects: partial.pressureEffects ?? DEFAULT_IL_CONFIG.pressureEffects,
+    speechActEffects: partial.speechActEffects ?? DEFAULT_IL_CONFIG.speechActEffects,
+    importanceValues: partial.importanceValues ?? DEFAULT_IL_CONFIG.importanceValues,
+  };
+}
+
+// ─── Conversation Config ───
+
+/** NPC-NPC conversation behavioral constants */
+export interface ConversationConfig {
+  /** Sentiment boost per NPC-NPC conversation (mutual) */
+  sentimentBoost: number;
+  /** Mood impact clamp range from LLM conversation analysis */
+  moodImpactClamp: { min: number; max: number };
+  /** Sentiment valence clamp for mentioned NPCs */
+  sentimentValenceClamp: { min: number; max: number };
+  /** Skip sentiment changes smaller than this */
+  sentimentValenceThreshold: number;
+  /** Confidence for secret discovery beliefs */
+  secretDiscoveryConfidence: number;
+}
+
+export const DEFAULT_CONVERSATION_CONFIG: ConversationConfig = {
+  sentimentBoost: 0.05,
+  moodImpactClamp: { min: -0.08, max: 0.06 },
+  sentimentValenceClamp: { min: -0.15, max: 0.15 },
+  sentimentValenceThreshold: 0.02,
+  secretDiscoveryConfidence: 0.4,
+};
+
+/** Resolve partial conversation config with defaults */
+export function resolveConversationConfig(partial?: Partial<ConversationConfig>): ConversationConfig {
+  if (!partial) return DEFAULT_CONVERSATION_CONFIG;
+  return {
+    sentimentBoost: partial.sentimentBoost ?? DEFAULT_CONVERSATION_CONFIG.sentimentBoost,
+    moodImpactClamp: partial.moodImpactClamp ?? DEFAULT_CONVERSATION_CONFIG.moodImpactClamp,
+    sentimentValenceClamp: partial.sentimentValenceClamp ?? DEFAULT_CONVERSATION_CONFIG.sentimentValenceClamp,
+    sentimentValenceThreshold: partial.sentimentValenceThreshold ?? DEFAULT_CONVERSATION_CONFIG.sentimentValenceThreshold,
+    secretDiscoveryConfidence: partial.secretDiscoveryConfidence ?? DEFAULT_CONVERSATION_CONFIG.secretDiscoveryConfidence,
+  };
 }
 
 export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   minConversationScore: 2,
-  pairCooldownTicks: 16,
+  pairCooldownMinutes: 240,
   exchangeCount: 1,
   lmStudioUrl: 'http://localhost:1234',
   model: 'qwen3.5-9b-abliterated',
-  affordanceCooldownTicks: 12,
-  decisionCooldownTicks: 4,
+  affordanceCooldownMinutes: 180,
+  decisionCooldownMinutes: 60,
+  gameSpeed: 1,
   repeatPenalty: 1.1,
   frequencyPenalty: 0.3,
   presencePenalty: 0.2,

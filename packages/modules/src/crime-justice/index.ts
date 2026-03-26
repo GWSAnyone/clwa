@@ -23,6 +23,7 @@ import {
   registerBeliefSourceLabels,
   getPassiveNoticeText,
   getAffordanceIdsForVerb,
+  registerSecretEventType,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -74,6 +75,9 @@ export function registerCrimeJusticeModule(): void {
   // Event type flags — engine checks boolean properties, not category names
   registerEventTypeFlagsBatch(['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE'], { transferable: true });
   registerEventTypeFlagsBatch(['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED'], { informationOnly: true });
+
+  // Secret event type — used by engine conversation impact for secret discovery beliefs
+  registerSecretEventType('PERSONAL_SECRET');
 
   // Source flags — engine checks boolean properties, not category names
   registerSourceFlags('perpetrator', { perpetrator: true });
@@ -423,7 +427,7 @@ export function registerCrimeJusticeModule(): void {
       if (!owner || !owner.state.alive) continue;
 
       if (owner.state.location !== theft.location) continue;
-      if (ctx.tickCount <= (theft.payload?.tick as number ?? 0)) continue;
+      if (ctx.gameMinute <= (theft.payload?.gameMinute as number ?? 0)) continue;
 
       ctx.discoveries.add(discoveryKey);
 
@@ -528,8 +532,8 @@ export function registerCrimeJusticeModule(): void {
       if (!npc.state.alive || isStatusAbsent(npc.state.status)) continue;
       if (npc.state.location !== playerLoc) continue;
       if (npc.state.inPlayerChat) continue;
-      // Cooldown: 32 ticks (8 game hours) per NPC
-      if (ctx.tickCount - (approachCooldowns.get(npcId) ?? -Infinity) < 32) continue;
+      // Cooldown: 480 game minutes (8 hours) per NPC
+      if (ctx.gameMinute - (approachCooldowns.get(npcId) ?? -Infinity) < 480) continue;
 
       // Check: NPC has urgent firsthand transferable beliefs not yet shared with player
       const urgentBeliefs = npc.state.beliefs?.getAllBeliefs().filter(
@@ -553,7 +557,7 @@ export function registerCrimeJusticeModule(): void {
             displayText: `${npc.profile.name} approaches you urgently`,
             urgency: 0.8,
           });
-          approachCooldowns.set(npcId, ctx.tickCount);
+          approachCooldowns.set(npcId, ctx.gameMinute);
           console.log(`  [Approach] ${npc.profile.name} wants to approach player (${eventLabel})`);
           continue;
         }
@@ -572,7 +576,7 @@ export function registerCrimeJusticeModule(): void {
           displayText: `${npc.profile.name} approaches you with a stern look`,
           urgency: 0.9,
         });
-        approachCooldowns.set(npcId, ctx.tickCount);
+        approachCooldowns.set(npcId, ctx.gameMinute);
         console.log(`  [Approach] ${npc.profile.name} wants to question player (suspicion)`);
         continue;
       }

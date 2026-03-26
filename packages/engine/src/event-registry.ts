@@ -228,6 +228,12 @@ export function getAllRegisteredVerbs(): string[] {
   return Array.from(ACTION_VERB_MAP.keys());
 }
 
+// ─── Secret Event Type ───
+// Module registers the event type used when conversation reveals a secret.
+let _secretEventType: string | null = null;
+export function registerSecretEventType(type: string): void { _secretEventType = type; }
+export function getSecretEventType(): string | null { return _secretEventType; }
+
 // ─── Crime Scene Templates ───
 // Modules register examination point templates per scene type.
 export interface CrimeSceneTemplate {
@@ -628,7 +634,8 @@ export interface TickPhaseContext {
   agents: Map<string, Agent>;
   eventStore: IEventStore;
   currentDay: number;
-  tickCount: number;
+  /** Current absolute game minute (for time-based checks and cooldowns) */
+  gameMinute: number;
   processEvent: (event: WorldEvent) => Promise<void>;
   discoveries: Set<string>;
   /** NPC approach events — tick phase handlers push to this array */

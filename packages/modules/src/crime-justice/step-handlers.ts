@@ -306,7 +306,7 @@ export function registerCrimeStepHandlers(): void {
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const undiscovered = ctx.evidenceLayer?.getUndiscovered(owner.state.location, goal.ownerId) ?? [];
     if (undiscovered.length === 0) { goal.currentStep++; return { ...baseResult, action: 'examine_scene', description: `${owner.profile.name}: no evidence here` }; }
-    const currentDay = goal.createdAtTick ? Math.floor(goal.createdAtTick / 24) + 1 : 1;
+    const currentDay = goal.createdAtMinute ? Math.floor(goal.createdAtMinute / 1440) + 1 : 1;
     let suspectCount = 0;
     for (const e of undiscovered) {
       ctx.evidenceLayer!.discover(e.id, goal.ownerId);

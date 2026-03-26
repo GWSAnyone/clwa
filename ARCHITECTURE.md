@@ -3,7 +3,7 @@
 > **Цель:** Архитектура симуляции живого игрового мира с причинно-следственной историей, многоуровневыми агентами и LLM-диалогом
 > **Вдохновение:** Disco Elysium (процесс расследования важнее результата), Dwarf Fortress (глубина симуляции), Stanford Generative Agents (архитектура памяти), Shangri-La Frontier (необратимые события)
 > **Принцип вех:** Каждая веха — демонстрация возможностей технологии CLWA. Мы строим **возможности**, не сценарии — сценарии это конфигурации начальных условий + правил поверх песочницы
-> **Дата начала:** Март 2026 | **Последнее обновление:** 24 марта 2026
+> **Дата начала:** Март 2026 | **Последнее обновление:** 26 марта 2026
 
 ---
 
@@ -555,6 +555,8 @@ interface WorldEvent {
 | `WITNESS_INTIMIDATED` | Запугивание свидетеля |
 | `TESTIMONY_GIVEN` | Свидетель дал показания добровольно |
 | `JUSTICE_DEMANDED` | NPC публично потребовал правосудия |
+| `PLAYER_ACTION` | Действие игрока (threat, bribe) через IL |
+| `PERSONAL_SECRET` | Секрет раскрыт в разговоре (registered via registerSecretEventType) |
 
 **Шкала важности:**
 
@@ -636,7 +638,7 @@ goals (advance active goals) → schedule goals → random movement →
 body discovery check → AL proactive volition (LLM DO/WHY) → casual conversations
 ```
 
-**Proactive volition**: для каждого NPC без активной цели → AL фильтрует affordances → PM scores → instinct descriptions → LLM решает (DO/WHY) → parser → goal steps. Decision cooldown 3 тика.
+**Proactive volition**: для каждого NPC без активной цели → AL фильтрует affordances → PM scores → instinct descriptions → LLM решает (DO/WHY) → parser → goal steps. Decision cooldown 4 тика (configurable via WorldConfig).
 
 **Tick mutex**: World.tick() защищён от параллельного вызова.
 
@@ -673,7 +675,7 @@ Guard получает цель: move → interact → announce → return (аг
 
 - **TICKS_PER_DAY = 96** — 1 тик = 15 game minutes, 5 периодов: dawn (ticks 20-28), morning (28-48), afternoon (48-68), evening (68-84), night (84-96+0-20)
 - **Auto-tick**: tick-when-ready pattern (setTimeout loop), default interval 8s → 1 day ≈ 13 min real time
-- 34 записи расписания для 7 NPC
+- 39 записей расписания для 8 NPC
 - Schedule goals имеют priority 3 — уступают событийным
 - Автоматический advanceDay при обороте 96 тиков
 - **Configurable cooldowns** via WorldConfig: affordance (12 ticks/3h), decision (4 ticks/1h), conversation pair (16 ticks/4h)
@@ -682,7 +684,7 @@ Guard получает цель: move → interact → announce → return (аг
 #### Движение
 
 - `LocationGraph` — граф с adjacency, BFS pathfinding
-- Мобильные NPC (Elara, Mark) — 30% шанс/тик случайное перемещение
+- Мобильные NPC (Elara, Mark) — 8% шанс/тик случайное перемещение (configurable)
 - `nextHop()` — пошаговое движение к цели
 
 #### Body Discovery
@@ -790,36 +792,49 @@ Robust fallback parser для malformed JSON. Player chat — свободный
 **Topic-directed**: конкретная тема + hook
 **Grounded memory**: mood-based format, key quote truncated to 80 chars
 
-### 3.4 Intent Detection
+### 3.4 Intent Layer (IL) — Dialogue Meaning Extraction (v0.9.9)
 
-Классификатор намерений игрока. LLM анализирует сообщение **до** ответа NPC.
+Структурный анализ речи игрока. LLM извлекает meaning **до** ответа NPC. Инверсия chatStream: chatStream конвертирует structured state → text, IL конвертирует text → structured data для движка.
 
 ```
-Player message → classifyIntent() → { intent, targetNpc?, detail? }
-    ↓                                       ↓
-applyIntentEffects()                 intent WS → Godot
-(mood/sentiment/memory)                      ↓
-    ↓                               action button в диалоге
-agent.chatStream()                  (Browse Wares, Press Further)
+Player message → extractDialogueMeaning(LLM) → DialogueMeaning → applyDialogueMeaning() → engine effects
+                      ↓                                               ↓
+                 dynamic JSON schema                          beliefs, mood, relationships,
+                 (enum constraints from                       goals, events, memories
+                  registries)                                        ↓
+                                                              ILEffect[] → WS il_result → client
 ```
 
-| Intent | Эффект | Пример |
+**DialogueMeaning** (structured output с enum constraints):
+- `speechAct`: inform | question | request | accuse | threaten | compliment | insult | bribe | confide | trade | smalltalk
+- `claims[]`: eventType (enum from registry), subject, object, location (enum), source (witnessed/heard/suspects/deduced), confidence
+- `questions[]`: about, topic (whereabouts/opinion/knowledge/relationship/secret)
+- `requestedAction`: action (enum from ACTION_VERB_MAP), target, urgency
+- `emotionalPressure`: type (threat/bribe/flattery/guilt/intimidation), intensity
+- `tradeIntent`: category, itemName
+
+**Engine Effects (bilateral parity with NPC-NPC)**:
+- Claims → `addBelief(source: TESTIMONY, conf = claim.conf × trust)` — same as NPC beliefTransfer, with `isTransferable()` filter + confidence floor
+- Questions → NPC beliefs gathered for response context
+- Requests → `getAffordanceIdsForVerb()` → `createGoalFromRequest()` (trust threshold from `ILConfig`)
+- Pressure → mood + `adjustSentiment()`/`adjustTrust()` (WS broadcast via onChange) + EventStore + memory
+- Compliment/Insult → flat effects from `ILConfig.speechActEffects`
+
+**ILEffect tracking**: discriminated union (7 types), broadcast via WS `il_result` for client rendering.
+
+**ILConfig** (configurable via WorldConfig.il):
+
+| Parameter | Default | Description |
 |---|---|---|
-| `smalltalk` | Нет | "Hello", "How are you?" |
-| `ask_about_npc` | Нет (LLM из памяти) | "What do you know about Hilda?" |
-| `accuse` | EventStore, memory imp 6 | "I think Ted is a liar" |
-| `threaten` | mood -0.15, memory imp 5 | "Tell me or else" |
-| `insult` | mood -0.08, memory imp 3 | "You're a fraud" |
-| `compliment` | mood +0.08, memory imp 2 | "You do great work" |
-| `bribe` | EventStore, memory imp 5 | "I'll pay you for information" |
-| `confide` | memory imp 4 | "I saw something strange" |
-| `trade` | action button (если NPC имеет shop) | "I need a weapon" |
-
-Классификация через LLM (temperature: 0.2, не keyword matching).
+| trustThresholdForGoals | 0.4 | Min trust for NPC to act on player requests |
+| beliefConfidenceFloor | 0.1 | Min effective confidence for belief creation |
+| bilateralFactor | 0.5 | Player-side relationship delta multiplier |
+| pressureEffects | per-type | Mood/sentiment/trust multipliers × intensity |
+| speechActEffects | per-act | Flat mood/sentiment/trust for compliment/insult |
 
 ### 3.5 Shop System
 
-NPC с `profile.shop: ShopItem[]` — торговля через intent detection → action button.
+NPC с `profile.shop: ShopItem[]` — торговля через IL (speechAct='trade') → WS `shop:open` event.
 
 | NPC | Товары | Специализация |
 |---|---|---|
@@ -835,11 +850,11 @@ NPC с `profile.shop: ShopItem[]` — торговля через intent detecti
 
 ### 3.7 Journal System
 
-Журнал игрока: улики, показания, наблюдения. Бэкенд + Godot UI.
+Журнал игрока: улики, показания, наблюдения. Бэкенд (`engine/journal.ts`) + REST API.
 
 ### 3.8 Secret Directives
 
-Универсальная система скрытых поведенческих директив (`world/src/secret-directives.ts`). Инжектится в LLM промпт без доп. вызовов.
+Универсальная система скрытых поведенческих директив (`engine/src/secret-directives.ts`). Инжектится в LLM промпт через `SECRET_DIRECTIVE_BUILDERS` registry. Включает player-specific builders (threat/bribe memory), registered by server.
 
 ```
 buildSecretDirectives(agent, agents, eventStore) → prompt text
@@ -849,22 +864,21 @@ buildSecretDirectives(agent, agents, eventStore) → prompt text
 Генерирует директивы на основе relationships
 ```
 
-| NPC знает | Relationship | Поведение |
+**Реализованные directive categories:**
+
+| Condition | Source | Directive |
 |---|---|---|
-| Совершил преступление | — | Отрицает, при давлении — трещит |
-| Видел преступление | Друг убийцы | Покрывает (cover-up belief) |
-| Видел преступление | Враг убийцы | Охотно выдаёт |
-| Видел преступление | Нейтральный | Докладывает (90% chance) |
-| Ему угрожали | — | Боится, может подчиниться |
-| Его подкупили | — | Конфликт, уклоняется |
-| Знает чужой секрет | Друг | Хранит |
-| Знает чужой секрет | Враг | Может использовать |
+| Committed a crime | `isTransferable(event.type)` + event.subject === agentId | Deny, deflect, show cracks under pressure |
+| Covering for someone | `isConcealment(belief.source)` | Vague, change subject, internal conflict |
+| Witnessed + hostile to suspect | `isFirsthand(belief.source)` + sentiment < -0.2 | Eager to share, may exaggerate |
+| Player threatened NPC | Server builder (PLAYER_ACTION.THREATEN) | Cautious, guarded, may comply out of fear |
+| Player bribed NPC | Server builder (PLAYER_ACTION.BRIBE) | Conflicted, evasive about dealings |
 
-**Cover-up механика**: свидетель + друг/семья убийцы + sentiment > 0.2 → НЕ report_crime, вместо этого memory + cover-up belief.
+Neutral witnesses don't get a directive — their behavior (testify, report_crime) comes from AL affordance system.
 
-### 3.9 Murder Motivation (replaced by AL)
+**Not yet implemented** (from original design): secret knowledge directives — NPC who learns another NPC's secret should protect or leverage it based on relationship. Would use PERSONAL_SECRET beliefs from `registerSecretEventType`.
 
-Legacy: ранее отдельная проверка evening/night тиков. Теперь реализовано через AL affordance `kill` с requirements (period, motive, mood, sentiment) и LLM-driven volition. NPC сам решает через DO/WHY формат.
+**Cover-up механика**: свидетель + друг/семья убийцы + isConcealment source → НЕ report_crime (blocked by notPerpetrator-like logic), вместо этого memory + cover-up belief → directive injected.
 
 ---
 
@@ -926,15 +940,15 @@ Silver Flagon Tavern, Town Square (хаб), Town Gate, Market Square, Blacksmith
 
 | # | Слой | Размер | Статус | Описание |
 |---|---|---|---|---|
-| 1 | Intent detection, shop | Medium | ✅ | Классификатор намерений + торговля |
+| 1 | IL + shop | Medium | ✅ | Intent Layer (dialogue meaning extraction) + торговля |
 | 2 | Crime Scene System | Medium | ✅ | Место преступления с точками осмотра |
 | 3 | Журнал игрока | Medium | ✅ | Бэк + Godot UI. Улики, показания, наблюдения |
 | 4 | Осмотр места (Godot) | Medium | ✅ | Визуальный маркер, UI осмотра, examine → journal |
 | 5 | Secret Directives + Cover-up | Medium | ✅ | Универсальные скрытые директивы, покрывательство |
 | 6 | **Personality Model (PM)** | Medium | ✅ | OCEAN+H + Enneagram → utility scores + instinct descriptions |
-| 7 | **Affordance Layer (AL)** | Large | ✅ | 19 affordances, declarative step templates, target finder registry |
+| 7 | **Affordance Layer (AL)** | Large | ✅ | 20 affordances (19 crime + socialize), declarative step templates, target finder registry |
 | 8 | **Crime & Punishment** | Large | ✅ | Расследование, арест, суд, приговор (exile/release), побег, NPC status machine |
-| 9 | **Topic Engine + Dialogue** | Medium | ✅ | 7 plugin topic sources (вкл. justice), grounded memory, structured importance |
+| 9 | **Topic Engine + Dialogue** | Medium | ✅ | 13 topic sources (11 social + 2 crime), grounded memory, structured importance |
 | 10 | **Архитектурный аудит** | Medium | ✅ | Устранение text matching, semaphore safety, target finder registry |
 | 11 | Legacy cleanup + Package restructure | Medium | ✅ | engine/modules/server трёхуровневая архитектура |
 | 12 | LLM-driven decisions + instinct builder | Medium | ✅ | Scoring v2 + instinct builder v2, no reflex (volition.ts) |
@@ -946,8 +960,11 @@ Silver Flagon Tavern, Town Square (хаб), Town Gate, Market Square, Blacksmith
 | 18 | Engine decoupling v3 | Medium | ✅ | spreadRumors, crime-scene, interaction hooks, tick handlers, secret directive builders |
 | 19 | E2E stability + dialogue quality | Medium | ✅ | minimumScore, belief source dedup, notPerpetrator, beliefs in prompts, speechStyle |
 | 20 | Tick system v2 | Small | ✅ | TICKS_PER_DAY=96, auto-tick, configurable cooldowns |
-| 21 | Trauma layer | Medium | ⏳ | Постоянные сдвиги OCEAN+H от травм |
-| 22 | Consequence Graph v2 | Large | ⏳ | Полные цепочки для всех типов преступлений |
+| 21 | IL v2 overhaul | Large | ✅ | Dynamic schema, bilateral parity, ILConfig, ILEffect tracking, WS il_result |
+| 22 | Web UI client | Large | ✅ | Canvas2D game, chat system, NPC Mind, player position persistence |
+| 23 | Config externalization | Medium | ✅ | ILConfig + ConversationConfig — zero hardcoded behavioral constants |
+| 24 | Trauma layer | Medium | ⏳ | Постоянные сдвиги OCEAN+H от травм |
+| 25 | Consequence Graph v2 | Large | ⏳ | Полные цепочки для всех типов преступлений |
 
 ### Каталог преступлений и возможностей NPC
 
@@ -1011,12 +1028,12 @@ GOODS_STOLEN → владелец обнаружил → ACCUSATION_SPREAD → �
 | **Веха 3** | Beliefs, Relationships, buildRoleDirective, LLM Semaphore | ✅ |
 | **Веха 4** | Godot 2D клиент (изометрическая деревня, WASD, диалоги, день/ночь) | ✅ |
 | **Веха 4.5** | Персистентность (save.json при SIGINT + POST /api/save) | ✅ |
-| **Веха 5** | **Преступление и наказание** — crime scene, journal, PM, AL (19 affordances), investigation, arrest, trial, sentence, NPC status, target finder registry, architectural audit | 🔨 СЕЙЧАС |
-| **Веха 6+** | Trauma layer, CG v2, сторителлинг/квесты, фракции, Reputation, Hot/Warm/Cold | ⏳ |
+| **Веха 5** | **Преступление и наказание** — crime scene, journal, PM, AL (20 affordances), investigation, arrest, trial, sentence, NPC status, target finder registry, architectural audit, IL v2, Web UI | ✅ |
+| **Веха 6+** | Trauma layer, CG v2, streaming tick, сторителлинг/квесты, фракции, Reputation, Hot/Warm/Cold | ⏳ |
 
 ### Hot/Warm/Cold агенты (будущая оптимизация)
 
-Работает для 7 NPC. При 50+ — потребуется:
+Работает для 8 NPC. При 50+ — потребуется:
 
 | Уровень | Что делает | LLM |
 |---|---|---|
@@ -1035,7 +1052,7 @@ GOODS_STOLEN → владелец обнаружил → ACCUSATION_SPREAD → �
 | Вызов | Reasoning | Почему |
 |---|---|---|
 | **Диалог NPC** | OFF | Время-критично |
-| **Intent Detection** | OFF + few-shot | Достаточно few-shot, reasoning только задержка |
+| **IL extraction** | OFF | Structured output with json_schema enum constraints. Reasoning unnecessary |
 | **Рефлексия** | ON (эксперимент) | Задача сложная, не время-критичная |
 
 Qwen3.5-9B с reasoning ON зацикливается — застревает в `<think>` блоке. Известная проблема Qwen3.5 и DeepSeek R1.
@@ -1067,8 +1084,8 @@ Qwen3.5-9B с reasoning ON зацикливается — застревает �
 ### Взаимодействие игрока
 
 **Два пайплайна:**
-- **Структурный** — купить, скрафтить, взять задание. Транзакции с данными. Intent detection через LLM.
-- **Свободный** — оскорбить, флиртовать. Нарратив через `chat()`. Последствия фиксируются после ответа.
+- **Структурный** — IL извлекает structured meaning (claims, requests, pressure) → engine effects (beliefs, goals, mood). Торговля через speechAct='trade'.
+- **Свободный** — NPC отвечает через `chatStream()` с IL context injection. Последствия фиксируются через ILEffect pipeline.
 
 **Приоритеты в промпте NPC:**
 1. Belief что игрок — убийца → отказ говорить / зов стражи
@@ -1093,7 +1110,8 @@ Qwen3.5-9B с reasoning ON зацикливается — застревает �
 | Чат-модель | Qwen3.5-9B-abliterated (lukey03) | Q4_K_M (5.2 ГБ), GGUF patched (thinking off), RTX 3080 10GB |
 | Embedding-модель | nomic-embed-text-v1.5 | Q8_0 (140 МБ), 768d через raw fetch |
 | Векторная память | Qdrant | Docker, localhost:6333, Cosine distance |
-| Игровой движок | Godot 4.6.1 | Steam, `godot/` |
+| Web UI | Canvas2D (vanilla JS) | `/game.html` — primary demo client. Tiny Swords sprites, A* pathfinding |
+| Игровой движок | Godot 4.6.1 | Steam, `godot/` — deferred, secondary client |
 
 ### Структура проекта
 
@@ -1126,18 +1144,20 @@ CLWA/
     │       ├── llm-client.ts       # Centralized LLM client (OpenAI /v1/chat/completions, structured output)
     │       ├── goals.ts            # GoalManager, NpcGoal, 12 step types
     │       ├── world.ts            # World.tick(), processKill(), isActive/isPresent
-    │       ├── world-types.ts      # LocationDef, WorldConfig, TickResult, CrimeScene
+    │       ├── world-types.ts      # LocationDef, WorldConfig, ILConfig, ConversationConfig, TickResult, CrimeScene
     │       ├── interaction.ts      # InteractionRunner — LLM-driven goal conversations
     │       ├── schedule.ts         # ScheduleManager, TICKS_PER_DAY=96, auto-tick
     │       ├── secret-directives.ts # buildSecretDirectives()
-    │       ├── intent.ts           # classifyIntent()
+    │       ├── il.ts               # IL: extractDialogueMeaning(), applyDialogueMeaning(), buildILSchema(), ILEffect
     │       ├── conversation.ts     # runConversation(), structured importance
     │       ├── topic-engine.ts     # TopicEngine — selection engine only, 0 sources (modules fill registry)
     │       ├── scheduler.ts        # ConversationScheduler — pair selection
     │       ├── crime-scene.ts      # createCrimeScene(), templates
     │       ├── journal.ts          # PlayerJournal
     │       ├── pathfinding.ts      # findPath(), nextHop() — BFS
-    │       └── movement.ts         # processMovement() — status-aware NPC movement
+    │       ├── movement.ts         # processMovement() — status-aware NPC movement
+    │       ├── perception.ts       # canSee(), canInteract(), canHear(), getCoPresent(), getWitnesses()
+    │       └── evidence.ts         # EvidenceLayer: structured discoverable facts at locations
     ├── modules/                    # @clwa/modules — мировой контент (данные)
     │   └── src/
     │       ├── index.ts            # Re-exports
@@ -1149,14 +1169,18 @@ CLWA/
     │           ├── affordances.ts  # CRIME_AFFORDANCES (19 определений)
     │           ├── target-finders.ts # 14 finder-функций + REQUIREMENT_CHECKERS
     │           ├── topic-sources.ts # justiceTopics + playerRumorTopics (bidirectional, recency, topicKey)
-    │           └── cg-rules.ts     # CRIME_CG_RULES (14 правил)
+    │           └── cg-rules.ts     # CRIME_CG_RULES (13 правил)
     ├── server/                     # @clwa/server — платформа
-    │   ├── public/                 # Web UI (vanilla JS)
+    │   ├── public/                 # Web UI client
+    │   │   ├── game.html           # Canvas2D game client — Tiny Swords sprites, chat modal, NPC Mind
+    │   │   ├── game.js             # Game loop, WS handlers, chat system, IL effects rendering
+    │   │   └── map-data.json       # Tilemap data (parsed from Godot export)
     │   └── src/
     │       ├── index.ts            # Bootstrap: loads world JSON, creates agents, starts server
     │       ├── world-loader.ts     # Reads worlds/*/JSON → engine-compatible structures
-    │       ├── server.ts           # Bun.serve: HTTP + WebSocket + static + player chat
+    │       ├── server.ts           # Bun.serve: HTTP + WebSocket + static + player chat + IL
     │       ├── routes.ts           # REST API handlers
+    │       ├── position-manager.ts # Server-authoritative pixel positions, zone polygons, save/restore
     │       └── ws.ts               # WebSocket: broadcast, sendTo
     └── worlds/                     # World data (JSON, editable by scenario designer)
         └── millhaven/
@@ -1173,9 +1197,8 @@ CLWA/
 
 **Технические:**
 1. **Комбинаторный взрыв** — текущее решение: maxChainDepth: 3. Нужно тестировать при большем количестве правил
-2. **Консистентность памяти** — два NPC помнят одно событие по-разному. Как разрешать при NPC-to-NPC общении?
-3. **LLM галлюцинации** — ✅ Решено: убран хардкод фактов (festival/caravan) из buildDynamicFacts, TopicEngine даёт grounded темы из реального state
-4. **Масштаб** — 10,000+ NPC потребует иерархической агрегации
+2. **Масштаб** — 10,000+ NPC потребует иерархической агрегации (Hot/Warm/Cold agents)
+3. **Двойной LLM call на сообщение** — IL extraction + NPC response = 2 sequential LLM calls через semaphore. На 9B модели это ~4-8с latency
 
 **Дизайновые:**
 1. **Игрок vs симуляция** — баланс между реактивностью мира и agency игрока
@@ -1209,7 +1232,11 @@ CLWA/
 | **[CRIME] маркер** | Структурный тег в purpose, стрипается перед LLM |
 | **Drift Detection** | Meta-точка в Qdrant — пересоздание при несовпадении модели/размерности |
 | **Secret Directives** | Скрытые поведенческие директивы в промпте (покрывательство, отрицание) |
-| **Intent Detection** | LLM-классификация намерения игрока перед ответом NPC |
+| **Intent Layer (IL)** | Structured meaning extraction из речи игрока. Inverse of chatStream. Claims → beliefs, requests → goals, pressure → mood/relationships |
+| **ILEffect** | Structured record of a mechanical effect applied by IL. Discriminated union: belief_created, belief_rejected, mood_change, relationship_change, goal_created, goal_rejected, event_stored |
+| **ILConfig** | Configurable behavioral parameters for IL: trust threshold, confidence floor, pressure multipliers, bilateral factor. In WorldConfig |
+| **ConversationConfig** | Configurable conversation constants: sentiment boost, mood/valence clamps. In WorldConfig |
+| **PositionManager** | Server-authoritative pixel positions for all entities. Zone polygons, seeded random placement, save/restore |
 | **Emergent Quest** | Квест без выдачи — мир реагирует через CG + Beliefs |
 
 ### Академические источники

@@ -4,7 +4,7 @@ import type { ServerWebSocket } from 'bun';
 import type { Agent } from '@clwa/engine';
 import type { World } from '@clwa/engine';
 import type { IEventStore } from '@clwa/engine';
-import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, createGoalFromRequest } from '@clwa/engine';
+import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, getAllRegisteredVerbs, createGoalFromRequest } from '@clwa/engine';
 import type { ILContext, ILEffectContext } from '@clwa/engine';
 import { handleRequest } from './routes';
 import type { RouteOptions } from './routes';
@@ -129,20 +129,34 @@ export function startServer(
               .filter((a) => a.state.alive && !a.profile.isPlayer)
               .map((a) => `${a.profile.name} (${a.profile.role})`);
             const locationNames = Array.from(world.locations.values()).map((l) => l.name);
+            const locationNameToSlug = new Map<string, string>();
+            for (const [slug, loc] of world.locations) {
+              locationNameToSlug.set(loc.name, slug);
+            }
 
             const ilContext: ILContext = {
               npcNames,
               locationNames,
+              locationNameToSlug,
               knownEventTypes: getAllRegisteredEventTypes(),
+              availableActions: getAllRegisteredVerbs(),
               targetNpcName: agent.profile.name,
             };
 
             broadcast({ type: 'debug:llm', data: { reason: 'IL extract', target: agent.profile.name } });
             const meaning = await extractDialogueMeaning(msg.message, ilContext);
+            const ilFallback = (meaning as any)._fallback as string | undefined;
+            if (ilFallback) {
+              console.warn(`  [IL] FALLBACK: ${ilFallback} — player message not processed`);
+            }
             console.log(`  [IL] ${meaning.speechAct}${meaning.claims ? ` claims:${meaning.claims.length}` : ''}${meaning.questions ? ` questions:${meaning.questions.length}` : ''}${meaning.requestedAction ? ` request:${meaning.requestedAction.action}` : ''} (conf:${meaning.extractionConfidence.toFixed(2)})`);
 
             // Apply IL effects to engine systems (beliefs, mood, relationships)
             let ilAdditionalContext = '';
+            const ilEffects: import('@clwa/engine').ILEffect[] = [];
+            if (ilFallback) {
+              ilEffects.push({ type: 'event_stored', eventType: 'IL_FALLBACK', action: ilFallback });
+            }
             if (playerAgent) {
               const effectCtx: ILEffectContext = {
                 targetAgent: agent,
@@ -150,6 +164,8 @@ export function startServer(
                 agents,
                 eventStore,
                 gameDay: agent.state.currentDay,
+                effects: ilEffects,
+                ilConfig: world.resolvedILConfig,
                 goalCreator: (npcId, action, target) => {
                   const goal = createGoalFromRequest(npcId, action, world.buildAffordanceContext(), target);
                   if (goal) {
@@ -159,19 +175,18 @@ export function startServer(
                   return false;
                 },
               };
-              ilAdditionalContext = applyDialogueMeaning(meaning, effectCtx);
+              ilAdditionalContext = await applyDialogueMeaning(meaning, effectCtx);
             }
 
-            // IL result → Godot WS event (includes trust + belief info for UI)
+            // IL result → WS event with full structured effects for client
             const npcTrust = agent.state.relationships?.getRelationship(playerAgent?.profile.id ?? '')?.trust ?? 0;
-            const claimsCreated = meaning.claims?.filter(c => c.eventType).length ?? 0;
-            broadcast({ type: 'intent', data: {
+            broadcast({ type: 'il_result', data: {
               agentId: msg.agentId,
-              intent: meaning.speechAct,
-              targetNpc: meaning.claims?.[0]?.subject,
-              detail: meaning.requestedAction?.action,
-              trust: Math.round(npcTrust * 100),
-              claimsCreated,
+              agentName: agent.profile.name,
+              speechAct: meaning.speechAct,
+              extractionConfidence: +meaning.extractionConfidence.toFixed(2),
+              trust: +npcTrust.toFixed(2),
+              effects: ilEffects,
             } });
 
             if (meaning.speechAct === 'trade' && agent.profile.shop && agent.profile.shop.length > 0) {
@@ -182,14 +197,24 @@ export function startServer(
               } });
             }
 
-            // Build NPC response with IL context + secret directives + approach context
+            // Build NPC response with IL context + secret directives + approach context + shop
             const secretDirectives = buildSecretDirectives(agent, agents, eventStore);
             const approachCtx = approachContexts?.get(msg.agentId);
             if (approachCtx) approachContexts?.delete(msg.agentId); // consume once
+            // Inject shop inventory when trade detected — prevents hallucinated items
             const fullContext = [secretDirectives, approachCtx, ilAdditionalContext].filter(Boolean).join('\n\n') || undefined;
 
+            // For trade: wrap user message with shop inventory so model sees items in user prompt
+            // (system prompt "lost middle" causes 9B to ignore shop context there)
+            let effectiveMessage = msg.message;
+            if (meaning.speechAct === 'trade' && agent.profile.shop?.length) {
+              const items = agent.profile.shop.map((i: any) => `- ${i.name}: ${i.price} gold. ${i.description}`).join('\n');
+              effectiveMessage = `${msg.message}\n\n[SHOP INVENTORY — mention these items by name and price, do NOT invent others:\n${items}]`;
+              console.log(`  [Shop] Injecting ${agent.profile.shop.length} items into user message for ${agent.profile.name}`);
+            }
+
             broadcast({ type: 'debug:llm', data: { reason: 'Player chat', target: agent.profile.name } });
-            const fullReply = await agent.chatStream(msg.message, (token) => {
+            const fullReply = await agent.chatStream(effectiveMessage, (token) => {
               sendTo(ws, { type: 'chat:token', data: { agentId: msg.agentId, token } });
             }, fullContext);
 
@@ -227,7 +252,7 @@ export function startServer(
               if (!otherAgent.state.alive) continue;
               if (otherAgent.state.location !== npcLocation) continue;
               if (Math.random() > 0.6) continue;
-              otherAgent.observe(
+              await otherAgent.observe(
                 `You were nearby and overheard a conversation between ${playerAgent!.profile.name} and ${agent.profile.name}. ${playerAgent!.profile.name} said: "${msg.message}". ${agent.profile.name} answered: "${fullReply}"`,
                 3,
               );

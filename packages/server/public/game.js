@@ -189,7 +189,7 @@ const UNIT_MAP = {
   ted:     { unit:'Pawn', color:'Red', item:' Meat' },
   mark:    { unit:'Pawn', color:'Yellow', item:' Gold' },
   elara:   { unit:'Monk', color:'Purple', item:'' },
-  garrett: { unit:'Warrior', color:'Blue', item:'' },
+  garrett: { unit:'Warrior', color:'Red', item:'' },
   aldric:  { unit:'Monk', color:'Yellow', item:'' },
   hilda:   { unit:'Pawn', color:'Red', item:' Hammer' },
   bess:    { unit:'Monk', color:'Blue', item:'' },
@@ -199,9 +199,9 @@ const UNIT_MAP = {
 
 // NPC → Avatar mapping (Tiny Swords Human Avatars)
 const AVATAR_MAP = {
-  garrett:     '01', ted: '04', hilda: '08', mark: '14',
+  garrett:     '06', ted: '09', hilda: '09', mark: '14',
   elara:       '20', aldric: '15', bess: '05', magistrate: '16',
-  player:      '02',
+  player:      '01',
 };
 
 // ─── STATE ───
@@ -213,7 +213,8 @@ const state = {
   ws: null, connected: false,
   keys: {},
   events: [],
-  chatOpen: false, chatNpcId: null, chatMessages: [],
+  chatOpen: false, chatNpcId: null, chatMessages: [], _pendingILEffects: null,
+  crimeScenes: [], approachingNpc: null, actionEffects: [],
   autoTick: false,
   hoveredNpc: null,
 };
@@ -322,15 +323,24 @@ async function init() {
     state.agents[a.id] = {
       name: a.name, role: a.role, location: a.location,
       mood: a.mood, alive: a.alive, status: a.status || '',
+      background: a.background || '',
+      hasShop: a.hasShop || false,
+      chatHistory: loadChatHistory(a.id),
       x: a.x ?? 0, y: a.y ?? 0, targetX: a.x ?? 0, targetY: a.y ?? 0,
       moving: false, waypoints: [], wpIdx: 0,
       sprites, frameIdx: 0, animTimer: 0, flipH: false,
     };
   }
 
-  // Player start
-  const sq = locCenter('town-square');
-  state.player.x = sq.x; state.player.y = sq.y;
+  // Player start — restore position from server (persists across page refresh)
+  const playerRes = await fetch('/api/player');
+  const playerData = await playerRes.json();
+  if (playerData.x != null && playerData.y != null && (playerData.x || playerData.y)) {
+    state.player.x = playerData.x; state.player.y = playerData.y;
+  } else {
+    const sq = locCenter('town-square');
+    state.player.x = sq.x; state.player.y = sq.y;
+  }
   state.player.sprites = getUnitSprites('player');
 
   // Fetch time
@@ -362,13 +372,25 @@ async function init() {
   document.getElementById('btn-tick').onclick = () => fetch('/api/tick', {method:'POST'});
   document.getElementById('btn-day').onclick = () => fetch('/api/day', {method:'POST'});
   document.getElementById('btn-auto').onclick = toggleAuto;
-  // Restore auto-tick from localStorage
-  if (localStorage.getItem('clwa-auto')) {
-    state.autoTick = true;
-    document.getElementById('btn-auto').textContent = 'Auto: ON';
-    document.getElementById('btn-auto').classList.add('active');
-    autoTickLoop();
+  // Speed buttons
+  for (const btn of document.querySelectorAll('.speed-btn')) {
+    btn.onclick = () => {
+      const speed = parseInt(btn.dataset.speed);
+      fetch('/api/speed', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ speed }) })
+        .then(r => r.json()).then(d => {
+          document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+    };
   }
+  // Check server auto-tick state
+  fetch('/api/auto-state').then(r => r.json()).then(d => {
+    state.autoTick = d.autoTick;
+    if (state.autoTick) {
+      document.getElementById('btn-auto').textContent = 'Auto: ON';
+      document.getElementById('btn-auto').classList.add('active');
+    }
+  }).catch(() => {});
   document.getElementById('chat-close').onclick = closeChat;
   document.getElementById('chat-form').onsubmit = sendChat;
 
@@ -392,6 +414,13 @@ function handleWS(type, data) {
     case 'tick':
       state.day = data.gameDay;
       if (data.time) { state.time = data.time.hour; state.period = data.time.period; }
+      updateHUD();
+      break;
+
+    case 'time_update':
+      state.time = data.hour;
+      state.period = data.period;
+      state.day = data.gameDay;
       updateHUD();
       break;
 
@@ -441,16 +470,38 @@ function handleWS(type, data) {
       break;
     }
 
-    case 'event':
+    case 'event': {
       const evType = data.type || '';
       addEvent(evType.includes('KILL') || evType.includes('STOLEN') ? 'crime' : 'conversation',
         `${evType}: ${data.subject || ''} → ${data.object || ''}`);
+      // Toast + status updates for key events
+      const subjectAgent = data.subject ? state.agents[data.subject] : null;
+      const objectAgent = data.object ? state.agents[data.object] : null;
+      const subjectName = subjectAgent?.name || data.subject || '?';
+      const objectName = objectAgent?.name || data.object || '?';
+      if (evType === 'NPC_ARRESTED' && objectAgent) {
+        objectAgent.status = 'detained';
+        showToast(`${subjectName} arrested ${objectName}`, 'arrest');
+      } else if (evType === 'NPC_SENTENCED') {
+        const verdict = data.payload?.verdict || 'sentenced';
+        if (objectAgent) objectAgent.status = verdict;
+        showToast(`${objectName} was ${verdict}`, 'sentence');
+      } else if (evType === 'BODY_DISCOVERED') {
+        showToast(`${subjectName} discovered a body!`, 'discovery');
+      } else if (evType === 'GOODS_STOLEN') {
+        showToast(`Goods stolen at ${data.location || '?'}`, 'theft');
+      } else if (evType === 'NPC_FLED') {
+        if (objectAgent) objectAgent.status = 'fled';
+        showToast(`${objectName} fled the town!`, 'sentence');
+      }
       break;
+    }
 
     case 'murder':
       const victim = Object.values(state.agents).find(a => a.name === data.victimName);
       if (victim) { victim.alive = false; }
       addEvent('crime', `${data.killerName} killed ${data.victimName}!`);
+      showToast(`${data.killerName} killed ${data.victimName}!`, 'murder');
       break;
 
     case 'npc_thought':
@@ -465,13 +516,8 @@ function handleWS(type, data) {
     case 'mood_update': {
       const mNpc = state.agents[data.npcId];
       if (mNpc) mNpc.mood = data.newMood;
-      // Update chat mood bar if open for this NPC
       if (state.chatOpen && state.chatNpcId === data.npcId) {
-        const pct = (data.newMood + 1) / 2 * 100;
-        const bar = document.getElementById('chat-mood-bar');
-        bar.style.width = pct + '%';
-        bar.style.background = data.newMood > 0 ? '#4a8a4a' : data.newMood > -0.3 ? '#8a8a3a' : '#8a3a3a';
-        document.getElementById('chat-mood-val').textContent = data.newMood.toFixed(2);
+        updateChatMoodBar(data.newMood);
       }
       if (Math.abs(data.newMood - data.oldMood) > 0.05) {
         addEvent('mood', `${data.npcName} mood: ${data.oldMood.toFixed(2)} → ${data.newMood.toFixed(2)}`);
@@ -479,8 +525,26 @@ function handleWS(type, data) {
       break;
     }
 
+    case 'relationship_change': {
+      // Update trust/sentiment in chat panel if open for this NPC→player
+      if (state.chatOpen && data.fromId === state.chatNpcId && data.toId === 'player') {
+        // Re-fetch full relationship to get both trust and sentiment
+        fetch(`/api/relationships/${data.fromId}`).then(r => r.json()).then(rels => {
+          if (state.chatNpcId !== data.fromId) return;
+          const playerRel = rels.find(r => r.targetId === 'player');
+          if (playerRel) updateChatTrustBar(playerRel.trust, playerRel.sentiment);
+        }).catch(() => {});
+      }
+      break;
+    }
+
     case 'goal_update':
       addEvent('movement', `${data.npcName || data.npcId}: ${data.goalType} (${data.status})`);
+      break;
+
+    case 'goal:action':
+      addEvent('thought', `${data.ownerName}: ${data.description}`);
+      spawnActionEffect(data);
       break;
 
     case 'event_cascade':
@@ -494,6 +558,40 @@ function handleWS(type, data) {
       break;
 
     case 'chat:done':
+      finalizeChatStream();
+      break;
+
+    case 'shop:open':
+      if (state.chatOpen && data.agentId === state.chatNpcId) {
+        state._shopData = data;
+        const btn = document.getElementById('btn-shop');
+        btn.style.display = 'inline-block';
+        btn.classList.add('glow');
+        setTimeout(() => btn.classList.remove('glow'), 3000);
+      }
+      break;
+
+    case 'crime:scene':
+      if (!state.crimeScenes) state.crimeScenes = [];
+      state.crimeScenes.push({ id: data.id, locationId: data.locationId, crimeType: data.crimeType });
+      showToast(`Crime scene at ${LOCATIONS[data.locationId]?.label || data.locationId}`, 'crime');
+      break;
+
+    case 'npc_approach': {
+      state.approachingNpc = data.npcId;
+      showToast(`${data.npcName} wants to talk to you`, 'approach');
+      break;
+    }
+
+    case 'journal:entry':
+      addJournalEntry(data);
+      break;
+
+    case 'il_result':
+      // Store pending effects — will be attached to NPC response on chat:done
+      if (state.chatOpen && data.agentId === state.chatNpcId) {
+        state._pendingILEffects = data.effects || [];
+      }
       break;
   }
 }
@@ -503,6 +601,214 @@ function updateHUD() {
   document.getElementById('hud-day').textContent = state.day;
   document.getElementById('hud-time').textContent = state.time;
   document.getElementById('hud-period').textContent = state.period;
+}
+
+// ─── ACTION EFFECTS ───
+const ACTION_EFFECT_CONFIG = {
+  attack_npc:       { color: '#ff4444', icon: '⚔', label: 'ATTACK',      duration: 3, line: true },
+  arrest_npc:       { color: '#4488ff', icon: '⛓', label: 'ARREST',      duration: 4, line: true },
+  steal_from:       { color: '#ccaa44', icon: '💰', label: 'STEAL',       duration: 2.5, line: true },
+  examine_scene:    { color: '#44ddaa', icon: '🔍', label: 'EXAMINE',     duration: 3, line: false },
+  sentence_npc:     { color: '#aa44ff', icon: '⚖', label: 'SENTENCE',    duration: 4, line: true },
+  destroy_evidence: { color: '#ff8844', icon: '🔥', label: 'DESTROY',     duration: 2.5, line: false },
+  flee:             { color: '#888888', icon: '💨', label: 'FLEE',         duration: 2, line: false },
+  interact:         { color: '#88bbdd', icon: '💬', label: '',            duration: 2, line: true },
+};
+
+function spawnActionEffect(data) {
+  const owner = state.agents[data.ownerId];
+  if (!owner) return;
+
+  const cfg = ACTION_EFFECT_CONFIG[data.action];
+  if (!cfg) return; // move_to, wait, announce — no visual
+
+  // Determine target position for line effect
+  let targetX = null, targetY = null;
+  if (cfg.line) {
+    const targetId = data.interaction?.targetId || data.crimeEvent?.targetId;
+    const target = targetId ? state.agents[targetId] : null;
+    if (target) { targetX = target.x; targetY = target.y; }
+  }
+
+  // Refine label for interact subtypes based on goalType
+  let label = cfg.label;
+  if (data.action === 'interact') {
+    const gt = data.goalType || '';
+    if (gt.includes('interrogat'))   label = 'INTERROGATE';
+    else if (gt.includes('confront')) label = 'CONFRONT';
+    else if (gt.includes('testif'))   label = 'TESTIFY';
+    else if (gt.includes('report'))   label = 'REPORT';
+    else if (gt.includes('leverage') || gt.includes('blackmail')) label = 'BLACKMAIL';
+    else if (gt.includes('intimidat')) label = 'INTIMIDATE';
+  }
+
+  // Refine color for confront/interrogate
+  let color = cfg.color;
+  if (label === 'CONFRONT')    color = '#dd6644';
+  if (label === 'INTERROGATE') color = '#ddaa44';
+  if (label === 'BLACKMAIL')   color = '#aa44aa';
+
+  state.actionEffects.push({
+    x: owner.x, y: owner.y,
+    targetX, targetY,
+    color, icon: cfg.icon, label,
+    timer: cfg.duration, maxTimer: cfg.duration,
+    line: cfg.line && targetX != null,
+  });
+}
+
+function updateActionEffects(dt) {
+  for (let i = state.actionEffects.length - 1; i >= 0; i--) {
+    state.actionEffects[i].timer -= dt;
+    if (state.actionEffects[i].timer <= 0) state.actionEffects.splice(i, 1);
+  }
+}
+
+function drawActionEffects() {
+  for (const fx of state.actionEffects) {
+    const alpha = Math.min(1, fx.timer / (fx.maxTimer * 0.3)); // fade out in last 30%
+
+    // Line between actors
+    if (fx.line) {
+      ctx.strokeStyle = fx.color.replace(')', `,${alpha * 0.4})`).replace('rgb', 'rgba').replace('#', '');
+      // Convert hex to rgba
+      const r = parseInt(fx.color.slice(1,3),16), g = parseInt(fx.color.slice(3,5),16), b = parseInt(fx.color.slice(5,7),16);
+      ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.4})`;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(fx.x, fx.y);
+      ctx.lineTo(fx.targetX, fx.targetY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 1;
+    }
+
+    // Pulsing ring around actor
+    const pulse = 0.6 + Math.sin(Date.now() / 200) * 0.3;
+    const r2 = parseInt(fx.color.slice(1,3),16), g2 = parseInt(fx.color.slice(3,5),16), b2 = parseInt(fx.color.slice(5,7),16);
+    ctx.beginPath();
+    ctx.arc(fx.x, fx.y, 28 + Math.sin(Date.now() / 300) * 4, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(${r2},${g2},${b2},${alpha * pulse})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    // Icon + label above
+    if (fx.label) {
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(${r2},${g2},${b2},${alpha})`;
+      ctx.fillText(`${fx.icon} ${fx.label}`, fx.x, fx.y - 60);
+    }
+  }
+}
+
+// ─── TOAST NOTIFICATIONS ───
+function showToast(text, type = 'info', duration = 5000) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = text;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 400);
+  }, duration);
+}
+
+// ─── SHOP ───
+function toggleShop() {
+  const panel = document.getElementById('shop-panel');
+  if (panel.classList.contains('open')) {
+    panel.classList.remove('open');
+    return;
+  }
+  const data = state._shopData;
+  if (!data) return;
+  const container = document.getElementById('shop-items');
+  container.innerHTML = '';
+  for (const item of data.items) {
+    const div = document.createElement('div');
+    div.className = 'shop-item';
+    div.innerHTML = `
+      <div>
+        <div class="shop-item-name">${escapeHTML(item.name)}</div>
+        <div class="shop-item-desc">${escapeHTML(item.description)}</div>
+      </div>
+      <span class="shop-item-price">${item.price}g</span>
+    `;
+    container.appendChild(div);
+  }
+  panel.classList.add('open');
+}
+
+function closeShop() {
+  document.getElementById('shop-panel').classList.remove('open');
+  document.getElementById('btn-shop').style.display = 'none';
+  state._shopData = null;
+}
+
+// ─── EXAMINE CRIME SCENE ───
+function updateExaminePrompt() {
+  const prompt = document.getElementById('examine-prompt');
+  if (!state.crimeScenes || state.crimeScenes.length === 0) { prompt.style.display = 'none'; return; }
+  // Check if player is near any crime scene
+  const nearby = state.crimeScenes.find(cs => {
+    const loc = LOCATIONS[cs.locationId];
+    if (!loc) return false;
+    const dx = state.player.x - loc.px, dy = state.player.y - loc.py;
+    return Math.sqrt(dx*dx + dy*dy) < 200;
+  });
+  prompt.style.display = nearby ? 'block' : 'none';
+  prompt._sceneLocationId = nearby?.locationId;
+}
+
+async function examineScene() {
+  const prompt = document.getElementById('examine-prompt');
+  const locationId = prompt._sceneLocationId;
+  if (!locationId) return;
+  try {
+    const res = await fetch(`/api/examine/${locationId}/0`, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) {
+      showToast(data.error, 'info');
+    } else {
+      showToast(`Found: ${data.clueText || data.description}`, 'discovery');
+      if (data.evidence && data.evidence.length > 0) {
+        for (const e of data.evidence) {
+          showToast(`Evidence: ${e.description}`, 'discovery', 7000);
+        }
+      }
+    }
+  } catch { showToast('Failed to examine', 'info'); }
+}
+
+// ─── JOURNAL ───
+const _journalEntries = [];
+
+function addJournalEntry(data) {
+  _journalEntries.unshift(data);
+  renderJournal();
+  showToast('New journal entry', 'info', 3000);
+}
+
+function renderJournal() {
+  const body = document.getElementById('journal-body');
+  if (_journalEntries.length === 0) {
+    body.innerHTML = '<div class="journal-empty">No entries yet. Examine crime scenes to collect evidence.</div>';
+    return;
+  }
+  body.innerHTML = _journalEntries.map(e => `
+    <div class="journal-entry">
+      <div class="journal-entry-day">Day ${e.gameDay || '?'} — ${e.location || ''}</div>
+      <div class="journal-entry-text">${escapeHTML(e.text || e.clueText || e.description || '')}</div>
+    </div>
+  `).join('');
+}
+
+function toggleJournal() {
+  document.getElementById('journal-panel').classList.toggle('open');
 }
 
 // ─── EVENT FEED ───
@@ -525,41 +831,497 @@ function openChat(npcId) {
   const a = state.agents[npcId];
   if (!a) return;
 
-  // Avatar
+  // Avatar — portrait from Tiny Swords Human Avatars
   const avatarNum = AVATAR_MAP[npcId] || '01';
   document.getElementById('chat-avatar').src = `/assets/tinyswords/UI%20Elements/UI%20Elements/Human%20Avatars/Avatars_${avatarNum}.png`;
 
   // NPC info
-  document.getElementById('chat-npc-name').textContent = a.name;
+  const nameEl = document.getElementById('chat-npc-name');
+  nameEl.textContent = a.name;
+  nameEl.style.color = '#e8dcc8'; // reset, updated by sentiment below
   document.getElementById('chat-npc-role').textContent = a.role;
+  document.getElementById('chat-npc-loc').textContent = LOCATIONS[a.location]?.label || a.location;
+
+  // Details / NPC Mind — reset to collapsed, clear cache for fresh data
+  document.getElementById('chat-npc-background').textContent = a.background || '';
+  const detailsBody = document.getElementById('chat-details-body');
+  detailsBody.classList.remove('open');
+  detailsBody.style.maxHeight = '0';
+  document.getElementById('chat-details-toggle').classList.remove('open');
+  resetMindCache();
+
+  // Status badge
+  const badge = document.getElementById('chat-status-badge');
+  if (a.status && a.status !== 'free' && a.status !== '') {
+    badge.textContent = a.status.toUpperCase();
+    badge.className = 'chat-status-badge ' + a.status;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
 
   // Mood bar
-  const moodPct = (a.mood + 1) / 2 * 100; // -1..1 → 0..100%
-  const moodBar = document.getElementById('chat-mood-bar');
-  moodBar.style.width = moodPct + '%';
-  moodBar.style.background = a.mood > 0 ? '#4a8a4a' : a.mood > -0.3 ? '#8a8a3a' : '#8a3a3a';
-  document.getElementById('chat-mood-val').textContent = a.mood.toFixed(2);
+  updateChatMoodBar(a.mood);
 
-  // Clear messages
-  document.getElementById('chat-messages').innerHTML = '';
-  _chatTokenBuffer = '';
+  // Trust bar — fetch relationship to player
+  updateChatTrustBar(0.3, 0); // default while loading
+  fetch(`/api/relationships/${npcId}`).then(r => r.json()).then(rels => {
+    if (state.chatNpcId !== npcId) return; // chat closed or switched
+    const playerRel = rels.find(r => r.targetId === 'player');
+    if (playerRel) {
+      updateChatTrustBar(playerRel.trust, playerRel.sentiment);
+    }
+  }).catch(() => {});
+
+  // Restore or reset messages — single source of truth: chatHistory
+  const msgDiv = document.getElementById('chat-messages');
+  finalizeChatStream(); // flush any pending stream from previous chat
+  const history = a.chatHistory || [];
+  msgDiv.innerHTML = '';
+
+  if (history.length > 0) {
+    renderChatHistory(msgDiv, history);
+    msgDiv.classList.add('has-messages');
+    requestAnimationFrame(() => {
+      const content = msgDiv.scrollHeight;
+      if (content <= CHAT_MSG_MAX_H) {
+        msgDiv.style.height = content + 'px';
+      } else {
+        msgDiv.style.height = CHAT_MSG_MAX_H + 'px';
+        msgDiv.scrollTop = msgDiv.scrollHeight;
+      }
+    });
+  } else {
+    msgDiv.style.height = '0';
+    msgDiv.classList.remove('has-messages');
+  }
+
+  // Mark new conversation session
+  a._chatSession = `Day ${state.day}, ${state.time}`;
+
+  // Shop button — show if NPC has shop
+  const shopBtn = document.getElementById('btn-shop');
+  if (a.hasShop) {
+    shopBtn.style.display = 'inline-block';
+    shopBtn.classList.remove('glow');
+    // Pre-load shop data from agent profile
+    fetch(`/api/agent/${npcId}`).then(r => r.json()).then(d => {
+      if (d.shop) state._shopData = { agentId: npcId, npcName: d.name, items: d.shop };
+    }).catch(() => {});
+  } else {
+    shopBtn.style.display = 'none';
+    state._shopData = null;
+  }
+
+  // Player footer — portrait avatar (same style as NPC)
+  const playerAvNum = AVATAR_MAP['player'] || '01';
+  document.getElementById('chat-player-avatar').src = `/assets/tinyswords/UI%20Elements/UI%20Elements/Human%20Avatars/Avatars_${playerAvNum}.png`;
+  // Location
+  const playerLoc = Object.entries(LOCATIONS).find(([id]) => {
+    const z = LOCATIONS[id];
+    const dx = state.player.x - z.px, dy = state.player.y - z.py;
+    return Math.sqrt(dx*dx + dy*dy) < 300;
+  });
+  document.getElementById('chat-player-loc').textContent = playerLoc ? playerLoc[1].label : '';
+  // Mood + beliefs from server
+  fetch('/api/player').then(r => r.json()).then(pd => {
+    const moodEl = document.getElementById('chat-player-mood');
+    if (moodEl) {
+      moodEl.textContent = `Mood: ${pd.mood?.toFixed(2) ?? '?'}`;
+      moodEl.style.color = pd.mood > 0 ? '#8aba8a' : pd.mood > -0.3 ? '#baba6a' : '#ba6a6a';
+    }
+    const belEl = document.getElementById('chat-player-beliefs');
+    if (belEl) belEl.textContent = `${pd.beliefs ?? 0} beliefs`;
+  }).catch(() => {});
 
   // Show panel
   document.getElementById('chat-panel').classList.add('open');
 
   // Save current zoom and smoothly transition to NPC
   state._preZoom = state.camera.zoom;
-  state._chatZoomTarget = Math.max(state.camera.zoom, 1.5); // zoom in but not out
+  state._chatZoomTarget = Math.max(state.camera.zoom, 1.5);
   state._chatCamTarget = { x: a.x, y: a.y };
 
   setTimeout(() => document.getElementById('chat-input').focus(), 100);
 }
 
+function updateChatMoodBar(mood) {
+  const pct = (mood + 1) / 2 * 100;
+  const bar = document.getElementById('chat-mood-bar');
+  bar.style.width = pct + '%';
+  bar.style.background = mood > 0 ? '#4a8a4a' : mood > -0.3 ? '#8a8a3a' : '#8a3a3a';
+  document.getElementById('chat-mood-val').textContent = mood.toFixed(2);
+}
+
+function updateChatTrustBar(trust, sentiment) {
+  const pct = trust * 100;
+  const bar = document.getElementById('chat-trust-bar');
+  bar.style.width = pct + '%';
+  bar.style.background = trust > 0.5 ? '#4a7aba' : trust > 0.2 ? '#5a6a8a' : '#6a5a5a';
+  document.getElementById('chat-trust-val').textContent = trust.toFixed(2);
+
+  // Sentiment tints NPC name color
+  const nameEl = document.getElementById('chat-npc-name');
+  if (sentiment > 0.2) nameEl.style.color = '#a8d8b0';
+  else if (sentiment < -0.2) nameEl.style.color = '#d8a8a8';
+  else nameEl.style.color = '#e8dcc8';
+}
+
+function toggleChatDetails() {
+  const toggle = document.getElementById('chat-details-toggle');
+  const body = document.getElementById('chat-details-body');
+  const isOpen = body.classList.contains('open');
+  if (isOpen) {
+    body.style.maxHeight = '0';
+    body.classList.remove('open');
+    toggle.classList.remove('open');
+  } else {
+    body.classList.add('open');
+    body.style.maxHeight = ''; // let CSS .open handle it (320px with scroll)
+    toggle.classList.add('open');
+  }
+}
+
+// ─── NPC Mind — lazy-loaded sub-sections ───
+const _mindCache = {}; // npcId → { beliefs, relationships, goals, personality }
+
+function resetMindCache() {
+  const npcId = state.chatNpcId;
+  if (npcId) delete _mindCache[npcId];
+  // Collapse all mind sections
+  for (const sec of ['beliefs', 'relationships', 'goals', 'personality']) {
+    const hdr = document.querySelector(`#mind-${sec} .mind-header`);
+    const body = document.getElementById(`mind-${sec}-body`);
+    if (hdr) hdr.classList.remove('open');
+    if (body) { body.classList.remove('open'); body.style.maxHeight = '0'; body.innerHTML = ''; }
+    const cnt = document.getElementById(`mind-${sec}-count`);
+    if (cnt) cnt.textContent = '';
+  }
+}
+
+async function toggleMindSection(section) {
+  const hdr = document.querySelector(`#mind-${section} .mind-header`);
+  const body = document.getElementById(`mind-${section}-body`);
+  if (!hdr || !body) return;
+
+  if (body.classList.contains('open')) {
+    body.style.maxHeight = '0';
+    body.classList.remove('open');
+    hdr.classList.remove('open');
+    return;
+  }
+
+  hdr.classList.add('open');
+  const npcId = state.chatNpcId;
+  if (!npcId) return;
+  if (!_mindCache[npcId]) _mindCache[npcId] = {};
+  const cache = _mindCache[npcId];
+
+  // Show loading
+  if (!cache[section]) {
+    body.innerHTML = '<div class="mind-loading">Loading...</div>';
+    body.classList.add('open');
+    body.style.maxHeight = '40px';
+  }
+
+  try {
+    if (!cache[section]) cache[section] = await fetchMindData(npcId, section);
+    renderMindSection(section, cache[section], body);
+  } catch {
+    body.innerHTML = '<div class="mind-loading">Failed to load</div>';
+  }
+
+  body.classList.add('open');
+  requestAnimationFrame(() => {
+    body.style.maxHeight = body.scrollHeight + 'px';
+    // Re-expand parent details body to accommodate new content
+    const detailsBody = document.getElementById('chat-details-body');
+    if (detailsBody?.classList.contains('open')) detailsBody.style.maxHeight = detailsBody.scrollHeight + 'px';
+  });
+}
+
+async function fetchMindData(npcId, section) {
+  switch (section) {
+    case 'beliefs': {
+      const res = await fetch(`/api/beliefs/${npcId}`);
+      const data = await res.json();
+      document.getElementById('mind-beliefs-count').textContent = `(${data.length})`;
+      return data;
+    }
+    case 'relationships': {
+      const res = await fetch(`/api/relationships/${npcId}`);
+      const data = await res.json();
+      document.getElementById('mind-relationships-count').textContent = `(${data.length})`;
+      return data;
+    }
+    case 'goals': {
+      const res = await fetch('/api/goals');
+      const all = await res.json();
+      const data = all.filter(g => g.ownerId === npcId);
+      document.getElementById('mind-goals-count').textContent = `(${data.length})`;
+      return data;
+    }
+    case 'personality': {
+      const res = await fetch(`/api/agent/${npcId}`);
+      return await res.json();
+    }
+    default: return null;
+  }
+}
+
+function renderMindSection(section, data, container) {
+  container.innerHTML = '';
+  if (!data) return;
+
+  switch (section) {
+    case 'beliefs': {
+      if (data.length === 0) { container.innerHTML = '<div class="mind-loading">No beliefs</div>'; return; }
+      for (const b of data) {
+        const pct = Math.round((b.confidence ?? 0) * 100);
+        const div = document.createElement('div');
+        div.className = 'belief-item';
+        div.innerHTML = `
+          <span class="belief-type">${escapeHTML(b.eventType || '?')}</span>
+          <div class="belief-conf"><div class="belief-conf-fill" style="width:${pct}%;background:${pct>60?'#6aba6a':pct>30?'#ba8a4a':'#6a6a6a'}"></div></div>
+          <span class="belief-text">${escapeHTML(b.subject || '?')}${b.object ? ' → ' + escapeHTML(b.object) : ''}</span>
+          <span class="belief-source">${escapeHTML(b.source || '')}</span>
+        `;
+        container.appendChild(div);
+      }
+      break;
+    }
+
+    case 'relationships': {
+      if (data.length === 0) { container.innerHTML = '<div class="mind-loading">No relationships</div>'; return; }
+      for (const r of data) {
+        const sentPct = ((r.sentiment + 1) / 2) * 100; // -1..1 → 0..100
+        const trustPct = r.trust * 100;
+        const sentColor = r.sentiment > 0.2 ? '#6aba6a' : r.sentiment < -0.2 ? '#ba4a4a' : '#8a8a6a';
+        const div = document.createElement('div');
+        div.className = 'rel-item';
+        div.innerHTML = `
+          <span class="rel-name">${escapeHTML(r.targetName)}</span>
+          <span class="rel-type-badge">${escapeHTML(r.type)}</span>
+          <div class="rel-bars">
+            <div class="rel-bar"><span class="rel-bar-label">S</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${sentPct}%;background:${sentColor}"></div></div><span class="rel-bar-val">${r.sentiment.toFixed(1)}</span></div>
+            <div class="rel-bar"><span class="rel-bar-label">T</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${trustPct}%;background:#4a7aba"></div></div><span class="rel-bar-val">${r.trust.toFixed(1)}</span></div>
+          </div>
+        `;
+        container.appendChild(div);
+      }
+      break;
+    }
+
+    case 'goals': {
+      if (data.length === 0) { container.innerHTML = '<div class="mind-loading">No active goals</div>'; return; }
+      for (const g of data) {
+        const div = document.createElement('div');
+        div.className = 'goal-item';
+        div.innerHTML = `
+          <span class="goal-state ${g.state}">${escapeHTML(g.state)}</span>
+          <span class="goal-text">${escapeHTML(g.type)}${g.ownerName ? '' : ''}</span>
+          <span class="goal-progress">${g.currentStep + 1}/${g.totalSteps}</span>
+        `;
+        container.appendChild(div);
+      }
+      break;
+    }
+
+    case 'personality': {
+      if (!data.bigFive) { container.innerHTML = '<div class="mind-loading">No personality data</div>'; return; }
+      const bf = data.bigFive;
+      const traitColors = { O: '#a080d0', C: '#60a0d0', E: '#d0a040', A: '#60c080', N: '#d06060', H: '#40a0a0' };
+      for (const [key, label] of [['openness','O'],['conscientiousness','C'],['extraversion','E'],['agreeableness','A'],['neuroticism','N'],['honesty','H']]) {
+        const val = bf[key] ?? 0;
+        const div = document.createElement('div');
+        div.className = 'trait-row';
+        div.innerHTML = `
+          <span class="trait-label" style="color:${traitColors[label]}">${label}</span>
+          <div class="trait-bar-bg"><div class="trait-bar-fill" style="width:${val*100}%;background:${traitColors[label]}"></div></div>
+          <span class="trait-val">${val.toFixed(2)}</span>
+        `;
+        container.appendChild(div);
+      }
+      if (data.enneagram) {
+        const e = data.enneagram;
+        const enneNames = {1:'Perfectionist',2:'Helper',3:'Achiever',4:'Individualist',5:'Investigator',6:'Loyalist',7:'Enthusiast',8:'Challenger',9:'Peacemaker'};
+        const typeName = enneNames[e.type] || e.type;
+        const d1 = document.createElement('div');
+        d1.className = 'enne-line';
+        d1.innerHTML = `<span class="enne-label">Type</span> ${e.type}w${e.wing} ${escapeHTML(typeName)}`;
+        container.appendChild(d1);
+        if (e.coreFear) {
+          const d2 = document.createElement('div');
+          d2.className = 'enne-line';
+          d2.innerHTML = `<span class="enne-label">Fear</span> ${escapeHTML(e.coreFear)}`;
+          container.appendChild(d2);
+        }
+        if (e.coreDesire) {
+          const d3 = document.createElement('div');
+          d3.className = 'enne-line';
+          d3.innerHTML = `<span class="enne-label">Desire</span> ${escapeHTML(e.coreDesire)}`;
+          container.appendChild(d3);
+        }
+      }
+      break;
+    }
+  }
+}
+
+// ─── IL feedback ───
+
+function renderILEffectLine(e) {
+  switch (e.type) {
+    case 'belief_created':
+      return `<span class="il-label">belief</span> Noted claim about ${escapeHTML(e.subject || 'someone')} — confidence ${Math.round(e.confidence * 100)}%, trust ${Math.round(e.trust * 100)}%`;
+    case 'belief_rejected':
+      return `<span class="il-label">rejected</span> Dismissed claim${e.subject ? ' about ' + escapeHTML(e.subject) : ''} — ${escapeHTML(e.reason)}`;
+    case 'mood_change':
+      return `<span class="il-label">mood</span> ${e.delta > 0 ? 'Improved' : 'Worsened'} by ${Math.abs(e.delta).toFixed(2)} → ${e.newMood}`;
+    case 'relationship_change':
+      return `<span class="il-label">${e.field}</span> ${e.delta > 0 ? 'Increased' : 'Decreased'} by ${Math.abs(e.delta).toFixed(2)}`;
+    case 'goal_created':
+      return `<span class="il-label">action</span> Will ${escapeHTML(e.action)}${e.target ? ' regarding ' + escapeHTML(e.target) : ''}`;
+    case 'goal_rejected':
+      return `<span class="il-label">refused</span> Won't ${escapeHTML(e.action)} — ${escapeHTML(e.reason)}${e.trust != null ? ' (trust: ' + Math.round(e.trust * 100) + '%)' : ''}`;
+    case 'memory_stored':
+      return `<span class="il-label">memory</span> Remembered: "${escapeHTML(e.text)}" (importance: ${e.importance})`;
+    case 'event_stored':
+      if (e.eventType === 'IL_FALLBACK') return `<span class="il-label" style="color:#d08040">warning</span> IL extraction failed: ${escapeHTML(e.action)}`;
+      return null;
+    default:
+      return null;
+  }
+}
+
+function attachILBadge(msgEl, effects) {
+  const visible = effects.filter(e => e.type !== 'event_stored');
+  if (visible.length === 0) return;
+
+  // Toggle button
+  const toggle = document.createElement('div');
+  toggle.className = 'msg-il-toggle';
+  toggle.textContent = `⚙ ${visible.length} effect${visible.length > 1 ? 's' : ''}`;
+  toggle.onclick = function() { toggleMsgIL(this); };
+  msgEl.appendChild(toggle);
+
+  // Collapsible details
+  const details = document.createElement('div');
+  details.className = 'msg-il-details';
+  for (const e of visible) {
+    const line = renderILEffectLine(e);
+    if (!line) continue;
+    const div = document.createElement('div');
+    div.className = 'il-effect';
+    div.innerHTML = line;
+    details.appendChild(div);
+  }
+  msgEl.appendChild(details);
+}
+
+function toggleMsgIL(toggleEl) {
+  const details = toggleEl.nextElementSibling;
+  if (!details) return;
+  const div = document.getElementById('chat-messages');
+  const isOpen = details.classList.contains('open');
+  if (isOpen) {
+    details.style.maxHeight = '0';
+    details.classList.remove('open');
+    toggleEl.classList.remove('open');
+  } else {
+    details.classList.add('open');
+    details.style.maxHeight = details.scrollHeight + 'px';
+    toggleEl.classList.add('open');
+    setTimeout(() => {
+      div.scrollTop = div.scrollHeight;
+    }, 50);
+  }
+}
+
+// ─── Chat system ───
+const CHAT_MSG_MAX_H = 560; // matches CSS --chat-msg-max-h
+const CHAT_HISTORY_CAP = 50;
+let _chatTokenBuffer = '';
+let _chatStreamEl = null;
+
+function escapeHTML(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+
+function createMsgEl(name, text, cls) {
+  const el = document.createElement('div');
+  el.className = `msg msg-${cls}`;
+  el.innerHTML = name ? `<b>${escapeHTML(name)}</b>${escapeHTML(text)}` : escapeHTML(text);
+  return el;
+}
+
+function renderChatHistory(container, history) {
+  const frag = document.createDocumentFragment();
+  let lastSession = null;
+  for (const m of history) {
+    if (m.session && m.session !== lastSession && lastSession !== null) {
+      const sep = document.createElement('div');
+      sep.className = 'chat-session-sep';
+      sep.textContent = m.session;
+      frag.appendChild(sep);
+    }
+    lastSession = m.session || lastSession;
+    const el = createMsgEl(m.name, m.text, m.cls);
+    if (m.effects && m.effects.length > 0) attachILBadge(el, m.effects);
+    frag.appendChild(el);
+  }
+  container.appendChild(frag);
+}
+
+function pushHistory(npcId, name, text, cls, effects) {
+  const a = state.agents[npcId];
+  if (!a) return;
+  if (!a.chatHistory) a.chatHistory = [];
+  const entry = { name, text, cls, session: a._chatSession || null };
+  if (effects && effects.length > 0) entry.effects = effects;
+  a.chatHistory.push(entry);
+  if (a.chatHistory.length > CHAT_HISTORY_CAP) a.chatHistory.shift();
+  saveChatHistory(npcId, a.chatHistory);
+}
+
+function saveChatHistory(npcId, history) {
+  try { localStorage.setItem(`clwa-chat-${npcId}`, JSON.stringify(history)); } catch {}
+}
+
+function loadChatHistory(npcId) {
+  try {
+    const raw = localStorage.getItem(`clwa-chat-${npcId}`);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function finalizeChatStream() {
+  if (_chatTokenBuffer && state.chatNpcId) {
+    const a = state.agents[state.chatNpcId];
+    const effects = state._pendingILEffects || [];
+    if (a) pushHistory(state.chatNpcId, a.name, _chatTokenBuffer, 'npc', effects);
+    if (_chatStreamEl) {
+      delete _chatStreamEl.dataset.streaming;
+      // Attach IL effects badge to this NPC message
+      if (effects.length > 0) {
+        attachILBadge(_chatStreamEl, effects);
+      }
+    }
+    growChatArea();
+  }
+  _chatTokenBuffer = '';
+  _chatStreamEl = null;
+  state._pendingILEffects = null;
+}
+
 function closeChat() {
+  finalizeChatStream();
+  closeShop();
   state.chatOpen = false; state.chatNpcId = null;
   document.getElementById('chat-panel').classList.remove('open');
 
-  // Smooth return — lerp both zoom and position back to player
   if (state._preZoom) state._chatZoomTarget = state._preZoom;
   state._chatCamTarget = null;
   state._cameraReturning = true;
@@ -577,40 +1339,50 @@ function sendChat(e) {
 }
 
 function addChatMessage(name, text, cls) {
+  if (state.chatNpcId) pushHistory(state.chatNpcId, name, text, cls);
   const div = document.getElementById('chat-messages');
-  div.innerHTML += `<div class="msg msg-${cls}"><b>${name}</b>${text}</div>`;
-  div.scrollTop = div.scrollHeight;
+  div.appendChild(createMsgEl(name, text, cls));
+  growChatArea();
 }
 
-let _chatTokenBuffer = '';
+function growChatArea() {
+  const div = document.getElementById('chat-messages');
+  if (!div.classList.contains('has-messages')) div.classList.add('has-messages');
+  requestAnimationFrame(() => {
+    const content = div.scrollHeight;
+    if (content <= CHAT_MSG_MAX_H) {
+      // Content fits — expand to fit, no scroll
+      div.style.height = content + 'px';
+    } else {
+      div.style.height = CHAT_MSG_MAX_H + 'px';
+      div.scrollTop = div.scrollHeight;
+    }
+  });
+}
+
 function appendChatToken(token) {
   _chatTokenBuffer += token;
-  // Update last NPC message or create new
   const div = document.getElementById('chat-messages');
-  let last = div.querySelector('.msg-npc:last-child');
-  if (!last || !last.dataset.streaming) {
+  if (!_chatStreamEl || !_chatStreamEl.parentNode) {
     const a = state.agents[state.chatNpcId];
-    div.innerHTML += `<div class="msg-npc" data-streaming="1"><b>${a?.name || ''}:</b> <span class="stream-text"></span></div>`;
-    last = div.querySelector('.msg-npc:last-child');
+    _chatStreamEl = document.createElement('div');
+    _chatStreamEl.className = 'msg msg-npc';
+    _chatStreamEl.dataset.streaming = '1';
+    _chatStreamEl.innerHTML = `<b>${escapeHTML(a?.name || '')}</b><span class="stream-text"></span>`;
+    div.appendChild(_chatStreamEl);
   }
-  last.querySelector('.stream-text').textContent = _chatTokenBuffer;
-  div.scrollTop = div.scrollHeight;
+  _chatStreamEl.querySelector('.stream-text').textContent = _chatTokenBuffer;
+  growChatArea();
 }
 
-// ─── AUTO TICK ───
-function toggleAuto() {
-  state.autoTick = !state.autoTick;
-  localStorage.setItem('clwa-auto', state.autoTick ? '1' : '');
+// ─── AUTO TICK (server-authoritative) ───
+async function toggleAuto() {
+  const res = await fetch('/api/auto', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ seconds: 0 }) });
+  const data = await res.json();
+  state.autoTick = data.autoTick;
   const btn = document.getElementById('btn-auto');
   btn.textContent = state.autoTick ? 'Auto: ON' : 'Auto';
   btn.classList.toggle('active', state.autoTick);
-  if (state.autoTick) autoTickLoop();
-}
-
-async function autoTickLoop() {
-  if (!state.autoTick) return;
-  await fetch('/api/tick', {method:'POST'});
-  setTimeout(autoTickLoop, 8000);
 }
 
 // ─── CANVAS INTERACTION ───
@@ -698,7 +1470,9 @@ function gameLoop(timestamp) {
   lastTime = timestamp;
 
   update(dt);
+  updateActionEffects(dt);
   render();
+  updateExaminePrompt();
   requestAnimationFrame(gameLoop);
 }
 
@@ -852,10 +1626,27 @@ function render() {
 
   drawMap();
   drawBuildings();
+  drawCrimeScenes();
   drawNPCs();
   drawPlayer();
+  drawActionEffects();
+  drawDayNight(logW, logH, camX, camY);
 
   ctx.restore();
+}
+
+function drawDayNight(logW, logH, camX, camY) {
+  const overlays = {
+    dawn:      { r: 200, g: 150, b: 80,  a: 0.08 },
+    morning:   null,
+    afternoon: { r: 200, g: 160, b: 100, a: 0.03 },
+    evening:   { r: 160, g: 80,  b: 120, a: 0.18 },
+    night:     { r: 20,  g: 30,  b: 80,  a: 0.38 },
+  };
+  const o = overlays[state.period];
+  if (!o) return;
+  ctx.fillStyle = `rgba(${o.r},${o.g},${o.b},${o.a})`;
+  ctx.fillRect(camX, camY, logW / state.camera.zoom, logH / state.camera.zoom);
 }
 
 function drawMap() {
@@ -913,41 +1704,95 @@ function drawBuildings() {
   }
 }
 
+function drawCrimeScenes() {
+  if (!state.crimeScenes) return;
+  const t = Date.now() / 1000;
+  for (const cs of state.crimeScenes) {
+    const loc = LOCATIONS[cs.locationId];
+    if (!loc) continue;
+    const pulse = 0.4 + Math.sin(t * 3) * 0.3;
+    ctx.beginPath();
+    ctx.arc(loc.px, loc.py, 50 + Math.sin(t * 2) * 10, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(220,40,40,${pulse})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = `rgba(220,40,40,${pulse * 0.15})`;
+    ctx.fill();
+    ctx.fillStyle = `rgba(255,80,80,${pulse})`;
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('CRIME SCENE', loc.px, loc.py + 70);
+  }
+}
+
 function drawNPCs() {
   for (const [id, a] of Object.entries(state.agents)) {
-    if (!a.alive) continue;
-    if (a.status === 'exiled' || a.status === 'fled') continue;
+    const isDead = !a.alive;
+    const isAbsent = a.status === 'exiled' || a.status === 'fled';
+    const isDetained = a.status === 'detained';
+    const isApproaching = state.approachingNpc === id;
 
-    const sheet = a.moving ? a.sprites.run : a.sprites.idle;
+    // Don't render absent NPCs
+    if (isAbsent) continue;
+
+    const sheet = (isDead || isDetained) ? a.sprites.idle : (a.moving ? a.sprites.run : a.sprites.idle);
     if (!sheet || !sheet.complete || !sheet.naturalWidth) continue;
 
     const frameW = 192, frameH = 192;
     const totalFrames = Math.floor(sheet.naturalWidth / frameW);
-    const frame = a.frameIdx % totalFrames;
+    const frame = isDead ? 0 : (a.frameIdx % totalFrames);
 
-    // Mood ring
-    ctx.beginPath();
-    ctx.arc(a.x, a.y + 10, 20, 0, Math.PI * 2);
-    ctx.fillStyle = moodColor(a.mood);
-    ctx.fill();
+    // Mood ring (skip for dead)
+    if (!isDead) {
+      ctx.beginPath();
+      ctx.arc(a.x, a.y + 10, 20, 0, Math.PI * 2);
+      ctx.fillStyle = moodColor(a.mood);
+      ctx.fill();
+    }
+
+    // Approach glow
+    if (isApproaching) {
+      const pulse = 0.5 + Math.sin(Date.now() / 300) * 0.3;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, 35, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(80,200,120,${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
     // Sprite
     ctx.save();
-    if (a.flipH) {
+    const sw = frameW * SPRITE_SCALE, sh = frameH * SPRITE_SCALE;
+    if (isDead) {
+      // Dead: lying on side (rotated 90°) + faded + blood pool
+      ctx.globalAlpha = 0.15;
+      ctx.fillStyle = '#8a2020';
+      ctx.beginPath();
+      ctx.ellipse(a.x, a.y + 8, 24, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.5;
+      ctx.translate(a.x, a.y);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(sheet, 0, 0, frameW, frameH, -sw/2, -sh/2, sw, sh);
+    } else if (a.flipH) {
       ctx.translate(a.x, a.y);
       ctx.scale(-1, 1);
-      ctx.drawImage(sheet, frame * frameW, 0, frameW, frameH,
-        -frameW * SPRITE_SCALE / 2, -frameH * SPRITE_SCALE / 2,
-        frameW * SPRITE_SCALE, frameH * SPRITE_SCALE);
+      ctx.drawImage(sheet, frame * frameW, 0, frameW, frameH, -sw/2, -sh/2, sw, sh);
     } else {
-      ctx.drawImage(sheet, frame * frameW, 0, frameW, frameH,
-        a.x - frameW * SPRITE_SCALE / 2, a.y - frameH * SPRITE_SCALE / 2,
-        frameW * SPRITE_SCALE, frameH * SPRITE_SCALE);
+      ctx.drawImage(sheet, frame * frameW, 0, frameW, frameH, a.x - sw/2, a.y - sh/2, sw, sh);
     }
     ctx.restore();
 
+    // Detained indicator
+    if (isDetained) {
+      ctx.fillStyle = 'rgba(40,80,200,0.6)';
+      ctx.font = 'bold 8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('DETAINED', a.x, a.y + 30);
+    }
+
     // Name
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = isDead ? '#888' : isDetained ? '#8ac' : '#fff';
     ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center';
     ctx.shadowColor = '#000'; ctx.shadowBlur = 3;

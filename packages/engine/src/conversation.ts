@@ -142,9 +142,10 @@ export async function runConversation(
   // NOTE: Memory storage (observe) moved to world.ts — importance is adjusted
   // after analyzeConversationImpact determines emotional significance.
 
-  // Casual conversation slightly improves mutual sentiment
-  initiator.state.relationships?.adjustSentiment(responder.profile.id, 0.05);
-  responder.state.relationships?.adjustSentiment(initiator.profile.id, 0.05);
+  // Casual conversation slightly improves mutual sentiment (configurable via WorldConfig.conversationBehavior)
+  const sentBoost = config.conversationBehavior?.sentimentBoost ?? 0.05;
+  initiator.state.relationships?.adjustSentiment(responder.profile.id, sentBoost);
+  responder.state.relationships?.adjustSentiment(initiator.profile.id, sentBoost);
 
   // Record event in Event Store
   const event: WorldEvent = {

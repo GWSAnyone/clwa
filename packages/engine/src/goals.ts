@@ -86,7 +86,7 @@ export interface NpcGoal {
   steps: GoalStep[];
   currentStep: number;
   data: Record<string, unknown>; // goal-specific context
-  createdAtTick: number;
+  createdAtMinute: number;
   homeLocation?: string;   // where to return after goal (optional)
   waitTicks?: number;      // how many ticks spent waiting for target (timeout at 3)
   isRoutine?: boolean;     // true for schedule/routine goals — no mood boost on completion

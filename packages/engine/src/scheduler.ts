@@ -14,11 +14,11 @@ export interface ScoredPair {
 }
 
 export class ConversationScheduler {
-  /** pairKey → tick number of last conversation */
+  /** pairKey → game minute of last conversation */
   private cooldowns: Map<string, number> = new Map();
   /** pairKey → conversation count today (for diversity) */
   private dailyCounts: Map<string, number> = new Map();
-  /** npcId → tick number of last conversation (for social hunger) */
+  /** npcId → game minute of last conversation (for social hunger) */
   private npcLastConversation: Map<string, number> = new Map();
   private config: WorldConfig;
 
@@ -27,12 +27,12 @@ export class ConversationScheduler {
   }
 
   /**
-   * Find the best pair of NPCs to have a conversation this tick.
+   * Find the best pair of NPCs to have a conversation.
    * Returns null if no suitable pair found.
    */
   async findPair(
     agents: Map<string, Agent>,
-    currentTick: number,
+    gameMinute: number,
     excludeIds?: Set<string>,
   ): Promise<ScoredPair | null> {
     const candidates: ScoredPair[] = [];
@@ -55,11 +55,11 @@ export class ConversationScheduler {
 
         // Check cooldown
         const key = pairKey(idA, idB);
-        const lastTick = this.cooldowns.get(key) ?? -Infinity;
-        if (currentTick - lastTick < this.config.pairCooldownTicks) continue;
+        const lastMinute = this.cooldowns.get(key) ?? -Infinity;
+        if (gameMinute - lastMinute < this.config.pairCooldownMinutes) continue;
 
         // Score: balanced social + information value
-        const score = this.scorePair(agentA, agentB, key, currentTick);
+        const score = this.scorePair(agentA, agentB, key, gameMinute);
         if (score >= this.config.minConversationScore) {
           candidates.push({ a: idA, b: idB, score });
         }
@@ -73,13 +73,13 @@ export class ConversationScheduler {
 
     const winner = candidates[0];
     // Record cooldown
-    this.cooldowns.set(pairKey(winner.a, winner.b), currentTick);
+    this.cooldowns.set(pairKey(winner.a, winner.b), gameMinute);
     // Track daily count
     const key = pairKey(winner.a, winner.b);
     this.dailyCounts.set(key, (this.dailyCounts.get(key) ?? 0) + 1);
     // Track individual NPC last conversation
-    this.npcLastConversation.set(winner.a, currentTick);
-    this.npcLastConversation.set(winner.b, currentTick);
+    this.npcLastConversation.set(winner.a, gameMinute);
+    this.npcLastConversation.set(winner.b, gameMinute);
 
     return winner;
   }
@@ -88,10 +88,10 @@ export class ConversationScheduler {
    * Score a pair — balanced between social connection and information exchange.
    * Crime beliefs still matter but don't dominate.
    */
-  private scorePair(agentA: Agent, agentB: Agent, key: string, currentTick: number): number {
-    let score = 3; // Base: NPCs share a social space (was 1 — too low)
+  private scorePair(agentA: Agent, agentB: Agent, key: string, gameMinute: number): number {
+    let score = 3; // Base: NPCs share a social space
 
-    // Belief-based scoring: information exchange value (reduced from +5/+2)
+    // Belief-based scoring: information exchange value
     const beliefsA = agentA.state.beliefs?.getAllBeliefs().filter(
       (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
     ) ?? [];
@@ -101,32 +101,32 @@ export class ConversationScheduler {
 
     for (const ba of beliefsA) {
       const bKnows = beliefsB.some((bb) => bb.eventType === ba.eventType && bb.object === ba.object);
-      score += bKnows ? 1 : 3; // Reduced from 2/5
+      score += bKnows ? 1 : 3;
     }
     for (const bb of beliefsB) {
       const aKnows = beliefsA.some((ba) => ba.eventType === bb.eventType && ba.object === bb.object);
       score += aKnows ? 1 : 3;
     }
 
-    // Relationship warmth (increased from +2)
+    // Relationship warmth
     const rel = agentA.state.relationships?.getRelationship(agentB.profile.id);
     if (rel) {
-      if (rel.sentiment > 0.3) score += 4;        // Close friends — strong pull
-      else if (rel.sentiment > 0.1) score += 2;   // Friendly
-      else if (rel.sentiment < -0.2) score += 1;   // Tension — still has conversation value
+      if (rel.sentiment > 0.3) score += 4;
+      else if (rel.sentiment > 0.1) score += 2;
+      else if (rel.sentiment < -0.2) score += 1;
     }
 
-    // Extraversion compatibility — extraverts seek conversation, introverts avoid it
+    // Extraversion compatibility
     const eA = agentA.profile.bigFive?.extraversion ?? 0.5;
     const eB = agentB.profile.bigFive?.extraversion ?? 0.5;
-    score += ((eA - 0.3) + (eB - 0.3)) * 2; // E=0.9+0.9→+2.4, E=0.5+0.5→+0.8, E=0.2+0.2→-0.4
+    score += ((eA - 0.3) + (eB - 0.3)) * 2;
 
-    // Social hunger — NPC who hasn't talked recently wants to chat
-    const lastA = this.npcLastConversation.get(agentA.profile.id) ?? Math.max(0, currentTick - 12);
-    const lastB = this.npcLastConversation.get(agentB.profile.id) ?? Math.max(0, currentTick - 12);
-    const hungerA = Math.min(3, (currentTick - lastA) / 24); // max +3 after 24 ticks (6h game)
-    const hungerB = Math.min(3, (currentTick - lastB) / 24);
-    score += (hungerA + hungerB) * 0.5; // +0 to +3
+    // Social hunger — NPC who hasn't talked recently wants to chat (360 game min = 6h)
+    const lastA = this.npcLastConversation.get(agentA.profile.id) ?? Math.max(0, gameMinute - 180);
+    const lastB = this.npcLastConversation.get(agentB.profile.id) ?? Math.max(0, gameMinute - 180);
+    const hungerA = Math.min(3, (gameMinute - lastA) / 360); // max +3 after 360 min (6h game)
+    const hungerB = Math.min(3, (gameMinute - lastB) / 360);
+    score += (hungerA + hungerB) * 0.5;
 
     // Diversity penalty: each conversation today with same pair reduces score
     const todayCount = this.dailyCounts.get(key) ?? 0;

@@ -24,7 +24,7 @@ export function buildSecretDirectives(
   if (ownCrimes.length > 0) {
     const crime = ownCrimes[ownCrimes.length - 1];
     const victimName = (crime.payload?.victimName as string) ?? 'someone';
-    const crimeLabel = getEventLabel(crime.type) ?? 'crime';
+    const crimeLabel = getEventLabel(crime.type) ?? 'an incident';
     sections.push(
       `## HIDDEN: You committed ${crimeLabel}\n` +
       `You committed ${crimeLabel} against ${victimName}. Nobody must find out.\n` +

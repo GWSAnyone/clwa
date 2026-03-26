@@ -111,11 +111,12 @@ export type {
   TickResult,
   WorldConfig,
 } from './world-types';
-export { DEFAULT_MOVEMENT_CONFIG, DEFAULT_WORLD_CONFIG } from './world-types';
+export { DEFAULT_MOVEMENT_CONFIG, DEFAULT_WORLD_CONFIG, DEFAULT_IL_CONFIG, DEFAULT_CONVERSATION_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
+export type { ILConfig, ConversationConfig, PressureEffect, ImportanceConfig } from './world-types';
 export type { LocationGraph } from './world-types';
 
 // ─── Schedule ───
-export { ScheduleManager, getTimePeriod, tickToHour, TICKS_PER_DAY } from './schedule';
+export { ScheduleManager, getTimePeriod, minuteToHour, tickToHour, MINUTES_PER_DAY, TICKS_PER_DAY } from './schedule';
 export type { TimePeriod } from './schedule';
 export type { ScheduleEntry } from './schedule';
 
@@ -140,7 +141,7 @@ export type { TopicContext, TopicProposal } from './topic-engine';
 
 // ─── IL (Intent Layer) — Dialogue Meaning Extraction ───
 export { extractDialogueMeaning, applyDialogueMeaning, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from './il';
-export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext } from './il';
+export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect } from './il';
 
 // ─── Interaction ───
 export { createInteractionRunner } from './interaction';
@@ -203,6 +204,8 @@ export {
   registerInteractionResultHook, getInteractionResultHooks,
   registerTickPhaseHandler, getTickPhaseHandlers,
   registerSecretDirectiveBuilder, getSecretDirectiveBuilders,
+  getAllRegisteredVerbs,
+  registerSecretEventType, getSecretEventType,
 } from './event-registry';
 export type { TickPhaseContext, TickPhaseHandlerFn } from './event-registry';
 export type { StepExecutionContext, StepHandlerFn, InteractionRunner as StepInteractionRunner } from './event-registry';

@@ -2,31 +2,40 @@ import type { GoalStep, NpcGoal } from './goals';
 
 // ─── Time Constants ───
 
+export const MINUTES_PER_DAY = 1440;
+
+/** @deprecated Use MINUTES_PER_DAY. Kept for backward compat with old save format. */
 export const TICKS_PER_DAY = 96;
 
-export type TimePeriod = 'dawn' | 'morning' | 'afternoon' | 'evening' | 'night';
+export const TIME_PERIODS = ['dawn', 'morning', 'afternoon', 'evening', 'night'] as const;
+export type TimePeriod = (typeof TIME_PERIODS)[number];
 
-/** Map tick-within-day to a named period (scaled for 96 ticks/day) */
-export function getTimePeriod(tickInDay: number): TimePeriod {
-  // 96 ticks/day → 1 tick = 15 game minutes
-  // dawn: 5:00-7:00 → ticks 20-28
-  // morning: 7:00-12:00 → ticks 28-48
-  // afternoon: 12:00-17:00 → ticks 48-68
-  // evening: 17:00-21:00 → ticks 68-84
-  // night: 21:00-5:00 → ticks 84-96+0-20
-  if (tickInDay >= 20 && tickInDay < 28) return 'dawn';
-  if (tickInDay >= 28 && tickInDay < 48) return 'morning';
-  if (tickInDay >= 48 && tickInDay < 68) return 'afternoon';
-  if (tickInDay >= 68 && tickInDay < 84) return 'evening';
-  return 'night'; // 84-96+0-20
+/** Map minute-of-day (0-1439) to a named period */
+export function getTimePeriod(minuteOfDay: number): TimePeriod {
+  // dawn:      05:00-07:00 → 300-420
+  // morning:   07:00-12:00 → 420-720
+  // afternoon: 12:00-17:00 → 720-1020
+  // evening:   17:00-21:00 → 1020-1260
+  // night:     21:00-05:00 → 1260-1440+0-300
+  const m = ((minuteOfDay % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  if (m >= 300 && m < 420) return 'dawn';
+  if (m >= 420 && m < 720) return 'morning';
+  if (m >= 720 && m < 1020) return 'afternoon';
+  if (m >= 1020 && m < 1260) return 'evening';
+  return 'night'; // 1260-1440+0-300
 }
 
-/** Get human-readable hour string from tick (96 ticks = 24 hours) */
-export function tickToHour(tickInDay: number): string {
-  const totalMinutes = tickInDay * 15; // 96 ticks × 15 min = 1440 min = 24 hours
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
+/** Get human-readable HH:MM string from minute-of-day (0-1439) */
+export function minuteToHour(minuteOfDay: number): string {
+  const m = ((minuteOfDay % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  const hours = Math.floor(m / 60);
+  const minutes = m % 60;
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
+/** @deprecated Use minuteToHour. Converts old tick to hour string. */
+export function tickToHour(tickInDay: number): string {
+  return minuteToHour(tickInDay * 15);
 }
 
 // ─── Schedule Entry ───
@@ -55,11 +64,11 @@ export class ScheduleManager {
   }
 
   /**
-   * Get the active schedule entry for an NPC at a given tick.
+   * Get the active schedule entry for an NPC at a given minute-of-day.
    * Returns the entry for the current time period, or null if none.
    */
-  getActiveEntry(npcId: string, tickInDay: number): ScheduleEntry | null {
-    const period = getTimePeriod(tickInDay);
+  getActiveEntry(npcId: string, minuteOfDay: number): ScheduleEntry | null {
+    const period = getTimePeriod(minuteOfDay);
     return this.schedules.find(
       (s) => s.npcId === npcId && s.period === period,
     ) ?? null;
@@ -71,14 +80,14 @@ export class ScheduleManager {
    */
   checkSchedules(
     npcIds: string[],
-    tickInDay: number,
+    minuteOfDay: number,
     npcLocations: Map<string, string>,
     hasActiveGoal: (id: string) => boolean,
   ): NpcGoal[] {
     const goals: NpcGoal[] = [];
 
     for (const npcId of npcIds) {
-      const entry = this.getActiveEntry(npcId, tickInDay);
+      const entry = this.getActiveEntry(npcId, minuteOfDay);
       if (!entry) continue;
 
       // Already at the right location
@@ -111,7 +120,7 @@ export class ScheduleManager {
           activity: entry.activity,
           period: entry.period,
         },
-        createdAtTick: 0, // will be set by caller
+        createdAtMinute: 0, // will be set by caller
         isRoutine: true,
       };
 
@@ -133,11 +142,11 @@ export class ScheduleManager {
   }
 
   /** Get current period info for API */
-  getTimeInfo(tickInDay: number): { tickInDay: number; period: TimePeriod; hour: string } {
+  getTimeInfo(minuteOfDay: number): { minuteOfDay: number; period: TimePeriod; hour: string } {
     return {
-      tickInDay,
-      period: getTimePeriod(tickInDay),
-      hour: tickToHour(tickInDay),
+      minuteOfDay,
+      period: getTimePeriod(minuteOfDay),
+      hour: minuteToHour(minuteOfDay),
     };
   }
 }

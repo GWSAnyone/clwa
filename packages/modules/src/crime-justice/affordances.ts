@@ -179,7 +179,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     actionDescription: 'report a crime to the guard',
     label: 'Report a crime to the guard',
     targetRole: 'guard',
-    cooldownOverride: 48,
+    cooldownOverride: 720,
     category: 'duty',
     severity: 2,
     resistTraits: [{ trait: 'neuroticism', direction: 'high' }],
@@ -437,7 +437,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   {
     id: 'testify',
     isDuty: true,
-    cooldownOverride: 48,
+    cooldownOverride: 720,
     actionVerb: 'testify',
     actionDescription: 'give testimony to the guard',
     label: 'Tell the guard what you witnessed',

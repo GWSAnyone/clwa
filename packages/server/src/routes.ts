@@ -59,9 +59,34 @@ export function handleRequest(
           speechStyle: agent.profile.speechStyle,
           beliefCount: agent.state.beliefs?.getAllBeliefs().length ?? 0,
           relationshipCount: agent.state.relationships?.getAllRelationships().length ?? 0,
+          hasShop: !!(agent.profile.shop && agent.profile.shop.length > 0),
         };
       });
     return Response.json(list, { headers: cors });
+  }
+
+  // ─── GET /api/agent/:id ───
+  if (method === 'GET' && path.startsWith('/api/agent/') && !path.startsWith('/api/agents')) {
+    const agentId = path.split('/')[3];
+    const agent = agents.get(agentId);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    const pm = options?.positionManager;
+    const pos = pm?.getPosition(agentId);
+    return Response.json({
+      id: agentId,
+      name: agent.profile.name,
+      role: agent.profile.role,
+      background: agent.profile.background,
+      location: agent.state.location,
+      alive: agent.state.alive,
+      status: agent.state.status ?? 'free',
+      mood: agent.state.mood,
+      bigFive: agent.profile.bigFive,
+      enneagram: agent.profile.enneagram,
+      shop: agent.profile.shop || null,
+      x: pos?.x ?? 0,
+      y: pos?.y ?? 0,
+    }, { headers: cors });
   }
 
   // ─── GET /api/goals ───
@@ -76,7 +101,7 @@ export function handleRequest(
       currentStep: g.currentStep,
       totalSteps: g.steps.length,
       data: g.data,
-      createdAtTick: g.createdAtTick,
+      createdAtMinute: g.createdAtMinute,
     }));
     return Response.json(goals, { headers: cors });
   }
@@ -98,11 +123,12 @@ export function handleRequest(
   // ─── GET /api/time ───
   if (method === 'GET' && path === '/api/time') {
     const sm = world.scheduleManager;
-    const tickInDay = world.tickInDay;
+    const minuteOfDay = world.minuteOfDay;
     return Response.json({
-      ...(sm ? sm.getTimeInfo(tickInDay) : { tickInDay, period: world.currentPeriod, hour: `${tickInDay.toString().padStart(2, '0')}:00` }),
+      ...(sm ? sm.getTimeInfo(minuteOfDay) : { minuteOfDay, period: world.currentPeriod, hour: world.currentHour }),
       gameDay: agents.values().next().value?.state.currentDay ?? 1,
-      totalTicks: world.currentTick,
+      gameMinute: world.gameMinute,
+      gameSpeed: world.gameSpeed,
     }, { headers: cors });
   }
 
@@ -111,7 +137,7 @@ export function handleRequest(
     const sm = world.scheduleManager;
     return Response.json({
       entries: sm?.getAllEntries() ?? [],
-      tickInDay: world.tickInDay,
+      minuteOfDay: world.minuteOfDay,
       period: world.currentPeriod,
     }, { headers: cors });
   }
@@ -423,6 +449,11 @@ export function handleRequest(
     );
   }
 
+  // ─── GET /api/auto-state ───
+  if (method === 'GET' && path === '/api/auto-state') {
+    return Response.json({ autoTick: world.isAutoTicking }, { headers: cors });
+  }
+
   // ─── POST /api/auto ───
   if (method === 'POST' && path === '/api/auto') {
     return req.json().then((body: { seconds?: number }) => {
@@ -432,7 +463,16 @@ export function handleRequest(
       }
       const seconds = body.seconds ?? 8;
       world.startAutoTick(seconds * 1000);
-      return Response.json({ autoTick: true, intervalSeconds: seconds }, { headers: cors });
+      return Response.json({ autoTick: true, intervalSeconds: seconds, gameSpeed: world.gameSpeed }, { headers: cors });
+    });
+  }
+
+  // ─── POST /api/speed ───
+  if (method === 'POST' && path === '/api/speed') {
+    return req.json().then((body: { speed?: number }) => {
+      const speed = body.speed ?? 1;
+      world.setGameSpeed(speed);
+      return Response.json({ gameSpeed: world.gameSpeed }, { headers: cors });
     });
   }
 
@@ -450,11 +490,15 @@ export function handleRequest(
   // ─── GET /api/player ───
   if (method === 'GET' && path === '/api/player') {
     const player = world.playerAgent;
+    const pm = options?.positionManager;
+    const pos = pm?.getPosition('player');
     return Response.json({
       location: world.playerLocation,
       mood: player?.state.mood,
       alive: player?.state.alive,
       beliefs: player?.state.beliefs?.getAllBeliefs().length ?? 0,
+      x: pos?.x ?? 0,
+      y: pos?.y ?? 0,
     }, { headers: cors });
   }
 

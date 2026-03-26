@@ -60,11 +60,13 @@ interface WorldJson {
   locations: LocationJson[];
   lore: string[];
   config: {
-    startTick?: number;
+    startTick?: number;     // @deprecated — use startMinute
+    startMinute?: number;
     ticksPerDay?: number;
     autoTickIntervalSeconds?: number;
     exchangeCount?: number;
     moodBias?: number;
+    gameSpeed?: number;
   };
 }
 

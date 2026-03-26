@@ -414,12 +414,18 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] save.json включает positions ✅
 - [x] inTransit flag в engine (scheduler пропускает, clear at tick start) ✅
 
+**Chat panel + IL (v0.9.9):**
+- [x] Chat panel: стриминг, Escape close, avatar, mood/trust bars, status badge ✅
+- [x] Persistent chat history per-NPC (localStorage, 50 cap, session separators) ✅
+- [x] IL effects as collapsible badges on NPC responses (ILEffect[] → WS il_result) ✅
+- [x] NPC Mind panel: Beliefs, Relationships, Goals, Personality (lazy-loaded accordion) ✅
+- [x] Player position persistence (GET /api/player with x,y, restored on page refresh) ✅
+- [x] XSS-safe rendering (escapeHTML + appendChild), auto-growing message area ✅
+
 **Что нужно доделать:**
-- [ ] Chat panel полировка: стриминг ответа NPC, close по Escape
 - [ ] Декор: камни, кусты из Tiny Swords на карте
 - [ ] Day/night overlay (время суток влияет на визуал)
 - [ ] Minimap
-- [ ] NPC hover tooltip с подробной инфой (beliefs, relationships)
 - [ ] Relationship graph overlay (линии между NPC)
 - [ ] Crime scene маркеры на карте
 - [ ] TileMap доработка: edge-тайлы, клифы
@@ -473,23 +479,30 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Location IDs in affordances** — evaluate_case, flee_town, demand_justice used display names instead of slugs ✅ (v0.9.7+)
 - [x] **Location IDs in target-finders** — findGossipTarget returned display name, crime scene awareness belief.location used display name ✅ (v0.9.7+)
 - [x] **socialOnly flag** — engine volition.ts had hardcoded `'socialize'` string. Replaced with `socialOnly` flag on AffordanceDefinition. Economy Module Test passes ✅ (v0.9.7+)
+- [x] **PERSONAL_SECRET** — hardcoded in world.ts analyzeConversationImpact → registerSecretEventType/getSecretEventType registry ✅ (v0.9.9)
+- [x] **IL behavioral constants** — all hardcoded multipliers/thresholds → ILConfig + ConversationConfig in WorldConfig ✅ (v0.9.9)
+- [x] **IL bilateral parity** — isTransferable, confidence floor, adjustSentiment/adjustTrust (was direct mutation), location slug consistency ✅ (v0.9.9)
+- [x] **IL dynamic schema** — static IL_EXTRACTION_SCHEMA → buildILSchema(ctx) with enum constraints from registries ✅ (v0.9.9)
 
 Результат: `modules/millhaven/` → полный мир. `modules/pirate-cove/` → другой мир. Ноль изменений в engine/modules. Графический редактор читает/пишет JSON.
 
-### Phase 2.5: Custom LLM — Qwen3.5-9B-CLWA
-> Своя модель, заточенная под движок. Uncensored + наш формат.
+### Phase 2.5: Custom LLM — Qwen3.5-9B-CLWA (ОТЛОЖЕН)
+> Своя модель, заточенная под движок. Uncensored + наш формат. Отложено до стабилизации gameplay loop и Web UI.
 
 Текущая Qwen3.5-9B-abliterated избегает тёмных action verbs (steal, kill, leverage) в ~60% случаев из-за prompt dilution + остаточного safety alignment. LoRA fine-tuning научит модель **связи между параметрами личности и поведением**, а не запомненным ответам.
 
 **Цель**: Qwen3.5-9B-CLWA — abliterated + LoRA fine-tuned. Модель понимает: Big Five → behavioral threshold, mood → amplifier, instinct tier → action urgency.
 
-**Инфраструктура** (готово):
+**Готовая инфраструктура** (сохранена, можно возобновить):
 - [x] Unsloth 2026.3.8 + conda env `unsloth` (Python 3.12)
 - [x] Модель: `C:\Ledevia\Projects\Models\Qwen3.5-9B-abliterated\` (17GB safetensors)
 - [x] QLoRA 4-bit loading verified: 7.1 GB VRAM на RTX 3080, 2.9 GB свободно для адаптеров
 - [x] GGUF thinking patch: `training/patch-gguf-thinking.py`
+- [x] Датасет — 740 hand-crafted примеров в ChatML формате, контрастивные пары, per-NPC voice
+- [x] train.py — Unsloth QLoRA, 4-bit, RTX 3080 10GB. VRAM optimizations
 
-#### Датасет: слоёная архитектура (~740 примеров)
+<details>
+<summary>Датасет: слоёная архитектура (~740 примеров)</summary>
 
 Зеркалит архитектуру CLWA: **Base (engine)** — фундаментальное понимание, не меняется при добавлении модулей. **Module** — поведение конкретного модуля, расширяется независимо.
 
@@ -552,11 +565,11 @@ training/dataset/
     └── clwa-v1.jsonl
 ```
 
-#### Training pipeline
+</details>
 
-- [x] **Датасет** — 740 hand-crafted примеров в ChatML формате, контрастивные пары, per-NPC voice ✅
-- [x] **train.py** — Unsloth QLoRA, 4-bit, RTX 3080 10GB. VRAM optimizations: TORCHDYNAMO_DISABLE, expandable_segments, garbage_collection_threshold:0.6, empty_cache. save_steps=10 ✅
-- [ ] **QLoRA fine-tune** — training in progress (step 70/279, 3 epochs). ~35 hours on RTX 3080 (shared memory). Resume from checkpoint supported.
+#### Оставшиеся шаги (при возобновлении)
+
+- [ ] **QLoRA fine-tune** — was at step 70/279 (3 epochs). ~35 hours on RTX 3080 (shared memory). Resume from checkpoint supported.
 - [ ] **Export GGUF** — Q4_K_M (~5GB) + thinking patch для LM Studio
 - [ ] **Тестирование** — E2E: steal/leverage выбираются при high tier, JSON парсится, dialogue ≤12w, per-NPC voice
 
@@ -565,28 +578,113 @@ training/dataset/
 ### Phase 3: World Expansion
 > Новые подсистемы движка + модули контента. 4 engine-подсистемы разблокируют десятки модулей.
 
-#### Streaming Tick — потоковая обработка вместо пакетной (RimWorld-inspired)
+#### Streaming Tick — живой мир вместо слайд-шоу (RimWorld-inspired)
 
-**Проблема**: сейчас 1 тик = обработать ВСЕХ NPC разом → 3-8с тишины → следующий тик. Как слайд-шоу.
+> **Референс**: [RimWorld Wiki — Time](https://rimworldwiki.com/wiki/Time), [How Pawns Think](https://github.com/roxxploxx/RimWorldModGuide/wiki/SHORTTUTORIAL:-How-Pawns-Think), [Custom Tick Scheduling (HugsLib)](https://github.com/UnlimitedHugs/RimworldHugsLib/wiki/Custom-Tick-Scheduling)
+>
+> **RimWorld**: 60 ticks/sec, 60,000 ticks/day, ThinkTree ~100-400 ticks, Toils per-tick, HashOffset распределяет нагрузку. Tick стоит микросекунды (детерминистика).
+> **CLWA**: 96 ticks/day, 1 tick = 15 game minutes, tick стоит 10-15 секунд (LLM). Мир дёргается.
+>
+> **Корневая проблема**: `tickCount` = и game time, и processing trigger. Tick дорогой → game time течёт рывками по 15 минут.
+> **Решение**: два тактовых генератора — Game Clock (быстрый, дешёвый) + Processing Loop (медленный, LLM-paced).
 
-**Решение**: распределённые тики по модели RimWorld. Три ключевых принципа:
+##### Что уже сделано (Streaming Tick Level 1-2)
 
-1. **Hash-offset scheduling** — каждый NPC обрабатывается в свой момент, распределённый по времени. 7 NPC, интервал 8с → каждые ~1.1с обрабатывается один NPC. Мир течёт непрерывно, не вспышками.
+- [x] **Level 1**: Server auto-tick с 0 delay (tick-when-ready), убрана 8с client пауза ✅ (v0.9.9)
+- [x] **Level 2**: Per-NPC movement broadcast (не batch), async conversation impact (_pendingImpact pattern) ✅ (v0.9.9)
 
-2. **Многоуровневые частоты обновления** — не все системы тикают одинаково:
-   - **Volition (LLM)**: только когда текущая цель завершена/прервана. Как RimWorld ThinkTree — раз в сотни тиков
-   - **Движение**: каждый цикл обработки NPC. Один хоп, без LLM
-   - **Perception/Mood**: каждый цикл. Чтение данных + арифметика
-   - **Разговоры (LLM)**: только при co-location + повод + cooldown
-   - **Beliefs/Rumors**: раз в игровой час. Фоново
+##### Phase 3.1: Game Clock — непрерывное время (Medium)
 
-3. **Job System** — NPC получает Goal → исполняет шаги тик за тиком без повторного LLM-вызова → Volition запускается только в точках принятия решений (завершение цели, срочное событие). Вместо "7 NPC × Volition каждый тик" → "1-2 NPC завершили цель за цикл".
+**Цель**: время течёт плавно (07:00 → 07:01 → 07:02), не прыжками по 15 минут.
 
-**Переменная частота для далёких NPC** (Hot/Warm/Cold): NPC не в локации игрока → обновление раз в 2-3 цикла. Незаметно, экономия существенна.
+**Архитектура**:
+```
+Game Clock (100ms timer, ~0 cost)     Processing Loop (LLM-paced)
+├── gameMinute counter                ├── Volition: когда NPC без goal + cooldown
+├── Day/night transitions             ├── Conversations: co-location + cooldown
+├── Schedule checks                   ├── IL extraction: player speech
+├── HUD time display                  ├── CG cascades: event reactions
+├── Cooldown expiry checks            └── Impact analysis: deferred
+└── Speed control (1x/2x/3x)
+```
 
-**Визуальный эффект**: вместо "тик → 8с тишины → тик" → "каждую секунду кто-то что-то делает". Mark двинулся → Aldric повернул → Bess вздохнула → Mark дошёл → Mark заговорил. Непрерывный поток.
+**Задачи**:
+- [ ] `gameMinute` property на World (0-1439), advance timer (setInterval)
+- [ ] Speed control: `gameSpeed` в WorldConfig (1x = 1 game min/real sec, 2x = 2/sec, 3x = 3/sec)
+- [ ] Cooldowns: ticks → game minutes (affordance: 180min, decision: 60min, pair: 240min)
+- [ ] Schedule: period boundaries в minutes (dawn: 300-420, morning: 420-720, etc.)
+- [ ] `tickToHour` → `minuteToHour`, `getTimePeriod` по minutes
+- [ ] Day advance: gameMinute >= 1440 → new day
+- [ ] WS: broadcast time update per game minute → client HUD
+- [ ] Speed buttons в HUD (1x/2x/3x/pause)
+- [ ] Save/restore: gameMinute + gameSpeed в save.json
 
-**Зависимости**: требует рефакторинг World.tick() на per-NPC processing loop. WS-протокол уже поддерживает per-event broadcast.
+**Edge cases**:
+- LLM call blocks Processing Loop на 3-5с — Game Clock продолжает. NPC "думает" пока время идёт → "thinking" indicator (пульсирующий "..." над головой)
+- Настройки конфигурируемы через WorldConfig (gameSpeed, minutesPerRealSecond)
+
+##### Phase 3.2: Continuous Movement (Medium-Large)
+
+**Цель**: NPC ходит между локациями плавно, не телепортируется.
+
+**Задачи**:
+- [ ] move_to step: `startTime` + `duration` (game minutes) вместо 1-hop-per-tick
+- [ ] Duration = distance / speed. Distance: BFS hops × hop_minutes (configurable, default 30 min/hop)
+- [ ] NPC state: `inTransit` + `transitFrom` + `transitTo` + `transitProgress` (0-1)
+- [ ] Game Clock advances transitProgress каждый game minute
+- [ ] Arrival: transitProgress >= 1 → location update → trigger next goal step
+- [ ] Co-location: NPC считается at location только при arrival (transitProgress === 0 или >= 1), не during transit
+- [ ] PositionManager: interpolate pixel position during transit
+- [ ] WS: broadcast transit progress updates (client animates smoothly)
+
+**Edge cases**:
+- NPC in transit когда conversation trigger → skip (not co-located)
+- NPC in transit когда body discovered at destination → discover on arrival
+- Save/restore: transit state persisted
+
+##### Phase 3.3: On-Demand Processing (Large)
+
+**Цель**: Processing Loop не "тикает" всех NPC пачкой, а обрабатывает по запросу.
+
+**Задачи**:
+- [ ] Refactor `_tick()` → `_processLoop()` — continuous loop, not batch
+- [ ] Per-NPC state machine: `idle` / `executing_goal` / `awaiting_decision` / `in_conversation` / `in_transit`
+- [ ] Processing queue: NPC добавляется когда нужно решение (goal complete, event, cooldown expired)
+- [ ] Priority queue: urgent events (body discovery, arrest) → обрабатываются первыми
+- [ ] LLM calls: one at a time (semaphore=1), queue manages order
+- [ ] Conversation: triggered когда 2 NPC co-located + pair cooldown expired (Game Clock checks)
+- [ ] Body discovery: Game Clock checks co-location dead+alive, triggers processing
+- [ ] HashOffset (future, >20 NPC): `(gameMinute + npcId.hashOffset()) % interval` для распределения
+
+**Edge cases**:
+- Semaphore conflict: Game Clock и Processing Loop обе modify state → single-threaded JS event loop natural mutex (Bun is single-threaded for user code)
+- Processing starvation: если LLM queue полна → NPC ждут. Visual: "thinking" indicator
+- Multiple conversations: с on-demand, можно запускать 2-3 параллельно когда LLM свободен
+
+##### Phase 3.4: Hot/Warm/Cold Agents (Medium, >20 NPC)
+
+**Цель**: NPCs далеко от игрока обрабатываются реже.
+
+**Задачи**:
+- [ ] Proximity detection: player location → NPC distance в hops
+- [ ] Hot (0-1 hop): full processing — volition, conversations, goal LLM steps
+- [ ] Warm (2 hops): goals execute (non-LLM steps), mood/beliefs update, no volition LLM
+- [ ] Cold (3+ hops): mood decay only, movement по schedule, no LLM
+- [ ] Promotion: event near Cold NPC → promote to Warm/Hot
+- [ ] Demotion: no events + player moved away → Hot → Warm → Cold (gradual)
+
+**Визуальный эффект после всех фаз**:
+```
+07:00 — Garrett starts patrol (walks toward gate, visible on map)
+07:01 — Ted opens tavern doors
+07:02 — Elara walks toward market (she'll arrive ~07:15)
+07:03 — Mark sets up his stall — [LLM: Mark evaluates, decides to trade]
+07:05 — Hilda starts hammering — speech bubble appears
+07:08 — Elara arrives at market — [LLM: conversation with Mark]
+07:09 — "Good morning Mark" ... "The spices arrived late" (streaming speech bubbles)
+07:12 — Mood shift visible on Elara (+0.03)
+...continuous flow, no batch "ticks"
+```
 
 #### Новые подсистемы движка
 

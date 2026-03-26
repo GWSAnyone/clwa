@@ -292,6 +292,10 @@ async function main() {
       locationResolver: (id) => locationGraph.get(id)?.name ?? id,
     });
     agents.set('player', playerAgent);
+    // Init player position if not restored from save
+    if (!positionManager.getPosition('player')) {
+      positionManager.initPosition('player', playerAgent.state.location);
+    }
     console.log('  [+] Player Agent (Traveler) @ Town Square');
   }
 
@@ -319,7 +323,7 @@ async function main() {
     agents,
     eventStore,
     engine,
-    { minConversationScore: 1, publicPlaces, pairCooldownTicks: 16, affordanceCooldownTicks: 12, decisionCooldownTicks: 4, startTick: 28, moodBias: -0.01 },
+    { minConversationScore: 1, publicPlaces, pairCooldownMinutes: 240, affordanceCooldownMinutes: 180, decisionCooldownMinutes: 60, startMinute: 420, moodBias: -0.01 },
     {
       onLine: (line) => {
         console.log(`    ${line.speakerName}: "${line.text}"`);
@@ -402,6 +406,9 @@ async function main() {
           pointCount: scene.points.length,
         }});
       },
+      onTimeUpdate: (minuteOfDay, hour, period, gameDay) => {
+        broadcast({ type: 'time_update', data: { minuteOfDay, hour, period, gameDay } });
+      },
     },
     locationGraph,
     { mobileNpcs: worldData.mobileNpcs, moveProbability: 0.08 },
@@ -414,7 +421,7 @@ async function main() {
 
   if (savedData) {
     world.loadState(savedData.world);
-    console.log(`  [Save] World state restored (tick ${savedData.world.tickCount}, ${Object.keys(savedData.world.agents).length} agents)`);
+    console.log(`  [Save] World state restored (gameMinute ${savedData.world.gameMinute ?? 'N/A'}, ${Object.keys(savedData.world.agents).length} agents)`);
   }
 
   const server = startServer(world, eventStore, agents, { port: PORT }, {
@@ -443,13 +450,19 @@ async function main() {
   console.log();
   console.log('  Server ready. Waiting for connections...');
 
-  const shutdown = () => {
-    console.log('\n  [Save] Shutting down — saving state...');
+  // Start Game Clock — runs independently of processing ticks (auto-tick)
+  world.startGameClock();
+
+  const shutdown = async () => {
+    console.log('\n  [Save] Shutting down — flushing pending work...');
+    world.stopAutoTick();
+    world.stopGameClock();
+    await world.flushPending();
     saveToDisk(world, eventStore);
     process.exit(0);
   };
-  process.on('SIGINT', shutdown);
-  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', () => { shutdown(); });
+  process.on('SIGTERM', () => { shutdown(); });
 }
 
 main().catch(console.error);

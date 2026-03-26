@@ -146,7 +146,7 @@ export interface AffordanceDefinition {
   /** If affordance passes requirements, score is at least this value.
    *  Use to ensure critical affordances reach reflex tier (≥0.7) when conditions are met. */
   minimumScore?: number;
-  /** Per-affordance cooldown override (ticks). If set, overrides global affordanceCooldownTicks for this affordance. */
+  /** Per-affordance cooldown override in game minutes. If set, overrides global affordanceCooldownMinutes. */
   cooldownOverride?: number;
   /** Personality traits that resist this action — drives internal conflict in instinct description.
    *  direction 'high' = high trait resists (e.g. honesty:high resists steal). */
@@ -174,17 +174,18 @@ export interface AffordanceContext {
   npcHomes: Map<string, string>;
   period: TimePeriod;
   gameDay: number;
-  currentTick: number;
+  /** Current absolute game minute (grows indefinitely, minuteOfDay = gameMinute % 1440) */
+  gameMinute: number;
   playerLocation?: string;
   hasActiveGoal: (id: string) => boolean;
   hasActiveGoalAbove: (id: string, minPriority: number) => boolean;
-  /** Affordance cooldowns: npcId → affordanceId → expiresAtTick */
+  /** Affordance cooldowns: npcId → affordanceId → expiresAtMinute */
   cooldowns?: Map<string, Map<string, number>>;
-  /** Decision cooldowns: npcId → expiresAtTick (limits LLM call frequency) */
+  /** Decision cooldowns: npcId → expiresAtMinute (limits LLM call frequency) */
   decisionCooldowns?: Map<string, number>;
-  /** Configurable cooldown values (from WorldConfig) */
-  affordanceCooldownTicks?: number;
-  decisionCooldownTicks?: number;
+  /** Configurable cooldown values (from WorldConfig, in game minutes) */
+  affordanceCooldownMinutes?: number;
+  decisionCooldownMinutes?: number;
   /** Check if NPC is target of someone else's arrest/pursuit goal */
   isArrestTarget?: (npcId: string) => boolean;
 }
@@ -256,7 +257,7 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
     if (crimeBelief.subject) { extra.suspectName = crimeBelief.subject; }
     if (crimeBelief.object) extra.victimName = crimeBelief.object;
     if (crimeBelief.location) extra.crimeLocation = crimeBelief.location;
-    extra.crimeType = getEventLabel(crimeBelief.eventType) ?? 'crime';
+    extra.crimeType = getEventLabel(crimeBelief.eventType) ?? 'an incident';
   }
 
   return { targetId: best.id, targetName: best.name, targetLocation: best.location, extra };

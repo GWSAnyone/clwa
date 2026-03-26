@@ -19,8 +19,9 @@ import type {
   LocationGraph, NpcMovementConfig, MovementResult, NpcHome,
   CrimeScene, CrimeSceneJSON,
 } from './world-types';
-import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG } from './world-types';
-import { ScheduleManager, TICKS_PER_DAY, getTimePeriod } from './schedule';
+import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
+import type { ILConfig, ConversationConfig } from './world-types';
+import { ScheduleManager, MINUTES_PER_DAY, getTimePeriod, minuteToHour } from './schedule';
 import type { ScheduleEntry } from './schedule';
 import { createCrimeScene } from './crime-scene';
 import { PlayerJournal } from './journal';
@@ -30,7 +31,7 @@ import type { AffordanceContext } from './al';
 import { TopicEngine, getTopicGroup } from './topic-engine';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, getSecretEventType } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -60,6 +61,8 @@ export interface WorldCallbacks {
   onCascade?: (trigger: WorldEvent, consequences: WorldEvent[]) => void;
   /** Called when any NPC relationship changes (trust or sentiment) */
   onRelationshipChange?: (fromId: string, fromName: string, toId: string, toName: string, field: 'trust' | 'sentiment', oldVal: number, newVal: number) => void;
+  /** Called every game minute by the Game Clock (for WS time broadcast + HUD) */
+  onTimeUpdate?: (minuteOfDay: number, hour: string, period: string, gameDay: number) => void;
 }
 
 /** Check if NPC can act: alive AND no special status (null = default/free = active) */
@@ -74,32 +77,35 @@ function isPresent(agent: Agent): boolean {
 
 // ─── LLM JSON Schemas ───
 
-const CONVERSATION_IMPACT_SCHEMA: LlmJsonSchema = {
-  name: 'conversation_impact',
-  strict: true,
-  schema: {
-    type: 'object',
-    properties: {
-      mentions: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            npc_name: { type: 'string' },
-            valence: { type: 'number' },
-            reason: { type: 'string' },
+/** Build conversation impact schema with NPC names enum — prevents hallucinated names */
+function buildConversationImpactSchema(npcNames: string[]): LlmJsonSchema {
+  return {
+    name: 'conversation_impact',
+    strict: true,
+    schema: {
+      type: 'object',
+      properties: {
+        mentions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              npc_name: { type: 'string', enum: npcNames },
+              valence: { type: 'number' },
+              reason: { type: 'string' },
+            },
+            required: ['npc_name', 'valence', 'reason'],
+            additionalProperties: false,
           },
-          required: ['npc_name', 'valence', 'reason'],
-          additionalProperties: false,
         },
+        mood_impact: { type: 'number' },
+        importance: { type: 'number' },
+        secret_revealed: { type: 'string' },
       },
-      mood_impact: { type: 'number' },
-      importance: { type: 'number' },
-      secret_revealed: { type: 'string', description: 'If someone confessed or revealed hidden info: "NAME revealed about NAME: detail". Example: "Ted revealed about Ted: waters down ale". Empty string if none.' },
+      required: ['mentions', 'mood_impact', 'importance', 'secret_revealed'],
+      additionalProperties: false,
     },
-    required: ['mentions', 'mood_impact', 'importance', 'secret_revealed'],
-    additionalProperties: false,
-  },
+  };
 };
 
 export class World {
@@ -114,9 +120,18 @@ export class World {
   private movementConfig: NpcMovementConfig;
   private npcHomes: Map<string, string>; // npcId → home location name
   private callbacks: WorldCallbacks;
-  private tickCount: number;
+  /** Processing tick counter (how many times _tick() was called). NOT time — use gameMinute. */
+  private tickCount: number = 0;
   private autoTickTimer: ReturnType<typeof setTimeout> | null = null;
   private autoTickInterval: number = 5000;
+  /** Absolute game minute counter (grows indefinitely). minuteOfDay = gameMinute % 1440. */
+  private _gameMinute: number = 0;
+  /** Game speed multiplier: 1=1min/sec, 2=2min/sec, 3=3min/sec, 0=paused */
+  private _gameSpeed: number = 1;
+  /** Game Clock timer — advances gameMinute independently of processing ticks */
+  private _gameClockTimer: ReturnType<typeof setInterval> | null = null;
+  /** Last known day number — for detecting day boundary in processing loop */
+  private _lastKnownDay: number = 0;
   /** Track which NPC has already discovered which body (to avoid repeats) */
   private bodyDiscoveries: Set<string> = new Set(); // "discoverer:victim"
   /** Active crime scenes at locations */
@@ -129,12 +144,18 @@ export class World {
   private _playerAgent: Agent | null = null;
   /** Topic engine for NPC-NPC conversations */
   readonly topicEngine: TopicEngine = new TopicEngine();
-  /** Affordance cooldowns: npcId → affordanceId → expiresAtTick */
+  /** Affordance cooldowns: npcId → affordanceId → expiresAtMinute */
   private affordanceCooldowns: Map<string, Map<string, number>> = new Map();
-  /** Decision cooldowns: npcId → expiresAtTick (limits LLM decision frequency) */
+  /** Decision cooldowns: npcId → expiresAtMinute (limits LLM decision frequency) */
   private decisionCooldowns: Map<string, number> = new Map();
   /** Evidence Layer: structured discoverable facts at locations */
   readonly evidence: EvidenceLayer = new EvidenceLayer();
+  /** Resolved IL config (merged from WorldConfig.il + defaults) */
+  readonly resolvedILConfig: ILConfig;
+  /** Resolved conversation config (merged from WorldConfig.conversationBehavior + defaults) */
+  readonly resolvedConversationConfig: ConversationConfig;
+  /** Pending async conversation impact analysis — awaited at start of next tick + on save */
+  private _pendingImpact: Promise<void> | null = null;
 
   constructor(
     agents: Map<string, Agent>,
@@ -151,7 +172,11 @@ export class World {
     this.eventStore = eventStore;
     this.engine = engine;
     this.config = { ...DEFAULT_WORLD_CONFIG, ...config };
-    this.tickCount = this.config.startTick ?? 0;
+    this.resolvedILConfig = resolveILConfig(this.config.il);
+    this.resolvedConversationConfig = resolveConversationConfig(this.config.conversationBehavior);
+    this._gameMinute = this.config.startMinute ?? 420; // default 07:00
+    this._gameSpeed = this.config.gameSpeed ?? 1;
+    this._lastKnownDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
     this.callbacks = callbacks ?? {};
     this.scheduler = new ConversationScheduler(this.config);
     this.locations = locations ?? new Map();
@@ -240,12 +265,12 @@ export class World {
       npcHomes: this.npcHomes,
       period: this.currentPeriod as AffordanceContext['period'],
       gameDay: this.getCurrentDay(),
-      currentTick: this.tickCount,
+      gameMinute: this._gameMinute,
       playerLocation: this.playerLocation ?? undefined,
       hasActiveGoal: (id) => this.goalManager.hasActiveGoal(id),
       hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
       cooldowns: this.affordanceCooldowns,
-      affordanceCooldownTicks: this.config.affordanceCooldownTicks,
+      affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
     };
     const reactiveGoals = evaluateReactiveVolition(
       event, reactiveCtx,
@@ -312,14 +337,69 @@ export class World {
     }
   }
 
-  /** Get current tick within day (0 to TICKS_PER_DAY-1) */
-  get tickInDay(): number {
-    return this.tickCount % TICKS_PER_DAY;
+  /** Get current minute of day (0-1439) from the Game Clock */
+  get minuteOfDay(): number {
+    return ((this._gameMinute % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  }
+
+  /** Get current absolute game minute */
+  get gameMinute(): number {
+    return this._gameMinute;
+  }
+
+  /** Get current game speed (0=paused, 1=1x, 2=2x, 3=3x) */
+  get gameSpeed(): number {
+    return this._gameSpeed;
   }
 
   /** Get current time period */
   get currentPeriod(): string {
-    return getTimePeriod(this.tickInDay);
+    return getTimePeriod(this.minuteOfDay);
+  }
+
+  /** Get current formatted time string (HH:MM) */
+  get currentHour(): string {
+    return minuteToHour(this.minuteOfDay);
+  }
+
+  // ─── Game Clock ───
+
+  /** Start the Game Clock — advances gameMinute in real-time */
+  startGameClock(): void {
+    if (this._gameClockTimer) return;
+    if (this._gameSpeed <= 0) return;
+    const intervalMs = Math.round(1000 / this._gameSpeed);
+    this._gameClockTimer = setInterval(() => this._advanceGameMinute(), intervalMs);
+    console.log(`  [GameClock] Started (speed=${this._gameSpeed}x, interval=${intervalMs}ms)`);
+  }
+
+  /** Stop the Game Clock */
+  stopGameClock(): void {
+    if (this._gameClockTimer) {
+      clearInterval(this._gameClockTimer);
+      this._gameClockTimer = null;
+      console.log('  [GameClock] Stopped');
+    }
+  }
+
+  /** Set game speed and restart clock if running */
+  setGameSpeed(speed: number): void {
+    const wasRunning = this._gameClockTimer !== null;
+    this.stopGameClock();
+    this._gameSpeed = Math.max(0, Math.min(10, speed));
+    if (wasRunning && this._gameSpeed > 0) {
+      this.startGameClock();
+    }
+  }
+
+  /** Advance game time by 1 minute. Called by Game Clock timer. */
+  private _advanceGameMinute(): void {
+    this._gameMinute++;
+    // Broadcast time update every 5 game minutes (throttle at high speeds)
+    if (this._gameMinute % 5 === 0) {
+      const currentDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
+      this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, currentDay);
+    }
   }
 
   /** Run a single world tick */
@@ -336,9 +416,14 @@ export class World {
   }
 
   private async _tick(): Promise<TickResult> {
+    // Complete pending async impact from previous tick before starting new LLM work
+    if (this._pendingImpact) {
+      await this._pendingImpact;
+      this._pendingImpact = null;
+    }
+
     this.tickCount++;
-    const tickInDay = this.tickInDay;
-    const allMovements: MovementResult[] = [];
+    const minuteOfDay = this.minuteOfDay;
     const goalActions: GoalActionResult[] = [];
 
     // Clear inTransit for all agents — each tick starts fresh, movement sets it
@@ -346,10 +431,12 @@ export class World {
       agent.state.inTransit = false;
     }
 
-    // 0. Auto advance day when a new day starts (tick rolls over to 0)
+    // 0. Day advance — Game Clock drives time, processing loop detects boundary
     let dayAdvanced = false;
-    if (tickInDay === 0 && this.tickCount > 1) {
+    const currentDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
+    while (currentDay > this._lastKnownDay) {
       const { newDay } = await this.advanceDay();
+      this._lastKnownDay++;
       dayAdvanced = true;
       console.log(`  [Time] New day: ${newDay}`);
     }
@@ -364,7 +451,7 @@ export class World {
       // Update currentActivity on each NPC for prompt context
       for (const [id, agent] of this.agents) {
         if (!isNpc(agent)) continue;
-        const entry = this.scheduleManager.getActiveEntry(id, tickInDay);
+        const entry = this.scheduleManager.getActiveEntry(id, minuteOfDay);
         agent.state.currentActivity = entry?.activity;
       }
 
@@ -377,13 +464,13 @@ export class World {
 
       const scheduleGoals = this.scheduleManager.checkSchedules(
         Array.from(this.agents.keys()).filter((id) => isNpc(this.agents.get(id)!)),
-        tickInDay,
+        minuteOfDay,
         npcLocations,
         (id) => this.goalManager.hasActiveGoal(id),
       );
 
       for (const goal of scheduleGoals) {
-        goal.createdAtTick = this.tickCount;
+        goal.createdAtMinute = this._gameMinute;
         this.goalManager.addGoal(goal);
       }
     }
@@ -392,7 +479,7 @@ export class World {
     await this.checkBodyDiscovery();
 
     // 0.7. Night walks — depressed NPCs may wander instead of sleeping (skip player)
-    if (getTimePeriod(tickInDay) === 'night') {
+    if (getTimePeriod(minuteOfDay) === 'night') {
       for (const [id, agent] of this.agents) {
         if (!isNpc(agent)) continue;
         if (this.goalManager.hasActiveGoal(id)) continue;
@@ -421,7 +508,7 @@ export class World {
                 ],
                 currentStep: 0,
                 data: { reason: 'restless mind' },
-                createdAtTick: this.tickCount,
+                createdAtMinute: this._gameMinute,
               });
             }
           }
@@ -429,21 +516,21 @@ export class World {
       }
     }
 
-    // 0.85. Affordance Layer — evaluate NPC volition (replaces murder check + crime triggers)
+    // 0.85. Affordance Layer — evaluate NPC volition
     const volitionCtx: AffordanceContext = {
       agents: this.agents,
       locations: this.locations,
       npcHomes: this.npcHomes,
       period: this.currentPeriod as AffordanceContext['period'],
       gameDay,
-      currentTick: this.tickCount,
+      gameMinute: this._gameMinute,
       playerLocation: this.playerLocation ?? undefined,
       hasActiveGoal: (id) => this.goalManager.hasActiveGoal(id),
       hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
       cooldowns: this.affordanceCooldowns,
       decisionCooldowns: this.decisionCooldowns,
-      affordanceCooldownTicks: this.config.affordanceCooldownTicks,
-      decisionCooldownTicks: this.config.decisionCooldownTicks,
+      affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
+      decisionCooldownMinutes: this.config.decisionCooldownMinutes,
       isArrestTarget: (npcId) => this.goalManager.isTargetOfGoalType(npcId, 'arrest'),
     };
     const volitionGoals = await evaluateAllVolition(volitionCtx, this.callbacks.onLlmCall, this.callbacks.onDecision);
@@ -535,7 +622,8 @@ export class World {
           }
 
           if (action.movement) {
-            allMovements.push(action.movement);
+            // Stream immediately per-NPC — no batch
+            this.callbacks.onMovement?.([action.movement]);
           }
         }
       }
@@ -546,15 +634,13 @@ export class World {
       const randomMovements = processMovement(
         this.agents, this.locations, this.movementConfig, npcsWithGoals,
       );
-      if (randomMovements.length > 0) {
-        allMovements.push(...randomMovements);
+      for (const m of randomMovements) {
+        // Stream per-NPC — no batch
+        this.callbacks.onMovement?.([m]);
       }
     }
 
-    // Broadcast all movements together
-    if (allMovements.length > 0) {
-      this.callbacks.onMovement?.(allMovements);
-    }
+    // Movements already broadcast per-NPC above (goal + random).
 
     // 2.5-2.7: Module-registered tick phase handlers (crime scene awareness, theft discovery, NPC approach)
     const approachEvents: import('./world-types').ApproachEvent[] = [];
@@ -562,7 +648,7 @@ export class World {
       agents: this.agents,
       eventStore: this.eventStore,
       currentDay: this.getCurrentDay(),
-      tickCount: this.tickCount,
+      gameMinute: this._gameMinute,
       processEvent: async (event: WorldEvent) => {
         const results = await this.processCascade(event);
         await this.handleEventForGoals(event);
@@ -586,15 +672,14 @@ export class World {
 
     // 3. Casual conversations (skip NPCs with active goals)
     let conversation: ConversationResult | null = null;
-    const pair = await this.scheduler.findPair(this.agents, this.tickCount, npcsWithGoals);
+    const pair = await this.scheduler.findPair(this.agents, this._gameMinute, npcsWithGoals);
 
     if (pair) {
       const initiator = this.agents.get(pair.a)!;
       const responder = this.agents.get(pair.b)!;
 
       // Select topic using TopicEngine
-      const tickInDay = this.tickCount % TICKS_PER_DAY;
-      const period = getTimePeriod(tickInDay);
+      const period = getTimePeriod(minuteOfDay);
       const topic = this.topicEngine.selectTopic(initiator, responder, gameDay, period, initiator.state.location, this.playerAgent ?? undefined);
 
       this.callbacks.onLlmCall?.('Casual conversation', `${initiator.profile.name} ↔ ${responder.profile.name} [${topic.subject}]`);
@@ -659,7 +744,10 @@ export class World {
         }
       }
 
-      // Analyze conversation for sentiment/mood shifts (structured LLM call)
+      // Analyze conversation impact ASYNC — don't block tick.
+      // Conversation lines already streamed via WS. Impact (mood/sentiment/memory)
+      // will arrive as WS events when LLM completes — typically 3-5s after conversation.
+      // This saves 5-10s per tick, making the world "flow" faster.
       const listeners = [pair.a, pair.b];
       for (const [id, agent] of this.agents) {
         if (id === pair.a || id === pair.b) continue;
@@ -668,37 +756,49 @@ export class World {
           listeners.push(id);
         }
       }
-      this.callbacks.onLlmCall?.('Sentiment analysis', `${initiator.profile.name} ↔ ${responder.profile.name}`);
-      const impactResult = await this.analyzeConversationImpact(conversation, listeners);
-      const finalImportance = impactResult.importance;
+      // Capture conversation state NOW (before async work might see changed mood)
+      const convCopy = { ...conversation };
+      const topicCopy = { ...topic };
+      const initMood = initiator.state.mood;
+      const respMood = responder.state.mood;
+      const initRef = initiator, respRef = responder;
 
-      // Store conversation memories with LLM-assessed importance (content-aware)
-      const responderSaid = conversation.lines.filter(l => l.speaker === responder.profile.id).map(l => l.text).join(' ');
-      const initiatorSaid = conversation.lines.filter(l => l.speaker === initiator.profile.id).map(l => l.text).join(' ');
-      await initiator.observe(
-        buildMemoryText(responder.profile.name, topic.subject, responderSaid, responder.state.mood),
-        finalImportance,
-      );
-      await responder.observe(
-        buildMemoryText(initiator.profile.name, topic.subject, initiatorSaid, initiator.state.mood),
-        finalImportance,
-      );
-      if (finalImportance !== conversation.importance) {
-        console.log(`  [Importance] Topic: ${conversation.importance} → LLM: ${finalImportance}`);
-      }
-
-      // Overhear: bystanders get memories + belief transfer (AFTER importance is finalized)
-      await this.processOverhear(conversation, finalImportance, topic);
+      // Deferred impact analysis — doesn't block current tick.
+      // Awaited at start of NEXT tick (no semaphore conflict) and on SIGINT save.
+      this._pendingImpact = (async () => {
+        try {
+          this.callbacks.onLlmCall?.('Sentiment analysis', `${initRef.profile.name} ↔ ${respRef.profile.name}`);
+          const impactResult = await this.analyzeConversationImpact(convCopy, listeners);
+          const finalImportance = impactResult.importance;
+          const responderSaid = convCopy.lines.filter(l => l.speaker === respRef.profile.id).map(l => l.text).join(' ');
+          const initiatorSaid = convCopy.lines.filter(l => l.speaker === initRef.profile.id).map(l => l.text).join(' ');
+          await initRef.observe(
+            buildMemoryText(respRef.profile.name, topicCopy.subject, responderSaid, respMood),
+            finalImportance,
+          );
+          await respRef.observe(
+            buildMemoryText(initRef.profile.name, topicCopy.subject, initiatorSaid, initMood),
+            finalImportance,
+          );
+          if (finalImportance !== convCopy.importance) {
+            console.log(`  [Importance] Topic: ${convCopy.importance} → LLM: ${finalImportance}`);
+          }
+          await this.processOverhear(convCopy, finalImportance, topicCopy);
+        } catch (err) {
+          console.error('  [Impact] Deferred impact analysis failed:', err);
+        }
+      })();
     }
 
-    const timeInfo = this.scheduleManager?.getTimeInfo(tickInDay);
+    const timeInfo = this.scheduleManager?.getTimeInfo(minuteOfDay);
     const result: TickResult = {
       tickNumber: this.tickCount,
+      gameMinute: this._gameMinute,
       gameDay,
       time: timeInfo,
       dayAdvanced: dayAdvanced || undefined,
       conversation,
-      movements: allMovements.length > 0 ? allMovements : undefined,
+      // movements broadcast per-NPC during tick, not batched in result
       goalActions: goalActions.length > 0 ? goalActions : undefined,
       idleReason: !conversation && goalActions.length === 0
         ? 'No suitable conversation pair found'
@@ -811,7 +911,7 @@ export class World {
         user: prompt,
         temperature: 0.3,
         maxTokens: 300,
-        jsonSchema: CONVERSATION_IMPACT_SCHEMA,
+        jsonSchema: buildConversationImpactSchema(npcNames),
       });
       if (!content) return;
 
@@ -836,9 +936,10 @@ export class World {
           const mentionedId = nameToId.get(mention.npc_name.toLowerCase());
           if (!mentionedId) continue;
 
-          // Clamp valence to safe range
-          const valence = Math.max(-0.15, Math.min(0.15, mention.valence));
-          if (Math.abs(valence) < 0.02) continue; // skip negligible shifts
+          // Clamp valence to safe range (configurable via conversationBehavior)
+          const vc = this.resolvedConversationConfig.sentimentValenceClamp;
+          const valence = Math.max(vc.min, Math.min(vc.max, mention.valence));
+          if (Math.abs(valence) < this.resolvedConversationConfig.sentimentValenceThreshold) continue;
 
           for (const listenerId of listenerIds) {
             if (listenerId === mentionedId) continue; // skip self-references
@@ -854,7 +955,8 @@ export class World {
       // Apply mood impact (bidirectional: positive for warm chats, negative for tense ones)
       const rawImpact = impact.mood_impact;
       const bias = this.config.moodBias ?? 0;
-      const moodDelta = Math.max(-0.08, Math.min(0.06, rawImpact)) + bias;
+      const mc = this.resolvedConversationConfig.moodImpactClamp;
+      const moodDelta = Math.max(mc.min, Math.min(mc.max, rawImpact)) + bias;
       if (Math.abs(moodDelta) > 0.005) {
         for (const listenerId of listenerIds) {
           const listener = this.agents.get(listenerId);
@@ -869,8 +971,10 @@ export class World {
 
       // Secret discovery: if LLM detected a speaker revealed hidden information
       // Format: "SPEAKER revealed about ABOUT: DETAIL"
+      // Event type from registry — module defines what constitutes a "secret" event
+      const secretEventType = getSecretEventType();
       const secretStr = (impact as any).secret_revealed as string;
-      if (secretStr && secretStr.length > 5) {
+      if (secretEventType && secretStr && secretStr.length > 5) {
         const secretMatch = secretStr.match(/(\w[\w\s]*?)\s+revealed\s+about\s+(\w[\w\s]*?):\s*(.+)/i);
         if (secretMatch) {
           const [, speakerName, aboutName, detail] = secretMatch;
@@ -888,11 +992,11 @@ export class World {
               if (alreadyKnows) continue;
               listener.state.beliefs.addBelief({
                 id: crypto.randomUUID(),
-                eventType: 'PERSONAL_SECRET',
+                eventType: secretEventType,
                 subject: aboutAgent?.profile.name ?? aboutName.trim(),
                 object: detail.trim(),
                 location: conversation.location,
-                confidence: 0.4,
+                confidence: this.resolvedConversationConfig.secretDiscoveryConfidence,
                 source: 'secret',
                 sourceNpcId: speakerId,
                 gameDay: conversation.gameDay,
@@ -1077,7 +1181,7 @@ export class World {
       locationId,
       crimeType,
       this.getCurrentDay(),
-      this.tickCount,
+      this._gameMinute,
       perpetrator,
       victim,
       witnessIds,
@@ -1208,6 +1312,15 @@ export class World {
     return this.autoTickTimer !== null;
   }
 
+  /** Await any pending async work (deferred impact analysis). Call before save. */
+  async flushPending(): Promise<void> {
+    if (this._pendingImpact) {
+      await this._pendingImpact;
+      this._pendingImpact = null;
+    }
+  }
+
+  /** @deprecated Use gameMinute. Processing tick counter. */
   get currentTick(): number {
     return this.tickCount;
   }
@@ -1220,14 +1333,14 @@ export class World {
       npcHomes: this.npcHomes,
       period: this.currentPeriod as AffordanceContext['period'],
       gameDay: this.getCurrentDay(),
-      currentTick: this.tickCount,
+      gameMinute: this._gameMinute,
       playerLocation: this.playerLocation ?? undefined,
       hasActiveGoal: (id) => this.goalManager.hasActiveGoal(id),
       hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
       cooldowns: this.affordanceCooldowns,
       decisionCooldowns: this.decisionCooldowns,
-      affordanceCooldownTicks: this.config.affordanceCooldownTicks,
-      decisionCooldownTicks: this.config.decisionCooldownTicks,
+      affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
+      decisionCooldownMinutes: this.config.decisionCooldownMinutes,
     };
   }
 
@@ -1271,19 +1384,19 @@ export class World {
     const agent = this.agents.get(npcId);
     if (!agent) return [];
 
-    const period = getTimePeriod(this.tickCount);
+    const period = getTimePeriod(this.minuteOfDay);
     const ctx: AffordanceContext = {
       agents: this.agents,
       locations: this.locations,
       period,
       gameDay: agent.state.currentDay,
-      currentTick: this.tickCount,
+      gameMinute: this._gameMinute,
       npcHomes: this.npcHomes,
       playerLocation: this.playerLocation ?? undefined,
       cooldowns: this.affordanceCooldowns,
       decisionCooldowns: this.decisionCooldowns,
-      affordanceCooldownTicks: this.config.affordanceCooldownTicks,
-      decisionCooldownTicks: this.config.decisionCooldownTicks,
+      affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
+      decisionCooldownMinutes: this.config.decisionCooldownMinutes,
       hasActiveGoal: (id) => this.goalManager.getActiveGoal(id) !== null,
       hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
     };
@@ -1307,6 +1420,8 @@ export class World {
 
   toJSON(): {
     tickCount: number;
+    gameMinute: number;
+    gameSpeed: number;
     bodyDiscoveries: string[];
     crimeScenes: Record<string, import('./world-types').CrimeSceneJSON[]>;
     journal: import('./journal').JournalEntry[];
@@ -1349,6 +1464,8 @@ export class World {
 
     return {
       tickCount: this.tickCount,
+      gameMinute: this._gameMinute,
+      gameSpeed: this._gameSpeed,
       bodyDiscoveries: Array.from(this.bodyDiscoveries),
       crimeScenes,
       evidence: this.evidence.toJSON(),
@@ -1362,6 +1479,10 @@ export class World {
   /** Restore world state from a saved snapshot */
   loadState(data: ReturnType<World['toJSON']>): void {
     this.tickCount = data.tickCount;
+    // Backward compat: old saves without gameMinute → derive from tickCount (1 tick = 15 min)
+    this._gameMinute = (data as any).gameMinute ?? (data.tickCount * 15);
+    this._gameSpeed = (data as any).gameSpeed ?? 1;
+    this._lastKnownDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
     this.bodyDiscoveries = new Set(data.bodyDiscoveries);
     this.goalManager.loadFromJSON(data.goals);
 
