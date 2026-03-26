@@ -578,88 +578,121 @@ training/dataset/
 ### Phase 3: World Expansion
 > Новые подсистемы движка + модули контента. 4 engine-подсистемы разблокируют десятки модулей.
 
-#### Streaming Tick — живой мир вместо слайд-шоу (RimWorld-inspired)
+#### Clock-Driven Architecture — живой мир вместо слайд-шоу (RimWorld-inspired)
 
 > **Референс**: [RimWorld Wiki — Time](https://rimworldwiki.com/wiki/Time), [How Pawns Think](https://github.com/roxxploxx/RimWorldModGuide/wiki/SHORTTUTORIAL:-How-Pawns-Think), [Custom Tick Scheduling (HugsLib)](https://github.com/UnlimitedHugs/RimworldHugsLib/wiki/Custom-Tick-Scheduling)
 >
-> **RimWorld**: 60 ticks/sec, 60,000 ticks/day, ThinkTree ~100-400 ticks, Toils per-tick, HashOffset распределяет нагрузку. Tick стоит микросекунды (детерминистика).
-> **CLWA**: 96 ticks/day, 1 tick = 15 game minutes, tick стоит 10-15 секунд (LLM). Мир дёргается.
+> **RimWorld**: 60 ticks/sec, ThinkTree ~150 ticks, gap = миллисекунды. **CLWA**: LLM call = 3-15 сек, gap = минуты.
 >
-> **Корневая проблема**: `tickCount` = и game time, и processing trigger. Tick дорогой → game time течёт рывками по 15 минут.
-> **Решение**: два тактовых генератора — Game Clock (быстрый, дешёвый) + Processing Loop (медленный, LLM-paced).
+> **Корневая проблема**: два независимых таймера (Game Clock + auto-tick) = десинхронизация. Время убегает, NPC стоят.
+> **Решение**: **один Master Clock** — единственный источник времени. Processing запускается когда нужен, не по своему таймеру.
 
-##### Что уже сделано (Streaming Tick Level 1-2)
+##### Что уже сделано
 
-- [x] **Level 1**: Server auto-tick с 0 delay (tick-when-ready), убрана 8с client пауза ✅ (v0.9.9)
-- [x] **Level 2**: Per-NPC movement broadcast (не batch), async conversation impact (_pendingImpact pattern) ✅ (v0.9.9)
+- [x] **Level 1**: tick-when-ready, убрана 8с client пауза ✅ (v0.9.8)
+- [x] **Level 2**: Per-NPC movement broadcast, async _pendingImpact ✅ (v0.9.8)
+- [x] **Phase 3.1**: gameMinute, MINUTES_PER_DAY=1440, все cooldowns в минутах, getTimePeriod по минутам, speed buttons, WS time_update, save/restore ✅ (v0.9.9)
 
-##### Phase 3.1: Game Clock — непрерывное время (Medium)
+##### Phase 3.1b: Unified Master Clock (Small — следующий шаг)
 
-**Цель**: время течёт плавно (07:00 → 07:01 → 07:02), не прыжками по 15 минут.
+**Цель**: один таймер вместо двух. `_tick()` вызывается Master Clock когда есть работа, а не по своему таймеру.
 
 **Архитектура**:
 ```
-Game Clock (100ms timer, ~0 cost)     Processing Loop (LLM-paced)
-├── gameMinute counter                ├── Volition: когда NPC без goal + cooldown
-├── Day/night transitions             ├── Conversations: co-location + cooldown
-├── Schedule checks                   ├── IL extraction: player speech
-├── HUD time display                  ├── CG cascades: event reactions
-├── Cooldown expiry checks            └── Impact analysis: deferred
-└── Speed control (1x/2x/3x)
+Master Clock (единственный setInterval, 1000/speed ms)
+│
+├── gameMinute++
+├── WS time_update (throttled, каждые 5 мин)
+├── Day boundary detection
+│
+└── _needsProcessing()? && !tickInProgress?
+    └── _tick() — batch processing (текущая логика без изменений)
 ```
 
+**`_needsProcessing()` — дешёвые проверки O(N), микросекунды:**
+- Day advance pending (`floor(gameMinute/1440) > lastKnownDay`)
+- Любой NPC IDLE + нет active goal + decision cooldown expired
+- Любая co-located pair IDLE + pair cooldown expired
+- Body discovery pending (alive + dead at same location)
+
 **Задачи**:
-- [ ] `gameMinute` property на World (0-1439), advance timer (setInterval)
-- [ ] Speed control: `gameSpeed` в WorldConfig (1x = 1 game min/real sec, 2x = 2/sec, 3x = 3/sec)
-- [ ] Cooldowns: ticks → game minutes (affordance: 180min, decision: 60min, pair: 240min)
-- [ ] Schedule: period boundaries в minutes (dawn: 300-420, morning: 420-720, etc.)
-- [ ] `tickToHour` → `minuteToHour`, `getTimePeriod` по minutes
-- [ ] Day advance: gameMinute >= 1440 → new day
-- [ ] WS: broadcast time update per game minute → client HUD
-- [ ] Speed buttons в HUD (1x/2x/3x/pause)
-- [ ] Save/restore: gameMinute + gameSpeed в save.json
+- [ ] Убрать `autoTickTimer`, `startAutoTick()`, `stopAutoTick()`, `autoTickInterval`
+- [ ] `_onClockTick()`: gameMinute++ → broadcast → `_needsProcessing()` → `_tick()` если нужно
+- [ ] `_needsProcessing()`: проверки cooldown expiry, co-location, day boundary
+- [ ] `POST /api/auto` → start/stop Master Clock (заменяет auto-tick toggle)
+- [ ] `POST /api/tick` → прямой `_tick()` (debug, работает даже на паузе)
+- [ ] Pause (speed=0) → Master Clock остановлен → всё заморожено
 
 **Edge cases**:
-- LLM call blocks Processing Loop на 3-5с — Game Clock продолжает. NPC "думает" пока время идёт → "thinking" indicator (пульсирующий "..." над головой)
-- Настройки конфигурируемы через WorldConfig (gameSpeed, minutesPerRealSecond)
+- `_tick()` дольше чем clock interval → `tickInProgress` guard, clock тикает, processing начнётся когда готов
+- 3x speed + 10с LLM → 30 game minutes проходят во время одного `_tick()` → NPC "глубоко задумался"
+- `_needsProcessing()` = false → нет `_tick()` → NPC заняты/на кулдауне → время идёт тихо
+- После `_tick()` завершения → сразу проверяет `_needsProcessing()` снова (цепочка)
 
-##### Phase 3.2: Continuous Movement (Medium-Large)
+**UI**:
+- `[Auto]` → start/stop Master Clock (время + processing)
+- `[||] [1x] [2x] [3x]` → скорость Master Clock
+- `[Tick]` → debug: один `_tick()` вручную (работает на паузе)
+- `[Day]` → принудительный advanceDay
+
+##### Phase 3.2: Continuous Movement (Medium)
 
 **Цель**: NPC ходит между локациями плавно, не телепортируется.
 
 **Задачи**:
-- [ ] move_to step: `startTime` + `duration` (game minutes) вместо 1-hop-per-tick
-- [ ] Duration = distance / speed. Distance: BFS hops × hop_minutes (configurable, default 30 min/hop)
-- [ ] NPC state: `inTransit` + `transitFrom` + `transitTo` + `transitProgress` (0-1)
-- [ ] Game Clock advances transitProgress каждый game minute
-- [ ] Arrival: transitProgress >= 1 → location update → trigger next goal step
-- [ ] Co-location: NPC считается at location только при arrival (transitProgress === 0 или >= 1), не during transit
+- [ ] move_to step: `startMinute` + `duration` (game minutes) вместо мгновенного телепорта
+- [ ] Duration = BFS hops × `minutesPerHop` (configurable, default 30 min/hop)
+- [ ] NPC transit state: `transitFrom` + `transitTo` + `transitProgress` (0-1)
+- [ ] Master Clock advances `transitProgress` каждую game minute
+- [ ] Arrival: `transitProgress >= 1` → location update → co-location checks → next goal step
+- [ ] Co-location: NPC считается at location только при arrival, не during transit
 - [ ] PositionManager: interpolate pixel position during transit
-- [ ] WS: broadcast transit progress updates (client animates smoothly)
+- [ ] WS: broadcast transit progress → client анимирует перемещение
 
 **Edge cases**:
 - NPC in transit когда conversation trigger → skip (not co-located)
 - NPC in transit когда body discovered at destination → discover on arrival
 - Save/restore: transit state persisted
+- Goal preemption: urgent goal → отменить текущий transit? Или дождаться arrival?
 
-##### Phase 3.3: On-Demand Processing (Large)
+##### Phase 3.3: Processing Queue (Large)
 
-**Цель**: Processing Loop не "тикает" всех NPC пачкой, а обрабатывает по запросу.
+**Цель**: `_tick()` разбирается на задачи. Non-LLM шаги цепочатся мгновенно. Goal 4 шага ≠ 4 тика.
+
+**Архитектура**:
+```
+Master Clock → enqueue tasks → ProcessingQueue (async consumer)
+                                ├── Priority 0: DAY_ADVANCE
+                                ├── Priority 1: BODY_DISCOVERY, REACTIVE_EVAL
+                                ├── Priority 2: VOLITION_DECISION, CONVERSATION, SCHEDULE
+                                └── Priority 3: THEFT_DISCOVERY, NPC_APPROACH
+```
+
+**NPC State Machine**:
+```
+IDLE → (cooldown expired) → AWAITING_DECISION
+AWAITING_DECISION → (queue processes) → EXECUTING_GOAL | IDLE
+EXECUTING_GOAL → (all steps done) → IDLE
+EXECUTING_GOAL → (move_to) → IN_TRANSIT → (arrived) → EXECUTING_GOAL
+IDLE + peer IDLE → (pair cooldown) → IN_CONVERSATION → (done) → IDLE
+any → (player chat) → IN_PLAYER_CHAT → (closed) → previous
+```
 
 **Задачи**:
-- [ ] Refactor `_tick()` → `_processLoop()` — continuous loop, not batch
-- [ ] Per-NPC state machine: `idle` / `executing_goal` / `awaiting_decision` / `in_conversation` / `in_transit`
-- [ ] Processing queue: NPC добавляется когда нужно решение (goal complete, event, cooldown expired)
-- [ ] Priority queue: urgent events (body discovery, arrest) → обрабатываются первыми
-- [ ] LLM calls: one at a time (semaphore=1), queue manages order
-- [ ] Conversation: triggered когда 2 NPC co-located + pair cooldown expired (Game Clock checks)
-- [ ] Body discovery: Game Clock checks co-location dead+alive, triggers processing
-- [ ] HashOffset (future, >20 NPC): `(gameMinute + npcId.hashOffset()) % interval` для распределения
+- [ ] `ProcessingQueue` class: priority sorting, dedup (one pending task per NPC per type), async consumer
+- [ ] `setTimeout(0)` между задачами — yield event loop для clock ticks
+- [ ] Извлечь из `_tick()`: volition, conversation, discovery, goal execution как standalone функции
+- [ ] Goal steps chain: non-LLM steps (move_to teleport, announce, wait expiry) → мгновенно. LLM steps → через queue
+- [ ] NPC processing state: explicit enum на AgentState
+- [ ] Master Clock enqueues tasks вместо вызова `_tick()`
+- [ ] CG cascades: inline в задаче которая их вызвала, reactive goals → enqueue
+
+**Ключевое улучшение**: investigate goal (5 шагов: move→examine→move→interrogate→move) сейчас = 5 тиков × 8с = 40с. После: move(0ms) → examine(0ms) → move(0ms) → interrogate(LLM 5с) → move(0ms) = **5 секунд**.
 
 **Edge cases**:
-- Semaphore conflict: Game Clock и Processing Loop обе modify state → single-threaded JS event loop natural mutex (Bun is single-threaded for user code)
-- Processing starvation: если LLM queue полна → NPC ждут. Visual: "thinking" indicator
-- Multiple conversations: с on-demand, можно запускать 2-3 параллельно когда LLM свободен
+- Task creates new tasks → enqueue, не recursive execute
+- Queue empty → consumer спит, Master Clock разбудит при следующем enqueue
+- Conversation trigger: оба NPC переходят в IN_CONVERSATION **при enqueue**, не при execute
 
 ##### Phase 3.4: Hot/Warm/Cold Agents (Medium, >20 NPC)
 
@@ -667,11 +700,20 @@ Game Clock (100ms timer, ~0 cost)     Processing Loop (LLM-paced)
 
 **Задачи**:
 - [ ] Proximity detection: player location → NPC distance в hops
-- [ ] Hot (0-1 hop): full processing — volition, conversations, goal LLM steps
-- [ ] Warm (2 hops): goals execute (non-LLM steps), mood/beliefs update, no volition LLM
-- [ ] Cold (3+ hops): mood decay only, movement по schedule, no LLM
-- [ ] Promotion: event near Cold NPC → promote to Warm/Hot
-- [ ] Demotion: no events + player moved away → Hot → Warm → Cold (gradual)
+- [ ] Hot (0-1 hop): Master Clock проверяет каждую минуту — full processing
+- [ ] Warm (2 hops): проверка каждые 5 минут — goals execute, no volition LLM
+- [ ] Cold (3+ hops): проверка каждые 30 минут — mood decay, schedule movement only
+- [ ] Promotion: event near Cold NPC → promote to Hot
+- [ ] Demotion: no events + player ушёл → Hot → Warm → Cold (gradual, hysteresis)
+
+##### Инварианты Clock-Driven Architecture
+
+1. `gameMinute` — **единственный** источник правды о времени
+2. Processing **никогда** не блокирует clock (async + tickInProgress)
+3. Все cooldowns сравниваются с `gameMinute`, не с tickCount
+4. Single-threaded Bun = естественный mutex, нет race conditions
+5. `_needsProcessing()` / Master Clock checks — всегда O(N), микросекунды
+6. `tickCount` остаётся как processing counter (логирование), не для времени
 
 **Визуальный эффект после всех фаз**:
 ```
