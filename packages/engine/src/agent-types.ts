@@ -91,6 +91,16 @@ export interface AgentState {
   currentMotive?: string;
   /** NPC is moving between locations — not yet arrived. Transient, not persisted. */
   inTransit?: boolean;
+  /** Destination location slug (set when transit starts, cleared on arrival) */
+  transitTo?: string;
+  /** Full path of location slugs from current to destination (for multi-hop) */
+  transitPath?: string[];
+  /** Transit progress 0-1 (0 = just started, 1 = arrived). Advanced by Master Clock. */
+  transitProgress?: number;
+  /** Game minute when transit started */
+  transitStartMinute?: number;
+  /** Total game minutes for this transit */
+  transitDuration?: number;
 }
 
 export interface Memory {

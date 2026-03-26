@@ -2,7 +2,7 @@ import type { Agent } from './agent';
 import type { WorldEvent } from './cg-types';
 import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
 import type { EvidenceLayer } from './evidence';
-import { nextHop } from './pathfinding';
+import { findPath } from './pathfinding';
 import { getEventLabel, getBeliefSourceLabel, getSourceTransferWeight, getStepHandler, runInteractPostHooks, isTransferable, BELIEF_SOURCE } from './event-registry';
 
 // ─── Step Primitives ───
@@ -320,31 +320,38 @@ export class GoalManager {
 
     switch (step.action) {
       case 'move_to': {
+        // Already at destination → advance step
         if (owner.state.location === step.location) {
-          // Already there, advance
           goal.currentStep++;
-          owner.state.inTransit = false;
           return { ...baseResult, action: 'move_to', description: `${owner.profile.name} arrived at ${step.location}` };
         }
 
-        const next = nextHop(locations, owner.state.location, step.location);
-        if (!next) {
-          // No path — skip step
+        // Already in transit → waiting for Master Clock to advance. Skip.
+        if (owner.state.inTransit) {
+          return null;
+        }
+
+        // Start transit: compute full path, set duration
+        const path = findPath(locations, owner.state.location, step.location);
+        if (!path || path.length === 0) {
           goal.currentStep++;
-          owner.state.inTransit = false;
           return { ...baseResult, action: 'move_to', description: `${owner.profile.name} cannot reach ${step.location}` };
         }
 
         const from = owner.state.location;
-        owner.state.location = next;
+        // Transit state set by World.startTransit() or inline here
         owner.state.inTransit = true;
-        goal.currentStep = next === step.location ? goal.currentStep + 1 : goal.currentStep;
+        owner.state.transitTo = step.location;
+        owner.state.transitPath = path;
+        owner.state.transitProgress = 0;
+        // transitStartMinute and transitDuration set by World (it owns gameMinute)
+        // For now mark as pending — World._advanceTransits() will handle progress
 
         return {
           ...baseResult,
           action: 'move_to',
-          description: `${owner.profile.name} moves from ${from} to ${next}`,
-          movement: { agentId: goal.ownerId, agentName: owner.profile.name, from, to: next },
+          description: `${owner.profile.name} starts walking from ${from} to ${step.location} (${path.length} hops)`,
+          movement: { agentId: goal.ownerId, agentName: owner.profile.name, from, to: step.location },
         };
       }
 

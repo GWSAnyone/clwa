@@ -7,7 +7,7 @@
 // ─── CONFIG ───
 const TILE = 64;
 const MAP_W = 30, MAP_H = 20;
-const NPC_SPEED = 100; // px/sec
+const NPC_SPEED = 100; // px/sec (default, overridden by transit duration)
 const PLAYER_SPEED = 160;
 const SPRITE_SCALE = 0.45;
 const FRAME_MS = 120; // sprite animation frame duration
@@ -89,6 +89,16 @@ function buildWalkableGrid() {
 
 function isWalkable(tx, ty) {
   return walkableGrid && walkableGrid.has(tx + ',' + ty);
+}
+
+/** Total pixel distance along a waypoint path */
+function pathLength(waypoints, startX, startY) {
+  let d = 0, px = startX, py = startY;
+  for (const wp of waypoints) {
+    d += Math.sqrt((wp.x - px) ** 2 + (wp.y - py) ** 2);
+    px = wp.x; py = wp.y;
+  }
+  return d;
 }
 
 // A* from pixel coords to pixel coords, returns waypoints in pixels
@@ -429,12 +439,19 @@ function handleWS(type, data) {
       for (const m of moves) {
         const npc = Object.values(state.agents).find(a => a.name === m.agentName);
         if (npc) {
-          // Use server-authoritative target coordinates
           const tx = m.targetX ?? 0, ty = m.targetY ?? 0;
           npc.waypoints = astarPath(npc.x, npc.y, tx, ty);
           npc.wpIdx = 0;
           npc.moving = true;
           npc.location = m.to;
+          // Compute walk speed from transit duration (game minutes → real seconds)
+          if (m.transitDuration > 0) {
+            const totalDist = pathLength(npc.waypoints, npc.x, npc.y);
+            const realSeconds = m.transitDuration; // at 1x: 1 game min = 1 real sec
+            npc.walkSpeed = totalDist / Math.max(1, realSeconds);
+          } else {
+            npc.walkSpeed = NPC_SPEED;
+          }
           addEvent('movement', `${m.agentName} → ${LOCATIONS[m.to]?.label || m.to}`);
         }
       }
@@ -1575,8 +1592,9 @@ function update(dt) {
           a.moving = false;
         }
       } else {
-        a.x += (dx/dist) * NPC_SPEED * dt;
-        a.y += (dy/dist) * NPC_SPEED * dt;
+        const spd = a.walkSpeed || NPC_SPEED;
+        a.x += (dx/dist) * spd * dt;
+        a.y += (dy/dist) * spd * dt;
         if (Math.abs(dx) > 2) a.flipH = dx < 0;
       }
     } else if (a.moving) {

@@ -171,6 +171,8 @@ export interface WorldConfig {
   startMinute?: number;
   /** Game speed multiplier: 1 = 1 game min per real sec, 2 = 2/sec, 3 = 3/sec, 0 = paused */
   gameSpeed?: number;
+  /** Game minutes per pathfinding hop for NPC transit (default: 30 = 30 min per hop) */
+  minutesPerHop?: number;
   /** Mood bias applied to every conversation mood_impact. Negative = darker world, positive = lighter.
    *  Default 0 (neutral). Demo: -0.02 (crime within ~1 day). Peaceful: +0.02. */
   moodBias?: number;

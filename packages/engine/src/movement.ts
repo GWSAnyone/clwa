@@ -15,21 +15,24 @@ function findLocation(locations: LocationGraph, idOrName: string) {
 }
 
 /**
- * Process NPC movement for a single tick.
- * Mobile NPCs have a chance to move to an adjacent location.
- * NPCs in excludeIds are skipped (e.g. those with active goals).
+ * Process random NPC movement. Mobile NPCs have a chance to start
+ * walking to an adjacent location (transit, not teleport).
+ * NPCs in excludeIds or already in transit are skipped.
  */
 export function processMovement(
   agents: Map<string, Agent>,
   locations: LocationGraph,
   config: NpcMovementConfig,
   excludeIds?: Set<string>,
+  gameMinute?: number,
+  minutesPerHop?: number,
 ): MovementResult[] {
   const results: MovementResult[] = [];
 
   for (const [id, agent] of agents) {
     if (!agent.state.alive) continue;
-    if (agent.state.status) continue; // any non-default status blocks random movement
+    if (agent.state.status) continue;
+    if (agent.state.inTransit) continue; // already walking
     if (!config.mobileNpcs.has(id)) continue;
     if (excludeIds?.has(id)) continue;
     if (Math.random() > config.moveProbability) continue;
@@ -37,7 +40,6 @@ export function processMovement(
     const found = findLocation(locations, agent.state.location);
     if (!found || found.loc.connections.length === 0) continue;
 
-    // Pick a random adjacent location
     const targetId = found.loc.connections[
       Math.floor(Math.random() * found.loc.connections.length)
     ];
@@ -45,8 +47,15 @@ export function processMovement(
     if (!targetLoc) continue;
 
     const from = agent.state.location;
-    agent.state.location = targetId;
+    const hopMin = minutesPerHop ?? 30;
+
+    // Start transit (1 hop to adjacent location)
     agent.state.inTransit = true;
+    agent.state.transitTo = targetId;
+    agent.state.transitPath = [targetId];
+    agent.state.transitProgress = 0;
+    agent.state.transitStartMinute = gameMinute ?? 0;
+    agent.state.transitDuration = hopMin;
 
     results.push({
       agentId: id,

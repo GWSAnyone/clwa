@@ -11,6 +11,7 @@ import type { WorldEvent } from './cg-types';
 import { ConversationScheduler } from './scheduler';
 import { runConversation, buildMemoryText } from './conversation';
 import { processMovement } from './movement';
+import { findPath } from './pathfinding';
 import { GoalManager } from './goals';
 import type { GoalActionResult, NpcGoal } from './goals';
 import { createInteractionRunner } from './interaction';
@@ -397,6 +398,9 @@ export class World {
   private _onClockTick(): void {
     this._gameMinute++;
 
+    // Advance NPC transit progress (time-based, independent of processing)
+    this._advanceTransits();
+
     // Broadcast time update every 5 game minutes (throttle at high speeds)
     if (this._gameMinute % 5 === 0) {
       const currentDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
@@ -426,6 +430,62 @@ export class World {
           }
         });
     }
+  }
+
+  /**
+   * Advance transit progress for all moving NPCs. Called every game minute by Master Clock.
+   * On arrival: update location, clear transit, broadcast movement.
+   */
+  private _advanceTransits(): void {
+    for (const [id, agent] of this.agents) {
+      if (!agent.state.inTransit || !agent.state.transitDuration) continue;
+
+      const elapsed = this._gameMinute - (agent.state.transitStartMinute ?? this._gameMinute);
+      agent.state.transitProgress = Math.min(1, elapsed / agent.state.transitDuration);
+
+      // Arrival
+      if (agent.state.transitProgress >= 1) {
+        const from = agent.state.location;
+        const to = agent.state.transitTo!;
+        agent.state.location = to;
+        this._clearTransit(agent);
+        console.log(`  [Transit] ${agent.profile.name} arrived at ${to}`);
+
+        // Broadcast arrival as movement
+        this.callbacks.onMovement?.([{
+          agentId: id,
+          agentName: agent.profile.name,
+          from,
+          to,
+        }]);
+      }
+    }
+  }
+
+  /** Clear all transit state on an agent */
+  private _clearTransit(agent: Agent): void {
+    agent.state.inTransit = false;
+    agent.state.transitTo = undefined;
+    agent.state.transitPath = undefined;
+    agent.state.transitProgress = undefined;
+    agent.state.transitStartMinute = undefined;
+    agent.state.transitDuration = undefined;
+  }
+
+  /** Start transit for an NPC: compute path, set duration, mark inTransit */
+  startTransit(agent: Agent, targetLocation: string): boolean {
+    if (agent.state.location === targetLocation) return false;
+    const path = findPath(this.locations, agent.state.location, targetLocation);
+    if (!path || path.length === 0) return false;
+
+    const minutesPerHop = this.config.minutesPerHop ?? 30;
+    agent.state.inTransit = true;
+    agent.state.transitTo = targetLocation;
+    agent.state.transitPath = path;
+    agent.state.transitProgress = 0;
+    agent.state.transitStartMinute = this._gameMinute;
+    agent.state.transitDuration = path.length * minutesPerHop;
+    return true;
   }
 
   /**
@@ -511,10 +571,7 @@ export class World {
     const minuteOfDay = this.minuteOfDay;
     const goalActions: GoalActionResult[] = [];
 
-    // Clear inTransit for all agents — each tick starts fresh, movement sets it
-    for (const [, agent] of this.agents) {
-      agent.state.inTransit = false;
-    }
+    // Transit is now managed by Master Clock (_advanceTransits). No clearing here.
 
     // 0. Day advance — Game Clock drives time, processing loop detects boundary
     let dayAdvanced = false;
@@ -707,6 +764,14 @@ export class World {
           }
 
           if (action.movement) {
+            // Finalize transit timing for NPC that just started move_to
+            const movingAgent = this.agents.get(action.ownerId);
+            if (movingAgent?.state.inTransit && !movingAgent.state.transitStartMinute) {
+              const hops = movingAgent.state.transitPath?.length ?? 1;
+              const minutesPerHop = this.config.minutesPerHop ?? 30;
+              movingAgent.state.transitStartMinute = this._gameMinute;
+              movingAgent.state.transitDuration = hops * minutesPerHop;
+            }
             // Stream immediately per-NPC — no batch
             this.callbacks.onMovement?.([action.movement]);
           }
@@ -718,6 +783,7 @@ export class World {
     if (this.locations.size > 0) {
       const randomMovements = processMovement(
         this.agents, this.locations, this.movementConfig, npcsWithGoals,
+        this._gameMinute, this.config.minutesPerHop,
       );
       for (const m of randomMovements) {
         // Stream per-NPC — no batch

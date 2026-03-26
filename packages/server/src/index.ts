@@ -358,10 +358,12 @@ async function main() {
       },
       onMovement: (movements) => {
         const enriched = movements.map(m => {
+          const agent = agents.get(m.agentId);
           const target = positionManager.startMovement(m.agentId, m.to);
           const pos = positionManager.getPosition(m.agentId);
-          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to} (${pos?.x},${pos?.y} → ${target.targetX},${target.targetY})`);
-          return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: target.targetX, targetY: target.targetY };
+          const transitDuration = agent?.state.transitDuration ?? 0;
+          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to}${transitDuration ? ` (${transitDuration}min)` : ''}`);
+          return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: target.targetX, targetY: target.targetY, transitDuration };
         });
         broadcast({ type: 'movement', data: enriched });
       },
