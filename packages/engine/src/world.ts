@@ -685,10 +685,13 @@ export class World {
       isArrestTarget: (npcId) => this.goalManager.isTargetOfGoalType(npcId, 'arrest'),
     };
 
-    this.callbacks.onLlmCall?.('Volition', agent.profile.name);
     const goals = await evaluateAllVolition(ctx, this.callbacks.onLlmCall, this.callbacks.onDecision, [npcId]);
     for (const goal of goals) {
       this.goalManager.addGoal(goal);
+    }
+    // Set decision cooldown even if no affordances passed — prevents per-minute re-evaluation spam
+    if (!this.decisionCooldowns.has(npcId) || this._gameMinute >= (this.decisionCooldowns.get(npcId) ?? 0)) {
+      this.decisionCooldowns.set(npcId, this._gameMinute + (this.config.decisionCooldownMinutes ?? 60));
     }
     agent.state.processingState = this.goalManager.hasActiveGoal(npcId) ? 'executing_goal' : 'idle';
   }
