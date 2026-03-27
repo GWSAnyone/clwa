@@ -629,101 +629,176 @@ System prompt агента собирается динамически:
 
 **LLM Semaphore**: глобальный maxConcurrent=1 (GPU context switching), все LLM-вызовы через acquire()/release() в finally.
 
-### 3.3 World (Тик, Цели, Расписание, Движение)
+### 3.3 Clock-Driven Architecture (v0.9.9)
 
-#### Tick Flow
+> **Вдохновлено**: RimWorld (60 ticks/sec + ThinkTree on-demand). Адаптировано для LLM-реальности: 3-15с на один LLM call.
+>
+> **Принцип**: один Master Clock — единственный источник времени. Processing запускается когда нужен, не по фиксированному таймеру. Время течёт плавно (07:00 → 07:01 → 07:02), NPC "думают" пока мир движется.
+
+#### Master Clock
 
 ```
-goals (advance active goals) → schedule goals → random movement →
-body discovery check → AL proactive volition (LLM DO/WHY) → casual conversations
+Master Clock (единственный setInterval, 1000/speed ms)
+│
+├── gameMinute++                              — 1 game min за тик
+├── _advanceTransits()                        — двигает NPC в пути
+├── WS time_update (каждые 5 game min)        — HUD, day/night
+│
+└── _needsProcessing()? && !tickInProgress?
+    └── _tick() — batch processing (volition, conversations, goals)
+        └── .finally → проверяет _needsProcessing() снова (chain)
 ```
 
-**Proactive volition**: для каждого NPC без активной цели → AL фильтрует affordances → PM scores → instinct descriptions → LLM решает (DO/WHY) → parser → goal steps. Decision cooldown 4 тика (configurable via WorldConfig).
+**Единственный таймер** — `setInterval` с интервалом `1000 / gameSpeed` ms. Всё остальное (processing, transit, day advance) — следствие этого одного тика.
 
-**Tick mutex**: World.tick() защищён от параллельного вызова.
+**Speed control**: `gameSpeed` = 1 (1 мин/сек), 2 (2 мин/сек), 3 (3 мин/сек), 0 (пауза). `setGameSpeed()` останавливает и перезапускает таймер с новым интервалом.
+
+#### Время
+
+**`gameMinute`** — абсолютный счётчик game minutes. Растёт бесконечно (не оборачивается на 1440). Единственный источник правды о времени.
+
+- `minuteOfDay` = `gameMinute % 1440` — для периода/дисплея (0-1439)
+- `gameDay` = `floor(gameMinute / 1440)` — номер дня
+- `currentPeriod` = `getTimePeriod(minuteOfDay)` — dawn/morning/afternoon/evening/night
+
+**Периоды дня (минуты):**
+
+| Период | Диапазон | Часы |
+|---|---|---|
+| dawn | 300-420 | 05:00-07:00 |
+| morning | 420-720 | 07:00-12:00 |
+| afternoon | 720-1020 | 12:00-17:00 |
+| evening | 1020-1260 | 17:00-21:00 |
+| night | 1260-1440+0-300 | 21:00-05:00 |
+
+#### Обработка (`_needsProcessing()` → `_tick()`)
+
+Master Clock каждую game minute проверяет `_needsProcessing()` — дешёвые O(N) проверки:
+
+| Проверка | Условие |
+|---|---|
+| Day advance | `floor(gameMinute/1440) > lastKnownDay` |
+| NPC volition | NPC idle + нет active goal + `gameMinute >= decisionCooldownExpiry` |
+| Conversation | Пара idle + co-located + `gameMinute >= pairCooldownExpiry` |
+| Body discovery | Alive NPC + dead NPC на одной локации, не обнаружен |
+
+Если хотя бы одна проверка = true и `!tickInProgress` → запуск `_tick()`. После завершения `_tick()` → сразу re-check через `setTimeout(0)` (chain processing).
+
+**`_tick()` batch processing** (внутренности не менялись):
+```
+day advance → schedule goals → body discovery → night walks →
+AL proactive volition (LLM) → goal execution (LLM) →
+random movement → tick phase handlers → conversations (LLM)
+```
+
+**Mutex**: `tickInProgress` flag. Пока `_tick()` выполняется, Master Clock продолжает тикать (время идёт), но не запускает повторный `_tick()`.
+
+**Поведение при высокой скорости** (3x + LLM 10с): clock тикает → 30 game minutes проходят за один `_tick()`. NPC "глубоко задумался". Естественное поведение — LLM decision = долгие размышления персонажа.
+
+#### Cooldowns (game minutes)
+
+Все cooldowns хранятся как абсолютные game minutes (expiresAt):
+
+| Cooldown | Default | Описание |
+|---|---|---|
+| `decisionCooldownMinutes` | 60 | Между LLM volition calls одного NPC |
+| `affordanceCooldownMinutes` | 180 | Между повторами одного affordance |
+| `pairCooldownMinutes` | 240 | Между разговорами одной пары |
+| `cooldownOverride` (per-affordance) | varies | Переопределение для конкретного affordance |
+
+Формула: `expiresAt = gameMinute + cooldownMinutes`. Проверка: `gameMinute >= expiresAt`.
+
+Cooldowns растут вместе с `gameMinute` — нет проблем с переходом через полночь.
+
+#### Transit System (Continuous Movement)
+
+NPC перемещаются плавно, не телепортируются. Движение управляется Master Clock.
+
+**Transit state на AgentState:**
+```typescript
+inTransit: boolean;           // в пути
+transitTo: string;            // destination slug
+transitPath: string[];        // полный путь (промежуточные локации)
+transitProgress: number;      // 0-1 (0 = начал, 1 = прибыл)
+transitStartMinute: number;   // gameMinute старта
+transitDuration: number;      // длительность в game minutes
+```
+
+**Lifecycle:**
+1. Goal step `move_to` или random movement → `startTransit(agent, target)`
+2. `findPath()` (BFS) → полный путь. Duration = `hops × minutesPerHop` (default 30 мин/hop)
+3. Master Clock каждую minute: `_advanceTransits()` → `progress = elapsed / duration`
+4. `progress >= 1` → arrival: `location = transitTo`, clear transit, broadcast movement
+5. `_needsProcessing()` детектирует новые co-locations → chain processing
+
+**Co-location**: NPC in transit **не** co-located. Conversations, body discovery, schedule checks — всё пропускает NPC с `inTransit=true`. Только после arrival NPC "присутствует" на локации.
+
+**Пример**: Garrett идёт из Town Gate → Market Square (2 hops):
+```
+gameMinute 420: startTransit (duration = 60 min, path = [town-square, market-square])
+gameMinute 420-479: inTransit=true, progress 0→0.98
+gameMinute 480: progress=1.0, arrival → location='market-square', broadcast
+gameMinute 481: _needsProcessing() → co-located с Mark → conversation trigger
+```
 
 #### Goal System (GoalManager)
 
-Связующий механизм между тремя слоями архитектуры:
+Связующий механизм между AL (что делать) → Steps (как делать) → CG (последствия).
 
-```
-WANTED_STATUS (событие) → investigationTrigger (правило) →
-Guard получает цель: move → interact → announce → return (агент) →
-Каждый шаг порождает новые события (назад в Event Store)
-```
-
-**5 engine step types** (универсальные примитивы):
-- `move_to` — перемещение по графу (1 шаг/тик, BFS pathfinding)
+**5 engine step types:**
+- `move_to` — transit к целевой локации (duration-based, не мгновенный). Step advance при arrival.
 - `interact` — LLM-диалог с конкретным NPC (structured output)
-- `interact_present` — LLM-диалог со ВСЕМИ NPC на локации (1/тик)
+- `interact_present` — LLM-диалог со ВСЕМИ NPC на локации
 - `announce` — объявление всем на локации (без LLM, через observe)
 - `wait` — ожидание N тиков
 
 **Module step types** (через `registerStepHandler` + generic `ModuleStep`):
 - `steal_from`, `attack_npc`, `arrest_npc`, `destroy_evidence`, `flee`, `examine_scene`, `sentence_npc`
-- `StepTemplate.action: string` — engine не знает конкретных типов. buildSteps() generic handler resolves $target, interpolates strings.
-- Новый модуль добавляет step type = `registerStepHandler('trade', ...)` + affordance template. Ноль engine changes.
+- `StepTemplate.action: string` — engine не знает конкретных типов. Новый модуль = `registerStepHandler('trade', ...)` + template. Ноль engine changes.
 
 **Priority preemption**: высокоприоритетная цель переводит текущую active → pending.
 
-**Триггеры целей (реализованы через AL):**
-- **Proactive**: AL фильтрует affordances → PM scores → LLM DO/WHY → goal steps (steal, kill, vigilante, leverage, confront)
-- **Reactive** (на CE event): investigate (guard, WANTED_STATUS), report_crime (WITNESS_MEMORY), gossip (RUMOR_SPREAD), grieve (relation to victim), lay_low / seek_forgiveness (criminal on WANTED_STATUS)
-- Legacy triggers удалены (goal-triggers.ts, crime-triggers.ts) — полностью заменены AL reactive system
+**Триггеры целей:**
+- **Proactive**: AL фильтрует affordances → PM scores → LLM DO/WHY → goal steps
+- **Reactive** (на CG event): investigate (WANTED_STATUS), report_crime (WITNESS_MEMORY), grieve, lay_low, etc.
 
 #### Schedule (ScheduleManager)
 
-- **TICKS_PER_DAY = 96** — 1 тик = 15 game minutes, 5 периодов: dawn (ticks 20-28), morning (28-48), afternoon (48-68), evening (68-84), night (84-96+0-20)
-- **Auto-tick**: tick-when-ready pattern (setTimeout loop), default interval 8s → 1 day ≈ 13 min real time
-- 39 записей расписания для 8 NPC
-- Schedule goals имеют priority 3 — уступают событийным
-- Автоматический advanceDay при обороте 96 тиков
-- **Configurable cooldowns** via WorldConfig: affordance (12 ticks/3h), decision (4 ticks/1h), conversation pair (16 ticks/4h)
-- **Ночные прогулки**: mood < -0.3 → NPC бродит ночью (priority 2)
+- **MINUTES_PER_DAY = 1440**. 5 периодов по минутным диапазонам (см. таблицу выше).
+- 39 записей расписания для 8 NPC. Schedule goals имеют priority 3.
+- `getActiveEntry(npcId, minuteOfDay)` → entry для текущего периода.
+- Day advance: `_tick()` детектирует `floor(gameMinute/1440) > lastKnownDay` → `while` loop для multi-day catch-up.
+- **Ночные прогулки**: mood < -0.3 → NPC бродит ночью (priority 2).
 
 #### Движение
 
-- `LocationGraph` — граф с adjacency, BFS pathfinding
-- Мобильные NPC (Elara, Mark) — 8% шанс/тик случайное перемещение (configurable)
-- `nextHop()` — пошаговое движение к цели
+- `LocationGraph` — граф с adjacency, BFS pathfinding (`findPath()`)
+- Мобильные NPC (Elara, Mark) — 8% шанс/processing tick → transit к соседней локации
+- `minutesPerHop` — configurable (default 30 game min per hop, WorldConfig)
 
 #### Body Discovery
 
-- После каждого перемещения — проверка: мёртвый NPC + живой NPC на одной локации
-- BODY_DISCOVERED → discoverer получает memory + belief **напрямую** (не через cascade)
+- `_needsProcessing()` проверяет co-location alive + dead → trigger `_tick()`
+- BODY_DISCOVERED → discoverer получает memory + belief **напрямую**
 - Информационная асимметрия: обнаруживший **не знает** убийцу ("unknown killer")
-- Прямые свидетели — знают
 - Дедупликация через `bodyDiscoveries` Set
+
+#### WS Broadcasts
+
+| Событие | Тип | Частота |
+|---|---|---|
+| Время обновлено | `time_update` | Каждые 5 game minutes |
+| NPC прибыл | `movement` | При arrival (transit complete) |
+| NPC начал идти | `movement` | При startTransit (с `transitDuration`) |
+| Период сменился | в `time_update` | При смене dawn/morning/etc |
+
+Client получает `transitDuration` в movement broadcast → адаптирует скорость анимации спрайта.
 
 #### Conversations
 
 ##### Topic Engine (`engine/topic-engine.ts`)
 
-Plugin-архитектура выбора тем. Перед каждым NPC-NPC разговором TopicEngine выбирает **о чём** говорить на основе реального состояния мира (ноль LLM вызовов). Engine содержит только механику выбора — все topic sources живут в модулях.
-
-**Архитектура:**
-```typescript
-type TopicSource = (initiator, responder, context) => TopicProposal[];
-
-interface TopicProposal {
-  subject: string;        // "the death of Ted", "a missing shipment"
-  tone: string;           // "hushed urgency", "casual warmth"
-  weight: number;         // приоритет (выше = вероятнее)
-  initiatorHook: string;  // направление для промпта инициатора
-  responderHook?: string; // направление для респондера
-  category: string;       // для трекинга повторов
-  topicKey?: string;      // dedup между sources (одно событие из разных sources → один proposal)
-  beliefTransfer?: { ... } // передача beliefs после разговора
-}
-
-interface TopicContext {
-  recentTopics: string[];  // anti-repeat per pair
-  gameDay: number;
-  period: string;          // dawn/morning/afternoon/evening/night
-  location: string;        // where conversation happens
-  playerAgent?: Agent;
-}
-```
+Plugin-архитектура выбора тем. TopicEngine выбирает **о чём** говорить на основе реального состояния мира (ноль LLM вызовов). Engine содержит только механику — все topic sources в модулях.
 
 **13 topic sources в двух модулях:**
 
@@ -735,62 +810,30 @@ interface TopicContext {
 | **social** | **moodTopics** | mood обоих NPC (bidirectional) | 2-4 | *"you both feel the weight"* |
 | **social** | **roleTopics** | role → declarative pool | 2 | *"bartender: missing regular"* |
 | **social** | **worldFactTopics** | knownFacts | 2 | *"common knowledge"* |
-| **social** | **casualTopics** | relationships + location | 1-3 | *"comment on the ale" (location-aware)* |
+| **social** | **casualTopics** | relationships + location | 1-3 | *"comment on the ale"* |
 | **social** | **seasonalTopics** | period + gameDay | 1-2 | *"night makes people honest"* |
 | **social** | **memoryTopics** | old beliefs (2+ days) | 2 | *"remember what happened to Bess..."* |
 | **social** | **opinionTopics** | shared relationships (death-aware) | 2-4 | *"what do you think about Mark?"* |
 | **social** | **questionTopics** | low-conf beliefs, info gaps | 2 | *"heard rumors about... true?"* |
-| **crime** | **justiceTopics** | arrest/sentence/fled beliefs (bidirectional) | 5-11 | *"Mark was arrested!"* |
-| **crime** | **playerRumorTopics** | player claims + sentiment (bidirectional) | 3-6 | *"what did the stranger tell you?"* |
+| **crime** | **justiceTopics** | arrest/sentence/fled beliefs | 5-11 | *"Mark was arrested!"* |
+| **crime** | **playerRumorTopics** | player claims + sentiment | 3-6 | *"what did the stranger tell you?"* |
 
-**Расширяемость**: `TOPIC_SOURCE_REGISTRY.push(myTopics)` — новый модуль = новые темы, ноль изменений engine. Аналогично AFFORDANCE_REGISTRY.
-
-**Key design decisions (v0.9.7):**
-- **Bidirectional** — и initiator, и responder's beliefs/mood генерируют proposals. Три ветки hooks: initiator knows / responder knows / both know.
-- **Recency weighting** — beliefs от сегодня +4, от вчера +2, старые +0
-- **Location context** — belief связан с текущей локацией → +2 weight. Location-specific casual hooks.
-- **Cross-source dedup** — `topicKey` на TopicProposal. Одно событие из beliefTopics + memoryTopics → один proposal (highest weight wins).
-- **Death-aware opinions** — opinionTopics не предлагает "как дела у X" если X мёртв.
-- **Category→Group mapping** — все categories маппятся в groups для PM influence и diversity: `memory→event, opinion→relationship, question→knowledge, conflict→conflict, inner→inner`.
-
-**Anti-repeat**: трекинг последних 6 тем на пару, пенализация повторных категорий.
-
-**Selection pipeline (v0.9.7):**
-1. Collect all proposals from TOPIC_SOURCE_REGISTRY
-2. **Dedup by topicKey** — keep highest weight per key
-3. Penalize recently discussed categories (per pair)
-4. **PM influence** — OCEAN traits обоих участников: E→casual, N→mood/inner, O→knowledge, A→relationship, low A→conflict
-5. **Diversity tracking** — target ratios: 35% casual, 25% event, 15% relationship, 10% mood, 10% knowledge, 5% conflict
-6. **Weighted random selection** (proportional, not winner-take-all)
-7. Track history (per pair + day distribution)
+**Selection pipeline**: collect → dedup by topicKey → penalize recent → PM influence (OCEAN) → diversity tracking → weighted random.
 
 ##### Conversation Flow
 
-- `ConversationScheduler`: social scoring (relationship, extraversion, social hunger, crime beliefs). **Cooldown 16 тиков**
-- `TopicEngine.selectTopic()`: weighted random с PM influence и diversity tracking
+- `ConversationScheduler`: social scoring (relationship, extraversion, social hunger). **Cooldown 240 game minutes** (configurable).
+- `TopicEngine.selectTopic()`: weighted random с PM influence
 - `runConversation()`: structured dialogue JSON schema, **maxTokens: 80**
-- Belief transfer (bidirectional initiator↔responder + overhear conf × 0.3)
-- `analyzeConversationImpact()`: sentiment + mood + **importance** (content-aware)
-- `observe()` **после** impact analysis (LLM-assessed importance)
-- `processOverhear()` **после** impact (finalized importance + belief transfer)
+- Belief transfer (bidirectional + overhear conf × 0.3)
+- `analyzeConversationImpact()`: deferred async (`_pendingImpact`)
+- `processOverhear()` **после** impact
 
-##### Structured Dialogue (v0.9.7)
+##### Structured Dialogue
 
-JSON schema: `{ "speech": "...", "gesture": "..." }`. Casual: max 12w speech. Goal interactions: max 20w speech.
-**parseDialogue returns speech ONLY** — gesture is metadata for future animation, not display text. Gesture schema constrained to one word (`nods`, `shrugs`, `smiles`).
+JSON schema: `{ "speech": "...", "gesture": "..." }`. Speech only в display — gesture для будущей анимации.
 Anti-repetition: `repeat_penalty: 1.1`, `frequency_penalty: 0.3`, `presence_penalty: 0.2`.
-**Conversation prompts**: `YOUR TOPIC:` prefix — topic hook first, then context. Topic subject in responder prompt. speechReminder = L0 description (style guidance, not copyable example).
-**knownFacts removed from buildSystemPrompt** — lore was 25% of system prompt, caused model to obsess over world facts instead of following topic hooks.
-**Memory format**: `(today, vivid)` instead of `significance: 7.2/10` — immersive, not meta-gaming.
-**Mood calibration**: impact analysis prompt instructs "casual friendly conversations = mood_impact near zero".
-Robust fallback parser для malformed JSON. Player chat — свободный формат.
-
-##### Conversation Prompts — принципы
-
-**Structural constraint**: "IMPORTANT: speech must be at most 12 words. Only spoken words — no narration."
-**Anti-hallucination**: "CRITICAL: Do NOT invent names, locations, or details" — первое правило system prompt
-**Topic-directed**: конкретная тема + hook
-**Grounded memory**: mood-based format, key quote truncated to 80 chars
+`YOUR TOPIC:` prefix. knownFacts removed. Memory format: `(today, vivid)`. Mood calibration в impact.
 
 ### 3.4 Intent Layer (IL) — Dialogue Meaning Extraction (v0.9.9)
 

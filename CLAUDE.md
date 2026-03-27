@@ -129,14 +129,17 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 53. **Secret event type registry**: `registerSecretEventType()`/`getSecretEventType()` — module defines what event type represents discovered secrets. Engine uses registered type in conversation impact analysis. No hardcoded `'PERSONAL_SECRET'` in engine.
 54. **IL action resolution**: Player `requestedAction.action` (free text from LLM) resolved to affordance IDs via `getAffordanceIdsForVerb()` from existing ACTION_VERB_MAP. Falls back to direct match. Same registry used by volition DO/WHY parser.
 
-## Tick System
+## Clock-Driven Architecture
 
-- **TICKS_PER_DAY = 96** (1 tick = 15 game minutes). Periods: dawn(20-28), morning(28-48), afternoon(48-68), evening(68-84), night(84-96+0-20).
-- **Auto-tick**: tick-when-ready pattern (setTimeout loop, not setInterval). Default interval 8s → 1 day ≈ 13 min.
-- **Speed control**: `POST /api/auto { seconds: N }` to start, same endpoint to stop (toggle).
-- **Cooldowns**: affordance=12 ticks (3h game), decision=4 ticks (1h game), conversation pair=16 ticks (4h game). All configurable via WorldConfig.
-- **Conversation flow**: runConversation → analyzeConversationImpact → processOverhear (overhear happens AFTER impact analysis).
+- **Master Clock**: единственный `setInterval` (`1000/gameSpeed` ms). Drives time + processing.
+- **MINUTES_PER_DAY = 1440**. Periods: dawn(300-420), morning(420-720), afternoon(720-1020), evening(1020-1260), night(1260-1440+0-300).
+- **`gameMinute`**: абсолютный (растёт бесконечно, не оборачивается). `minuteOfDay = gameMinute % 1440`.
+- **Speed**: 0=pause, 1x=1min/sec, 2x=2min/sec, 3x=3min/sec. `POST /api/speed`, `POST /api/auto` toggle.
+- **Processing**: `_needsProcessing()` O(N) checks каждую game minute → `_tick()` когда нужен. Не по таймеру.
+- **Cooldowns** (game minutes): affordance=180 (3h), decision=60 (1h), pair=240 (4h). Configurable via WorldConfig.
+- **Transit**: NPC перемещаются с `duration = hops × minutesPerHop` (default 30). Master Clock advances `transitProgress`. Arrival triggers co-location checks.
+- **Conversation flow**: runConversation → analyzeConversationImpact (deferred) → processOverhear.
 
 ## Current Status
 
-v0.9.9-dev. **IL overhaul**: dynamic JSON schema with enum constraints (buildILSchema), isTransferable + confidence floor checks (bilateral parity with NPC-NPC), async applyDialogueMeaning with awaited observe(), adjustSentiment/adjustTrust for WS broadcast, ACTION_VERB_MAP resolution for player requests, location slug consistency. **ILConfig + ConversationConfig**: all behavioral constants externalized to WorldConfig (trust thresholds, pressure multipliers, mood clamps, sentiment boosts). Zero hardcoded behavioral constants in IL or conversation impact. **ILEffect system**: structured discriminated union tracking all mechanical effects, broadcast via WS `il_result`, attached as collapsible badges on NPC responses in chat. **NPC Mind panel**: lazy-loaded accordion (Beliefs, Relationships, Goals, Personality) in chat modal — full engine state inspection for demo. **Chat system**: persistent per-NPC history in localStorage, session separators, XSS-safe rendering via escapeHTML + appendChild, auto-growing message area with scroll only at overflow. **Player position persistence**: server-authoritative via GET /api/player, restored on page refresh. **PERSONAL_SECRET → registry**: registerSecretEventType/getSecretEventType. **Previous**: Web UI client (Canvas2D), PositionManager, 5 WS overlays, 18/18 affordances, engine purity ZERO module content.
+v0.9.9. **Clock-Driven Architecture**: Master Clock (single timer), `gameMinute` as sole time source, `_needsProcessing()` triggers processing on-demand, continuous movement (transit system with duration), speed control (0-3x), WS time_update every 5min. **IL overhaul**: dynamic JSON schema with enum constraints (buildILSchema), bilateral parity, ILEffect tracking (8 types) → WS il_result. **ILConfig + ConversationConfig**: all behavioral constants in WorldConfig. **Web UI**: Canvas2D game client, chat with persistent history, NPC Mind accordion, IL effect badges, toast notifications, crime scene markers, day/night overlay, speed buttons. **Previous**: 18/18 affordances, engine purity ZERO module content, PositionManager, 5 WS overlays.
