@@ -239,7 +239,7 @@ export function startServer(
                 msg.agentId,
                 agent.state.location,
                 agent.state.currentDay,
-                world.currentTick,
+                world.gameMinute,
                 mentionedNpcs,
               );
               broadcast({ type: 'journal:entry', data: entry });

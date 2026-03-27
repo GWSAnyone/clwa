@@ -73,7 +73,6 @@
   ],
   "config": {
     "startMinute": 420,
-    "autoTickIntervalSeconds": 8,
     "exchangeCount": 2,
     "moodBias": 0
   }

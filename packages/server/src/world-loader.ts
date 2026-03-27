@@ -62,8 +62,6 @@ interface WorldJson {
   config: {
     startTick?: number;     // @deprecated — use startMinute
     startMinute?: number;
-    ticksPerDay?: number;
-    autoTickIntervalSeconds?: number;
     exchangeCount?: number;
     moodBias?: number;
     gameSpeed?: number;

@@ -326,7 +326,7 @@ export function handleRequest(
           point.clueText,
           locationId,
           scene.gameDay,
-          world.currentTick,
+          world.gameMinute,
           scene.id,
           relatedNpcs,
         );
@@ -341,7 +341,7 @@ export function handleRequest(
             e.description,
             locationId,
             e.gameDay,
-            world.currentTick,
+            world.gameMinute,
             undefined,
             [e.subjectId, e.objectId].filter(Boolean) as string[],
           );
@@ -554,7 +554,7 @@ export function handleRequest(
     return Response.json({
       npcId, name: agent.profile.name,
       mood: agent.state.mood, location: agent.state.location,
-      tick: world.currentTick,
+      tick: world.gameMinute,
       affordances: results.filter((r) => r.passed),
       blocked: results.filter((r) => !r.passed).map((r) => r.id),
     }, { headers: cors });

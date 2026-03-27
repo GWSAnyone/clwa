@@ -153,8 +153,8 @@ export class World {
   readonly resolvedILConfig: ILConfig;
   /** Resolved conversation config (merged from WorldConfig.conversationBehavior + defaults) */
   readonly resolvedConversationConfig: ConversationConfig;
-  /** Pending async conversation impact analysis — awaited at start of next tick + on save */
-  private _pendingImpact: Promise<void> | null = null;
+  /** Pending conversation impact data — consumed by CONVERSATION_IMPACT task handler */
+  private _pendingImpactData: { conversation: import('./world-types').ConversationResult; topic: import('./topic-engine').TopicProposal } | null = null;
   /** Processing queue — async task consumer, one task at a time, yields between tasks */
   readonly processingQueue: ProcessingQueue;
 
@@ -622,6 +622,31 @@ export class World {
         return this._handleConversation();
       case 'PHASE_HANDLERS':
         return this._handlePhaseHandlers();
+      case 'CONVERSATION_IMPACT':
+        return this._handleConversationImpact();
+    }
+  }
+
+  private async _handleConversationImpact(): Promise<void> {
+    const data = this._pendingImpactData;
+    if (!data) return;
+    this._pendingImpactData = null;
+
+    try {
+      const { conversation, topic } = data;
+      const listenerIds = Array.from(this.agents.entries())
+        .filter(([id, a]) => a.state.alive && a.state.location === conversation.location && id !== conversation.initiator && id !== conversation.responder)
+        .map(([id]) => id);
+
+      this.callbacks.onLlmCall?.('Sentiment analysis', `impact for ${conversation.initiator} ↔ ${conversation.responder}`);
+      const impact = await this.analyzeConversationImpact(conversation, listenerIds);
+      if (impact) {
+        const finalImportance = typeof impact.importance === 'number' ? Math.max(conversation.importance, impact.importance) : conversation.importance;
+        conversation.importance = finalImportance;
+        await this.processOverhear(conversation, finalImportance, topic);
+      }
+    } catch (err) {
+      console.error('  [Impact] Conversation impact analysis failed:', err);
     }
   }
 
@@ -740,6 +765,7 @@ export class World {
       if (action.goalCompleted) break;
       if (agent.state.inTransit) { agent.state.processingState = 'in_transit'; break; }
       if (action.action === 'interact' || action.action === 'interact_present') break;
+      if (action.action === 'wait') break; // wait is a blocking step — don't chain
       chainCount++;
     } while (chainCount < MAX_CHAIN && this.goalManager.hasActiveGoal(npcId));
 
@@ -763,61 +789,60 @@ export class World {
     initiator.state.processingState = 'in_conversation';
     responder.state.processingState = 'in_conversation';
 
-    const period = getTimePeriod(this.minuteOfDay);
-    const gameDay = this.getCurrentDay();
-    const topic = this.topicEngine.selectTopic(initiator, responder, gameDay, period, initiator.state.location, this.playerAgent ?? undefined);
+    try {
+      const period = getTimePeriod(this.minuteOfDay);
+      const gameDay = this.getCurrentDay();
+      const topic = this.topicEngine.selectTopic(initiator, responder, gameDay, period, initiator.state.location, this.playerAgent ?? undefined);
 
-    this.callbacks.onLlmCall?.('Conversation', `${initiator.profile.name} ↔ ${responder.profile.name} [${topic.subject}]`);
-    const conversation = await runConversation(initiator, responder, this.eventStore, this.config, topic,
-      { onLine: this.callbacks.onLine, agents: this.agents, locations: this.locations });
-    conversation.topic = topic.subject;
-    conversation.topicGroup = getTopicGroup(topic.category);
-    this.callbacks.onConversation?.(conversation);
+      this.callbacks.onLlmCall?.('Conversation', `${initiator.profile.name} ↔ ${responder.profile.name} [${topic.subject}]`);
+      const conversation = await runConversation(initiator, responder, this.eventStore, this.config, topic,
+        { onLine: this.callbacks.onLine, agents: this.agents, locations: this.locations });
+      conversation.topic = topic.subject;
+      conversation.topicGroup = getTopicGroup(topic.category);
+      this.callbacks.onConversation?.(conversation);
 
-    // Belief transfer (same as in _tick)
-    if (topic.beliefTransfer) {
-      const bt = topic.beliefTransfer;
-      const initBelief = initiator.state.beliefs?.getAllBeliefs().find(
-        b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object));
-      if (initBelief && responder.state.beliefs) {
-        const conf = Math.max(0.25, initBelief.confidence * bt.confidenceMultiplier);
-        responder.state.beliefs.addBelief({
-          id: crypto.randomUUID(), eventType: bt.eventType, subject: initBelief.subject,
-          object: initBelief.object, location: initBelief.location, confidence: conf,
-          source: 'rumor', sourceNpcId: initiator.profile.id, gameDay, lastUpdated: gameDay,
-        });
-      }
-      const respBelief = responder.state.beliefs?.getAllBeliefs().find(
-        b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object));
-      if (respBelief && initiator.state.beliefs) {
-        const conf = Math.max(0.25, respBelief.confidence * bt.confidenceMultiplier);
-        initiator.state.beliefs.addBelief({
-          id: crypto.randomUUID(), eventType: bt.eventType, subject: respBelief.subject,
-          object: respBelief.object, location: respBelief.location, confidence: conf,
-          source: 'rumor', sourceNpcId: responder.profile.id, gameDay, lastUpdated: gameDay,
-        });
-      }
-    }
-
-    // Deferred impact analysis
-    const convCopy = { ...conversation };
-    const topicCopy = { ...topic };
-    this._pendingImpact = (async () => {
-      try {
-        const listenerIds = Array.from(this.agents.entries())
-          .filter(([id, a]) => a.state.alive && a.state.location === convCopy.location && id !== convCopy.initiator && id !== convCopy.responder)
-          .map(([id]) => id);
-        const impact = await this.analyzeConversationImpact(convCopy, listenerIds);
-        if (impact) {
-          const finalImportance = typeof impact.importance === 'number' ? Math.max(conversation.importance, impact.importance) : conversation.importance;
-          convCopy.importance = finalImportance;
-          await this.processOverhear(convCopy, finalImportance, topicCopy);
+      // Belief transfer
+      if (topic.beliefTransfer) {
+        const bt = topic.beliefTransfer;
+        const initBelief = initiator.state.beliefs?.getAllBeliefs().find(
+          b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object));
+        if (initBelief && responder.state.beliefs) {
+          const conf = Math.max(0.25, initBelief.confidence * bt.confidenceMultiplier);
+          responder.state.beliefs.addBelief({
+            id: crypto.randomUUID(), eventType: bt.eventType, subject: initBelief.subject,
+            object: initBelief.object, location: initBelief.location, confidence: conf,
+            source: 'rumor', sourceNpcId: initiator.profile.id, gameDay, lastUpdated: gameDay,
+          });
         }
-      } catch (err) { console.error('  [Impact] Deferred impact failed:', err); }
-    })();
+        const respBelief = responder.state.beliefs?.getAllBeliefs().find(
+          b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object));
+        if (respBelief && initiator.state.beliefs) {
+          const conf = Math.max(0.25, respBelief.confidence * bt.confidenceMultiplier);
+          initiator.state.beliefs.addBelief({
+            id: crypto.randomUUID(), eventType: bt.eventType, subject: respBelief.subject,
+            object: respBelief.object, location: respBelief.location, confidence: conf,
+            source: 'rumor', sourceNpcId: responder.profile.id, gameDay, lastUpdated: gameDay,
+          });
+        }
+      }
 
-    initiator.state.processingState = 'idle';
-    responder.state.processingState = 'idle';
+      // Enqueue impact analysis as separate queue task (sequential, no race with other LLM tasks)
+      const convCopy = { ...conversation };
+      const topicCopy = { ...topic };
+      this.processingQueue.enqueue({
+        id: `impact-${pair.a}-${pair.b}-${this._gameMinute}`,
+        type: 'CONVERSATION_IMPACT' as any,
+        priority: 3,
+        npcId: pair.a,
+        targetNpcId: pair.b,
+        enqueuedAt: this._gameMinute,
+      });
+      // Store impact data for the handler
+      this._pendingImpactData = { conversation: convCopy, topic: topicCopy };
+    } finally {
+      initiator.state.processingState = 'idle';
+      responder.state.processingState = 'idle';
+    }
   }
 
   private async _handlePhaseHandlers(): Promise<void> {
@@ -1350,17 +1375,18 @@ export class World {
     return this._gameClockTimer !== null;
   }
 
-  /** Await any pending async work (deferred impact analysis). Call before save. */
+  /** Await queue drain. Call before save. */
   async flushPending(): Promise<void> {
-    if (this._pendingImpact) {
-      await this._pendingImpact;
-      this._pendingImpact = null;
+    if (this.processingQueue.isProcessing || this.processingQueue.length > 0) {
+      await new Promise<void>((resolve) => {
+        const check = setInterval(() => {
+          if (!this.processingQueue.isProcessing && this.processingQueue.length === 0) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 50);
+      });
     }
-  }
-
-  /** @deprecated Use gameMinute. Processing tick counter. */
-  get currentTick(): number {
-    return this.tickCount;
   }
 
   /** Build AffordanceContext for external use (IL goalCreator, debug, etc.) */
@@ -1402,7 +1428,7 @@ export class World {
 
   /** Process CG cascade and emit onCascade callback */
   private async processCascade(event: WorldEvent): Promise<{ event: WorldEvent; rule: string }[]> {
-    const results = await this.processCascade(event);
+    const results = await this.engine.process(event, this.buildCgContext());
     if (results.length > 0 && this.callbacks.onCascade) {
       this.callbacks.onCascade(event, results.map(r => r.event));
     }
@@ -1460,6 +1486,8 @@ export class World {
     tickCount: number;
     gameMinute: number;
     gameSpeed: number;
+    affordanceCooldowns: Record<string, Record<string, number>>;
+    decisionCooldowns: Record<string, number>;
     bodyDiscoveries: string[];
     crimeScenes: Record<string, import('./world-types').CrimeSceneJSON[]>;
     journal: import('./journal').JournalEntry[];
@@ -1504,6 +1532,11 @@ export class World {
       tickCount: this.tickCount,
       gameMinute: this._gameMinute,
       gameSpeed: this._gameSpeed,
+      affordanceCooldowns: Object.fromEntries(
+        Array.from(this.affordanceCooldowns.entries()).map(([npcId, map]) =>
+          [npcId, Object.fromEntries(map.entries())]),
+      ),
+      decisionCooldowns: Object.fromEntries(this.decisionCooldowns.entries()),
       bodyDiscoveries: Array.from(this.bodyDiscoveries),
       crimeScenes,
       evidence: this.evidence.toJSON(),
@@ -1521,6 +1554,19 @@ export class World {
     this._gameMinute = (data as any).gameMinute ?? (data.tickCount * 15);
     this._gameSpeed = (data as any).gameSpeed ?? 1;
     this._lastKnownDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
+    // Restore cooldowns
+    this.affordanceCooldowns.clear();
+    if ((data as any).affordanceCooldowns) {
+      for (const [npcId, map] of Object.entries((data as any).affordanceCooldowns as Record<string, Record<string, number>>)) {
+        this.affordanceCooldowns.set(npcId, new Map(Object.entries(map)));
+      }
+    }
+    this.decisionCooldowns.clear();
+    if ((data as any).decisionCooldowns) {
+      for (const [npcId, expiresAt] of Object.entries((data as any).decisionCooldowns as Record<string, number>)) {
+        this.decisionCooldowns.set(npcId, expiresAt);
+      }
+    }
     this.bodyDiscoveries = new Set(data.bodyDiscoveries);
     this.goalManager.loadFromJSON(data.goals);
 

@@ -9,7 +9,8 @@ export type TaskType =
   | 'PHASE_HANDLERS'
   | 'VOLITION'
   | 'GOAL_STEP'
-  | 'CONVERSATION';
+  | 'CONVERSATION'
+  | 'CONVERSATION_IMPACT';
 
 export interface ProcessingTask {
   id: string;
