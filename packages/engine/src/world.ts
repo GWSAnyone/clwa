@@ -401,17 +401,26 @@ export class World {
   private _onClockTick(): void {
     this._gameMinute++;
 
-    // 1. Advance NPC transit progress (time-based)
-    this._advanceTransits();
-
-    // 2. Broadcast time (throttled)
-    if (this._gameMinute % 5 === 0) {
-      const currentDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
-      this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, currentDay);
+    try {
+      this._advanceTransits();
+    } catch (err) {
+      console.error('  [MasterClock] _advanceTransits error:', err);
     }
 
-    // 3. Instant sync checks + enqueue async work
-    this._enqueueWork();
+    if (this._gameMinute % 5 === 0) {
+      try {
+        const currentDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
+        this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, currentDay);
+      } catch (err) {
+        console.error('  [MasterClock] onTimeUpdate error:', err);
+      }
+    }
+
+    try {
+      this._enqueueWork();
+    } catch (err) {
+      console.error('  [MasterClock] _enqueueWork error:', err);
+    }
   }
 
   /**
@@ -484,7 +493,11 @@ export class World {
     }
 
     // ─── Instant sync: schedule + night walks + random movement ───
-    this._runInstantChecks();
+    try {
+      this._runInstantChecks();
+    } catch (err) {
+      console.error('  [MasterClock] _runInstantChecks error:', err instanceof Error ? err.message : err);
+    }
 
     // ─── Priority 1: Body discovery ───
     for (const [id, agent] of this.agents) {
@@ -513,13 +526,19 @@ export class World {
         this.processingQueue.enqueue({ id: `goal-${id}-${gm}`, type: 'GOAL_STEP', priority: 2, npcId: id, enqueuedAt: gm });
       }
 
-      // Volition: NPC idle + no goal + cooldown expired
-      if (!this.goalManager.hasActiveGoal(id) && ps === 'idle') {
+      // Volition: NPC without high-priority goal (>4) + cooldown expired
+      // Low-priority goals (schedule=3, night_walk=2) don't block volition
+      if (!this.goalManager.hasActiveGoalAbove(id, 4) && ps === 'idle') {
         const expires = this.decisionCooldowns.get(id) ?? 0;
         if (gm >= expires) {
           this.processingQueue.enqueue({ id: `vol-${id}-${gm}`, type: 'VOLITION', priority: 2, npcId: id, enqueuedAt: gm });
         }
       }
+    }
+
+    // Diagnostic: log queue activity every 60 game minutes
+    if (gm % 60 === 0 && this.processingQueue.length > 0) {
+      console.log(`  [Queue:diag] ${this.processingQueue.length} tasks pending at ${this.currentHour}`);
     }
 
     // ─── Priority 3: Conversations + Phase handlers ───
@@ -607,6 +626,24 @@ export class World {
   // ─── Task Handlers (called by ProcessingQueue) ───
 
   private async _handleTask(task: ProcessingTask): Promise<void> {
+    try {
+      await this._dispatchTask(task);
+    } catch (err) {
+      const npcName = task.npcId ? this.agents.get(task.npcId)?.profile.name : '';
+      console.error(`  [Queue:ERROR] ${task.type}${npcName ? ':' + npcName : ''} failed:`, err instanceof Error ? err.message : err);
+      // Reset processingState to prevent permanent freeze
+      if (task.npcId) {
+        const agent = this.agents.get(task.npcId);
+        if (agent) agent.state.processingState = 'idle' as any;
+      }
+      if (task.targetNpcId) {
+        const agent = this.agents.get(task.targetNpcId);
+        if (agent) agent.state.processingState = 'idle' as any;
+      }
+    }
+  }
+
+  private async _dispatchTask(task: ProcessingTask): Promise<void> {
     switch (task.type) {
       case 'DAY_ADVANCE':
         return this._handleDayAdvance();
@@ -660,6 +697,7 @@ export class World {
   }
 
   private async _handleBodyDiscovery(): Promise<void> {
+    console.log('  [Queue] _handleBodyDiscovery called');
     await this.checkBodyDiscovery();
   }
 
