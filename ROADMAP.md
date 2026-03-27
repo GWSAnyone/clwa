@@ -697,26 +697,19 @@ any → (player chat) → IN_PLAYER_CHAT → (closed) → previous
 - Queue empty → consumer спит, Master Clock разбудит при следующем enqueue
 - Conversation trigger: оба NPC переходят в IN_CONVERSATION **при enqueue**, не при execute
 
-##### Phase 3.4: Hot/Warm/Cold Agents (Medium, >20 NPC)
+##### Phase 3.4: Hot/Warm/Cold Agents — ОТЛОЖЕНО (нужно при >20 NPC)
 
-**Цель**: NPCs далеко от игрока обрабатываются реже.
-
-**Задачи**:
-- [ ] Proximity detection: player location → NPC distance в hops
-- [ ] Hot (0-1 hop): Master Clock проверяет каждую минуту — full processing
-- [ ] Warm (2 hops): проверка каждые 5 минут — goals execute, no volition LLM
-- [ ] Cold (3+ hops): проверка каждые 30 минут — mood decay, schedule movement only
-- [ ] Promotion: event near Cold NPC → promote to Hot
-- [ ] Demotion: no events + player ушёл → Hot → Warm → Cold (gradual, hysteresis)
+> Proximity-based processing frequency. Hot (0-1 hop) = full, Warm (2 hops) = goals only, Cold (3+) = decay only.
+> Не нужно для текущих 8 NPC. Реализовать при расширении мира.
 
 ##### Инварианты Clock-Driven Architecture
 
 1. `gameMinute` — **единственный** источник правды о времени
-2. Processing **никогда** не блокирует clock (async + tickInProgress)
+2. Processing **никогда** не блокирует clock (async + setTimeout(0) yield)
 3. Все cooldowns сравниваются с `gameMinute`, не с tickCount
 4. Single-threaded Bun = естественный mutex, нет race conditions
-5. `_needsProcessing()` / Master Clock checks — всегда O(N), микросекунды
-6. `tickCount` остаётся как processing counter (логирование), не для времени
+5. `_enqueueWork()` — O(N) checks каждую game minute, микросекунды
+6. `ProcessingQueue` — dedup, priority sort, async consumer
 
 **Визуальный эффект после всех фаз**:
 ```
