@@ -703,58 +703,59 @@ export class World {
         if (agent && isStatusAbsent(agent.state.status)) continue; // Detained/exiled/fled NPCs don't act
         const goalType = this.goalManager.getActiveGoal(id)?.type ?? 'unknown';
         this.callbacks.onLlmCall?.(`Goal: ${goalType}`, agent?.profile.name);
-        const action = await this.goalManager.processGoalTick(
-          id, this.agents, this.locations, interactionRunner,
-          async (crimeData: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => {
-            const crimeEvent: WorldEvent = {
-              id: crypto.randomUUID(),
-              type: crimeData.type as WorldEvent['type'],
-              subject: crimeData.subject,
-              object: crimeData.object,
-              location: crimeData.location,
-              gameDay: this.getCurrentDay(),
-              importance: crimeData.importance,
-              payload: { ...crimeData.payload, sourceEvent: 'goal_execution' },
-            };
-            this.eventStore.append(crimeEvent);
 
-            // Create crime scene for violent crimes
-            const sceneWitnesses = Array.from(this.agents.entries())
-              .filter(([id, a]) => id !== crimeData.object && a.state.alive && a.state.location === crimeData.location)
-              .map(([id]) => id);
-            const sceneType = getSceneTypeForEvent(crimeData.type);
-            if (sceneType) {
-              this.markCrimeScene(crimeData.location, sceneType, crimeData.subject, crimeData.object, sceneWitnesses, crimeData.type);
-            }
-            if (isDeathEvent(crimeData.type) && crimeData.object) {
-              this.callbacks.onMurder?.(crimeData.subject, crimeData.object,
-                crimeData.payload.suspectName as string, crimeData.payload.victimName as string);
-            }
+        // Goal step chaining: non-LLM steps execute instantly in sequence.
+        // Loop until we hit a blocking step (transit, LLM) or goal completes.
+        const crimeHandler = async (crimeData: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => {
+          const crimeEvent: WorldEvent = {
+            id: crypto.randomUUID(),
+            type: crimeData.type as WorldEvent['type'],
+            subject: crimeData.subject,
+            object: crimeData.object,
+            location: crimeData.location,
+            gameDay: this.getCurrentDay(),
+            importance: crimeData.importance,
+            payload: { ...crimeData.payload, sourceEvent: 'goal_execution' },
+          };
+          this.eventStore.append(crimeEvent);
+          const sceneWitnesses = Array.from(this.agents.entries())
+            .filter(([wid, a]) => wid !== crimeData.object && a.state.alive && a.state.location === crimeData.location)
+            .map(([wid]) => wid);
+          const sceneType = getSceneTypeForEvent(crimeData.type);
+          if (sceneType) {
+            this.markCrimeScene(crimeData.location, sceneType, crimeData.subject, crimeData.object, sceneWitnesses, crimeData.type);
+          }
+          if (isDeathEvent(crimeData.type) && crimeData.object) {
+            this.callbacks.onMurder?.(crimeData.subject, crimeData.object,
+              crimeData.payload.suspectName as string, crimeData.payload.victimName as string);
+          }
+          const elCtx: EvidenceContext = { event: crimeEvent, agents: this.agents, crimeScenes: this.crimeScenes };
+          this.evidence.generate(crimeEvent, elCtx);
+          const results = await this.processCascade(crimeEvent);
+          await this.handleEventForGoals(crimeEvent);
+          for (const r of results) {
+            await this.handleEventForGoals(r.event);
+          }
+        };
 
-            // Generate structured evidence at the scene
-            const elCtx: EvidenceContext = { event: crimeEvent, agents: this.agents, crimeScenes: this.crimeScenes };
-            this.evidence.generate(crimeEvent, elCtx);
+        let chainCount = 0;
+        const MAX_CHAIN = 10; // safety limit
+        let lastAction: GoalActionResult | null = null;
 
-            // Process through CE for cascading consequences
-            const results = await this.processCascade(crimeEvent);
-            await this.handleEventForGoals(crimeEvent);
-            for (const r of results) {
-              await this.handleEventForGoals(r.event);
-            }
-          },
-          this.crimeScenes,
-          this.evidence,
-        );
-        if (action) {
+        do {
+          const action = await this.goalManager.processGoalTick(
+            id, this.agents, this.locations, interactionRunner,
+            crimeHandler, this.crimeScenes, this.evidence,
+          );
+
+          if (!action) break; // null = waiting (transit in progress)
+          lastAction = action;
           goalActions.push(action);
           this.callbacks.onGoalAction?.(action);
 
-          // Clear schedule tracking when routine goal completes
           if (action.goalCompleted && action.isRoutine) {
             this.scheduleManager?.clearScheduleGoal(action.ownerId);
           }
-
-          // Goal completion mood feedback — sense of accomplishment or catharsis
           if (action.goalCompleted && !action.isRoutine) {
             const owner = this.agents.get(action.ownerId);
             if (owner?.state.alive) {
@@ -762,9 +763,7 @@ export class World {
               owner.state.mood = Math.min(1, owner.state.mood + shift);
             }
           }
-
           if (action.movement) {
-            // Finalize transit timing for NPC that just started move_to
             const movingAgent = this.agents.get(action.ownerId);
             if (movingAgent?.state.inTransit && !movingAgent.state.transitStartMinute) {
               const hops = movingAgent.state.transitPath?.length ?? 1;
@@ -772,10 +771,16 @@ export class World {
               movingAgent.state.transitStartMinute = this._gameMinute;
               movingAgent.state.transitDuration = hops * minutesPerHop;
             }
-            // Stream immediately per-NPC — no batch
             this.callbacks.onMovement?.([action.movement]);
           }
-        }
+
+          // Stop chaining if: goal complete, transit started, or LLM step (interact)
+          if (action.goalCompleted) break;
+          if (agent?.state.inTransit) break;
+          if (action.action === 'interact' || action.action === 'interact_present') break;
+
+          chainCount++;
+        } while (chainCount < MAX_CHAIN && this.goalManager.hasActiveGoal(id));
       }
     }
 
