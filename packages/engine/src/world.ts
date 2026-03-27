@@ -442,6 +442,8 @@ export class World {
         const to = agent.state.transitTo!;
         agent.state.location = to;
         this._clearTransit(agent);
+        // Reset processing state on arrival — unblock _enqueueWork checks
+        agent.state.processingState = this.goalManager.hasActiveGoal(id) ? 'executing_goal' : 'idle';
         console.log(`  [Transit] ${agent.profile.name} arrived at ${to}`);
 
         // Broadcast arrival as movement
