@@ -139,8 +139,6 @@ export class World {
   readonly crimeScenes: Map<string, CrimeScene[]> = new Map();
   /** Player's investigation journal */
   readonly journal: PlayerJournal = new PlayerJournal();
-  /** Prevent concurrent tick execution */
-  private tickInProgress = false;
   /** Cached reference to the player Agent (resolved once, updated if agents change) */
   private _playerAgent: Agent | null = null;
   /** Topic engine for NPC-NPC conversations */
@@ -849,423 +847,33 @@ export class World {
     }
   }
 
-  /** Run a single world tick (legacy/debug — called by POST /api/tick) */
+  /** Debug: force one processing cycle. Enqueues work and waits for queue to drain. */
   async tick(): Promise<TickResult> {
-    if (this.tickInProgress) {
-      throw new Error('Tick already in progress — wait for it to complete');
-    }
-    this.tickInProgress = true;
-    try {
-      return await this._tick();
-    } finally {
-      this.tickInProgress = false;
-    }
-  }
-
-  private async _tick(): Promise<TickResult> {
-    // Complete pending async impact from previous tick before starting new LLM work
-    if (this._pendingImpact) {
-      await this._pendingImpact;
-      this._pendingImpact = null;
-    }
-
-    this.tickCount++;
-    const minuteOfDay = this.minuteOfDay;
-    const goalActions: GoalActionResult[] = [];
-
-    // Transit is now managed by Master Clock (_advanceTransits). No clearing here.
-
-    // 0. Day advance — Game Clock drives time, processing loop detects boundary
-    let dayAdvanced = false;
-    const currentDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
-    while (currentDay > this._lastKnownDay) {
-      const { newDay } = await this.advanceDay();
-      this._lastKnownDay++;
-      dayAdvanced = true;
-      console.log(`  [Time] New day: ${newDay}`);
-    }
-    const gameDay = this.getCurrentDay();
-
-    // Helper: is this a non-player active NPC available for tick processing?
-    const isNpc = (agent: Agent): boolean =>
-      !agent.profile.isPlayer && !agent.state.inPlayerChat && isActive(agent);
-
-    // 0.5. Check NPC schedules — skip player (player moves freely)
-    if (this.scheduleManager) {
-      // Update currentActivity on each NPC for prompt context
-      for (const [id, agent] of this.agents) {
-        if (!isNpc(agent)) continue;
-        const entry = this.scheduleManager.getActiveEntry(id, minuteOfDay);
-        agent.state.currentActivity = entry?.activity;
+    this._enqueueWork();
+    // Wait for queue to finish processing all enqueued tasks
+    await new Promise<void>((resolve) => {
+      if (!this.processingQueue.isProcessing && this.processingQueue.length === 0) {
+        resolve();
+        return;
       }
-
-      const npcLocations = new Map<string, string>();
-      for (const [id, agent] of this.agents) {
-        if (isNpc(agent)) {
-          npcLocations.set(id, agent.state.location);
+      const check = setInterval(() => {
+        if (!this.processingQueue.isProcessing && this.processingQueue.length === 0) {
+          clearInterval(check);
+          resolve();
         }
-      }
-
-      const scheduleGoals = this.scheduleManager.checkSchedules(
-        Array.from(this.agents.keys()).filter((id) => isNpc(this.agents.get(id)!)),
-        minuteOfDay,
-        npcLocations,
-        (id) => this.goalManager.hasActiveGoal(id),
-      );
-
-      for (const goal of scheduleGoals) {
-        goal.createdAtMinute = this._gameMinute;
-        this.goalManager.addGoal(goal);
-      }
-    }
-
-    // 0.6. Check for body discoveries BEFORE goals execute (NPC is still at location)
-    await this.checkBodyDiscovery();
-
-    // 0.7. Night walks — depressed NPCs may wander instead of sleeping (skip player)
-    if (getTimePeriod(minuteOfDay) === 'night') {
-      for (const [id, agent] of this.agents) {
-        if (!isNpc(agent)) continue;
-        if (this.goalManager.hasActiveGoal(id)) continue;
-        // mood < -0.3 → chance of night walk proportional to distress
-        if (agent.state.mood < -0.3) {
-          const walkChance = Math.min(0.1, Math.abs(agent.state.mood) * 0.08);
-          if (Math.random() < walkChance) {
-            // Pick a random public location to wander to
-            const publicLocations = Array.from(this.locations.entries())
-              .filter(([, loc]) => loc.isPublic && loc.id !== agent.state.location);
-            if (publicLocations.length > 0) {
-              const [targetId] = publicLocations[Math.floor(Math.random() * publicLocations.length)];
-              this.goalManager.addGoal({
-                id: crypto.randomUUID(),
-                type: 'night_walk',
-                ownerId: id,
-                priority: 2, // lower than schedule (3), much lower than events
-                state: 'pending',
-                steps: [
-                  { action: 'move_to', location: targetId },
-                  { action: 'wait', ticks: 2 },
-                  // Return home if they have one
-                  ...(this.npcHomes.has(id)
-                    ? [{ action: 'move_to' as const, location: this.npcHomes.get(id)! }]
-                    : []),
-                ],
-                currentStep: 0,
-                data: { reason: 'restless mind' },
-                createdAtMinute: this._gameMinute,
-              });
-            }
-          }
-        }
-      }
-    }
-
-    // 0.85. Affordance Layer — evaluate NPC volition
-    const volitionCtx: AffordanceContext = {
-      agents: this.agents,
-      locations: this.locations,
-      npcHomes: this.npcHomes,
-      period: this.currentPeriod as AffordanceContext['period'],
-      gameDay,
-      gameMinute: this._gameMinute,
-      playerLocation: this.playerLocation ?? undefined,
-      hasActiveGoal: (id) => this.goalManager.hasActiveGoal(id),
-      hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
-      cooldowns: this.affordanceCooldowns,
-      decisionCooldowns: this.decisionCooldowns,
-      affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
-      decisionCooldownMinutes: this.config.decisionCooldownMinutes,
-      isArrestTarget: (npcId) => this.goalManager.isTargetOfGoalType(npcId, 'arrest'),
-    };
-    const volitionGoals = await evaluateAllVolition(volitionCtx, this.callbacks.onLlmCall, this.callbacks.onDecision);
-    for (const goal of volitionGoals) {
-      this.goalManager.addGoal(goal);
-    }
-
-    // 1. Process goal-driven actions (highest priority)
-    const interactionRunner = createInteractionRunner(this.eventStore, {
-      onLine: this.callbacks.onLine,
-      locations: this.locations,
-      onExtraEvent: async (event) => {
-        const results = await this.processCascade(event);
-        await this.handleEventForGoals(event);
-        for (const r of results) {
-          await this.handleEventForGoals(r.event);
-        }
-      },
+      }, 50);
     });
-
-    const npcsWithGoals = new Set<string>();
-    for (const [id] of this.agents) {
-      if (this.goalManager.hasActiveGoal(id)) {
-        npcsWithGoals.add(id);
-        const agent = this.agents.get(id);
-        if (agent?.profile.isPlayer) continue; // Player goals not executed by tick
-        if (agent?.state.inPlayerChat) continue; // Frozen in conversation with player
-        if (agent && isStatusAbsent(agent.state.status)) continue; // Detained/exiled/fled NPCs don't act
-        const goalType = this.goalManager.getActiveGoal(id)?.type ?? 'unknown';
-        this.callbacks.onLlmCall?.(`Goal: ${goalType}`, agent?.profile.name);
-
-        // Goal step chaining: non-LLM steps execute instantly in sequence.
-        // Loop until we hit a blocking step (transit, LLM) or goal completes.
-        const crimeHandler = async (crimeData: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => {
-          const crimeEvent: WorldEvent = {
-            id: crypto.randomUUID(),
-            type: crimeData.type as WorldEvent['type'],
-            subject: crimeData.subject,
-            object: crimeData.object,
-            location: crimeData.location,
-            gameDay: this.getCurrentDay(),
-            importance: crimeData.importance,
-            payload: { ...crimeData.payload, sourceEvent: 'goal_execution' },
-          };
-          this.eventStore.append(crimeEvent);
-          const sceneWitnesses = Array.from(this.agents.entries())
-            .filter(([wid, a]) => wid !== crimeData.object && a.state.alive && a.state.location === crimeData.location)
-            .map(([wid]) => wid);
-          const sceneType = getSceneTypeForEvent(crimeData.type);
-          if (sceneType) {
-            this.markCrimeScene(crimeData.location, sceneType, crimeData.subject, crimeData.object, sceneWitnesses, crimeData.type);
-          }
-          if (isDeathEvent(crimeData.type) && crimeData.object) {
-            this.callbacks.onMurder?.(crimeData.subject, crimeData.object,
-              crimeData.payload.suspectName as string, crimeData.payload.victimName as string);
-          }
-          const elCtx: EvidenceContext = { event: crimeEvent, agents: this.agents, crimeScenes: this.crimeScenes };
-          this.evidence.generate(crimeEvent, elCtx);
-          const results = await this.processCascade(crimeEvent);
-          await this.handleEventForGoals(crimeEvent);
-          for (const r of results) {
-            await this.handleEventForGoals(r.event);
-          }
-        };
-
-        let chainCount = 0;
-        const MAX_CHAIN = 10; // safety limit
-        let lastAction: GoalActionResult | null = null;
-
-        do {
-          const action = await this.goalManager.processGoalTick(
-            id, this.agents, this.locations, interactionRunner,
-            crimeHandler, this.crimeScenes, this.evidence,
-          );
-
-          if (!action) break; // null = waiting (transit in progress)
-          lastAction = action;
-          goalActions.push(action);
-          this.callbacks.onGoalAction?.(action);
-
-          if (action.goalCompleted && action.isRoutine) {
-            this.scheduleManager?.clearScheduleGoal(action.ownerId);
-          }
-          if (action.goalCompleted && !action.isRoutine) {
-            const owner = this.agents.get(action.ownerId);
-            if (owner?.state.alive) {
-              const shift = getGoalMoodBoost(action.goalType);
-              owner.state.mood = Math.min(1, owner.state.mood + shift);
-            }
-          }
-          if (action.movement) {
-            const movingAgent = this.agents.get(action.ownerId);
-            if (movingAgent?.state.inTransit && !movingAgent.state.transitStartMinute) {
-              const hops = movingAgent.state.transitPath?.length ?? 1;
-              const minutesPerHop = this.config.minutesPerHop ?? 30;
-              movingAgent.state.transitStartMinute = this._gameMinute;
-              movingAgent.state.transitDuration = hops * minutesPerHop;
-            }
-            this.callbacks.onMovement?.([action.movement]);
-          }
-
-          // Stop chaining if: goal complete, transit started, or LLM step (interact)
-          if (action.goalCompleted) break;
-          if (agent?.state.inTransit) break;
-          if (action.action === 'interact' || action.action === 'interact_present') break;
-
-          chainCount++;
-        } while (chainCount < MAX_CHAIN && this.goalManager.hasActiveGoal(id));
-      }
-    }
-
-    // 2. Random movement (only for mobile NPCs WITHOUT active goals)
-    if (this.locations.size > 0) {
-      const randomMovements = processMovement(
-        this.agents, this.locations, this.movementConfig, npcsWithGoals,
-        this._gameMinute, this.config.minutesPerHop,
-      );
-      for (const m of randomMovements) {
-        // Stream per-NPC — no batch
-        this.callbacks.onMovement?.([m]);
-      }
-    }
-
-    // Movements already broadcast per-NPC above (goal + random).
-
-    // 2.5-2.7: Module-registered tick phase handlers (crime scene awareness, theft discovery, NPC approach)
-    const approachEvents: import('./world-types').ApproachEvent[] = [];
-    const tickCtx = {
-      agents: this.agents,
-      eventStore: this.eventStore,
-      currentDay: this.getCurrentDay(),
-      gameMinute: this._gameMinute,
-      processEvent: async (event: WorldEvent) => {
-        const results = await this.processCascade(event);
-        await this.handleEventForGoals(event);
-        for (const r of results) {
-          await this.handleEventForGoals(r.event);
-        }
-      },
-      discoveries: this.bodyDiscoveries,
-      approaches: approachEvents,
-      crimeScenes: this.crimeScenes,
-      locations: this.locations,
-    };
-    for (const handler of getTickPhaseHandlers()) {
-      await handler(tickCtx);
-    }
-    // Keep only highest-urgency approach per tick
-    if (approachEvents.length > 1) {
-      approachEvents.sort((a, b) => b.urgency - a.urgency);
-      approachEvents.length = 1;
-    }
-
-    // 3. Casual conversations (skip NPCs with active goals)
-    let conversation: ConversationResult | null = null;
-    const pair = await this.scheduler.findPair(this.agents, this._gameMinute, npcsWithGoals);
-
-    if (pair) {
-      const initiator = this.agents.get(pair.a)!;
-      const responder = this.agents.get(pair.b)!;
-
-      // Select topic using TopicEngine
-      const period = getTimePeriod(minuteOfDay);
-      const topic = this.topicEngine.selectTopic(initiator, responder, gameDay, period, initiator.state.location, this.playerAgent ?? undefined);
-
-      this.callbacks.onLlmCall?.('Casual conversation', `${initiator.profile.name} ↔ ${responder.profile.name} [${topic.subject}]`);
-      conversation = await runConversation(
-        initiator,
-        responder,
-        this.eventStore,
-        this.config,
-        topic,
-        { onLine: this.callbacks.onLine, agents: this.agents, locations: this.locations },
-      );
-      conversation.topic = topic.subject;
-      conversation.topicGroup = getTopicGroup(topic.category);
-
-      this.callbacks.onConversation?.(conversation);
-
-      // Belief transfer: if topic carried structured belief data, transfer bidirectionally
-      if (topic.beliefTransfer) {
-        const bt = topic.beliefTransfer;
-        // Transfer initiator → responder (primary: initiator raised the topic)
-        const initBelief = initiator.state.beliefs?.getAllBeliefs().find(
-          b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object),
-        );
-        if (initBelief && responder.state.beliefs) {
-          const conf = Math.max(0.25, initBelief.confidence * bt.confidenceMultiplier);
-          responder.state.beliefs.addBelief({
-            id: crypto.randomUUID(),
-            eventType: bt.eventType,
-            subject: initBelief.subject,
-            object: initBelief.object,
-            location: initBelief.location,
-            confidence: conf,
-            source: 'rumor',
-            sourceNpcId: initiator.profile.id,
-            gameDay,
-            lastUpdated: gameDay,
-          });
-          console.log(`  [BeliefTransfer] ${initiator.profile.name} → ${responder.profile.name}: ${bt.eventType} (conf ${conf.toFixed(2)})`);
-        }
-        // Transfer responder → initiator (secondary: responder may share related knowledge)
-        const respBelief = responder.state.beliefs?.getAllBeliefs().find(
-          b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object)
-            && b.subject && !initiator.state.beliefs?.getAllBeliefs().some(
-              ib => ib.eventType === b.eventType && ib.object === b.object && ib.subject === b.subject,
-            ),
-        );
-        if (respBelief && initiator.state.beliefs) {
-          const conf = Math.max(0.25, respBelief.confidence * bt.confidenceMultiplier * 0.8);
-          initiator.state.beliefs.addBelief({
-            id: crypto.randomUUID(),
-            eventType: bt.eventType,
-            subject: respBelief.subject,
-            object: respBelief.object,
-            location: respBelief.location,
-            confidence: conf,
-            source: 'rumor',
-            sourceNpcId: responder.profile.id,
-            gameDay,
-            lastUpdated: gameDay,
-          });
-          console.log(`  [BeliefTransfer] ${responder.profile.name} → ${initiator.profile.name}: ${bt.eventType} (conf ${conf.toFixed(2)})`);
-        }
-      }
-
-      // Analyze conversation impact ASYNC — don't block tick.
-      // Conversation lines already streamed via WS. Impact (mood/sentiment/memory)
-      // will arrive as WS events when LLM completes — typically 3-5s after conversation.
-      // This saves 5-10s per tick, making the world "flow" faster.
-      const listeners = [pair.a, pair.b];
-      for (const [id, agent] of this.agents) {
-        if (id === pair.a || id === pair.b) continue;
-        if (!isPresent(agent)) continue;
-        if (agent.state.location === conversation.location) {
-          listeners.push(id);
-        }
-      }
-      // Capture conversation state NOW (before async work might see changed mood)
-      const convCopy = { ...conversation };
-      const topicCopy = { ...topic };
-      const initMood = initiator.state.mood;
-      const respMood = responder.state.mood;
-      const initRef = initiator, respRef = responder;
-
-      // Deferred impact analysis — doesn't block current tick.
-      // Awaited at start of NEXT tick (no semaphore conflict) and on SIGINT save.
-      this._pendingImpact = (async () => {
-        try {
-          this.callbacks.onLlmCall?.('Sentiment analysis', `${initRef.profile.name} ↔ ${respRef.profile.name}`);
-          const impactResult = await this.analyzeConversationImpact(convCopy, listeners);
-          const finalImportance = impactResult.importance;
-          const responderSaid = convCopy.lines.filter(l => l.speaker === respRef.profile.id).map(l => l.text).join(' ');
-          const initiatorSaid = convCopy.lines.filter(l => l.speaker === initRef.profile.id).map(l => l.text).join(' ');
-          await initRef.observe(
-            buildMemoryText(respRef.profile.name, topicCopy.subject, responderSaid, respMood),
-            finalImportance,
-          );
-          await respRef.observe(
-            buildMemoryText(initRef.profile.name, topicCopy.subject, initiatorSaid, initMood),
-            finalImportance,
-          );
-          if (finalImportance !== convCopy.importance) {
-            console.log(`  [Importance] Topic: ${convCopy.importance} → LLM: ${finalImportance}`);
-          }
-          await this.processOverhear(convCopy, finalImportance, topicCopy);
-        } catch (err) {
-          console.error('  [Impact] Deferred impact analysis failed:', err);
-        }
-      })();
-    }
-
-    const timeInfo = this.scheduleManager?.getTimeInfo(minuteOfDay);
-    const result: TickResult = {
+    return {
       tickNumber: this.tickCount,
       gameMinute: this._gameMinute,
-      gameDay,
-      time: timeInfo,
-      dayAdvanced: dayAdvanced || undefined,
-      conversation,
-      // movements broadcast per-NPC during tick, not batched in result
-      goalActions: goalActions.length > 0 ? goalActions : undefined,
-      idleReason: !conversation && goalActions.length === 0
-        ? 'No suitable conversation pair found'
-        : undefined,
-      approaches: approachEvents.length > 0 ? approachEvents : undefined,
+      gameDay: this.getCurrentDay(),
+      time: this.scheduleManager?.getTimeInfo(this.minuteOfDay),
+      conversation: null,
     };
-    this.callbacks.onTick?.(result);
-    return result;
   }
+
+  // _tick() removed — all processing now via ProcessingQueue task handlers.
+  // Master Clock enqueues tasks, queue processes them one at a time.
 
   /**
    * NPCs at the same location as a conversation may overhear fragments.
@@ -1736,15 +1344,6 @@ export class World {
     return { killEvent, results };
   }
 
-  /** @deprecated Use startMasterClock(). Kept for API compat. */
-  startAutoTick(_intervalMs?: number): void {
-    this.startMasterClock();
-  }
-
-  /** @deprecated Use stopMasterClock(). Kept for API compat. */
-  stopAutoTick(): void {
-    this.stopMasterClock();
-  }
 
   /** Whether the Master Clock is running (time flowing + processing triggered) */
   get isAutoTicking(): boolean {
