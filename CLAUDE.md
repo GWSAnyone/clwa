@@ -128,6 +128,10 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 52. **ILEffect tracking**: `ILEffectContext.effects: ILEffect[]` — mutable array populated by `applyDialogueMeaning`. Discriminated union with 8 types (belief_created, belief_rejected, mood_change, relationship_change, goal_created, goal_rejected, event_stored, memory_stored). Broadcast via WS `il_result` for client rendering.
 53. **Secret event type registry**: `registerSecretEventType()`/`getSecretEventType()` — module defines what event type represents discovered secrets. Engine uses registered type in conversation impact analysis. No hardcoded `'PERSONAL_SECRET'` in engine.
 54. **IL action resolution**: Player `requestedAction.action` (free text from LLM) resolved to affordance IDs via `getAffordanceIdsForVerb()` from existing ACTION_VERB_MAP. Falls back to direct match. Same registry used by volition DO/WHY parser.
+55. **ProcessingQueue**: 7 task types, priority sort, dedup (per-NPC + conversation pair + global), async consumer with setTimeout(0) yield between tasks. No batch `_tick()` — all processing through queue.
+56. **NpcProcessingState**: explicit 6-state machine on AgentState. `_handleConversation` uses try/finally to guarantee state reset on exception. processingState is transient (not persisted).
+57. **Cooldown persistence**: affordanceCooldowns (Map<string, Map<string, number>>) and decisionCooldowns (Map<string, number>) serialized in toJSON/loadState. Old saves without cooldowns = natural reset.
+58. **CONVERSATION_IMPACT**: impact analysis runs as separate queue task (not fire-and-forget). Sequential with other LLM tasks — no race condition on semaphore.
 
 ## Clock-Driven Architecture
 
@@ -135,12 +139,12 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 - **MINUTES_PER_DAY = 1440**. Periods: dawn(300-420), morning(420-720), afternoon(720-1020), evening(1020-1260), night(1260-1440+0-300).
 - **`gameMinute`**: абсолютный (растёт бесконечно, не оборачивается). `minuteOfDay = gameMinute % 1440`.
 - **Speed**: 0=pause, 1x=1min/sec, 2x=2min/sec, 3x=3min/sec. `POST /api/speed`, `POST /api/auto` toggle.
-- **ProcessingQueue**: priority tasks (DAY_ADVANCE P0, BODY_DISCOVERY P1, VOLITION/GOAL_STEP P2, CONVERSATION P3). Dedup per NPC. Async consumer with setTimeout(0) yield. No batch `_tick()`.
+- **ProcessingQueue**: 7 task types (DAY_ADVANCE P0, BODY_DISCOVERY P1, VOLITION/GOAL_STEP P2, CONVERSATION/CONVERSATION_IMPACT/PHASE_HANDLERS P3). Dedup per NPC. Async consumer with setTimeout(0) yield. No batch `_tick()`.
 - **NPC State Machine**: `processingState` on AgentState: idle → awaiting_decision → executing_goal → in_transit → in_conversation → in_player_chat.
-- **Goal Step Chaining**: non-LLM steps (announce, examine_scene) chain instantly. Loop until transit/LLM/MAX_CHAIN=10.
-- **Cooldowns** (game minutes): affordance=180 (3h), decision=60 (1h), pair=240 (4h). Configurable via WorldConfig.
+- **Goal Step Chaining**: non-LLM steps (announce, examine_scene) chain instantly. Loop until transit/LLM/wait/MAX_CHAIN=10.
+- **Cooldowns** (game minutes): affordance=180 (3h), decision=60 (1h), pair=240 (4h). Configurable via WorldConfig. Persisted in save.json.
 - **Transit**: NPC перемещаются с `duration = hops × minutesPerHop` (default 30). Master Clock advances `transitProgress`. Arrival triggers co-location checks.
-- **Conversation flow**: CONVERSATION task → findPair → runConversation → beliefTransfer → deferred impact.
+- **Conversation flow**: CONVERSATION task → findPair → runConversation → beliefTransfer → CONVERSATION_IMPACT task (sequential, no race). try/finally on processingState.
 
 ## Current Status
 

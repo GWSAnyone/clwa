@@ -696,6 +696,7 @@ Master Clock каждую game minute вызывает `_enqueueWork()`:
 | 2 | `VOLITION(npcId)` | NPC idle + нет goal + decision cooldown expired | **Да** (1 call) |
 | 2 | `GOAL_STEP(npcId)` | NPC has active goal + not in transit | **Может** (interact) |
 | 3 | `CONVERSATION` | Co-located idle pair + pair cooldown expired | **Да** (2-6 calls) |
+| 3 | `CONVERSATION_IMPACT` | После CONVERSATION — sentiment analysis + overhear | **Да** (1 call) |
 | 3 | `PHASE_HANDLERS` | Каждый цикл (theft discovery, approach, crime scene) | Нет |
 
 **Dedup**: одна задача на NPC per type. Conversation dedup по паре (A,B) = (B,A). Global tasks (DAY_ADVANCE) — max 1 в очереди.
@@ -713,7 +714,9 @@ any → (player chat) → in_player_chat → (closed) → previous
 
 Explicit state machine заменяет ad-hoc проверки (`hasActiveGoal`, `inTransit`, `inPlayerChat`). Каждый task handler устанавливает и очищает `processingState`.
 
-**Goal Step Chaining**: non-LLM шаги (announce, examine_scene, module steps) цепочатся мгновенно в одном task. Цикл до блокирующего шага (transit, interact) или MAX_CHAIN=10.
+**Goal Step Chaining**: non-LLM шаги (announce, examine_scene, module steps) цепочатся мгновенно в одном task. Цикл до блокирующего шага (transit, interact, wait) или MAX_CHAIN=10.
+
+**processingState safety**: `_handleConversation` обёрнут в `try/finally` — exception в LLM call не замораживает NPC навсегда. processingState = 'idle' гарантирован.
 
 **Поведение при высокой скорости** (3x + LLM 10с): Master Clock тикает 3 раза/сек, transit двигается, HUD обновляется. Queue может не успевать за новыми задачами — NPC "думают" дольше. Это естественно: LLM decision = долгие размышления персонажа.
 
@@ -731,6 +734,8 @@ Explicit state machine заменяет ad-hoc проверки (`hasActiveGoal`
 Формула: `expiresAt = gameMinute + cooldownMinutes`. Проверка: `gameMinute >= expiresAt`.
 
 Cooldowns растут вместе с `gameMinute` — нет проблем с переходом через полночь.
+
+**Persistence**: `affordanceCooldowns` и `decisionCooldowns` сериализуются в save.json (Map → JSON object). При загрузке — обратная конвертация. Старые save без cooldowns = всё сброшено (естественное восстановление через 1-2 цикла).
 
 #### Transit System (Continuous Movement)
 
