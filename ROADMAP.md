@@ -592,10 +592,13 @@ training/dataset/
 - [x] **Level 1**: tick-when-ready, убрана 8с client пауза ✅ (v0.9.8)
 - [x] **Level 2**: Per-NPC movement broadcast, async _pendingImpact ✅ (v0.9.8)
 - [x] **Phase 3.1**: gameMinute, MINUTES_PER_DAY=1440, все cooldowns в минутах, getTimePeriod по минутам, speed buttons, WS time_update, save/restore ✅ (v0.9.9)
+- [x] **Phase 3.1b**: Unified Master Clock — один таймер, `_enqueueWork()` вместо `_needsProcessing()` ✅ (v0.9.9)
+- [x] **Phase 3.2**: Continuous Movement — transit system (duration = hops × minutesPerHop, Master Clock advances) ✅ (v0.9.9)
+- [x] **Phase 3.3**: Processing Queue + NPC State Machine + Goal Step Chaining. `_tick()` removed. ✅ (v0.9.9)
 
-##### Phase 3.1b: Unified Master Clock (Small — следующий шаг)
+##### Phase 3.1b: Unified Master Clock ✅
 
-**Цель**: один таймер вместо двух. `_tick()` вызывается Master Clock когда есть работа, а не по своему таймеру.
+**Цель**: один таймер вместо двух. Processing triggered by Master Clock when needed.
 
 **Архитектура**:
 ```
@@ -635,7 +638,7 @@ Master Clock (единственный setInterval, 1000/speed ms)
 - `[Tick]` → debug: один `_tick()` вручную (работает на паузе)
 - `[Day]` → принудительный advanceDay
 
-##### Phase 3.2: Continuous Movement (Medium)
+##### Phase 3.2: Continuous Movement ✅
 
 **Цель**: NPC ходит между локациями плавно, не телепортируется.
 
@@ -655,7 +658,7 @@ Master Clock (единственный setInterval, 1000/speed ms)
 - Save/restore: transit state persisted
 - Goal preemption: urgent goal → отменить текущий transit? Или дождаться arrival?
 
-##### Phase 3.3: Processing Queue (Large)
+##### Phase 3.3: Processing Queue ✅
 
 **Цель**: `_tick()` разбирается на задачи. Non-LLM шаги цепочатся мгновенно. Goal 4 шага ≠ 4 тика.
 

@@ -635,7 +635,7 @@ System prompt агента собирается динамически:
 >
 > **Принцип**: один Master Clock — единственный источник времени. Processing запускается когда нужен, не по фиксированному таймеру. Время течёт плавно (07:00 → 07:01 → 07:02), NPC "думают" пока мир движется.
 
-#### Master Clock
+#### Master Clock + Processing Queue
 
 ```
 Master Clock (единственный setInterval, 1000/speed ms)
@@ -644,12 +644,19 @@ Master Clock (единственный setInterval, 1000/speed ms)
 ├── _advanceTransits()                        — двигает NPC в пути
 ├── WS time_update (каждые 5 game min)        — HUD, day/night
 │
-└── _needsProcessing()? && !tickInProgress?
-    └── _tick() — batch processing (volition, conversations, goals)
-        └── .finally → проверяет _needsProcessing() снова (chain)
+└── _enqueueWork()
+    ├── Instant sync: schedule, night walks, random movement
+    └── Enqueue async → ProcessingQueue
+                        ├── P0: DAY_ADVANCE
+                        ├── P1: BODY_DISCOVERY
+                        ├── P2: VOLITION(npcId), GOAL_STEP(npcId)
+                        └── P3: CONVERSATION, PHASE_HANDLERS
+                        ↓
+                        Async consumer: one task at a time
+                        setTimeout(0) между задачами → clock не блокируется
 ```
 
-**Единственный таймер** — `setInterval` с интервалом `1000 / gameSpeed` ms. Всё остальное (processing, transit, day advance) — следствие этого одного тика.
+**Единственный таймер** — `setInterval` с интервалом `1000 / gameSpeed` ms. Каждую game minute: advance time → advance transits → enqueue work. ProcessingQueue — async consumer, обрабатывает задачи по одной с yield между ними.
 
 **Speed control**: `gameSpeed` = 1 (1 мин/сек), 2 (2 мин/сек), 3 (3 мин/сек), 0 (пауза). `setGameSpeed()` останавливает и перезапускает таймер с новым интервалом.
 
@@ -671,29 +678,44 @@ Master Clock (единственный setInterval, 1000/speed ms)
 | evening | 1020-1260 | 17:00-21:00 |
 | night | 1260-1440+0-300 | 21:00-05:00 |
 
-#### Обработка (`_needsProcessing()` → `_tick()`)
+#### Processing Queue
 
-Master Clock каждую game minute проверяет `_needsProcessing()` — дешёвые O(N) проверки:
+Master Clock каждую game minute вызывает `_enqueueWork()`:
 
-| Проверка | Условие |
-|---|---|
-| Day advance | `floor(gameMinute/1440) > lastKnownDay` |
-| NPC volition | NPC idle + нет active goal + `gameMinute >= decisionCooldownExpiry` |
-| Conversation | Пара idle + co-located + `gameMinute >= pairCooldownExpiry` |
-| Body discovery | Alive NPC + dead NPC на одной локации, не обнаружен |
+**Instant sync checks** (inline в Master Clock, без очереди):
+- Schedule: обновить `currentActivity`, создать schedule goals если NPC не на месте
+- Night walks: mood < -0.3 + chance → создать night_walk goal
+- Random movement: mobile NPC + chance → startTransit к соседней локации
 
-Если хотя бы одна проверка = true и `!tickInProgress` → запуск `_tick()`. После завершения `_tick()` → сразу re-check через `setTimeout(0)` (chain processing).
+**Async tasks** (enqueue в ProcessingQueue):
 
-**`_tick()` batch processing** (внутренности не менялись):
+| Приоритет | Тип | Условие | LLM |
+|---|---|---|---|
+| 0 | `DAY_ADVANCE` | `floor(gameMinute/1440) > lastKnownDay` | Нет |
+| 1 | `BODY_DISCOVERY` | Alive + dead NPC co-located, не обнаружен | Нет |
+| 2 | `VOLITION(npcId)` | NPC idle + нет goal + decision cooldown expired | **Да** (1 call) |
+| 2 | `GOAL_STEP(npcId)` | NPC has active goal + not in transit | **Может** (interact) |
+| 3 | `CONVERSATION` | Co-located idle pair + pair cooldown expired | **Да** (2-6 calls) |
+| 3 | `PHASE_HANDLERS` | Каждый цикл (theft discovery, approach, crime scene) | Нет |
+
+**Dedup**: одна задача на NPC per type. Conversation dedup по паре (A,B) = (B,A). Global tasks (DAY_ADVANCE) — max 1 в очереди.
+
+**Consumer**: берёт задачу → `_handleTask()` → `setTimeout(0)` → следующая. Между задачами event loop свободен — Master Clock тикает, transit двигается, WS обновляется.
+
+**NPC Processing State** (`processingState` на AgentState):
 ```
-day advance → schedule goals → body discovery → night walks →
-AL proactive volition (LLM) → goal execution (LLM) →
-random movement → tick phase handlers → conversations (LLM)
+idle → (cooldown expired) → awaiting_decision → (LLM done) → executing_goal | idle
+executing_goal → (step complete) → executing_goal | idle
+executing_goal → (move_to) → in_transit → (arrival) → executing_goal
+idle + peer idle → (pair cooldown) → in_conversation → (done) → idle
+any → (player chat) → in_player_chat → (closed) → previous
 ```
 
-**Mutex**: `tickInProgress` flag. Пока `_tick()` выполняется, Master Clock продолжает тикать (время идёт), но не запускает повторный `_tick()`.
+Explicit state machine заменяет ad-hoc проверки (`hasActiveGoal`, `inTransit`, `inPlayerChat`). Каждый task handler устанавливает и очищает `processingState`.
 
-**Поведение при высокой скорости** (3x + LLM 10с): clock тикает → 30 game minutes проходят за один `_tick()`. NPC "глубоко задумался". Естественное поведение — LLM decision = долгие размышления персонажа.
+**Goal Step Chaining**: non-LLM шаги (announce, examine_scene, module steps) цепочатся мгновенно в одном task. Цикл до блокирующего шага (transit, interact) или MAX_CHAIN=10.
+
+**Поведение при высокой скорости** (3x + LLM 10с): Master Clock тикает 3 раза/сек, transit двигается, HUD обновляется. Queue может не успевать за новыми задачами — NPC "думают" дольше. Это естественно: LLM decision = долгие размышления персонажа.
 
 #### Cooldowns (game minutes)
 
@@ -729,7 +751,7 @@ transitDuration: number;      // длительность в game minutes
 2. `findPath()` (BFS) → полный путь. Duration = `hops × minutesPerHop` (default 30 мин/hop)
 3. Master Clock каждую minute: `_advanceTransits()` → `progress = elapsed / duration`
 4. `progress >= 1` → arrival: `location = transitTo`, clear transit, broadcast movement
-5. `_needsProcessing()` детектирует новые co-locations → chain processing
+5. `_enqueueWork()` детектирует новые co-locations → enqueue CONVERSATION / BODY_DISCOVERY
 
 **Co-location**: NPC in transit **не** co-located. Conversations, body discovery, schedule checks — всё пропускает NPC с `inTransit=true`. Только после arrival NPC "присутствует" на локации.
 
@@ -767,8 +789,9 @@ gameMinute 481: _needsProcessing() → co-located с Mark → conversation trigg
 - **MINUTES_PER_DAY = 1440**. 5 периодов по минутным диапазонам (см. таблицу выше).
 - 39 записей расписания для 8 NPC. Schedule goals имеют priority 3.
 - `getActiveEntry(npcId, minuteOfDay)` → entry для текущего периода.
-- Day advance: `_tick()` детектирует `floor(gameMinute/1440) > lastKnownDay` → `while` loop для multi-day catch-up.
-- **Ночные прогулки**: mood < -0.3 → NPC бродит ночью (priority 2).
+- Runs as **instant sync check** in `_runInstantChecks()` (каждую game minute, no queue).
+- Day advance: `DAY_ADVANCE` task (priority 0) → `while` loop для multi-day catch-up.
+- **Ночные прогулки**: mood < -0.3 → NPC бродит ночью (priority 2). Instant check, no queue.
 
 #### Движение
 
@@ -778,7 +801,7 @@ gameMinute 481: _needsProcessing() → co-located с Mark → conversation trigg
 
 #### Body Discovery
 
-- `_needsProcessing()` проверяет co-location alive + dead → trigger `_tick()`
+- `_enqueueWork()` проверяет co-location alive + dead → enqueue `BODY_DISCOVERY` (priority 1)
 - BODY_DISCOVERED → discoverer получает memory + belief **напрямую**
 - Информационная асимметрия: обнаруживший **не знает** убийцу ("unknown killer")
 - Дедупликация через `bodyDiscoveries` Set

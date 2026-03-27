@@ -135,11 +135,13 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 - **MINUTES_PER_DAY = 1440**. Periods: dawn(300-420), morning(420-720), afternoon(720-1020), evening(1020-1260), night(1260-1440+0-300).
 - **`gameMinute`**: абсолютный (растёт бесконечно, не оборачивается). `minuteOfDay = gameMinute % 1440`.
 - **Speed**: 0=pause, 1x=1min/sec, 2x=2min/sec, 3x=3min/sec. `POST /api/speed`, `POST /api/auto` toggle.
-- **Processing**: `_needsProcessing()` O(N) checks каждую game minute → `_tick()` когда нужен. Не по таймеру.
+- **ProcessingQueue**: priority tasks (DAY_ADVANCE P0, BODY_DISCOVERY P1, VOLITION/GOAL_STEP P2, CONVERSATION P3). Dedup per NPC. Async consumer with setTimeout(0) yield. No batch `_tick()`.
+- **NPC State Machine**: `processingState` on AgentState: idle → awaiting_decision → executing_goal → in_transit → in_conversation → in_player_chat.
+- **Goal Step Chaining**: non-LLM steps (announce, examine_scene) chain instantly. Loop until transit/LLM/MAX_CHAIN=10.
 - **Cooldowns** (game minutes): affordance=180 (3h), decision=60 (1h), pair=240 (4h). Configurable via WorldConfig.
 - **Transit**: NPC перемещаются с `duration = hops × minutesPerHop` (default 30). Master Clock advances `transitProgress`. Arrival triggers co-location checks.
-- **Conversation flow**: runConversation → analyzeConversationImpact (deferred) → processOverhear.
+- **Conversation flow**: CONVERSATION task → findPair → runConversation → beliefTransfer → deferred impact.
 
 ## Current Status
 
-v0.9.9. **Clock-Driven Architecture**: Master Clock (single timer), `gameMinute` as sole time source, `_needsProcessing()` triggers processing on-demand, continuous movement (transit system with duration), speed control (0-3x), WS time_update every 5min. **IL overhaul**: dynamic JSON schema with enum constraints (buildILSchema), bilateral parity, ILEffect tracking (8 types) → WS il_result. **ILConfig + ConversationConfig**: all behavioral constants in WorldConfig. **Web UI**: Canvas2D game client, chat with persistent history, NPC Mind accordion, IL effect badges, toast notifications, crime scene markers, day/night overlay, speed buttons. **Previous**: 18/18 affordances, engine purity ZERO module content, PositionManager, 5 WS overlays.
+v0.9.9. **Clock-Driven Architecture**: Master Clock (single timer) → ProcessingQueue (priority tasks, dedup, async consumer). No batch `_tick()`. NPC state machine (6 states). Goal step chaining (non-LLM instant). Continuous movement (transit with duration, Master Clock advances). Speed control (0-3x), WS time_update every 5min. **IL overhaul**: dynamic JSON schema with enum constraints, bilateral parity, ILEffect tracking (8 types) → WS il_result. **ILConfig + ConversationConfig**: all behavioral constants in WorldConfig. **Web UI**: Canvas2D game client, chat with persistent history, NPC Mind accordion, IL effect badges, toast notifications, crime scene markers, day/night overlay, speed buttons. **Previous**: 18/18 affordances, engine purity ZERO module content, PositionManager, 5 WS overlays.
