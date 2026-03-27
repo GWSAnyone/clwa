@@ -274,10 +274,12 @@ export class World {
       cooldowns: this.affordanceCooldowns,
       affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
     };
+    console.log(`  [ReactiveEval] event=${event.type} subj=${event.subject} obj=${event.object}`);
     const reactiveGoals = evaluateReactiveVolition(
       event, reactiveCtx,
       (npcId) => this.goalManager.getGoals(npcId).filter(g => g.state !== 'completed' && g.state !== 'failed').map(g => g.type),
     );
+    if (reactiveGoals.length > 0) console.log(`  [ReactiveEval] → ${reactiveGoals.length} goals: ${reactiveGoals.map(g => `${g.ownerId}:${g.type}`).join(', ')}`);
     this.addReactiveGoalsFiltered(reactiveGoals);
 
     // Registry-based goal cleanup: modules declare which goals to complete per event type
@@ -536,9 +538,11 @@ export class World {
       }
     }
 
-    // Diagnostic: log queue activity every 60 game minutes
-    if (gm % 60 === 0 && this.processingQueue.length > 0) {
-      console.log(`  [Queue:diag] ${this.processingQueue.length} tasks pending at ${this.currentHour}`);
+    // Diagnostic: log queue activity every 30 game minutes
+    if (gm % 30 === 0) {
+      const ql = this.processingQueue.length;
+      const qp = this.processingQueue.isProcessing;
+      console.log(`  [Queue:diag] ${ql} pending, processing=${qp} at ${this.currentHour} (gm=${gm})`);
     }
 
     // ─── Priority 3: Conversations + Phase handlers ───
@@ -1222,30 +1226,38 @@ export class World {
         this.eventStore.append(discoveryEvent);
 
         // Module-registered handler processes discoverer's response (memory, mood, belief, grief)
-        const discoveryHandler = getDiscoveryHandler(bodyDiscoveryType!);
-        if (discoveryHandler) {
-          await discoveryHandler({
-            discoverer: agent,
-            victimId: dead.id,
-            victimName,
-            location: agent.state.location,
-            gameDay: this.getCurrentDay(),
-            deathEventType: deathEventType ?? null,
-          });
+        try {
+          const discoveryHandler = getDiscoveryHandler(bodyDiscoveryType!);
+          if (discoveryHandler) {
+            await discoveryHandler({
+              discoverer: agent,
+              victimId: dead.id,
+              victimName,
+              location: agent.state.location,
+              gameDay: this.getCurrentDay(),
+              deathEventType: deathEventType ?? null,
+            });
+          }
+        } catch (err) {
+          console.error(`  [Discovery:ERROR] Handler failed for ${agent.profile.name}:`, err instanceof Error ? err.message : err);
         }
         // Mark discoverer as already witnessed (so cascade skips them)
         sharedCtx.witnessIds!.add(id);
 
         // Process through consequence engine with shared ctx (dedup witnesses)
-        const results = await this.engine.process(discoveryEvent, sharedCtx);
-        if (results.length > 0 && this.callbacks.onCascade) {
-          this.callbacks.onCascade(discoveryEvent, results.map(r => r.event));
-        }
+        try {
+          const results = await this.engine.process(discoveryEvent, sharedCtx);
+          if (results.length > 0 && this.callbacks.onCascade) {
+            this.callbacks.onCascade(discoveryEvent, results.map(r => r.event));
+          }
 
-        // Feed into goal system
-        await this.handleEventForGoals(discoveryEvent);
-        for (const r of results) {
-          await this.handleEventForGoals(r.event);
+          // Feed into goal system — creates reactive goals
+          await this.handleEventForGoals(discoveryEvent);
+          for (const r of results) {
+            await this.handleEventForGoals(r.event);
+          }
+        } catch (err) {
+          console.error(`  [Discovery:ERROR] Cascade/reactive failed for ${agent.profile.name}:`, err instanceof Error ? err.message : err);
         }
 
         // No solo WITNESS_MEMORY needed — discoverer already has body_discovery belief (conf 0.7)

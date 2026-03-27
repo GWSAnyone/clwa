@@ -246,8 +246,9 @@ export function evaluateReactiveVolition(
         }
       }
 
-      // Only react to events from CE cascade (have sourceRule) or goal execution (have sourceEvent)
-      if (!event.payload?.sourceRule && !event.payload?.sourceEvent) continue;
+      // Only react to events from CE cascade (sourceRule), goal execution (sourceEvent), or body discovery
+      const isBodyDiscovery = bodyDiscoveryType && event.type === bodyDiscoveryType;
+      if (!isBodyDiscovery && !event.payload?.sourceRule && !event.payload?.sourceEvent) continue;
 
       // Check requirements (relaxed for reactive)
       const target = checkRequirementsReactive(aff, npcId, agent, ctx, event);

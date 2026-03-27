@@ -409,7 +409,7 @@ async function main() {
         }});
       },
       onTimeUpdate: (minuteOfDay, hour, period, gameDay) => {
-        broadcast({ type: 'time_update', data: { minuteOfDay, hour, period, gameDay } });
+        broadcast({ type: 'time_update', data: { minuteOfDay, hour, period, gameDay, gameSpeed: world.gameSpeed } });
       },
     },
     locationGraph,

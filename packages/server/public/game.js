@@ -225,7 +225,7 @@ const state = {
   events: [],
   chatOpen: false, chatNpcId: null, chatMessages: [], _pendingILEffects: null,
   crimeScenes: [], approachingNpc: null, actionEffects: [],
-  autoTick: false,
+  autoTick: false, gameSpeed: 1,
   hoveredNpc: null,
 };
 
@@ -357,6 +357,8 @@ async function init() {
   const timeRes = await fetch('/api/time');
   const timeData = await timeRes.json();
   state.day = timeData.gameDay; state.time = timeData.hour; state.period = timeData.period;
+  state.gameSpeed = timeData.gameSpeed ?? 1;
+  syncSpeedButtons(state.gameSpeed);
   updateHUD();
 
   // WS
@@ -388,8 +390,8 @@ async function init() {
       const speed = parseInt(btn.dataset.speed);
       fetch('/api/speed', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ speed }) })
         .then(r => r.json()).then(d => {
-          document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
+          state.gameSpeed = d.gameSpeed ?? speed;
+          syncSpeedButtons(state.gameSpeed);
         });
     };
   }
@@ -431,6 +433,10 @@ function handleWS(type, data) {
       state.time = data.hour;
       state.period = data.period;
       state.day = data.gameDay;
+      if (data.gameSpeed != null && data.gameSpeed !== state.gameSpeed) {
+        state.gameSpeed = data.gameSpeed;
+        syncSpeedButtons(state.gameSpeed);
+      }
       updateHUD();
       break;
 
@@ -444,10 +450,11 @@ function handleWS(type, data) {
           npc.wpIdx = 0;
           npc.moving = true;
           npc.location = m.to;
-          // Compute walk speed from transit duration (game minutes → real seconds)
+          // Compute walk speed from transit duration (game minutes → real seconds at current speed)
           if (m.transitDuration > 0) {
             const totalDist = pathLength(npc.waypoints, npc.x, npc.y);
-            const realSeconds = m.transitDuration; // at 1x: 1 game min = 1 real sec
+            const gameSpeed = state.gameSpeed || 1;
+            const realSeconds = m.transitDuration / gameSpeed;
             npc.walkSpeed = totalDist / Math.max(1, realSeconds);
           } else {
             npc.walkSpeed = NPC_SPEED;
@@ -1390,6 +1397,12 @@ function appendChatToken(token) {
   }
   _chatStreamEl.querySelector('.stream-text').textContent = _chatTokenBuffer;
   growChatArea();
+}
+
+function syncSpeedButtons(speed) {
+  document.querySelectorAll('.speed-btn').forEach(b => {
+    b.classList.toggle('active', parseInt(b.dataset.speed) === speed);
+  });
 }
 
 // ─── AUTO TICK (server-authoritative) ───
