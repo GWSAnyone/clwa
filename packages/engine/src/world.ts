@@ -1314,6 +1314,11 @@ export class World {
 
     victim.state.alive = false;
     victim.state.mood = -1;
+    this._clearTransit(victim); // Cancel movement
+    // Cancel all goals for dead NPC
+    for (const g of this.goalManager.getGoals(victimId)) {
+      if (g.state === 'pending' || g.state === 'active') g.state = 'failed';
+    }
 
     const resolvedEventType = eventType ?? getDefaultDeathEvent();
     if (!resolvedEventType) {
