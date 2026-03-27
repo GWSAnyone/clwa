@@ -128,10 +128,14 @@ export async function evaluateAllVolition(
   ctx: AffordanceContext,
   onLlmCall?: (label: string, detail: string) => void,
   onDecision?: (data: { npcId: string; npcName: string; action: string; target?: string; reason: string; topScore: number; instinctTier: string; alternatives: { verb: string; score: number }[] }) => void,
+  /** Optional: only evaluate these NPC IDs. If omitted, evaluates all eligible. */
+  npcFilter?: string[],
 ): Promise<NpcGoal[]> {
   const goals: NpcGoal[] = [];
+  const filterSet = npcFilter ? new Set(npcFilter) : null;
 
   for (const [npcId, agent] of ctx.agents) {
+    if (filterSet && !filterSet.has(npcId)) continue;
     if (agent.profile.isPlayer) continue; // Player makes own decisions
     if (agent.state.inPlayerChat) continue; // NPC frozen in conversation with player
     if (!agent.state.alive || !!agent.state.status) continue; // any non-default status blocks proactive volition

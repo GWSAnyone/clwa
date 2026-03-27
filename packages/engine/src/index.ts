@@ -1,7 +1,7 @@
 // ─── Agent ───
 export { Agent, llmSemaphore } from './agent';
 export type { AgentOptions } from './agent';
-export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, ScoredMemory, ShopItem } from './agent-types';
+export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, ScoredMemory, ShopItem, NpcProcessingState } from './agent-types';
 export { DEFAULT_LLM_PERSONALITY } from './agent-types';
 export type { NpcStatus } from './agent-types';
 
@@ -95,6 +95,8 @@ export type {
 // ─── World ───
 export { World } from './world';
 export type { WorldCallbacks } from './world';
+export { ProcessingQueue } from './processing-queue';
+export type { ProcessingTask, TaskType, TaskHandler } from './processing-queue';
 
 // ─── World Types ───
 export type {

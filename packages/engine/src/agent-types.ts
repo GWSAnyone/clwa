@@ -71,6 +71,15 @@ export interface ShopItem {
 /** NPC status — extensible string. Engine checks isActive()/isPresent() helpers. */
 export type NpcStatus = string;
 
+/** NPC processing lifecycle state — prevents double-processing, guides Master Clock enqueue logic */
+export type NpcProcessingState =
+  | 'idle'               // No goal, available for volition/conversation
+  | 'awaiting_decision'  // In queue for VOLITION task
+  | 'executing_goal'     // Has active goal, steps advancing
+  | 'in_conversation'    // In queue for or executing CONVERSATION
+  | 'in_transit'         // Walking between locations (Master Clock drives progress)
+  | 'in_player_chat';    // Frozen — player talking to this NPC
+
 export interface AgentState {
   alive: boolean;
   /** Legal/movement status — detained NPCs can't act, exiled/fled are removed from world */
@@ -87,6 +96,8 @@ export interface AgentState {
   currentActivity?: string;
   /** NPC is in active conversation with player — tick skips movement/goals for this agent */
   inPlayerChat?: boolean;
+  /** Processing lifecycle state. Transient — not persisted. Default: 'idle'. */
+  processingState?: NpcProcessingState;
   /** Current emotional motive from AL decision (WHY). Cleared on goal completion */
   currentMotive?: string;
   /** NPC is moving between locations — not yet arrived. Transient, not persisted. */

@@ -451,7 +451,12 @@ export function handleRequest(
 
   // ─── GET /api/auto-state ───
   if (method === 'GET' && path === '/api/auto-state') {
-    return Response.json({ running: world.isAutoTicking, gameSpeed: world.gameSpeed }, { headers: cors });
+    return Response.json({
+      running: world.isAutoTicking,
+      gameSpeed: world.gameSpeed,
+      queueLength: world.processingQueue.length,
+      queueProcessing: world.processingQueue.isProcessing,
+    }, { headers: cors });
   }
 
   // ─── POST /api/auto ───
