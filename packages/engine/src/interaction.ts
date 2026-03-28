@@ -7,18 +7,6 @@ import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 import { getInteractionResultHooks } from './event-registry';
 
-/**
- * Sanitize self-references in NPC dialogue.
- * Replaces speaker's own name in subject position with "I".
- * Prevents cascade: "Garrett did it" → belief "Garrett confessed" → wrong verdict.
- */
-export function sanitizeSelfReference(text: string, speakerName: string): string {
-  if (!speakerName || !text) return text;
-  const escaped = speakerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  // Replace name at sentence start (subject position), skip possessives ('s)
-  return text.replace(new RegExp(`(^|[.!?—"']\\s*)${escaped}(?!'s)\\b`, 'gi'), (_, prefix) => prefix + 'I');
-}
-
 /** Resolve location ID to display name. */
 function locName(id: string, locations?: LocationGraph): string {
   if (!locations) return id;
@@ -92,7 +80,7 @@ export function createInteractionRunner(
     // --- Initiator speaks (with purpose + beliefs, structured output) ---
     const initiatorPrompt = buildPurposePrompt(initiator, target, cleanPurpose, options?.locations);
     const ownerRaw = await initiator.generateResponse(initiatorPrompt, { maxTokens: 100, additionalContext: initiatorCtx || undefined, jsonSchema: INTERACTION_DIALOGUE_SCHEMA });
-    const ownerLine = sanitizeSelfReference(parseInteractionDialogue(ownerRaw), initiator.profile.name);
+    const ownerLine = parseInteractionDialogue(ownerRaw);
 
     if (options?.onLine) {
       options.onLine({
@@ -105,7 +93,7 @@ export function createInteractionRunner(
     // --- Target responds (with their own beliefs, structured output) ---
     const targetPrompt = buildResponsePrompt(target, initiator, ownerLine, cleanPurpose);
     const targetRaw = await target.generateResponse(targetPrompt, { maxTokens: 100, additionalContext: targetCtx || undefined, jsonSchema: INTERACTION_DIALOGUE_SCHEMA });
-    const targetLine = sanitizeSelfReference(parseInteractionDialogue(targetRaw), target.profile.name);
+    const targetLine = parseInteractionDialogue(targetRaw);
 
     if (options?.onLine) {
       options.onLine({
@@ -115,13 +103,16 @@ export function createInteractionRunner(
       });
     }
 
-    // Store memories for both
+    // Store memories using structured belief summaries (not raw dialogue — prevents self-reference cascade)
+    const targetKnows = target.state.beliefs?.summarizeForPrompt(1) ?? '';
+    const initiatorKnows = initiator.state.beliefs?.summarizeForPrompt(1) ?? '';
+    const purposeShort = cleanPurpose.length > 60 ? cleanPurpose.slice(0, 60) + '...' : cleanPurpose;
     await initiator.observe(
-      `I ${cleanPurpose}: talked to ${target.profile.name} the ${target.profile.role}. They said: "${targetLine}"`,
+      `Talked to ${target.profile.name} the ${target.profile.role} about ${purposeShort}.${targetKnows ? ` They know: ${targetKnows}` : ''}`,
       importance,
     );
     await target.observe(
-      `${initiator.profile.name} the ${initiator.profile.role} approached me to ${cleanPurpose}. They said: "${ownerLine}". I responded.`,
+      `${initiator.profile.name} the ${initiator.profile.role} came to talk about ${purposeShort}.${initiatorKnows ? ` They told me: ${initiatorKnows}` : ''}`,
       importance,
     );
 

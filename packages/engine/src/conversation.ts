@@ -2,7 +2,6 @@ import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { ConversationResult, ConversationLine, WorldConfig, LocationGraph } from './world-types';
-import { sanitizeSelfReference } from './interaction';
 import type { TopicProposal } from './topic-engine';
 import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
@@ -111,7 +110,7 @@ export async function runConversation(
       additionalContext: initContext,
       jsonSchema: DIALOGUE_SCHEMA,
     });
-    const initiatorLine = sanitizeSelfReference(parseDialogue(initiatorRaw), initiator.profile.name);
+    const initiatorLine = parseDialogue(initiatorRaw);
     const iLine: ConversationLine = {
       speaker: initiator.profile.id,
       speakerName: initiator.profile.name,
@@ -127,7 +126,7 @@ export async function runConversation(
       additionalContext: respContext,
       jsonSchema: DIALOGUE_SCHEMA,
     });
-    const responderLine = sanitizeSelfReference(parseDialogue(responderRaw), responder.profile.name);
+    const responderLine = parseDialogue(responderRaw);
     const rLine: ConversationLine = {
       speaker: responder.profile.id,
       speakerName: responder.profile.name,
@@ -240,24 +239,23 @@ IMPORTANT: say 5–12 words out loud — a complete thought, never just a name. 
 // ─── Memory & Importance ────────────────────────────────────────
 
 /** Build grounded memory text with topic context — varied format for better recall differentiation */
+/**
+ * Build memory text from structured data (topic + beliefs + mood).
+ * No raw dialogue text — prevents self-reference cascade through memories.
+ */
 export function buildMemoryText(
   otherName: string, topicSubject: string,
-  whatTheySaid: string, otherMood: number,
+  otherBeliefs: string, otherMood: number,
 ): string {
   const moodLabel = otherMood < -0.5 ? 'visibly shaken'
     : otherMood < -0.2 ? 'tense'
     : otherMood > 0.3 ? 'in good spirits'
     : 'calm';
 
-  // Truncate their words to key content (max ~80 chars)
-  const key = whatTheySaid.length > 80
-    ? whatTheySaid.slice(0, 80).replace(/\s\S*$/, '...')
-    : whatTheySaid;
-
-  // Varied format based on mood (deterministic — no Math.random for replay safety)
-  if (otherMood < -0.2) return `${otherName} (${moodLabel}) told me about ${topicSubject}: "${key}"`;
-  if (otherMood > 0.3) return `${otherName} and I chatted about ${topicSubject}. They were ${moodLabel}. "${key}"`;
-  return `Had a conversation with ${otherName} about ${topicSubject}. ${moodLabel}. They said: "${key}"`;
+  const beliefNote = otherBeliefs ? ` They mentioned: ${otherBeliefs}` : '';
+  if (otherMood < -0.2) return `${otherName} (${moodLabel}) talked to me about ${topicSubject}.${beliefNote}`;
+  if (otherMood > 0.3) return `Chatted with ${otherName} about ${topicSubject}. They were ${moodLabel}.${beliefNote}`;
+  return `Had a conversation with ${otherName} about ${topicSubject}.${beliefNote}`;
 }
 
 /** Estimate conversation importance from structured topic category (no text matching) */

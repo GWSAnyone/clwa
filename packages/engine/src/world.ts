@@ -686,6 +686,23 @@ export class World {
       if (impact) {
         const finalImportance = typeof impact.importance === 'number' ? Math.max(conversation.importance, impact.importance) : conversation.importance;
         conversation.importance = finalImportance;
+
+        // Participant memories — structured (beliefs + topic), no raw dialogue
+        const initAgent = this.agents.get(conversation.initiator);
+        const respAgent = this.agents.get(conversation.responder);
+        if (initAgent && respAgent) {
+          const respBeliefs = respAgent.state.beliefs?.summarizeForPrompt(1) ?? '';
+          const initBeliefs = initAgent.state.beliefs?.summarizeForPrompt(1) ?? '';
+          await initAgent.observe(
+            buildMemoryText(respAgent.profile.name, topic.subject, respBeliefs, respAgent.state.mood),
+            finalImportance,
+          );
+          await respAgent.observe(
+            buildMemoryText(initAgent.profile.name, topic.subject, initBeliefs, initAgent.state.mood),
+            finalImportance,
+          );
+        }
+
         await this.processOverhear(conversation, finalImportance, topic);
       }
     } catch (err) {
@@ -960,9 +977,10 @@ export class World {
     const { initiator: initId, responder: respId, location, lines } = conversation;
     if (lines.length === 0) return;
 
-    const summary = lines.map(l => `${l.speakerName}: "${l.text}"`).join(' | ');
     const overheardImportance = Math.max(finalImportance - 1, 2);
     const initiator = this.agents.get(initId);
+    const initiatorName = lines[0]?.speakerName ?? 'someone';
+    const responderName = lines[1]?.speakerName ?? 'someone';
 
     for (const [id, agent] of this.agents) {
       if (id === initId || id === respId) continue;
@@ -970,8 +988,9 @@ export class World {
       if (agent.state.location !== location) continue;
       if (Math.random() > 0.6) continue;
 
+      // Structured memory — topic only, no raw dialogue (prevents self-reference cascade)
       await agent.observe(
-        `You overheard a conversation nearby between ${lines[0]?.speakerName ?? 'someone'} and ${lines[1]?.speakerName ?? 'someone'}: ${summary}`,
+        `Overheard ${initiatorName} and ${responderName} discussing ${topic.subject}.`,
         overheardImportance,
       );
 

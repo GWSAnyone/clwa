@@ -146,7 +146,7 @@ export { extractDialogueMeaning, applyDialogueMeaning, PLAYER_ACTION_EVENT, PLAY
 export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect } from './il';
 
 // ─── Interaction ───
-export { createInteractionRunner, sanitizeSelfReference } from './interaction';
+export { createInteractionRunner } from './interaction';
 
 // ─── Evidence Layer ───
 export { EvidenceLayer, EVIDENCE_RULES, EVIDENCE_SOURCES } from './evidence';
