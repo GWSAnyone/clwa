@@ -155,6 +155,8 @@ export interface WorldConfig {
   minConversationScore: number;
   /** Cooldown in game minutes before same pair can talk again (default: 240 = 4h) */
   pairCooldownMinutes: number;
+  /** Per-NPC cooldown in game minutes — minimum gap between any conversations for one NPC (default: 30) */
+  npcConversationCooldownMinutes: number;
   /** Number of exchanges per conversation: 1 = each speaks once (default: 1) */
   exchangeCount: number;
   /** LM Studio base URL */
@@ -262,6 +264,13 @@ export interface ConversationConfig {
   sentimentValenceThreshold: number;
   /** Confidence for secret discovery beliefs */
   secretDiscoveryConfidence: number;
+  /** Mood modifier based on participant relationship (friends feel slightly better, rivals worse) */
+  relationshipMoodModifier: {
+    friendThreshold: number;
+    friendBonus: number;
+    rivalThreshold: number;
+    rivalPenalty: number;
+  };
 }
 
 export const DEFAULT_CONVERSATION_CONFIG: ConversationConfig = {
@@ -270,6 +279,12 @@ export const DEFAULT_CONVERSATION_CONFIG: ConversationConfig = {
   sentimentValenceClamp: { min: -0.15, max: 0.15 },
   sentimentValenceThreshold: 0.02,
   secretDiscoveryConfidence: 0.4,
+  relationshipMoodModifier: {
+    friendThreshold: 0.3,
+    friendBonus: 0.01,
+    rivalThreshold: -0.2,
+    rivalPenalty: -0.01,
+  },
 };
 
 /** Resolve partial conversation config with defaults */
@@ -281,12 +296,14 @@ export function resolveConversationConfig(partial?: Partial<ConversationConfig>)
     sentimentValenceClamp: partial.sentimentValenceClamp ?? DEFAULT_CONVERSATION_CONFIG.sentimentValenceClamp,
     sentimentValenceThreshold: partial.sentimentValenceThreshold ?? DEFAULT_CONVERSATION_CONFIG.sentimentValenceThreshold,
     secretDiscoveryConfidence: partial.secretDiscoveryConfidence ?? DEFAULT_CONVERSATION_CONFIG.secretDiscoveryConfidence,
+    relationshipMoodModifier: partial.relationshipMoodModifier ?? DEFAULT_CONVERSATION_CONFIG.relationshipMoodModifier,
   };
 }
 
 export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   minConversationScore: 2,
   pairCooldownMinutes: 240,
+  npcConversationCooldownMinutes: 30,
   exchangeCount: 1,
   lmStudioUrl: 'http://localhost:1234',
   model: 'qwen3.5-9b-abliterated',

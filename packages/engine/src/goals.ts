@@ -363,16 +363,36 @@ export class GoalManager {
         }
 
         if (owner.state.location !== target.state.location) {
-          // Target not here — wait with priority-based timeout, then skip step
-          // AL will re-evaluate and create new goal with updated target location (emergent pursuit)
-          const maxWait = goal.priority >= 7 ? 3 : goal.priority >= 4 ? 2 : 1;
+          // Already chasing — wait for transit
+          if (owner.state.inTransit) return null;
+
+          // Chase: pursue target to their CURRENT location
+          const maxChase = goal.priority >= 7 ? 3 : goal.priority >= 4 ? 2 : 1;
           goal.waitTicks = (goal.waitTicks ?? 0) + 1;
-          if (goal.waitTicks >= maxWait) {
+          if (goal.waitTicks >= maxChase) {
             goal.currentStep++;
             goal.waitTicks = 0;
             return { ...baseResult, action: 'interact', description: `${owner.profile.name}: ${target.profile.name} didn't show up, moving on` };
           }
-          return { ...baseResult, action: 'wait', description: `${owner.profile.name} waiting for ${target.profile.name}` };
+
+          // Start transit to target's current location
+          const path = findPath(locations, owner.state.location, target.state.location);
+          if (!path || path.length === 0) {
+            goal.currentStep++;
+            return { ...baseResult, action: 'interact', description: `${owner.profile.name}: cannot reach ${target.profile.name}` };
+          }
+          const from = owner.state.location;
+          owner.state.inTransit = true;
+          owner.state.transitTo = target.state.location;
+          owner.state.transitPath = path;
+          owner.state.transitProgress = 0;
+          console.log(`  [Goal] ${owner.profile.name} pursuing ${target.profile.name} to ${target.state.location}`);
+          return {
+            ...baseResult,
+            action: 'move_to',
+            description: `${owner.profile.name} pursuing ${target.profile.name}`,
+            movement: { agentId: goal.ownerId, agentName: owner.profile.name, from, to: target.state.location },
+          };
         }
         goal.waitTicks = 0;
 
@@ -433,15 +453,17 @@ export class GoalManager {
         // Module-registered post-interaction hooks (e.g., suspect evaluation)
         runInteractPostHooks(owner, target, step, agents, crimeScenes);
 
-        // If post-hook produced structured outcome, append to memory
-        if (owner.state.lastInteractionOutcome) {
-          const outcome = owner.state.lastInteractionOutcome;
-          await owner.observe(
-            `During interaction with ${target.profile.name}: ${outcome.detail ?? outcome.type}.`,
-            step.importance + 1,
-          );
-          owner.state.lastInteractionOutcome = undefined;
-        }
+        // Unified initiator memory: beliefs + outcome in one entry (no double observe)
+        const purposeShort = (step.purpose ?? '').replace(/\[CRIME[^\]]*\]\s*/g, '');
+        const pShort = purposeShort.length > 50 ? purposeShort.slice(0, 50) + '...' : purposeShort;
+        const targetBeliefs3p = target.state.beliefs?.summarizeForMemory(target.profile.name, 1) ?? '';
+        const outcome = owner.state.lastInteractionOutcome;
+        const outcomePart = outcome ? ` ${outcome.detail ?? outcome.type}.` : '';
+        owner.state.lastInteractionOutcome = undefined;
+        await owner.observe(
+          `Talked to ${target.profile.name} about ${pShort}.${targetBeliefs3p ? ` ${targetBeliefs3p}.` : ''}${outcomePart}`,
+          step.importance,
+        );
 
         goal.currentStep++;
 

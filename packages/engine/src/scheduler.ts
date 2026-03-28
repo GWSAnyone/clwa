@@ -26,6 +26,12 @@ export class ConversationScheduler {
     this.config = config;
   }
 
+  /** Check if a pair is on conversation cooldown */
+  isOnCooldown(a: string, b: string, gameMinute: number): boolean {
+    const lastMinute = this.cooldowns.get(pairKey(a, b)) ?? -Infinity;
+    return gameMinute - lastMinute < this.config.pairCooldownMinutes;
+  }
+
   /**
    * Find the best pair of NPCs to have a conversation.
    * Returns null if no suitable pair found.
@@ -53,10 +59,16 @@ export class ConversationScheduler {
         // Must be in same location
         if (agentA.state.location !== agentB.state.location) continue;
 
-        // Check cooldown
+        // Check pair cooldown
         const key = pairKey(idA, idB);
         const lastMinute = this.cooldowns.get(key) ?? -Infinity;
         if (gameMinute - lastMinute < this.config.pairCooldownMinutes) continue;
+
+        // Per-NPC cooldown: avoid one NPC dominating consecutive conversations
+        const npcCd = this.config.npcConversationCooldownMinutes ?? 30;
+        const lastA = this.npcLastConversation.get(idA) ?? -Infinity;
+        const lastB = this.npcLastConversation.get(idB) ?? -Infinity;
+        if (gameMinute - lastA < npcCd || gameMinute - lastB < npcCd) continue;
 
         // Score: balanced social + information value
         const score = this.scorePair(agentA, agentB, key, gameMinute);

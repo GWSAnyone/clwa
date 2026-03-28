@@ -46,16 +46,32 @@ function parseDialogue(raw: string): string {
     // Strip curly-brace narrative blocks (e.g. {Father Aldric's eyes are clouded...})
     speech = speech.replace(/\{[^}]*\}/g, '').trim();
     speech = speech.replace(/^["']+|["']+$/g, '');
-    // Return ONLY speech — gesture is for future animation/UI, not text display
-    return speech || '...';
+    // Strip trailing style/metadata leaked from system prompt (e.g. " - warm drawl voice...")
+    // Guards: >50% position, lowercase start, 3+ words, no quotes — avoids false positives on speech continuations
+    const dashIdx = speech.lastIndexOf(' - ');
+    if (dashIdx > 0 && dashIdx > speech.length * 0.5) {
+      const afterDash = speech.slice(dashIdx + 3).trim();
+      if (afterDash && /^[a-z]/.test(afterDash) && !afterDash.includes('"') && afterDash.split(/\s+/).length >= 3) {
+        speech = speech.slice(0, dashIdx).trim();
+      }
+    }
+    // If speech is empty or purely punctuation, use gesture as fallback
+    if (!speech || /^[\s.,!?…\-—–]+$/.test(speech)) {
+      const gesture = (d.gesture ?? '').trim().toLowerCase();
+      if (gesture && gesture !== 'none') return `*${gesture}*`;
+      return '*nods silently*';
+    }
+    return speech;
   } catch {
     // Fallback: extract speech from malformed JSON via regex
     const speechMatch = cleaned.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     if (speechMatch) {
-      return speechMatch[1].replace(/\\"/g, '"').replace(/<[^>]+>/g, '').replace(/\{[^}]*\}/g, '').replace(/^["']+|["']+$/g, '').trim() || '...';
+      const s = speechMatch[1].replace(/\\"/g, '"').replace(/<[^>]+>/g, '').replace(/\{[^}]*\}/g, '').replace(/^["']+|["']+$/g, '').trim();
+      if (s && !/^[\s.,!?…\-—–]+$/.test(s)) return s;
     }
     // Last resort: strip JSON artifacts and return cleaned text
-    return cleaned.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').replace(/<[^>]+>/g, '').trim() || '...';
+    const last = cleaned.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').replace(/<[^>]+>/g, '').trim();
+    return last || '*nods silently*';
   }
 }
 
@@ -216,7 +232,7 @@ function buildResponderPrompt(
   const relNote = relationshipNote(responder, initiator);
   const speech = speechReminder(responder);
 
-  return `React from YOUR OWN perspective — never mirror their phrasing.
+  return `React from YOUR OWN perspective. NEVER repeat, echo, or paraphrase their words — use completely different vocabulary.
 ${initiator.profile.name} the ${initiator.profile.role} says to you:
 "${initiatorLine}"
 YOUR TOPIC: ${topic.subject}. ${topic.responderHook ?? ''}

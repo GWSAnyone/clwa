@@ -46,7 +46,12 @@ export class ProcessingQueue {
   enqueue(task: ProcessingTask): boolean {
     // Dedup: same type + npcId already pending
     if (task.npcId) {
-      if (this.queue.some(t => t.type === task.type && t.npcId === task.npcId)) return false;
+      if (this.queue.some(t => t.type === task.type && t.npcId === task.npcId)) {
+        if (task.type === 'CONVERSATION_IMPACT') {
+          console.warn(`  [Queue:dedup] CONVERSATION_IMPACT dropped for npcId=${task.npcId} (already pending)`);
+        }
+        return false;
+      }
     }
 
     // Conversation dedup: same pair in either order

@@ -62,6 +62,8 @@ const beliefTopics: TopicSource = (init, resp, ctx) => {
         topicKey: `event:${belief.eventType}:${victim}`,
         subject: `the ${eventLabel} of ${victim}`,
         tone: 'grave, processing together',
+        moodValence: -0.025,
+        sentimentValence: -0.04,
         weight: 6 + recencyBonus + locationBonus,
         initiatorHook: `You both know about the ${eventLabel} of ${victim}. Share your thoughts, fears, theories.`,
         responderHook: `You also know about the ${eventLabel}. React with your own feelings and perspective.`,
@@ -74,6 +76,8 @@ const beliefTopics: TopicSource = (init, resp, ctx) => {
         topicKey: `event:${belief.eventType}:${victim}`,
         subject: `the ${eventLabel} of ${victim}`,
         tone: 'urgent, breaking the news',
+        moodValence: -0.03,
+        sentimentValence: -0.04,
         weight: 8 + recencyBonus + locationBonus,
         initiatorHook: `You need to tell ${resp.profile.name} about the ${eventLabel} of ${victim}. Break the news.`,
         responderHook: `This is the first you're hearing of this. React with genuine shock or disbelief.`,
@@ -92,6 +96,8 @@ const beliefTopics: TopicSource = (init, resp, ctx) => {
         topicKey: `event:${belief.eventType}:${victim}`,
         subject: `the ${eventLabel} of ${victim}`,
         tone: 'probing, something feels off',
+        moodValence: -0.015,
+        sentimentValence: -0.04,
         weight: 7 + recencyBonus + locationBonus,
         initiatorHook: `You sense ${resp.profile.name} knows something. Ask about recent events or what's troubling them.`,
         responderHook: `You know about the ${eventLabel} of ${victim}. Decide if this is the moment to tell ${init.profile.name}.`,
@@ -132,6 +138,7 @@ const relationshipTopics: TopicSource = (init, resp) => {
     proposals.push({
       subject: 'the tension between you',
       tone: 'stiff, barely civil',
+      moodValence: -0.015,
       weight: 4,
       initiatorHook: `You don't like ${resp.profile.name}. Keep it professional but resentment shows.`,
       category: 'relationship',
@@ -148,6 +155,9 @@ const relationshipTopics: TopicSource = (init, resp) => {
       proposals.push({
         subject: `the loss of ${victimRel.targetName}`,
         tone: 'heavy, sorrowful',
+        moodValence: -0.03,
+        mentionedNpcId: victimRel.targetId,
+        sentimentValence: 0.03,
         weight: 6,
         initiatorHook: `The loss weighs on you. It comes up unexpectedly.`,
         category: 'grief',
@@ -162,6 +172,7 @@ const relationshipTopics: TopicSource = (init, resp) => {
     proposals.push({
       subject: 'how you\'ve been feeling',
       tone: 'vulnerable, seeking comfort',
+      moodValence: -0.01,
       weight: 5,
       initiatorHook: `You trust ${resp.profile.name}. Let some of your worry show.`,
       category: 'mood',
@@ -185,8 +196,9 @@ const innerConflictTopics: TopicSource = (init, resp) => {
     return [{
       subject: 'a worry you\'ve been carrying',
       tone: 'hesitant, almost confiding',
-      weight: 4,
-      initiatorHook: `Your inner conflict weighs on you. You almost mention it but hold back. Just hints and half-sentences.`,
+      moodValence: -0.01,
+      weight: 2,
+      initiatorHook: `Something weighs on you: ${init.profile.innerConflict}. You almost mention it but hold back. Just hints and half-sentences.`,
       category: 'inner',
       minImportance: 4,
     }];
@@ -210,6 +222,7 @@ const moodTopics: TopicSource = (init, resp) => {
     proposals.push({
       subject: 'something good that happened',
       tone: 'warm, sharing',
+      moodValence: 0.015,
       weight: 2,
       initiatorHook: 'You\'re in a good mood. Share the feeling — maybe compliment something or reminisce.',
       responderHook: respMood > 0 ? 'You\'re also feeling good. Enjoy the moment together.' : 'They seem cheerful. You\'re not feeling it yourself.',
@@ -222,6 +235,7 @@ const moodTopics: TopicSource = (init, resp) => {
     proposals.push({
       subject: 'the unease you\'re feeling',
       tone: 'guarded, restless',
+      moodValence: -0.015,
       weight: 4,
       initiatorHook: 'Something is wrong and you can\'t shake it. You don\'t say it directly but it leaks through.',
       responderHook: trust > 0.4 ? `You can tell something is off with ${init.profile.name}. Gently ask.` : 'They seem troubled but you\'re not sure you should pry.',
@@ -234,6 +248,7 @@ const moodTopics: TopicSource = (init, resp) => {
     proposals.push({
       subject: `how ${resp.profile.name} seems today`,
       tone: 'concerned, gentle',
+      moodValence: -0.005,
       weight: 3,
       initiatorHook: `${resp.profile.name} looks troubled. Check on them.`,
       responderHook: 'You didn\'t expect them to notice. Decide how much to reveal.',
@@ -246,6 +261,7 @@ const moodTopics: TopicSource = (init, resp) => {
     proposals.push({
       subject: 'the heaviness in the air',
       tone: 'tense, weary',
+      moodValence: -0.02,
       weight: 3,
       initiatorHook: 'You both feel it — something heavy. Acknowledge it without fully naming it.',
       responderHook: 'The weight you carry is shared. Respond from that common ground.',
@@ -291,6 +307,7 @@ const worldFactTopics: TopicSource = (init, resp, ctx) => {
   return [{
     subject: fact,
     tone: 'matter-of-fact',
+    moodValence: 0,
     weight: 0.5,
     initiatorHook: `Bring up this topic naturally — share your opinion or ask ${resp.profile.name} what they think.`,
     category: 'fact', // shared category — repeat penalty applies to ALL facts
@@ -309,6 +326,7 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
     proposals.push({
       subject: `how ${resp.profile.name} has been`,
       tone: 'warm, relaxed',
+      moodValence: 0.01,
       weight: 3,
       initiatorHook: `Ask ${resp.profile.name} the ${resp.profile.role} how things have been lately — their work, their mood, anything you noticed about them.`,
       responderHook: `Share honestly how you have been. This is someone you trust.`,
@@ -322,6 +340,7 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
     proposals.push({
       subject: `${resp.profile.name}'s recent work`,
       tone: 'practical, companionable',
+      moodValence: 0.005,
       weight: hasHook ? 3 : 2,
       initiatorHook: `Ask ${resp.profile.name} about their craft — a recent order, a difficult job, something they are proud of.`,
       responderHook: `Talk about something specific you worked on recently. Show pride or frustration.`,
@@ -345,6 +364,7 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
     proposals.push({
       subject: `${resp.profile.name}'s ${resp.profile.role} work`,
       tone: 'curious, conversational',
+      moodValence: 0,
       weight: 2,
       initiatorHook: hook,
       responderHook: `Answer from your experience as a ${resp.profile.role}. Be specific.`,
@@ -359,6 +379,7 @@ const casualTopics: TopicSource = (init, resp, ctx) => {
       proposals.push({
         subject: 'this place',
         tone: 'casual, observational',
+        moodValence: 0,
         weight: 1,
         initiatorHook: hook,
         category: 'casual_village',
@@ -376,11 +397,11 @@ const seasonalTopics: TopicSource = (_init, _resp, ctx) => {
   const proposals: TopicProposal[] = [];
 
   // Period-based atmosphere — hooks grounded in specifics, not abstract invitations
-  const periodTopics: Record<string, { subject: string; tone: string; hook: string }> = {
-    dawn: { subject: 'the early morning', tone: 'soft, reflective', hook: 'You are both up early. Ask what woke them, or comment on the cold air.' },
-    morning: { subject: 'the day ahead', tone: 'purposeful, energized', hook: 'Ask what they have planned today, or mention something you need to get done.' },
-    evening: { subject: 'the day that was', tone: 'reflective, winding down', hook: 'Ask how their day went, or share something that happened to you today.' },
-    night: { subject: 'the quiet night', tone: 'intimate, guarded', hook: 'It is late. Ask why they are still awake, or share something on your mind.' },
+  const periodTopics: Record<string, { subject: string; tone: string; moodValence: number; hook: string }> = {
+    dawn: { subject: 'the early morning', tone: 'soft, reflective', moodValence: 0, hook: 'You are both up early. Ask what woke them, or comment on the cold air.' },
+    morning: { subject: 'the day ahead', tone: 'purposeful, energized', moodValence: 0.005, hook: 'Ask what they have planned today, or mention something you need to get done.' },
+    evening: { subject: 'the day that was', tone: 'reflective, winding down', moodValence: 0.005, hook: 'Ask how their day went, or share something that happened to you today.' },
+    night: { subject: 'the quiet night', tone: 'intimate, guarded', moodValence: -0.005, hook: 'It is late. Ask why they are still awake, or share something on your mind.' },
   };
 
   const pt = periodTopics[ctx.period];
@@ -388,6 +409,7 @@ const seasonalTopics: TopicSource = (_init, _resp, ctx) => {
     proposals.push({
       subject: pt.subject,
       tone: pt.tone,
+      moodValence: pt.moodValence,
       weight: 1,
       initiatorHook: pt.hook,
       category: 'casual_time',
@@ -399,6 +421,7 @@ const seasonalTopics: TopicSource = (_init, _resp, ctx) => {
     proposals.push({
       subject: 'another week gone by',
       tone: 'contemplative',
+      moodValence: 0,
       weight: 2,
       initiatorHook: 'It has been a full week. Ask if anything has changed for them, or mention what changed for you.',
       category: 'casual_time',
@@ -437,6 +460,7 @@ const memoryTopics: TopicSource = (init, resp, ctx) => {
         topicKey: `event:${belief.eventType}:${victim}`,
         subject: `what happened to ${victim}`,
         tone: 'reflective, heavy',
+        moodValence: -0.015,
         weight: 2,
         initiatorHook: `It's been ${daysAgo} days since the ${eventLabel}. You still think about it. Bring it up — how it changed things.`,
         responderHook: `You remember too. Share how it's been sitting with you since then.`,
@@ -448,6 +472,8 @@ const memoryTopics: TopicSource = (init, resp, ctx) => {
         topicKey: `event:${belief.eventType}:${belief.object}`,
         subject: `something that happened ${daysAgo} days ago`,
         tone: 'recounting, storytelling',
+        moodValence: -0.01,
+        sentimentValence: -0.03,
         weight: 2,
         initiatorHook: `You've been thinking about the ${eventLabel} of ${victim}. Tell them what you know — it's been on your mind.`,
         responderHook: `This happened days ago and you're hearing about it now. React with curiosity or concern.`,
@@ -507,6 +533,9 @@ const opinionTopics: TopicSource = (init, resp) => {
       proposals.push({
         subject: `${name} and their behavior`,
         tone: 'conspiratorial, venting',
+        moodValence: -0.005,
+        mentionedNpcId: initRel.targetId,
+        sentimentValence: -0.04,
         weight: 3,
         initiatorHook: `You both have issues with ${name}. Vent about them — shared frustration.`,
         responderHook: `You share their frustration about ${name}. Add your own grievance.`,
@@ -518,17 +547,23 @@ const opinionTopics: TopicSource = (init, resp) => {
       proposals.push({
         subject: `how ${name} is doing`,
         tone: 'warm, caring',
+        moodValence: 0.01,
+        mentionedNpcId: initRel.targetId,
+        sentimentValence: 0.03,
         weight: 2,
         initiatorHook: `You both care about ${name}. Ask if they have seen ${name} lately, or if something seemed off.`,
         responderHook: `You also care about ${name}. Share your perspective on how they're doing.`,
         category: 'opinion',
       });
     }
-    // Disagreement → tension about third party
+    // Disagreement → tension about third party (sentimentValence: 0 — asymmetric, can't express with one number)
     else if ((initSent > 0.2 && respSent < -0.2) || (initSent < -0.2 && respSent > 0.2)) {
       proposals.push({
         subject: `your different views on ${name}`,
         tone: 'tense, probing',
+        moodValence: -0.01,
+        mentionedNpcId: initRel.targetId,
+        sentimentValence: 0,
         weight: 4,
         initiatorHook: initSent > 0
           ? `You don't understand why ${resp.profile.name} dislikes ${name}. Gently challenge their view.`
@@ -565,6 +600,7 @@ const questionTopics: TopicSource = (init, resp) => {
       topicKey: `event:${belief.eventType}:${belief.object}`,
       subject: `rumors about ${belief.object}`,
       tone: 'curious, probing',
+      moodValence: -0.005,
       weight: 2,
       initiatorHook: `You heard something vague about the ${eventLabel} of ${belief.object}. Ask if ${resp.profile.name} knows more.`,
       responderHook: resp.state.beliefs?.getAllBeliefs().some(
@@ -595,6 +631,7 @@ const questionTopics: TopicSource = (init, resp) => {
         topicKey: `event:${rBelief.eventType}:${rBelief.object}`,
         subject: `what's been happening lately`,
         tone: 'casual curiosity',
+        moodValence: 0,
         weight: 2,
         initiatorHook: `Ask ${resp.profile.name} if anything interesting has happened. You sense there's more going on than you know.`,
         responderHook: `You know about the ${eventLabel} of ${rBelief.object}. Decide if this is the moment to share.`,

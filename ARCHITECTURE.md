@@ -3,7 +3,7 @@
 > **Цель:** Архитектура симуляции живого игрового мира с причинно-следственной историей, многоуровневыми агентами и LLM-диалогом
 > **Вдохновение:** Disco Elysium (процесс расследования важнее результата), Dwarf Fortress (глубина симуляции), Stanford Generative Agents (архитектура памяти), Shangri-La Frontier (необратимые события)
 > **Принцип вех:** Каждая веха — демонстрация возможностей технологии CLWA. Мы строим **возможности**, не сценарии — сценарии это конфигурации начальных условий + правил поверх песочницы
-> **Дата начала:** Март 2026 | **Последнее обновление:** 26 марта 2026
+> **Дата начала:** Март 2026 | **Последнее обновление:** 28 марта 2026
 
 ---
 
@@ -696,7 +696,7 @@ Master Clock каждую game minute вызывает `_enqueueWork()`:
 | 2 | `VOLITION(npcId)` | NPC idle + нет goal + decision cooldown expired | **Да** (1 call) |
 | 2 | `GOAL_STEP(npcId)` | NPC has active goal + not in transit | **Может** (interact) |
 | 3 | `CONVERSATION` | Co-located idle pair + pair cooldown expired | **Да** (2-6 calls) |
-| 3 | `CONVERSATION_IMPACT` | После CONVERSATION — sentiment analysis + overhear | **Да** (1 call) |
+| 3 | `CONVERSATION_IMPACT` | После CONVERSATION — deterministic mood/sentiment from TopicProposal + overhear | Нет |
 | 3 | `PHASE_HANDLERS` | Каждый цикл (theft discovery, approach, crime scene) | Нет |
 
 **Dedup**: одна задача на NPC per type. Conversation dedup по паре (A,B) = (B,A). Global tasks (DAY_ADVANCE) — max 1 в очереди.
@@ -774,7 +774,7 @@ gameMinute 481: _needsProcessing() → co-located с Mark → conversation trigg
 
 **5 engine step types:**
 - `move_to` — transit к целевой локации (duration-based, не мгновенный). Step advance при arrival.
-- `interact` — LLM-диалог с конкретным NPC (structured output)
+- `interact` — LLM-диалог с конкретным NPC (structured output). **Pursuit**: если target не на месте → chase к текущей target location (до maxChase попыток: priority≥7 = 3, ≥4 = 2, иначе 1). Не ждёт пассивно.
 - `interact_present` — LLM-диалог со ВСЕМИ NPC на локации
 - `announce` — объявление всем на локации (без LLM, через observe)
 - `wait` — ожидание N тиков
@@ -782,8 +782,11 @@ gameMinute 481: _needsProcessing() → co-located с Mark → conversation trigg
 **Module step types** (через `registerStepHandler` + generic `ModuleStep`):
 - `steal_from`, `attack_npc`, `arrest_npc`, `destroy_evidence`, `flee`, `examine_scene`, `sentence_npc`
 - `StepTemplate.action: string` — engine не знает конкретных типов. Новый модуль = `registerStepHandler('trade', ...)` + template. Ноль engine changes.
+- **Interrogation structured outcome**: post-hook записывает confession/denial/alibi в `lastInteractionOutcome` → unified memory (beliefs + outcome в одном observe).
 
 **Priority preemption**: высокоприоритетная цель переводит текущую active → pending.
+
+**Belief-gated affordances**: investigate requirement `deductionBelowThreshold` — блокируется когда guard уже имеет deduction belief conf ≥ 0.7. Остаётся только arrest. Structured state check, не cooldown.
 
 **Триггеры целей:**
 - **Proactive**: AL фильтрует affordances → PM scores → LLM DO/WHY → goal steps
@@ -846,6 +849,8 @@ Plugin-архитектура выбора тем. TopicEngine выбирает 
 | **crime** | **justiceTopics** | arrest/sentence/fled beliefs | 5-11 | *"Mark was arrested!"* |
 | **crime** | **playerRumorTopics** | player claims + sentiment | 3-6 | *"what did the stranger tell you?"* |
 
+**TopicProposal behavioral fields** (v0.10.0): `moodValence?: number` (mood effect on participants, -0.04 to +0.03), `mentionedNpcId?: string` (discussed NPC ID), `sentimentValence?: number` (sentiment toward discussed NPC). Engine reads numbers — tone string = display only. Modules set values, engine computes effects. New module (Economy) sets `moodValence: -0.01` for "haggling" → engine works without code changes.
+
 **Selection pipeline**: collect → dedup by topicKey → penalize recent → PM influence (OCEAN) → diversity tracking → weighted random.
 
 ##### Conversation Flow
@@ -854,14 +859,44 @@ Plugin-архитектура выбора тем. TopicEngine выбирает 
 - `TopicEngine.selectTopic()`: weighted random с PM influence
 - `runConversation()`: structured dialogue JSON schema, **maxTokens: 80**
 - Belief transfer (bidirectional + overhear conf × 0.3)
-- `analyzeConversationImpact()`: deferred async (`_pendingImpact`)
-- `processOverhear()` **после** impact
+- `CONVERSATION_IMPACT` queue task: **deterministic** (no LLM). Reads `moodValence`/`sentimentValence`/`mentionedNpcId` from TopicProposal. `_pendingImpactQueue` (array) prevents data loss on burst conversations. Composite npcId prevents dedup collision. Applies mood/sentiment to **participants + bystanders**. NPCs in wait steps eligible for conversation pairing.
+- `processOverhear()` **после** impact (bystanders only — participants already covered)
+
+##### Structured Conversation Memories
+
+**Принцип**: raw LLM dialogue → UI only. Memories хранят structured data (beliefs + topic + mood). Self-reference cascade невозможен по конструкции.
+
+**Participant memories** (`buildMemoryText`):
+```
+"Talked with Hilda about murder of Old Bess (hushed urgency) — tense. Hilda is convinced Mark committed murder against Old Bess."
+```
+- Topic subject + tone (from TopicEngine structured data)
+- 3rd person beliefs via `summarizeForMemory` (не "You certain:", а "Hilda is convinced")
+- Belief relevance filter: `eventTypeFilter` из `topic.beliefTransfer?.eventType` — при gossip о murder показываются только NPC_KILLED beliefs, не unrelated theft
+- Full mood spectrum (visibly shaken / tense / calm / in good spirits)
+
+**Goal interaction memories** (unified in `goals.ts`):
+```
+"Talked to Mark about interrogate... Mark denied involvement but seemed nervous."
+```
+- Beliefs + structured outcome (confession/denial/alibi) в одном observe
+- No double memory (interaction.ts observe removed for initiator)
+
+**Overhear memories**:
+```
+"Overheard Hilda and Garrett discussing murder. Picked up that Mark may be involved."
+```
+- Topic + belief context from belief transfer (if applicable)
+- No raw dialogue fragments
+
+**Fallback**: если impact analysis fails (LLM error) → basic memory `"Talked with X about Y."` создаётся в catch block.
 
 ##### Structured Dialogue
 
 JSON schema: `{ "speech": "...", "gesture": "..." }`. Speech only в display — gesture для будущей анимации.
 Anti-repetition: `repeat_penalty: 1.1`, `frequency_penalty: 0.3`, `presence_penalty: 0.2`.
-`YOUR TOPIC:` prefix. knownFacts removed. Memory format: `(today, vivid)`. Mood calibration в impact.
+`YOUR TOPIC:` prefix. knownFacts removed. Mood calibration в impact.
+System prompt: `"Never refer to yourself by your own name"` — UI quality for 9B model.
 
 ### 3.4 Intent Layer (IL) — Dialogue Meaning Extraction (v0.9.9)
 

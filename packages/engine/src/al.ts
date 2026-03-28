@@ -188,6 +188,8 @@ export interface AffordanceContext {
   decisionCooldownMinutes?: number;
   /** Check if NPC is target of someone else's arrest/pursuit goal */
   isArrestTarget?: (npcId: string) => boolean;
+  /** Check if conversation pair is on cooldown (scheduler-managed) */
+  isPairOnCooldown?: (a: string, b: string) => boolean;
 }
 
 /** Target found for an affordance */

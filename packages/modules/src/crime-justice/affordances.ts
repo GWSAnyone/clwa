@@ -218,7 +218,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     minimumScore: 0.7,
     category: 'duty',
     severity: 2,
-    requires: { isInvestigator: true },
+    requires: { isInvestigator: true, deductionBelowThreshold: true },
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.3 },
       { trait: 'O', direction: 'high', multiplier: 0.1 },

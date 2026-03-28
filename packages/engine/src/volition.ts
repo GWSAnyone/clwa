@@ -854,9 +854,20 @@ function intentionToGoal(
       // Purposeful context (crime/duty affordances scored): move + interact with specific purpose
       const socialOnly = scored.every(s => s.definition.socialOnly === true);
 
+      // Social visit: skip if pair is on conversation cooldown (avoids repetitive targeting)
+      if (socialOnly && ctx.isPairOnCooldown?.(npcId, targetId)) {
+        console.log(`  [AL:debug] ${agent.profile.name}: visit ${targetAgent.profile.name} rejected (pair cooldown)`);
+        return null;
+      }
+
       const steps: GoalStep[] = [];
-      if (agent.state.location !== targetAgent.state.location) {
-        steps.push({ action: 'move_to', location: targetAgent.state.location });
+      const targetInTransit = targetAgent.state.inTransit;
+      if (agent.state.location !== targetAgent.state.location || targetInTransit) {
+        // If target is in transit, move to their destination (they'll arrive there)
+        const targetLoc = targetInTransit && targetAgent.state.transitTo
+          ? targetAgent.state.transitTo
+          : targetAgent.state.location;
+        steps.push({ action: 'move_to', location: targetLoc });
       }
       if (!socialOnly) {
         // Purposeful talk — directed interaction with specific topic
@@ -867,8 +878,12 @@ function intentionToGoal(
           importance: 4,
         });
       }
-      // Social-only: goal is just movement. TopicEngine picks up co-located pair next tick.
-      if (steps.length === 0) return null; // already at same location + social only = nothing to do
+      // Social-only + co-located: linger briefly so scheduler can pair them for conversation.
+      // Without this, schedule check immediately creates a move goal and the NPC leaves.
+      if (steps.length === 0) {
+        console.log(`  [AL:debug] ${agent.profile.name}: co-located with ${targetAgent.profile.name}, lingering for conversation`);
+        steps.push({ action: 'wait', ticks: 2 });
+      }
       return {
         id: crypto.randomUUID(),
         type: socialOnly ? 'visit' : 'social',

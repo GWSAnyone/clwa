@@ -1,3 +1,6 @@
+import { initFileLogger } from './logger';
+const _logFile = initFileLogger();
+
 import { Agent, VectorMemory, BeliefManager, RelationshipGraph, DEFAULT_TRUST, DEFAULT_SENTIMENT } from '@clwa/engine';
 import { ConsequenceEngine } from '@clwa/engine';
 import { InMemoryEventStore } from '@clwa/engine';
@@ -146,6 +149,7 @@ const PORT = parseInt(process.env.PORT ?? '3000');
 
 async function main() {
   console.log('=== CLWA Server — Starting ===');
+  console.log(`  [Log] Writing to: ${_logFile}`);
   console.log();
 
   // ─── Load world from JSON files ───
@@ -323,7 +327,7 @@ async function main() {
     agents,
     eventStore,
     engine,
-    { minConversationScore: 1, publicPlaces, pairCooldownMinutes: 240, affordanceCooldownMinutes: 180, decisionCooldownMinutes: 60, startMinute: 420, moodBias: -0.01 },
+    { minConversationScore: 1, publicPlaces, pairCooldownMinutes: 240, affordanceCooldownMinutes: 180, decisionCooldownMinutes: 60, startMinute: 420 },
     {
       onLine: (line) => {
         console.log(`    ${line.speakerName}: "${line.text}"`);

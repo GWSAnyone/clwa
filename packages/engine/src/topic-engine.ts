@@ -7,7 +7,9 @@ import type { Agent } from './agent';
 export interface TopicProposal {
   /** What the conversation is about */
   subject: string;
-  /** Emotional coloring: "hushed urgency", "casual warmth", "stiff politeness" */
+  /** Emotional coloring for LLM prompts and memory text (display only — not used for behavioral logic).
+   *  Examples: "hushed urgency", "casual warmth", "stiff politeness".
+   *  Behavioral mood/sentiment effects are set via moodValence/sentimentValence. */
   tone: string;
   /** Priority weight — higher = more likely selected */
   weight: number;
@@ -24,6 +26,19 @@ export interface TopicProposal {
   /** Dedup key — proposals with the same key are merged (highest weight wins).
    *  Prevents the same event appearing from multiple sources (belief + memory + grief). */
   topicKey?: string;
+  /** Mood effect on conversation participants and bystanders.
+   *  Negative = tense/grim conversations, positive = warm/friendly, 0 = neutral.
+   *  Typical range: -0.04 to +0.03. Clamped by ConversationConfig.moodImpactClamp.
+   *  Undefined defaults to 0 (no mood effect). Set this for every topic source. */
+  moodValence?: number;
+  /** NPC ID specifically discussed in this topic (for sentiment effects).
+   *  When set with sentimentValence, adjusts participants' sentiment toward this NPC.
+   *  Falls back to beliefTransfer.subject (name→ID resolve) if not set. */
+  mentionedNpcId?: string;
+  /** Sentiment shift toward mentionedNpcId or beliefTransfer.subject.
+   *  Negative = discussed negatively (suspicion, complaint), positive = warmly (concern, sympathy).
+   *  Typical range: -0.05 to +0.05. Ignored without a resolvable discussed NPC. */
+  sentimentValence?: number;
   /** If set, belief is transferred after conversation completes */
   beliefTransfer?: {
     eventType: string;

@@ -49,19 +49,26 @@
 | **EL (Evidence Layer)** | Обнаруживаемые факты. Event → structured evidence → discoverable | ✅ v1 |
 | **Spatial System** | Топология. Locations, adjacency, pathfinding | ✅ basic |
 
+### Реализованные в Phase 2 (✅)
+
+| Подсистема | Назначение | Статус |
+|---|---|---|
+| **IL (Intent Layer)** | Извлечение structured meaning из речи игрока к NPC | ✅ v2 (dynamic schema, bilateral parity) |
+| **Perception System** | Что сущности могут видеть/слышать/знать | ✅ v1 (canSee/canHear/getCoPresent/getWitnesses) |
+
 ### Необходимые (🔮)
 
 | Подсистема | Назначение | Зачем |
 |---|---|---|
-| **IL (Intent Layer)** | Извлечение structured meaning из речи игрока к NPC | Игрок влияет на мир через диалог |
-| **Perception System** | Что сущности могут видеть/слышать/знать | Стелс, подслушивание, awareness |
 | **Economy System** | Ценность, обмен, производство, спрос/предложение | Торговля, ремесло, деньги |
 
 ---
 
-## Intent Layer (IL) — слой речи
+## Intent Layer (IL) — слой речи ✅ РЕАЛИЗОВАН (v0.9.9)
 
-### Проблема
+> Ниже — оригинальный дизайн-документ. Всё реализовано в v0.9.9 (IL v2).
+
+### Проблема (решена)
 
 Сейчас, когда игрок говорит NPC — речь **не существует** для движка:
 - `classifyIntent` → broad category (`accuse`, `threaten`...), без КТО/ЧТО/ГДЕ/КОГДА
@@ -374,9 +381,11 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [x] **Structured dialogue** — JSON schema (speech + gesture), anti-narration, anti-echo. Research-backed "at most" phrasing
 - [x] **Anti-repetition** — repeat_penalty 1.1 / frequency_penalty 0.3 / presence_penalty 0.2 (A/B tested, confirmed optimal)
 - [x] **Anti-hallucination** — CRITICAL rule first in system prompt, beliefs in user prompt (not lost middle), gossip grounded with crime details
-- [x] **Responder echo fix** — "React with YOUR OWN words — do NOT repeat"
+- [x] **Responder echo fix** — "NEVER repeat, echo, or paraphrase — use completely different vocabulary" ✅ (v0.10.0 strengthened)
 - [x] **False testimony fix** — scene_notice source (not firsthand), only real witnesses can testify
 - [x] **Conversation impact calibration** — mood calibration instruction added ("casual friendly = near zero") ✅ (v0.9.7)
+- [x] **Deterministic conversation impact** — LLM-based analyzeConversationImpact replaced with TopicProposal.moodValence/sentimentValence/mentionedNpcId. Zero hallucinations, zero negative bias, zero LLM latency. Impact applies to participants + bystanders ✅ (v0.10.0)
+- [x] **ConversationConfig.relationshipMoodModifier** — friend/rival thresholds and bonuses from config, no hardcoded constants ✅ (v0.10.0)
 - [x] **NPC speech consistency** — speechReminder = L0 description (style guidance), not L1 example (prevents verbatim copying) ✅ (v0.9.7)
 - [x] **Dialogue quality overhaul** (v0.9.7):
   - parseDialogue returns speech only (gesture stripped from display)
@@ -388,6 +397,34 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
   - Anti-parentheses in speech schema
 - [x] **Socialize affordance** — social module, E-trait driven, socialOnly→visit goals, TopicEngine handles conversations ✅ (v0.9.7)
 - [x] **TopicEngine v3.1** — worldFactTopics (1 proposal, w=0.5, 40% chance, shared category), innerConflict trust>=0.3 ✅ (v0.9.7)
+
+#### Behavioral polish & optimization (v0.10.0)
+Log-driven analysis: 10-minute monitoring sessions revealed systemic issues in conversation impact, NPC movement, and dialogue quality.
+
+**Critical fixes:**
+- [x] **Conversation impact on participants** — was bystander-only, now participants + bystanders ✅
+- [x] **_pendingImpactData race condition** — single field → _pendingImpactQueue array. Composite npcId prevents CONVERSATION_IMPACT dedup collision. Coverage: 58% → 89% ✅
+- [x] **Visit goal inTransit fix** — NPC walks to target's transitTo instead of silent null ✅
+- [x] **Hidden moodBias: -0.01** — found via debug trace in server bootstrap, removed ✅
+
+**Behavioral fixes:**
+- [x] **Schedule post guard** — mobile NPCs don't random-wander from schedule location ✅
+- [x] **Co-located social wait** — socialOnly + co-located → wait(2) goal. NPCs in wait steps eligible for conversations ✅
+- [x] **Pair cooldown in volition** — isPairOnCooldown rejects redundant visits ✅
+- [x] **Per-NPC conversation cooldown** — 30 min gap prevents conversation monopoly ✅
+
+**Dialogue quality:**
+- [x] **parseDialogue hardening** — empty/punctuation speech → gesture fallback; trailing style metadata stripped ✅
+- [x] **innerConflict hook** — uses profile.innerConflict text instead of abstract hint ✅
+- [x] **Anti-echo strengthened** — "NEVER repeat, echo, or paraphrase — use completely different vocabulary" ✅
+
+**Architecture:**
+- [x] **Deterministic conversation impact** — moodValence/sentimentValence/mentionedNpcId on TopicProposal. Engine reads numbers, modules set numbers. Tone string = display only ✅
+- [x] **ConversationConfig.relationshipMoodModifier** — all behavioral constants from config ✅
+- [x] **world-loader spread** — `{...t, category}` instead of selective field copy. Future-proof for new TopicProposal fields ✅
+- [x] **topics.json moodValence** — all 22 role topic pool entries have moodValence ✅
+- [x] **File logger** — per-session log files with timestamps ✅
+- [x] **Debug logs** — [Impact:debug] (mood trace), [Queue:dedup] (impact dedup warning), [AL:debug] lingering/cooldown ✅
 
 #### Web UI клиент ← ОСНОВНАЯ ДЕМО-ПЛАТФОРМА (v0.9.8)
 
@@ -427,7 +464,7 @@ NPC decision  → Volition → Goal → Steps → CG/EL cascade
 - [ ] Day/night overlay (время суток влияет на визуал)
 - [ ] Minimap
 - [ ] Relationship graph overlay (линии между NPC)
-- [ ] Crime scene маркеры на карте
+- [x] Crime scene маркеры на карте ✅
 - [ ] TileMap доработка: edge-тайлы, клифы
 
 #### Godot клиент (ОТЛОЖЕН)
@@ -597,105 +634,14 @@ training/dataset/
 - [x] **Phase 3.3**: Processing Queue + NPC State Machine + Goal Step Chaining. `_tick()` removed. ✅ (v0.9.9)
 
 ##### Phase 3.1b: Unified Master Clock ✅
-
-**Цель**: один таймер вместо двух. Processing triggered by Master Clock when needed.
-
-**Архитектура**:
-```
-Master Clock (единственный setInterval, 1000/speed ms)
-│
-├── gameMinute++
-├── WS time_update (throttled, каждые 5 мин)
-├── Day boundary detection
-│
-└── _needsProcessing()? && !tickInProgress?
-    └── _tick() — batch processing (текущая логика без изменений)
-```
-
-**`_needsProcessing()` — дешёвые проверки O(N), микросекунды:**
-- Day advance pending (`floor(gameMinute/1440) > lastKnownDay`)
-- Любой NPC IDLE + нет active goal + decision cooldown expired
-- Любая co-located pair IDLE + pair cooldown expired
-- Body discovery pending (alive + dead at same location)
-
-**Задачи**:
-- [ ] Убрать `autoTickTimer`, `startAutoTick()`, `stopAutoTick()`, `autoTickInterval`
-- [ ] `_onClockTick()`: gameMinute++ → broadcast → `_needsProcessing()` → `_tick()` если нужно
-- [ ] `_needsProcessing()`: проверки cooldown expiry, co-location, day boundary
-- [ ] `POST /api/auto` → start/stop Master Clock (заменяет auto-tick toggle)
-- [ ] `POST /api/tick` → прямой `_tick()` (debug, работает даже на паузе)
-- [ ] Pause (speed=0) → Master Clock остановлен → всё заморожено
-
-**Edge cases**:
-- `_tick()` дольше чем clock interval → `tickInProgress` guard, clock тикает, processing начнётся когда готов
-- 3x speed + 10с LLM → 30 game minutes проходят во время одного `_tick()` → NPC "глубоко задумался"
-- `_needsProcessing()` = false → нет `_tick()` → NPC заняты/на кулдауне → время идёт тихо
-- После `_tick()` завершения → сразу проверяет `_needsProcessing()` снова (цепочка)
-
-**UI**:
-- `[Auto]` → start/stop Master Clock (время + processing)
-- `[||] [1x] [2x] [3x]` → скорость Master Clock
-- `[Tick]` → debug: один `_tick()` вручную (работает на паузе)
-- `[Day]` → принудительный advanceDay
+Single `setInterval(1000/speed)` → `_enqueueWork()` every game minute → ProcessingQueue consumes tasks async.
 
 ##### Phase 3.2: Continuous Movement ✅
-
-**Цель**: NPC ходит между локациями плавно, не телепортируется.
-
-**Задачи**:
-- [ ] move_to step: `startMinute` + `duration` (game minutes) вместо мгновенного телепорта
-- [ ] Duration = BFS hops × `minutesPerHop` (configurable, default 30 min/hop)
-- [ ] NPC transit state: `transitFrom` + `transitTo` + `transitProgress` (0-1)
-- [ ] Master Clock advances `transitProgress` каждую game minute
-- [ ] Arrival: `transitProgress >= 1` → location update → co-location checks → next goal step
-- [ ] Co-location: NPC считается at location только при arrival, не during transit
-- [ ] PositionManager: interpolate pixel position during transit
-- [ ] WS: broadcast transit progress → client анимирует перемещение
-
-**Edge cases**:
-- NPC in transit когда conversation trigger → skip (not co-located)
-- NPC in transit когда body discovered at destination → discover on arrival
-- Save/restore: transit state persisted
-- Goal preemption: urgent goal → отменить текущий transit? Или дождаться arrival?
+Transit system: `duration = hops × minutesPerHop`. Master Clock advances `transitProgress`. NPC in transit excluded from conversations/discovery.
 
 ##### Phase 3.3: Processing Queue ✅
+7 task types (DAY_ADVANCE P0 → PHASE_HANDLERS P3). Dedup per-NPC + conversation pair + global. `setTimeout(0)` yield between tasks. NPC state machine (6 states). Goal step chaining (non-LLM instant).
 
-**Цель**: `_tick()` разбирается на задачи. Non-LLM шаги цепочатся мгновенно. Goal 4 шага ≠ 4 тика.
-
-**Архитектура**:
-```
-Master Clock → enqueue tasks → ProcessingQueue (async consumer)
-                                ├── Priority 0: DAY_ADVANCE
-                                ├── Priority 1: BODY_DISCOVERY, REACTIVE_EVAL
-                                ├── Priority 2: VOLITION_DECISION, CONVERSATION, SCHEDULE
-                                └── Priority 3: THEFT_DISCOVERY, NPC_APPROACH
-```
-
-**NPC State Machine**:
-```
-IDLE → (cooldown expired) → AWAITING_DECISION
-AWAITING_DECISION → (queue processes) → EXECUTING_GOAL | IDLE
-EXECUTING_GOAL → (all steps done) → IDLE
-EXECUTING_GOAL → (move_to) → IN_TRANSIT → (arrived) → EXECUTING_GOAL
-IDLE + peer IDLE → (pair cooldown) → IN_CONVERSATION → (done) → IDLE
-any → (player chat) → IN_PLAYER_CHAT → (closed) → previous
-```
-
-**Задачи**:
-- [ ] `ProcessingQueue` class: priority sorting, dedup (one pending task per NPC per type), async consumer
-- [ ] `setTimeout(0)` между задачами — yield event loop для clock ticks
-- [ ] Извлечь из `_tick()`: volition, conversation, discovery, goal execution как standalone функции
-- [ ] Goal steps chain: non-LLM steps (move_to teleport, announce, wait expiry) → мгновенно. LLM steps → через queue
-- [ ] NPC processing state: explicit enum на AgentState
-- [ ] Master Clock enqueues tasks вместо вызова `_tick()`
-- [ ] CG cascades: inline в задаче которая их вызвала, reactive goals → enqueue
-
-**Ключевое улучшение**: investigate goal (5 шагов: move→examine→move→interrogate→move) сейчас = 5 тиков × 8с = 40с. После: move(0ms) → examine(0ms) → move(0ms) → interrogate(LLM 5с) → move(0ms) = **5 секунд**.
-
-**Edge cases**:
-- Task creates new tasks → enqueue, не recursive execute
-- Queue empty → consumer спит, Master Clock разбудит при следующем enqueue
-- Conversation trigger: оба NPC переходят в IN_CONVERSATION **при enqueue**, не при execute
 
 ##### Phase 3.4: Hot/Warm/Cold Agents — ОТЛОЖЕНО (нужно при >20 NPC)
 

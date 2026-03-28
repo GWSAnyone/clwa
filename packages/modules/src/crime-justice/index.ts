@@ -63,6 +63,15 @@ export function registerCrimeJusticeModule(): void {
     );
   });
 
+  REQUIREMENT_CHECKERS.set('deductionBelowThreshold', (agent) => {
+    // Block investigate if guard already has high-confidence deduction (investigation complete → arrest instead)
+    if (!agent.state.beliefs) return true;
+    const deductions = agent.state.beliefs.getAllBeliefs().filter(
+      (b: any) => b.source === 'deduction' && b.confidence >= 0.7,
+    );
+    return deductions.length === 0; // true = can investigate (no high-conf deduction yet)
+  });
+
   // Event registries — declare module-specific event metadata for engine
   registerEventCategory('crime', ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE']);
   registerEventCategory('economic_pressure', ['DEBT_PRESSURE']);

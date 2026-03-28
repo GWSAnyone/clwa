@@ -83,6 +83,9 @@ interface TopicsJson {
     tone: string;
     weight: number;
     initiatorHook: string;
+    moodValence?: number;
+    sentimentValence?: number;
+    mentionedNpcId?: string;
   }>;
 }
 
@@ -230,10 +233,7 @@ export function loadWorld(worldDir: string): LoadedWorld {
   const topics = readJson<TopicsJson>(join(worldDir, 'topics.json'));
   for (const [role, pool] of Object.entries(topics)) {
     const formatted = pool.map(t => ({
-      subject: t.subject,
-      tone: t.tone,
-      weight: t.weight,
-      initiatorHook: t.initiatorHook,
+      ...t,
       category: `role:${role}`,
     }));
     registerRoleTopicPool(role, formatted);

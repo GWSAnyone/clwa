@@ -103,14 +103,10 @@ export function createInteractionRunner(
       });
     }
 
-    // Store memories using 3rd-person belief summaries (no raw dialogue, no "You certain:" confusion)
-    const targetBeliefs3p = target.state.beliefs?.summarizeForMemory(target.profile.name, 1) ?? '';
+    // Initiator memory created by goals.ts (unified with post-hook outcome — avoids double entry)
+    // Target memory: structured belief summary (no raw dialogue)
     const initiatorBeliefs3p = initiator.state.beliefs?.summarizeForMemory(initiator.profile.name, 1) ?? '';
     const purposeShort = cleanPurpose.length > 60 ? cleanPurpose.slice(0, 60) + '...' : cleanPurpose;
-    await initiator.observe(
-      `Talked to ${target.profile.name} about ${purposeShort}.${targetBeliefs3p ? ` ${targetBeliefs3p}.` : ''}`,
-      importance,
-    );
     await target.observe(
       `${initiator.profile.name} came to talk about ${purposeShort}.${initiatorBeliefs3p ? ` ${initiatorBeliefs3p}.` : ''}`,
       importance,

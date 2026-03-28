@@ -1,6 +1,4 @@
-import { Agent, llmSemaphore } from './agent';
-import { llmCall } from './llm-client';
-import type { LlmJsonSchema } from './llm-client';
+import { Agent } from './agent';
 import { BeliefManager } from './beliefs';
 import { RelationshipGraph } from './relationships';
 import type { Belief } from './beliefs';
@@ -34,7 +32,7 @@ import { ProcessingQueue } from './processing-queue';
 import type { ProcessingTask, TaskType } from './processing-queue';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, getSecretEventType } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, getEventLabel } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -80,37 +78,6 @@ function isPresent(agent: Agent): boolean {
 
 // ─── LLM JSON Schemas ───
 
-/** Build conversation impact schema with NPC names enum — prevents hallucinated names */
-function buildConversationImpactSchema(npcNames: string[]): LlmJsonSchema {
-  return {
-    name: 'conversation_impact',
-    strict: true,
-    schema: {
-      type: 'object',
-      properties: {
-        mentions: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              npc_name: { type: 'string', enum: npcNames },
-              valence: { type: 'number' },
-              reason: { type: 'string' },
-            },
-            required: ['npc_name', 'valence', 'reason'],
-            additionalProperties: false,
-          },
-        },
-        mood_impact: { type: 'number' },
-        importance: { type: 'number' },
-        secret_revealed: { type: 'string' },
-      },
-      required: ['mentions', 'mood_impact', 'importance', 'secret_revealed'],
-      additionalProperties: false,
-    },
-  };
-};
-
 export class World {
   readonly agents: Map<string, Agent>;
   readonly eventStore: IEventStore;
@@ -154,7 +121,7 @@ export class World {
   /** Resolved conversation config (merged from WorldConfig.conversationBehavior + defaults) */
   readonly resolvedConversationConfig: ConversationConfig;
   /** Pending conversation impact data — consumed by CONVERSATION_IMPACT task handler */
-  private _pendingImpactData: { conversation: import('./world-types').ConversationResult; topic: import('./topic-engine').TopicProposal } | null = null;
+  private _pendingImpactQueue: Array<{ conversation: import('./world-types').ConversationResult; topic: import('./topic-engine').TopicProposal }> = [];
   /** Processing queue — async task consumer, one task at a time, yields between tasks */
   readonly processingQueue: ProcessingQueue;
 
@@ -261,19 +228,7 @@ export class World {
    */
   async handleEventForGoals(event: WorldEvent): Promise<void> {
     // Reactive AL: evaluate affordances with event boost for affected NPCs
-    const reactiveCtx: AffordanceContext = {
-      agents: this.agents,
-      locations: this.locations,
-      npcHomes: this.npcHomes,
-      period: this.currentPeriod as AffordanceContext['period'],
-      gameDay: this.getCurrentDay(),
-      gameMinute: this._gameMinute,
-      playerLocation: this.playerLocation ?? undefined,
-      hasActiveGoal: (id) => this.goalManager.hasActiveGoal(id),
-      hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
-      cooldowns: this.affordanceCooldowns,
-      affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
-    };
+    const reactiveCtx = this.buildAffordanceContext();
     console.log(`  [ReactiveEval] event=${event.type} subj=${event.subject} obj=${event.object}`);
     const reactiveGoals = evaluateReactiveVolition(
       event, reactiveCtx,
@@ -613,14 +568,23 @@ export class World {
       }
     }
 
-    // Random movement (transit-based)
+    // Random movement (transit-based) — skip NPCs at their schedule post
     if (this.locations.size > 0) {
-      const npcsWithGoals = new Set<string>();
+      const excludeFromMovement = new Set<string>();
       for (const [id] of this.agents) {
-        if (this.goalManager.hasActiveGoal(id)) npcsWithGoals.add(id);
+        if (this.goalManager.hasActiveGoal(id)) excludeFromMovement.add(id);
+      }
+      if (this.scheduleManager) {
+        for (const [id, agent] of this.agents) {
+          if (agent.profile.isPlayer || !agent.state.alive) continue;
+          const entry = this.scheduleManager.getActiveEntry(id, minuteOfDay);
+          if (entry?.location && entry.location === agent.state.location) {
+            excludeFromMovement.add(id);
+          }
+        }
       }
       const randomMovements = processMovement(
-        this.agents, this.locations, this.movementConfig, npcsWithGoals,
+        this.agents, this.locations, this.movementConfig, excludeFromMovement,
         this._gameMinute, this.config.minutesPerHop,
       );
       for (const m of randomMovements) {
@@ -671,44 +635,103 @@ export class World {
   }
 
   private async _handleConversationImpact(): Promise<void> {
-    const data = this._pendingImpactData;
+    const data = this._pendingImpactQueue.shift();
     if (!data) return;
-    this._pendingImpactData = null;
 
-    try {
-      const { conversation, topic } = data;
-      const listenerIds = Array.from(this.agents.entries())
-        .filter(([id, a]) => a.state.alive && a.state.location === conversation.location && id !== conversation.initiator && id !== conversation.responder)
-        .map(([id]) => id);
+    const { conversation, topic } = data;
+    const initAgent = this.agents.get(conversation.initiator);
+    const respAgent = this.agents.get(conversation.responder);
+    if (!initAgent || !respAgent) return;
 
-      this.callbacks.onLlmCall?.('Sentiment analysis', `impact for ${conversation.initiator} ↔ ${conversation.responder}`);
-      const impact = await this.analyzeConversationImpact(conversation, listenerIds);
-      if (impact) {
-        const finalImportance = typeof impact.importance === 'number' ? Math.max(conversation.importance, impact.importance) : conversation.importance;
-        conversation.importance = finalImportance;
+    const bystanderIds = Array.from(this.agents.entries())
+      .filter(([id, a]) => a.state.alive && a.state.location === conversation.location && id !== conversation.initiator && id !== conversation.responder)
+      .map(([id]) => id);
+    const allAffectedIds = [conversation.initiator, conversation.responder, ...bystanderIds];
 
-        // Participant memories — 3rd person beliefs + topic tone, no raw dialogue
-        const initAgent = this.agents.get(conversation.initiator);
-        const respAgent = this.agents.get(conversation.responder);
-        if (initAgent && respAgent) {
-          const topicEventType = topic.beliefTransfer?.eventType;
-          const respBeliefs3p = respAgent.state.beliefs?.summarizeForMemory(respAgent.profile.name, 1, topicEventType) ?? '';
-          const initBeliefs3p = initAgent.state.beliefs?.summarizeForMemory(initAgent.profile.name, 1, topicEventType) ?? '';
-          await initAgent.observe(
-            buildMemoryText(respAgent.profile.name, topic.subject, topic.tone, respBeliefs3p, respAgent.state.mood),
-            finalImportance,
-          );
-          await respAgent.observe(
-            buildMemoryText(initAgent.profile.name, topic.subject, topic.tone, initBeliefs3p, initAgent.state.mood),
-            finalImportance,
-          );
-        }
+    // ─── Deterministic impact from TopicProposal structured data (no LLM) ───
+    // Trade-off: impact based on topic INTENT, not dialogue RESULT.
+    // Acceptable for 9B model (topic tone matches dialogue ~80%). Revisit if upgrading to larger model.
 
-        await this.processOverhear(conversation, finalImportance, topic);
-      }
-    } catch (err) {
-      console.error('  [Impact] Conversation impact analysis failed:', err);
+    // 1. Mood delta from moodValence (set by module topic sources)
+    const mc = this.resolvedConversationConfig.moodImpactClamp;
+    const rm = this.resolvedConversationConfig.relationshipMoodModifier;
+    let moodDelta = topic.moodValence ?? 0;
+
+    if (topic.moodValence !== undefined && Math.abs(topic.moodValence) > 0.08) {
+      console.warn(`  [Impact] Suspicious moodValence ${topic.moodValence} for topic "${topic.subject}"`);
     }
+
+    // Relationship modifier from config: friends chatting → slight boost, rivals → slight dip
+    const rel = initAgent.state.relationships?.getRelationship(respAgent.profile.id);
+    if (rel) {
+      if (rel.sentiment > rm.friendThreshold) moodDelta += rm.friendBonus;
+      else if (rel.sentiment < rm.rivalThreshold) moodDelta += rm.rivalPenalty;
+    }
+
+    moodDelta = Math.max(mc.min, Math.min(mc.max, moodDelta)) + (this.config.moodBias ?? 0);
+
+    console.log(`  [Impact:debug] ${initAgent.profile.name}↔${respAgent.profile.name}: moodValence=${topic.moodValence ?? 'undefined'}, relSentiment=${rel?.sentiment?.toFixed(2) ?? 'none'}, rmPenalty=${rm.rivalPenalty}, rmBonus=${rm.friendBonus}, delta=${moodDelta.toFixed(3)}, topic="${topic.subject}", bystanders=${bystanderIds.length}`);
+
+    // Apply mood to participants + bystanders
+    if (Math.abs(moodDelta) > 0.005) {
+      for (const id of allAffectedIds) {
+        const agent = this.agents.get(id);
+        if (agent) agent.state.mood = Math.max(-1, Math.min(1, agent.state.mood + moodDelta));
+      }
+      console.log(`  [Mood] Conversation mood impact: ${moodDelta > 0 ? '+' : ''}${moodDelta.toFixed(3)} (tone: ${topic.tone})`);
+    }
+
+    // 2. Sentiment toward discussed NPC (mentionedNpcId or beliefTransfer.subject fallback)
+    const valence = topic.sentimentValence;
+    if (valence && Math.abs(valence) >= this.resolvedConversationConfig.sentimentValenceThreshold) {
+      let discussedId = topic.mentionedNpcId;
+      let discussedName: string | undefined;
+      if (discussedId) {
+        discussedName = this.agents.get(discussedId)?.profile.name;
+      } else if (topic.beliefTransfer?.subject) {
+        // Fallback: resolve NPC name → ID from beliefTransfer subject
+        const entry = Array.from(this.agents.entries())
+          .find(([, a]) => a.profile.name.toLowerCase() === topic.beliefTransfer!.subject!.toLowerCase());
+        if (entry) { discussedId = entry[0]; discussedName = entry[1].profile.name; }
+      }
+
+      if (discussedId) {
+        const vc = this.resolvedConversationConfig.sentimentValenceClamp;
+        const clampedValence = Math.max(vc.min, Math.min(vc.max, valence));
+        for (const id of allAffectedIds) {
+          if (id === discussedId) continue;
+          const agent = this.agents.get(id);
+          if (agent?.state.relationships) {
+            agent.state.relationships.adjustSentiment(discussedId, clampedValence);
+          }
+        }
+        console.log(`  [Impact] ${discussedName ?? discussedId}: ${clampedValence > 0 ? '+' : ''}${clampedValence.toFixed(2)} (topic: ${topic.subject})`);
+      }
+    }
+
+    // 3. Importance from topic weight (mapped to 1-8 scale)
+    const rawImportance = Math.round(topic.weight * 0.7);
+    const finalImportance = Math.max(
+      topic.minImportance ?? 1,
+      Math.min(topic.maxImportance ?? 8, Math.max(1, Math.min(8, rawImportance))),
+    );
+    conversation.importance = Math.max(conversation.importance, finalImportance);
+
+    // 4. Participant memories — 3rd person beliefs + topic tone
+    const topicEventType = topic.beliefTransfer?.eventType;
+    const respBeliefs3p = respAgent.state.beliefs?.summarizeForMemory(respAgent.profile.name, 1, topicEventType) ?? '';
+    const initBeliefs3p = initAgent.state.beliefs?.summarizeForMemory(initAgent.profile.name, 1, topicEventType) ?? '';
+    await initAgent.observe(
+      buildMemoryText(respAgent.profile.name, topic.subject, topic.tone, respBeliefs3p, respAgent.state.mood),
+      conversation.importance,
+    );
+    await respAgent.observe(
+      buildMemoryText(initAgent.profile.name, topic.subject, topic.tone, initBeliefs3p, initAgent.state.mood),
+      conversation.importance,
+    );
+
+    // 5. Bystander overhear
+    await this.processOverhear(conversation, conversation.importance, topic);
   }
 
   private async _handleDayAdvance(): Promise<void> {
@@ -732,20 +755,7 @@ export class World {
     if (this.goalManager.hasActiveGoal(npcId)) return; // got a goal while waiting in queue
 
     agent.state.processingState = 'awaiting_decision';
-    const gameDay = this.getCurrentDay();
-    const ctx: AffordanceContext = {
-      agents: this.agents, locations: this.locations, npcHomes: this.npcHomes,
-      period: this.currentPeriod as AffordanceContext['period'], gameDay,
-      gameMinute: this._gameMinute,
-      playerLocation: this.playerLocation ?? undefined,
-      hasActiveGoal: (id) => this.goalManager.hasActiveGoal(id),
-      hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
-      cooldowns: this.affordanceCooldowns,
-      decisionCooldowns: this.decisionCooldowns,
-      affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
-      decisionCooldownMinutes: this.config.decisionCooldownMinutes,
-      isArrestTarget: (npcId) => this.goalManager.isTargetOfGoalType(npcId, 'arrest'),
-    };
+    const ctx = this.buildAffordanceContext();
 
     const goals = await evaluateAllVolition(ctx, this.callbacks.onLlmCall, this.callbacks.onDecision, [npcId]);
     for (const goal of goals) {
@@ -843,7 +853,12 @@ export class World {
   private async _handleConversation(): Promise<void> {
     const npcsWithGoals = new Set<string>();
     for (const [id] of this.agents) {
-      if (this.goalManager.hasActiveGoal(id)) npcsWithGoals.add(id);
+      const goal = this.goalManager.getActiveGoal(id);
+      if (!goal) continue;
+      // NPCs in 'wait' steps are standing still — eligible for conversation
+      const currentStep = goal.steps[goal.currentStep];
+      if (currentStep?.action === 'wait') continue;
+      npcsWithGoals.add(id);
     }
 
     const pair = await this.scheduler.findPair(this.agents, this._gameMinute, npcsWithGoals);
@@ -894,16 +909,16 @@ export class World {
       // Enqueue impact analysis as separate queue task (sequential, no race with other LLM tasks)
       const convCopy = { ...conversation };
       const topicCopy = { ...topic };
+      // Unique composite npcId prevents dedup collision when same NPC has multiple conversations
       this.processingQueue.enqueue({
         id: `impact-${pair.a}-${pair.b}-${this._gameMinute}`,
         type: 'CONVERSATION_IMPACT' as any,
         priority: 3,
-        npcId: pair.a,
-        targetNpcId: pair.b,
+        npcId: `${pair.a}:impact:${this._gameMinute}`,
         enqueuedAt: this._gameMinute,
       });
       // Store impact data for the handler
-      this._pendingImpactData = { conversation: convCopy, topic: topicCopy };
+      this._pendingImpactQueue.push({ conversation: convCopy, topic: topicCopy });
     } finally {
       initiator.state.processingState = 'idle';
       responder.state.processingState = 'idle';
@@ -989,19 +1004,16 @@ export class World {
       if (agent.state.location !== location) continue;
       if (Math.random() > 0.6) continue;
 
-      // Structured memory — topic only, no raw dialogue (prevents self-reference cascade)
-      await agent.observe(
-        `Overheard ${initiatorName} and ${responderName} discussing ${topic.subject}.`,
-        overheardImportance,
-      );
-
       // Belief transfer from overheard conversation (weaker than direct: ×0.3)
+      let overheardClaim = '';
       if (topic.beliefTransfer && initiator && agent.state.beliefs) {
         const bt = topic.beliefTransfer;
         const sourceBelief = initiator.state.beliefs?.getAllBeliefs().find(
           b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object),
         );
         if (sourceBelief) {
+          const verb = getEventLabel(sourceBelief.eventType) ?? 'something';
+          overheardClaim = ` Picked up that ${sourceBelief.subject ?? 'someone'} may be involved in ${verb}.`;
           const conf = Math.max(0.2, sourceBelief.confidence * 0.3);
           agent.state.beliefs.addBelief({
             id: crypto.randomUUID(),
@@ -1018,168 +1030,18 @@ export class World {
           console.log(`  [Overhear] ${agent.profile.name} overheard about ${bt.eventType} (conf ${conf.toFixed(2)})`);
         }
       }
+
+      // Structured memory with belief context (no raw dialogue)
+      await agent.observe(
+        `Overheard ${initiatorName} and ${responderName} discussing ${topic.subject}.${overheardClaim}`,
+        overheardImportance,
+      );
     }
   }
 
-  /**
-   * Analyze a conversation for emotional impact using structured LLM output.
-   * One lightweight call per conversation — returns sentiment shifts toward mentioned NPCs.
-   * Applied to all listeners (participants + overhearers).
-   */
-  private async analyzeConversationImpact(
-    conversation: ConversationResult,
-    listenerIds: string[],
-  ): Promise<{ moodDelta: number; importance: number }> {
-    if (conversation.lines.length === 0 || listenerIds.length === 0) {
-      return { moodDelta: 0, importance: conversation.importance };
-    }
-
-    const transcript = conversation.lines
-      .map((l) => `${l.speakerName}: "${l.text}"`)
-      .join('\n');
-
-    // Build list of all NPC names for context
-    const npcNames = Array.from(this.agents.values())
-      .filter((a) => a.state.alive)
-      .map((a) => a.profile.name);
-
-    const prompt = [
-      `Analyze this conversation for emotional impact on listeners.`,
-      `Which NPCs are mentioned or discussed, and is the sentiment positive or negative?`,
-      `How does this conversation affect the listeners' mood overall?`,
-      `How memorable is this conversation (importance 1-8)?`,
-      ``,
-      `Known NPCs: ${npcNames.join(', ')}`,
-      ``,
-      `Conversation:`,
-      transcript,
-      ``,
-      `Return mentions of NPCs with sentiment valence (-0.15 to 0.15), overall mood_impact (-0.08 to 0.06), and importance (1-8).`,
-      `mood_impact: positive for warm/supportive/funny conversations, negative for tense/hostile/disturbing ones, near zero for neutral small talk.`,
-      `CALIBRATION: Most casual friendly conversations should have mood_impact between -0.01 and +0.03. Only genuinely hostile, threatening, or disturbing exchanges warrant mood_impact below -0.04. Friends chatting = near zero or slightly positive.`,
-      `importance: 1-2 for mundane small talk, 3-4 for interesting personal exchanges, 5-6 for emotionally significant revelations, 7-8 for shocking or life-changing information.`,
-      `Only include NPCs explicitly discussed. Empty mentions array if just small talk.`,
-      `secret_revealed: If someone confessed or accidentally revealed hidden information, write exactly: "NAME revealed about NAME: what they revealed". Example: "Ted revealed about Ted: waters down his ale due to debts". Empty string if nothing secret was shared. Only genuine hidden info, not common knowledge.`,
-    ].join('\n');
-
-    await llmSemaphore.acquire();
-    try {
-      const content = await llmCall({
-        system: 'You analyze conversations for emotional impact on listeners.',
-        user: prompt,
-        temperature: 0.3,
-        maxTokens: 300,
-        jsonSchema: buildConversationImpactSchema(npcNames),
-      });
-      if (!content) return;
-
-      let impact: { mentions: Array<{ npc_name: string; valence: number; reason: string }>; mood_impact: number; importance: number; secret_revealed?: string };
-      try {
-        impact = JSON.parse(content);
-      } catch {
-        console.warn(`  [Impact] Invalid JSON from LLM, skipping`);
-        return { moodDelta: 0, importance: conversation.importance };
-      }
-
-      // Resolve NPC names to IDs (used by mentions + secret discovery)
-      const nameToId = new Map<string, string>();
-      for (const [id, agent] of this.agents) {
-        nameToId.set(agent.profile.name.toLowerCase(), id);
-      }
-
-      // Apply sentiment shifts to all listeners
-      if (impact.mentions.length > 0) {
-
-        for (const mention of impact.mentions) {
-          const mentionedId = nameToId.get(mention.npc_name.toLowerCase());
-          if (!mentionedId) continue;
-
-          // Clamp valence to safe range (configurable via conversationBehavior)
-          const vc = this.resolvedConversationConfig.sentimentValenceClamp;
-          const valence = Math.max(vc.min, Math.min(vc.max, mention.valence));
-          if (Math.abs(valence) < this.resolvedConversationConfig.sentimentValenceThreshold) continue;
-
-          for (const listenerId of listenerIds) {
-            if (listenerId === mentionedId) continue; // skip self-references
-            const listener = this.agents.get(listenerId);
-            if (!listener?.state.relationships) continue;
-            listener.state.relationships.adjustSentiment(mentionedId, valence);
-          }
-
-          console.log(`  [Impact] ${mention.npc_name}: ${valence > 0 ? '+' : ''}${valence.toFixed(2)} (${mention.reason})`);
-        }
-      }
-
-      // Apply mood impact (bidirectional: positive for warm chats, negative for tense ones)
-      const rawImpact = impact.mood_impact;
-      const bias = this.config.moodBias ?? 0;
-      const mc = this.resolvedConversationConfig.moodImpactClamp;
-      const moodDelta = Math.max(mc.min, Math.min(mc.max, rawImpact)) + bias;
-      if (Math.abs(moodDelta) > 0.005) {
-        for (const listenerId of listenerIds) {
-          const listener = this.agents.get(listenerId);
-          if (listener) {
-            listener.state.mood = Math.max(-1, Math.min(1, listener.state.mood + moodDelta));
-          }
-        }
-        if (moodDelta !== 0) {
-          console.log(`  [Mood] Conversation mood impact: ${moodDelta > 0 ? '+' : ''}${moodDelta.toFixed(3)}`);
-        }
-      }
-
-      // Secret discovery: if LLM detected a speaker revealed hidden information
-      // Format: "SPEAKER revealed about ABOUT: DETAIL"
-      // Event type from registry — module defines what constitutes a "secret" event
-      const secretEventType = getSecretEventType();
-      const secretStr = (impact as any).secret_revealed as string;
-      if (secretEventType && secretStr && secretStr.length > 5) {
-        const secretMatch = secretStr.match(/(\w[\w\s]*?)\s+revealed\s+about\s+(\w[\w\s]*?):\s*(.+)/i);
-        if (secretMatch) {
-          const [, speakerName, aboutName, detail] = secretMatch;
-          const aboutId = nameToId.get(aboutName.trim().toLowerCase());
-          const speakerId = nameToId.get(speakerName.trim().toLowerCase());
-          if (aboutId && speakerId) {
-            const aboutAgent = this.agents.get(aboutId);
-            for (const listenerId of listenerIds) {
-              if (listenerId === speakerId || listenerId === aboutId) continue;
-              const listener = this.agents.get(listenerId);
-              if (!listener?.state.beliefs) continue;
-              const alreadyKnows = listener.state.beliefs.getAllBeliefs().some(
-                b => b.source === 'secret' && b.subject === aboutAgent?.profile.name,
-              );
-              if (alreadyKnows) continue;
-              listener.state.beliefs.addBelief({
-                id: crypto.randomUUID(),
-                eventType: secretEventType,
-                subject: aboutAgent?.profile.name ?? aboutName.trim(),
-                object: detail.trim(),
-                location: conversation.location,
-                confidence: this.resolvedConversationConfig.secretDiscoveryConfidence,
-                source: 'secret',
-                sourceNpcId: speakerId,
-                gameDay: conversation.gameDay,
-                lastUpdated: conversation.gameDay,
-              });
-              console.log(`  [SecretDiscovery] ${listener.profile.name} learned about ${aboutName.trim()}'s secret from ${speakerName.trim()}: "${detail.trim()}"`);
-            }
-          }
-        }
-      }
-
-      // LLM-assessed importance (content-aware, not just topic weight)
-      const rawImportance = impact.importance ?? conversation.importance;
-      if (rawImportance < 1 || rawImportance > 8) {
-        console.warn(`  [Impact] LLM importance ${rawImportance} outside 1-8 range, clamping`);
-      }
-      const llmImportance = Math.max(1, Math.min(8, Math.round(rawImportance)));
-      return { moodDelta, importance: llmImportance };
-    } catch (err) {
-      console.error(`  [Impact] Analysis failed:`, err);
-      return { moodDelta: 0, importance: conversation.importance };
-    } finally {
-      llmSemaphore.release();
-    }
-  }
+  // analyzeConversationImpact removed — replaced by deterministic computation in _handleConversationImpact
+  // Mood/sentiment now derived from TopicProposal structured data (tone, weight, beliefTransfer)
+  // Eliminates: LLM hallucinated mentions, negative mood bias, 2-4s latency per conversation
 
   // Legacy checkMurderMotivation + askMurderDecision removed — replaced by AL volition `kill` affordance
 
@@ -1485,6 +1347,8 @@ export class World {
       decisionCooldowns: this.decisionCooldowns,
       affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
       decisionCooldownMinutes: this.config.decisionCooldownMinutes,
+      isArrestTarget: (npcId) => this.goalManager.isTargetOfGoalType(npcId, 'arrest'),
+      isPairOnCooldown: (a, b) => this.scheduler.isOnCooldown(a, b, this._gameMinute),
     };
   }
 
@@ -1528,22 +1392,7 @@ export class World {
     const agent = this.agents.get(npcId);
     if (!agent) return [];
 
-    const period = getTimePeriod(this.minuteOfDay);
-    const ctx: AffordanceContext = {
-      agents: this.agents,
-      locations: this.locations,
-      period,
-      gameDay: agent.state.currentDay,
-      gameMinute: this._gameMinute,
-      npcHomes: this.npcHomes,
-      playerLocation: this.playerLocation ?? undefined,
-      cooldowns: this.affordanceCooldowns,
-      decisionCooldowns: this.decisionCooldowns,
-      affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
-      decisionCooldownMinutes: this.config.decisionCooldownMinutes,
-      hasActiveGoal: (id) => this.goalManager.getActiveGoal(id) !== null,
-      hasActiveGoalAbove: (id, minPriority) => this.goalManager.hasActiveGoalAbove(id, minPriority),
-    };
+    const ctx = this.buildAffordanceContext();
 
     const results: { id: string; passed: boolean; score?: number; target?: string; targetLocation?: string; wouldAppear?: boolean }[] = [];
     for (const aff of AFFORDANCE_REGISTRY) {
