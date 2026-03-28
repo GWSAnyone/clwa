@@ -124,10 +124,10 @@ export class BeliefManager {
     return Array.from(this.beliefs.values()).sort((a, b) => b.confidence - a.confidence);
   }
 
-  /** Compact summary for LLM system prompt */
+  /** Compact summary for LLM system prompt (2nd person: "You certain: X committed...") */
   summarizeForPrompt(maxBeliefs = 3): string {
     const beliefs = this.getAllBeliefs()
-      .filter(b => b.object != null || b.subject != null) // skip beliefs with no meaningful content
+      .filter(b => b.object != null || b.subject != null)
       .slice(0, maxBeliefs);
     if (beliefs.length === 0) return '';
 
@@ -139,9 +139,25 @@ export class BeliefManager {
       const target = b.object ?? 'someone';
       const where = b.location ? ` at ${b.location}` : '';
       const how = getBeliefSourceLabel(b.source);
-      // Clear role distinction: "X committed theft against Y" not "X theft Y"
       return `- You ${certainty}: ${who} committed ${verb} against ${target}${where} (${how})`;
     }).filter(Boolean).join('\n');
+  }
+
+  /** 3rd person summary for conversation memories (stored in OTHER NPC's memory) */
+  summarizeForMemory(ownerName: string, maxBeliefs = 2): string {
+    const beliefs = this.getAllBeliefs()
+      .filter(b => b.object != null || b.subject != null)
+      .slice(0, maxBeliefs);
+    if (beliefs.length === 0) return '';
+
+    return beliefs.map((b) => {
+      const conf = b.confidence > 0.7 ? 'is convinced' : b.confidence > 0.4 ? 'believes' : 'has heard';
+      const verb = getEventLabel(b.eventType);
+      if (!verb) return null;
+      const who = b.subject ?? 'someone';
+      const target = b.object ?? 'someone';
+      return `${ownerName} ${conf} ${who} committed ${verb} against ${target}`;
+    }).filter(Boolean).join('. ');
   }
 
   /** Serializable snapshot */

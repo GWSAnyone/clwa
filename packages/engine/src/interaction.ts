@@ -103,16 +103,16 @@ export function createInteractionRunner(
       });
     }
 
-    // Store memories using structured belief summaries (not raw dialogue — prevents self-reference cascade)
-    const targetKnows = target.state.beliefs?.summarizeForPrompt(1) ?? '';
-    const initiatorKnows = initiator.state.beliefs?.summarizeForPrompt(1) ?? '';
+    // Store memories using 3rd-person belief summaries (no raw dialogue, no "You certain:" confusion)
+    const targetBeliefs3p = target.state.beliefs?.summarizeForMemory(target.profile.name, 1) ?? '';
+    const initiatorBeliefs3p = initiator.state.beliefs?.summarizeForMemory(initiator.profile.name, 1) ?? '';
     const purposeShort = cleanPurpose.length > 60 ? cleanPurpose.slice(0, 60) + '...' : cleanPurpose;
     await initiator.observe(
-      `Talked to ${target.profile.name} the ${target.profile.role} about ${purposeShort}.${targetKnows ? ` They know: ${targetKnows}` : ''}`,
+      `Talked to ${target.profile.name} about ${purposeShort}.${targetBeliefs3p ? ` ${targetBeliefs3p}.` : ''}`,
       importance,
     );
     await target.observe(
-      `${initiator.profile.name} the ${initiator.profile.role} came to talk about ${purposeShort}.${initiatorKnows ? ` They told me: ${initiatorKnows}` : ''}`,
+      `${initiator.profile.name} came to talk about ${purposeShort}.${initiatorBeliefs3p ? ` ${initiatorBeliefs3p}.` : ''}`,
       importance,
     );
 

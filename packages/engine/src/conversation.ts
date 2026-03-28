@@ -240,22 +240,23 @@ IMPORTANT: say 5–12 words out loud — a complete thought, never just a name. 
 
 /** Build grounded memory text with topic context — varied format for better recall differentiation */
 /**
- * Build memory text from structured data (topic + beliefs + mood).
+ * Build memory text from structured data (topic + tone + beliefs + mood).
  * No raw dialogue text — prevents self-reference cascade through memories.
+ * Beliefs in 3rd person via summarizeForMemory (not "You certain:").
  */
 export function buildMemoryText(
   otherName: string, topicSubject: string,
-  otherBeliefs: string, otherMood: number,
+  topicTone: string | undefined,
+  otherBeliefs3p: string, otherMood: number,
 ): string {
   const moodLabel = otherMood < -0.5 ? 'visibly shaken'
     : otherMood < -0.2 ? 'tense'
     : otherMood > 0.3 ? 'in good spirits'
     : 'calm';
 
-  const beliefNote = otherBeliefs ? ` They mentioned: ${otherBeliefs}` : '';
-  if (otherMood < -0.2) return `${otherName} (${moodLabel}) talked to me about ${topicSubject}.${beliefNote}`;
-  if (otherMood > 0.3) return `Chatted with ${otherName} about ${topicSubject}. They were ${moodLabel}.${beliefNote}`;
-  return `Had a conversation with ${otherName} about ${topicSubject}.${beliefNote}`;
+  const toneNote = topicTone ? ` (${topicTone})` : '';
+  const beliefNote = otherBeliefs3p ? ` ${otherBeliefs3p}.` : '';
+  return `Talked with ${otherName} about ${topicSubject}${toneNote} — they were ${moodLabel}.${beliefNote}`;
 }
 
 /** Estimate conversation importance from structured topic category (no text matching) */

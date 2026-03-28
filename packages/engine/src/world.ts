@@ -687,18 +687,18 @@ export class World {
         const finalImportance = typeof impact.importance === 'number' ? Math.max(conversation.importance, impact.importance) : conversation.importance;
         conversation.importance = finalImportance;
 
-        // Participant memories — structured (beliefs + topic), no raw dialogue
+        // Participant memories — 3rd person beliefs + topic tone, no raw dialogue
         const initAgent = this.agents.get(conversation.initiator);
         const respAgent = this.agents.get(conversation.responder);
         if (initAgent && respAgent) {
-          const respBeliefs = respAgent.state.beliefs?.summarizeForPrompt(1) ?? '';
-          const initBeliefs = initAgent.state.beliefs?.summarizeForPrompt(1) ?? '';
+          const respBeliefs3p = respAgent.state.beliefs?.summarizeForMemory(respAgent.profile.name, 1) ?? '';
+          const initBeliefs3p = initAgent.state.beliefs?.summarizeForMemory(initAgent.profile.name, 1) ?? '';
           await initAgent.observe(
-            buildMemoryText(respAgent.profile.name, topic.subject, respBeliefs, respAgent.state.mood),
+            buildMemoryText(respAgent.profile.name, topic.subject, topic.tone, respBeliefs3p, respAgent.state.mood),
             finalImportance,
           );
           await respAgent.observe(
-            buildMemoryText(initAgent.profile.name, topic.subject, initBeliefs, initAgent.state.mood),
+            buildMemoryText(initAgent.profile.name, topic.subject, topic.tone, initBeliefs3p, initAgent.state.mood),
             finalImportance,
           );
         }
