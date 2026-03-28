@@ -179,7 +179,7 @@ function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: str
 
   const contextDirective = isUrgentReport
     ? `IMPORTANT: ${initiator.profile.name} is bringing urgent information. Take it seriously — react to what they say.`
-    : `They are trying to ${purpose}.`;
+    : `${initiator.profile.name} is talking to you. Respond naturally based on what YOU know.`;
 
   const speech = speechReminder(target);
   const beliefContext = target.state.beliefs?.summarizeForPrompt(2);
