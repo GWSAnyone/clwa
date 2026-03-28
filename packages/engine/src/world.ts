@@ -691,8 +691,9 @@ export class World {
         const initAgent = this.agents.get(conversation.initiator);
         const respAgent = this.agents.get(conversation.responder);
         if (initAgent && respAgent) {
-          const respBeliefs3p = respAgent.state.beliefs?.summarizeForMemory(respAgent.profile.name, 1) ?? '';
-          const initBeliefs3p = initAgent.state.beliefs?.summarizeForMemory(initAgent.profile.name, 1) ?? '';
+          const topicEventType = topic.beliefTransfer?.eventType;
+          const respBeliefs3p = respAgent.state.beliefs?.summarizeForMemory(respAgent.profile.name, 1, topicEventType) ?? '';
+          const initBeliefs3p = initAgent.state.beliefs?.summarizeForMemory(initAgent.profile.name, 1, topicEventType) ?? '';
           await initAgent.observe(
             buildMemoryText(respAgent.profile.name, topic.subject, topic.tone, respBeliefs3p, respAgent.state.mood),
             finalImportance,

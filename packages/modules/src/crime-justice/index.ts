@@ -342,11 +342,14 @@ export function registerCrimeJusticeModule(): void {
     if (isGuilty) {
       if (honesty >= 0.6) {
         deductionBelief.confidence = Math.min(1, 0.85);
+        owner.state.lastInteractionOutcome = { type: 'confession', detail: `${target.profile.name} showed signs of guilt` };
       } else {
         deductionBelief.confidence = Math.min(1, deductionBelief.confidence + 0.15);
+        owner.state.lastInteractionOutcome = { type: 'denial', detail: `${target.profile.name} denied involvement but seemed nervous` };
       }
     } else {
       deductionBelief.confidence = Math.max(0.1, deductionBelief.confidence - 0.2);
+      owner.state.lastInteractionOutcome = { type: 'alibi', detail: `${target.profile.name} provided a credible alibi` };
     }
     deductionBelief.lastUpdated = currentDay;
   });

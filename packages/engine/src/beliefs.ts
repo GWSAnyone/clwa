@@ -143,11 +143,20 @@ export class BeliefManager {
     }).filter(Boolean).join('\n');
   }
 
-  /** 3rd person summary for conversation memories (stored in OTHER NPC's memory) */
-  summarizeForMemory(ownerName: string, maxBeliefs = 2): string {
-    const beliefs = this.getAllBeliefs()
-      .filter(b => b.object != null || b.subject != null)
-      .slice(0, maxBeliefs);
+  /**
+   * 3rd person summary for conversation memories (stored in OTHER NPC's memory).
+   * Optional eventTypeFilter: only include beliefs matching the conversation topic's eventType.
+   * Falls back to top beliefs by confidence if filter yields nothing.
+   */
+  summarizeForMemory(ownerName: string, maxBeliefs = 2, eventTypeFilter?: string): string {
+    const all = this.getAllBeliefs()
+      .filter(b => b.object != null || b.subject != null);
+
+    // Prefer beliefs matching topic eventType; fall back to top by confidence
+    let beliefs = eventTypeFilter
+      ? all.filter(b => b.eventType === eventTypeFilter).slice(0, maxBeliefs)
+      : [];
+    if (beliefs.length === 0) beliefs = all.slice(0, maxBeliefs);
     if (beliefs.length === 0) return '';
 
     return beliefs.map((b) => {

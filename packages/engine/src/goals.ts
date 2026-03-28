@@ -433,6 +433,16 @@ export class GoalManager {
         // Module-registered post-interaction hooks (e.g., suspect evaluation)
         runInteractPostHooks(owner, target, step, agents, crimeScenes);
 
+        // If post-hook produced structured outcome, append to memory
+        if (owner.state.lastInteractionOutcome) {
+          const outcome = owner.state.lastInteractionOutcome;
+          await owner.observe(
+            `During interaction with ${target.profile.name}: ${outcome.detail ?? outcome.type}.`,
+            step.importance + 1,
+          );
+          owner.state.lastInteractionOutcome = undefined;
+        }
+
         goal.currentStep++;
 
         return {
