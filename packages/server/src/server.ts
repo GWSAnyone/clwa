@@ -252,8 +252,10 @@ export function startServer(
               if (!otherAgent.state.alive) continue;
               if (otherAgent.state.location !== npcLocation) continue;
               if (Math.random() > 0.6) continue;
+              // Structured memory — no raw dialogue (prevents self-reference cascade)
+              const actLabel = meaning.speechAct ?? 'conversation';
               await otherAgent.observe(
-                `You were nearby and overheard a conversation between ${playerAgent!.profile.name} and ${agent.profile.name}. ${playerAgent!.profile.name} said: "${msg.message}". ${agent.profile.name} answered: "${fullReply}"`,
+                `Overheard ${playerAgent!.profile.name} and ${agent.profile.name} talking nearby (${actLabel}).`,
                 3,
               );
             }
