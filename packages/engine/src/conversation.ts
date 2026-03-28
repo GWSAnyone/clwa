@@ -2,6 +2,7 @@ import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { ConversationResult, ConversationLine, WorldConfig, LocationGraph } from './world-types';
+import { sanitizeSelfReference } from './interaction';
 import type { TopicProposal } from './topic-engine';
 import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
@@ -110,7 +111,7 @@ export async function runConversation(
       additionalContext: initContext,
       jsonSchema: DIALOGUE_SCHEMA,
     });
-    const initiatorLine = parseDialogue(initiatorRaw);
+    const initiatorLine = sanitizeSelfReference(parseDialogue(initiatorRaw), initiator.profile.name);
     const iLine: ConversationLine = {
       speaker: initiator.profile.id,
       speakerName: initiator.profile.name,
@@ -126,7 +127,7 @@ export async function runConversation(
       additionalContext: respContext,
       jsonSchema: DIALOGUE_SCHEMA,
     });
-    const responderLine = parseDialogue(responderRaw);
+    const responderLine = sanitizeSelfReference(parseDialogue(responderRaw), responder.profile.name);
     const rLine: ConversationLine = {
       speaker: responder.profile.id,
       speakerName: responder.profile.name,

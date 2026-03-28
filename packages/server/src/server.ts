@@ -4,7 +4,7 @@ import type { ServerWebSocket } from 'bun';
 import type { Agent } from '@clwa/engine';
 import type { World } from '@clwa/engine';
 import type { IEventStore } from '@clwa/engine';
-import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, getAllRegisteredVerbs, createGoalFromRequest } from '@clwa/engine';
+import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, getAllRegisteredVerbs, createGoalFromRequest, sanitizeSelfReference } from '@clwa/engine';
 import type { ILContext, ILEffectContext } from '@clwa/engine';
 import { handleRequest } from './routes';
 import type { RouteOptions } from './routes';
@@ -218,7 +218,8 @@ export function startServer(
               sendTo(ws, { type: 'chat:token', data: { agentId: msg.agentId, token } });
             }, fullContext);
 
-            sendTo(ws, { type: 'chat:done', data: { agentId: msg.agentId, fullReply } });
+            const cleanReply = sanitizeSelfReference(fullReply, agent.profile.name);
+            sendTo(ws, { type: 'chat:done', data: { agentId: msg.agentId, fullReply: cleanReply } });
 
             // Journal testimony for meaningful speech acts
             const TESTIMONY_ACTS = new Set(['inform', 'accuse', 'confide', 'question']);

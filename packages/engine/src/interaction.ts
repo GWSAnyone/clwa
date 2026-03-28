@@ -7,6 +7,18 @@ import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 import { getInteractionResultHooks } from './event-registry';
 
+/**
+ * Sanitize self-references in NPC dialogue.
+ * Replaces speaker's own name in subject position with "I".
+ * Prevents cascade: "Garrett did it" → belief "Garrett confessed" → wrong verdict.
+ */
+export function sanitizeSelfReference(text: string, speakerName: string): string {
+  if (!speakerName || !text) return text;
+  const escaped = speakerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Replace name at sentence start (subject position), skip possessives ('s)
+  return text.replace(new RegExp(`(^|[.!?—"']\\s*)${escaped}(?!'s)\\b`, 'gi'), (_, prefix) => prefix + 'I');
+}
+
 /** Resolve location ID to display name. */
 function locName(id: string, locations?: LocationGraph): string {
   if (!locations) return id;
@@ -80,7 +92,7 @@ export function createInteractionRunner(
     // --- Initiator speaks (with purpose + beliefs, structured output) ---
     const initiatorPrompt = buildPurposePrompt(initiator, target, cleanPurpose, options?.locations);
     const ownerRaw = await initiator.generateResponse(initiatorPrompt, { maxTokens: 100, additionalContext: initiatorCtx || undefined, jsonSchema: INTERACTION_DIALOGUE_SCHEMA });
-    const ownerLine = parseInteractionDialogue(ownerRaw);
+    const ownerLine = sanitizeSelfReference(parseInteractionDialogue(ownerRaw), initiator.profile.name);
 
     if (options?.onLine) {
       options.onLine({
@@ -93,7 +105,7 @@ export function createInteractionRunner(
     // --- Target responds (with their own beliefs, structured output) ---
     const targetPrompt = buildResponsePrompt(target, initiator, ownerLine, cleanPurpose);
     const targetRaw = await target.generateResponse(targetPrompt, { maxTokens: 100, additionalContext: targetCtx || undefined, jsonSchema: INTERACTION_DIALOGUE_SCHEMA });
-    const targetLine = parseInteractionDialogue(targetRaw);
+    const targetLine = sanitizeSelfReference(parseInteractionDialogue(targetRaw), target.profile.name);
 
     if (options?.onLine) {
       options.onLine({
@@ -179,7 +191,7 @@ function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: str
 
   const contextDirective = isUrgentReport
     ? `IMPORTANT: ${initiator.profile.name} is bringing urgent information. Take it seriously — react to what they say.`
-    : `${initiator.profile.name} is talking to you. Respond naturally based on what YOU know.`;
+    : `${initiator.profile.name} approached you. Respond to what they said, drawing on your own knowledge.`;
 
   const speech = speechReminder(target);
   const beliefContext = target.state.beliefs?.summarizeForPrompt(2);
