@@ -50,7 +50,7 @@ function findMostHatedTarget(npcId: string, agent: Agent, ctx: AffordanceContext
   for (const [otherId, other] of ctx.agents) {
     if (otherId === npcId || !other.state.alive) continue;
     if (other.profile.isPlayer) continue;
-    if (other.state.status) continue;
+    if (!isStatusAbsent(other.state.status)) continue;
 
     const rel = rels.getRelationship(otherId);
     if (!rel) continue;
