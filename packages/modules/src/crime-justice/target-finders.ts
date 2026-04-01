@@ -36,6 +36,45 @@ function findMotiveTarget(npcId: string, agent: Agent, ctx: AffordanceContext): 
   return { targetId: motive.targetId, targetName: target.profile.name, targetLocation: target.state.location, extra: { reason: motive.reason } };
 }
 
+/** Sentiment-based targeting: find the NPC this agent hates most.
+ *  Uses motive.reason as enrichment if target matches motive.targetId. */
+function findMostHatedTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
+  const rels = agent.state.relationships;
+  if (!rels) return null;
+
+  let bestId: string | null = null;
+  let bestSentiment = 0;
+  let bestName = '';
+  let bestLocation = '';
+
+  for (const [otherId, other] of ctx.agents) {
+    if (otherId === npcId || !other.state.alive) continue;
+    if (other.profile.isPlayer) continue;
+    if (other.state.status) continue;
+
+    const rel = rels.getRelationship(otherId);
+    if (!rel) continue;
+    if (rel.sentiment < bestSentiment) {
+      bestSentiment = rel.sentiment;
+      bestId = otherId;
+      bestName = other.profile.name;
+      bestLocation = other.state.location;
+    }
+  }
+
+  if (!bestId) return null;
+
+  const motive = agent.profile.motive;
+  const reason = (motive && motive.targetId === bestId) ? motive.reason : undefined;
+
+  return {
+    targetId: bestId,
+    targetName: bestName,
+    targetLocation: bestLocation,
+    extra: reason ? { reason } : {},
+  };
+}
+
 function findCrimeBeliefTarget(npcId: string, agent: Agent, ctx: AffordanceContext, minConfidence: number): AffordanceTarget | null {
   if (!agent.state.beliefs) return null;
   const crimeBeliefs = agent.state.beliefs.getAllBeliefs().filter(
@@ -334,7 +373,8 @@ function findDetainedTarget(ctx: AffordanceContext): AffordanceTarget | null {
 export function registerCrimeTargetFinders(): void {
   // Proactive finders (used when NPC evaluates affordances each tick)
   TARGET_FINDERS.set('steal', findStealTarget);
-  TARGET_FINDERS.set('kill', findMotiveTarget);
+  TARGET_FINDERS.set('kill', findMostHatedTarget);
+  TARGET_FINDERS.set('motive', findMotiveTarget); // kept for other affordances if needed
   TARGET_FINDERS.set('crime_belief', (npcId, agent, ctx, aff) => findCrimeBeliefTarget(npcId, agent, ctx, aff.requires.beliefConfidence ?? 0.5));
   TARGET_FINDERS.set('blackmail', findBlackmailTarget);
   TARGET_FINDERS.set('interrogation', (npcId, agent, ctx) => findInterrogationTarget(npcId, agent, ctx));

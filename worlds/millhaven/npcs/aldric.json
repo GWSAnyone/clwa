@@ -12,6 +12,14 @@
     "N": 0.4,
     "H": 0.9
   },
+  "randomRanges": {
+    "O": [0.5, 0.85],
+    "C": [0.5, 0.9],
+    "E": [0.3, 0.7],
+    "A": [0.5, 0.95],
+    "N": [0.2, 0.6],
+    "H": [0.6, 0.95]
+  },
   "enneagram": {
     "type": 1,
     "wing": 9,
@@ -35,6 +43,7 @@
   "startingLocation": "Temple of Dawn",
   "mobile": false,
   "startingMood": 0.1,
+  "moodRange": [-0.3, 0.2],
   "schedule": [
     {
       "period": "dawn",

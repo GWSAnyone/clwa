@@ -9,6 +9,7 @@ import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { AgentProfile, LocationDef, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerRoleTopicPool, registerLocationHook } from '@clwa/engine';
+import { type TraitRange, parseTraitRanges, parseMoodRange } from './trait-randomizer';
 
 // ─── JSON Schemas ──────────────────────────────────────────────
 
@@ -31,10 +32,12 @@ interface NpcJson {
   startingLocation: string;
   mobile: boolean;
   startingMood: number;
+  moodRange?: [number, number];
   schedule: Array<{ period?: string; startTick?: number; endTick?: number; location: string; activity: string }>;
   memories: string[];
   shop?: Array<{ id: string; name: string; price: number; description: string }> | null;
   motive?: { targetId: string; reason: string } | null;
+  randomRanges?: Record<string, [number, number]>;
 }
 
 interface RelationshipJson {
@@ -44,6 +47,8 @@ interface RelationshipJson {
   note?: string;
   sentiment?: number;
   trust?: number;
+  sentimentRange?: [number, number];
+  trustRange?: [number, number];
 }
 
 interface LocationJson {
@@ -110,6 +115,10 @@ export interface LoadedWorld {
   locationNameToId: Map<string, string>;
   /** Zone data for position management (pixel polygons per location) */
   zones: { id: string; zone?: { center: [number, number]; polygon: [number, number][] } }[];
+  /** Per-NPC trait randomization ranges (from NPC JSON randomRanges field) */
+  traitRanges: Map<string, TraitRange>;
+  /** Per-NPC mood randomization ranges (from NPC JSON moodRange field) */
+  moodRanges: Map<string, [number, number]>;
 }
 
 // ─── Loader ────────────────────────────────────────────────────
@@ -160,6 +169,8 @@ export function loadWorld(worldDir: string): LoadedWorld {
   const homes: NpcHome[] = [];
   const startingLocations = new Map<string, string>();
   const mobileNpcs = new Set<string>();
+  const traitRanges = new Map<string, TraitRange>();
+  const moodRanges = new Map<string, [number, number]>();
   const startingMoods: Record<string, number> = {};
   const backgroundMemories: Record<string, string[]> = {};
 
@@ -192,6 +203,14 @@ export function loadWorld(worldDir: string): LoadedWorld {
       ...(npc.motive ? { motive: npc.motive } : {}),
     };
     profiles.push(profile);
+
+    // Trait randomization ranges
+    const parsed = parseTraitRanges(npc.id, npc.randomRanges);
+    if (parsed) traitRanges.set(npc.id, parsed);
+
+    // Mood randomization range
+    const moodRange = parseMoodRange(npc.moodRange);
+    if (moodRange) moodRanges.set(npc.id, moodRange);
 
     // Schedule (convert location names → ids)
     for (const entry of npc.schedule) {
@@ -265,6 +284,8 @@ export function loadWorld(worldDir: string): LoadedWorld {
     secrets,
     config: worldJson.config,
     locationNameToId: nameToId,
+    traitRanges,
+    moodRanges,
     zones: worldJson.locations.map(loc => ({
       id: nameToId.get(loc.name) || loc.name.toLowerCase().replace(/\s+/g, '-'),
       zone: loc.zone,

@@ -52,7 +52,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     resistTraits: [{ trait: 'agreeableness', direction: 'high' }, { trait: 'honesty', direction: 'high' }],
     requires: {
       period: ['night', 'evening'],
-      hasMotive: true,
       moodBelow: -0.6,
       sentimentBelow: -0.4,
       notGuard: true,

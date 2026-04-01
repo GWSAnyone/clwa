@@ -1,0 +1,223 @@
+{
+  "main": {
+    "id": "a5d26432bf27c0ed",
+    "type": "split",
+    "children": [
+      {
+        "id": "c786305f68dffbc0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a08e613a95efb6cc",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "specs/SPEC-trait-randomization.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "SPEC-trait-randomization"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "9bf85b399a8bf977",
+    "type": "split",
+    "children": [
+      {
+        "id": "b3f3e4355b8ea079",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4dd48b3f0b8c5122",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Файловый менеджер"
+            }
+          },
+          {
+            "id": "9a0acd15167728b0",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Поиск"
+            }
+          },
+          {
+            "id": "35e571994809846e",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Закладки"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "32337dfcd7f1a9d9",
+    "type": "split",
+    "children": [
+      {
+        "id": "efc81b7e70346680",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "4841e06da45d5546",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Обратные ссылки"
+            }
+          },
+          {
+            "id": "541318d08c1dd8ba",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Исходящие ссылки"
+            }
+          },
+          {
+            "id": "1f1e68e39443921d",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Теги"
+            }
+          },
+          {
+            "id": "26688c643938d5e1",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Все свойства"
+            }
+          },
+          {
+            "id": "39cfe9dad7af8d3f",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Структура"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Меню быстрого перехода": false,
+      "graph:Граф": false,
+      "canvas:Создать новый холст": false,
+      "daily-notes:Сегодняшняя заметка": false,
+      "templates:Вставить шаблон": false,
+      "command-palette:Открыть палитру команд": false,
+      "bases:Создать новую базу": false,
+      "markdown-importer:Импорт Markdown-файлов": false
+    }
+  },
+  "active": "a08e613a95efb6cc",
+  "lastOpenFiles": [
+    "specs/SPEC-scenario-manager.md",
+    "specs/SPEC-trait-randomization.md",
+    "specs/SPEC-mood-relationship-randomization.md",
+    "OVERVIEW.md",
+    "Design/Randomization.md",
+    "specs",
+    "GDD_DETECTIVE.md",
+    "VISION.md",
+    "ROADMAP.md",
+    "DEMO_PLAN.md",
+    "Dashboard.md",
+    "ARCHITECTURE.md",
+    "Без названия.base",
+    "Design/Core Loop.md",
+    "Без названия 3.base",
+    "Без названия 2.base",
+    "Без названия 1.base",
+    "Locations/Market Square.md",
+    "Locations/Blacksmith.md",
+    "Locations/_template-location.md",
+    "NPC/_template-npc.md",
+    "NPC1.md",
+    "Tensions/_template-tension.md",
+    "Design/Modules.md",
+    "Lore/Millhaven.md",
+    "Tensions/Ted-Mark Debt.md",
+    "NPC/Theron.md",
+    "Tensions/Bess's Vision.md",
+    "Tensions/Hilda-Ted Father's Death.md",
+    "Tensions/Aldric's Lost Faith.md",
+    "NPC/Bess.md",
+    "Locations/Temple of Dawn.md.tmp.14172.1774788915263",
+    "Canvas",
+    "Design",
+    "Lore",
+    "Tensions"
+  ]
+}

@@ -12,6 +12,14 @@
     "N": 0.2,
     "H": 0.9
   },
+  "randomRanges": {
+    "O": [0.4, 0.8],
+    "C": [0.7, 0.98],
+    "E": [0.2, 0.6],
+    "A": [0.2, 0.6],
+    "N": [0.1, 0.4],
+    "H": [0.6, 0.95]
+  },
   "enneagram": {
     "type": 1,
     "wing": 9,
@@ -35,6 +43,7 @@
   "startingLocation": "Courthouse",
   "mobile": false,
   "startingMood": 0.4,
+  "moodRange": [0.1, 0.5],
   "schedule": [
     {
       "period": "dawn",

@@ -617,6 +617,15 @@ function handleWS(type, data) {
         state._pendingILEffects = data.effects || [];
       }
       break;
+
+    case 'new_game':
+      console.log('[NewGame] Server restarted with seed:', data.seed);
+      for (const key of Object.keys(localStorage)) {
+        if (key.startsWith('chat_')) localStorage.removeItem(key);
+      }
+      localStorage.removeItem('autoTick');
+      location.reload();
+      break;
   }
 }
 

@@ -7,9 +7,9 @@ import type { IEventStore } from '@clwa/engine';
 import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, getAllRegisteredVerbs, createGoalFromRequest } from '@clwa/engine';
 import type { ILContext, ILEffectContext } from '@clwa/engine';
 import { handleRequest } from './routes';
-import type { RouteOptions } from './routes';
 import { addClient, removeClient, broadcast, sendTo, clientCount } from './ws';
 import type { WSClientMessage } from './ws';
+import type { GameContext } from './game-context';
 
 const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'public');
 
@@ -19,13 +19,8 @@ export interface ServerConfig {
 }
 
 export function startServer(
-  world: World,
-  eventStore: IEventStore,
-  agents: Map<string, Agent>,
+  ctx: GameContext,
   config: ServerConfig,
-  routeOptions?: RouteOptions,
-  /** NPC approach prompt contexts — set by tick handler, consumed on player chat */
-  approachContexts?: Map<string, string>,
 ) {
   const server = Bun.serve({
     port: config.port,
@@ -44,7 +39,7 @@ export function startServer(
       }
 
       if (url.pathname.startsWith('/api/')) {
-        return handleRequest(req, world, eventStore, agents, routeOptions);
+        return handleRequest(req, ctx);
       }
 
       const filePath = url.pathname === '/' ? '/index.html' : url.pathname;
@@ -78,14 +73,16 @@ export function startServer(
       },
 
       async message(ws: ServerWebSocket<unknown>, raw: string | Buffer) {
+        if (ctx.resetting) return; // drop messages during reset
         let chatAgentId: string | null = null; // track for finally cleanup
         try {
+          const { world, agents, eventStore, positionManager, approachContexts } = ctx;
           const msg: WSClientMessage = JSON.parse(
             typeof raw === 'string' ? raw : raw.toString(),
           );
 
           if (msg.type === 'player_move') {
-            const pm = routeOptions?.positionManager;
+            const pm = positionManager;
             if (pm && world.playerAgent) {
               // Validate and update player position
               if (pm.validatePosition(msg.x, msg.y)) {
@@ -199,8 +196,8 @@ export function startServer(
 
             // Build NPC response with IL context + secret directives + approach context + shop
             const secretDirectives = buildSecretDirectives(agent, agents, eventStore);
-            const approachCtx = approachContexts?.get(msg.agentId);
-            if (approachCtx) approachContexts?.delete(msg.agentId); // consume once
+            const approachCtx = approachContexts.get(msg.agentId);
+            if (approachCtx) approachContexts.delete(msg.agentId); // consume once
             // Inject shop inventory when trade detected — prevents hallucinated items
             const fullContext = [secretDirectives, approachCtx, ilAdditionalContext].filter(Boolean).join('\n\n') || undefined;
 

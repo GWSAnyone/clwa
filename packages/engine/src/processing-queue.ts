@@ -101,6 +101,19 @@ export class ProcessingQueue {
     this.queue.length = 0;
   }
 
+  /**
+   * Wait for the currently in-flight task to finish.
+   * Resolves immediately if nothing is processing.
+   * Does NOT consume pending tasks — call clear() first to drop them.
+   */
+  async drain(): Promise<void> {
+    if (!this._processing) return;
+    return new Promise<void>(resolve => {
+      const prev = this._onEmpty;
+      this._onEmpty = () => { prev?.(); resolve(); };
+    });
+  }
+
   /** Check if a specific NPC has a pending task of given type */
   hasPending(type: TaskType, npcId: string): boolean {
     return this.queue.some(t => t.type === type && t.npcId === npcId);

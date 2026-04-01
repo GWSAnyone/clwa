@@ -13,7 +13,9 @@ import { broadcast } from './ws';
 import { startServer } from './server';
 import { loadWorld } from './world-loader';
 import { PositionManager } from './position-manager';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { randomizeTraits, logRandomization, randomizeMoods, logMoodRandomization, randomizeRelationships, logRelationshipRandomization } from './trait-randomizer';
+import type { GameContext } from './game-context';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 
 // ─── Register World Modules ───
@@ -71,20 +73,21 @@ const SAVE_PATH = join(SAVE_DIR, 'save.json');
 interface SaveData {
   version: 1;
   savedAt: string;
+  seed?: number;
   world: ReturnType<World['toJSON']>;
   events: ReturnType<InMemoryEventStore['toJSON']>;
   positions?: Record<string, { x: number; y: number }>;
 }
 
-let _positionManager: PositionManager | null = null;
-
-function saveToDisk(world: World, eventStore: InMemoryEventStore): void {
+function saveToDisk(ctx: GameContext): void {
+  if (ctx.resetting) return; // don't save during reset
   const data: SaveData = {
     version: 1,
     savedAt: new Date().toISOString(),
-    world: world.toJSON(),
-    events: eventStore.toJSON(),
-    positions: _positionManager?.toJSON(),
+    seed: ctx.seed,
+    world: ctx.world.toJSON(),
+    events: ctx.eventStore.toJSON(),
+    positions: ctx.positionManager?.toJSON(),
   };
   mkdirSync(SAVE_DIR, { recursive: true });
   writeFileSync(SAVE_PATH, JSON.stringify(data, null, 2));
@@ -147,38 +150,41 @@ function buildRelationshipsFromData(npcId: string, profiles: AgentProfile[], rel
 
 const PORT = parseInt(process.env.PORT ?? '3000');
 
-async function main() {
-  console.log('=== CLWA Server — Starting ===');
-  console.log(`  [Log] Writing to: ${_logFile}`);
-  console.log();
-
-  // ─── Load world from JSON files ───
-  const worldPath = process.argv.find(a => a.startsWith('--world='))?.split('=')[1]
-    ?? join(dirname(dirname(dirname(import.meta.dir))), 'worlds', 'millhaven');
+/**
+ * Create a fresh game world. Repeatable — called on boot and on POST /api/new-game.
+ * Does NOT call loadState (that's boot-only, handled by caller).
+ * Does NOT set ctx.resetting (caller controls lifecycle).
+ * Does NOT register modules (one-time, done in main).
+ */
+async function createGameContext(
+  worldPath: string,
+  seed: number,
+  cgEngine: ConsequenceEngine,
+  locationGraph: LocationGraph,
+): Promise<Omit<GameContext, 'resetting'>> {
   const worldData = loadWorld(worldPath);
 
-  const savedData = loadFromDisk();
-  if (savedData) {
-    console.log(`  [Save] Found save from ${savedData.savedAt}`);
+  // ─── Randomization ───
+  if (worldData.traitRanges.size > 0) {
+    randomizeTraits(worldData.profiles, seed, worldData.traitRanges);
+    logRandomization(worldData.profiles, seed);
   }
+  if (worldData.moodRanges.size > 0) {
+    randomizeMoods(worldData.startingMoods, seed, worldData.moodRanges);
+    logMoodRandomization(worldData.startingMoods, worldData.profiles);
+  }
+  randomizeRelationships(worldData.relationships, seed);
+  logRelationshipRandomization(worldData.relationships);
 
   const eventStore = new InMemoryEventStore();
-  if (savedData) {
-    eventStore.loadFromJSON(savedData.events);
-    console.log(`  [+] Event Store — restored ${savedData.events.length} events`);
-  } else {
-    console.log('  [+] Event Store');
-  }
+  console.log('  [+] Event Store');
 
-  const locationGraph = buildLocationGraph(worldData.locations);
-  console.log(`  [+] Location Graph — ${locationGraph.size} locations`);
-
+  // ─── Agents ───
   const agents = new Map<string, Agent>();
-  const shouldResetMemory = !savedData;
   for (const profile of worldData.profiles) {
     const npcLocation = worldData.startingLocations.get(profile.id) ?? profile.id;
     const memory = new VectorMemory(profile.id);
-    await memory.init(shouldResetMemory ? { reset: true } : undefined);
+    await memory.init({ reset: true });
     const agent = new Agent(profile, makeState(npcLocation, profile.id, worldData), memory, {
       reflection: { threshold: 30 },
       onReflection: (name, text) => {
@@ -191,41 +197,28 @@ async function main() {
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npcLocation}`);
   }
 
-  // ─── Position Manager (server-authoritative pixel positions) ───
+  // ─── Position Manager ───
   const positionManager = new PositionManager();
-  _positionManager = positionManager;
   positionManager.loadZones(worldData.zones);
-
-  // Restore positions from save or compute initial
-  if (savedData?.positions) {
-    positionManager.loadFromJSON(savedData.positions);
-    console.log(`  [+] Positions restored from save (${Object.keys(savedData.positions).length} entities)`);
-  }
-  // Fill missing positions (new entities or missing from save)
   for (const [id, agent] of agents) {
     if (!positionManager.getPosition(id)) {
       positionManager.initPosition(id, agent.state.location);
     }
   }
-  if (!savedData?.positions) {
-    console.log(`  [+] Positions initialized for ${agents.size} entities`);
-  }
+  console.log(`  [+] Positions initialized for ${agents.size} entities`);
 
-  // ─── Seed background memories (unchangeable past) ───
-  // Use memory.store() directly — NOT observe() — to avoid triggering reflection on startup
-  if (!savedData) {
-    const bgMemories = worldData.backgroundMemories;
-    for (const [npcId, agent] of agents) {
-      const memories = bgMemories[npcId];
-      if (!memories || !agent.memory) continue;
-      for (const memText of memories) {
-        await agent.memory.store(memText, 6, 0);
-      }
+  // ─── Background memories ───
+  const bgMemories = worldData.backgroundMemories;
+  for (const [npcId, agent] of agents) {
+    const memories = bgMemories[npcId];
+    if (!memories || !agent.memory) continue;
+    for (const memText of memories) {
+      await agent.memory.store(memText, 6, 0);
     }
-    console.log(`  [+] Background memories seeded for ${Object.keys(bgMemories).length} NPCs`);
   }
+  console.log(`  [+] Background memories seeded for ${Object.keys(bgMemories).length} NPCs`);
 
-  // ─── Starting beliefs (from world data — secrets.json) ───
+  // ─── Starting beliefs (secrets) ───
   for (const secret of worldData.secrets) {
     const npcAgent = agents.get(secret.npcId);
     if (npcAgent?.state.beliefs) {
@@ -247,94 +240,64 @@ async function main() {
     console.log(`  [+] Secret knowledge seeded for ${worldData.secrets.length} NPCs`);
   }
 
-  // ─── Player Agent — full participant in the world ───
-  {
-    const playerProfile: AgentProfile = {
-      id: 'player',
-      name: 'Traveler',
-      role: 'traveler',
-      background: 'A mysterious traveler who arrived in town recently.',
-      speechStyle: '', // Not used — player types freely
-      bigFive: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5, honesty: 0.5 },
-      enneagram: { type: 5, wing: 6, coreFear: '', coreDesire: '', stressType: 7, growthType: 8 },
-      isPlayer: true,
-    };
-    const playerRelationships = new RelationshipGraph();
-    for (const p of worldData.profiles) {
-      playerRelationships.addRelationship({
-        targetId: p.id,
-        targetName: p.name,
-        type: 'acquaintance' as RelationType,
-        sentiment: 0.0,
-        trust: 0.3, // Stranger — low initial trust
-      });
-    }
-    // NPCs also get a relationship entry toward the player
-    for (const [, npcAgent] of agents) {
-      npcAgent.state.relationships?.addRelationship({
-        targetId: 'player',
-        targetName: 'Traveler',
-        type: 'acquaintance' as RelationType,
-        sentiment: 0.0,
-        trust: 0.3,
-      });
-    }
-    const playerMemory = new VectorMemory('player');
-    await playerMemory.init(shouldResetMemory ? { reset: true } : undefined);
-    const playerAgent = new Agent(playerProfile, {
-      alive: true,
-      status: undefined,
-      location: worldData.locationNameToId.get('Town Square') ?? 'town-square',
-      mood: 0.3,
-      currentDay: 1,
-      knownFacts: [
-        '# You are a traveler who just arrived in this small town. You know nothing about the locals yet.',
-      ],
-      beliefs: new BeliefManager(),
-      relationships: playerRelationships,
-    }, playerMemory, {
-      locationResolver: (id) => locationGraph.get(id)?.name ?? id,
+  // ─── Player Agent ───
+  const playerProfile: AgentProfile = {
+    id: 'player',
+    name: 'Traveler',
+    role: 'traveler',
+    background: 'A mysterious traveler who arrived in town recently.',
+    speechStyle: '',
+    bigFive: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5, honesty: 0.5 },
+    enneagram: { type: 5, wing: 6, coreFear: '', coreDesire: '', stressType: 7, growthType: 8 },
+    isPlayer: true,
+  };
+  const playerRelationships = new RelationshipGraph();
+  for (const p of worldData.profiles) {
+    playerRelationships.addRelationship({
+      targetId: p.id, targetName: p.name,
+      type: 'acquaintance' as RelationType, sentiment: 0.0, trust: 0.3,
     });
-    agents.set('player', playerAgent);
-    // Init player position if not restored from save
-    if (!positionManager.getPosition('player')) {
-      positionManager.initPosition('player', playerAgent.state.location);
-    }
-    console.log('  [+] Player Agent (Traveler) @ Town Square');
   }
+  for (const [, npcAgent] of agents) {
+    npcAgent.state.relationships?.addRelationship({
+      targetId: 'player', targetName: 'Traveler',
+      type: 'acquaintance' as RelationType, sentiment: 0.0, trust: 0.3,
+    });
+  }
+  const playerMemory = new VectorMemory('player');
+  await playerMemory.init({ reset: true });
+  const playerAgent = new Agent(playerProfile, {
+    alive: true, status: undefined,
+    location: worldData.locationNameToId.get('Town Square') ?? 'town-square',
+    mood: 0.3, currentDay: 1,
+    knownFacts: ['# You are a traveler who just arrived in this small town. You know nothing about the locals yet.'],
+    beliefs: new BeliefManager(),
+    relationships: playerRelationships,
+  }, playerMemory, {
+    locationResolver: (id) => locationGraph.get(id)?.name ?? id,
+  });
+  agents.set('player', playerAgent);
+  positionManager.initPosition('player', playerAgent.state.location);
+  console.log('  [+] Player Agent (Traveler) @ Town Square');
 
+  // ─── Public places ───
   const publicPlaces = new Set<string>();
   for (const [id, loc] of locationGraph) {
     if (loc.isPublic) publicPlaces.add(id);
   }
 
-  let world: World;
-  /** NPC approach prompt context — injected into NPC system prompt when player chats after approach */
+  // ─── World ───
   const approachContexts = new Map<string, string>();
 
-  const engine = new ConsequenceEngine(CRIME_CG_RULES, {
-    onEvent: (event) => {
-      eventStore.append(event);
-      broadcast({ type: 'event', data: event });
-      if (world) {
-        world.handleEventForGoals(event);
-      }
-    },
-  });
-  console.log(`  [+] Consequence engine — ${CRIME_CG_RULES.length} rules`);
-
-  world = new World(
-    agents,
-    eventStore,
-    engine,
-    { minConversationScore: 1, publicPlaces, pairCooldownMinutes: 240, affordanceCooldownMinutes: 180, decisionCooldownMinutes: 60, startMinute: 420 },
+  const world = new World(
+    agents, eventStore, cgEngine,
+    { minConversationScore: 1, publicPlaces, pairCooldownMinutes: 240, affordanceCooldownMinutes: 180, decisionCooldownMinutes: 60, startMinute: worldData.config.startMinute ?? 420 },
     {
       onLine: (line) => {
         console.log(`    ${line.speakerName}: "${line.text}"`);
         broadcast({ type: 'conversation:line', data: line });
       },
       onConversation: (result) => {
-        // Compute approach points — NPCs walk toward each other
         const initId = [...agents.entries()].find(([, a]) => a.profile.name === result.initiator)?.[0];
         const respId = [...agents.entries()].find(([, a]) => a.profile.name === result.responder)?.[0];
         let approachPoints = null;
@@ -350,7 +313,6 @@ async function main() {
         if (result.dayAdvanced) {
           console.log(`  [Time] === Day ${result.gameDay} ===`);
         }
-        // Process NPC approach events
         if (result.approaches) {
           for (const approach of result.approaches) {
             approachContexts.set(approach.npcId, approach.promptContext);
@@ -406,10 +368,7 @@ async function main() {
       },
       onCrimeScene: (scene) => {
         broadcast({ type: 'crime:scene', data: {
-          id: scene.id,
-          locationId: scene.locationId,
-          crimeType: scene.crimeType,
-          pointCount: scene.points.length,
+          id: scene.id, locationId: scene.locationId, crimeType: scene.crimeType, pointCount: scene.points.length,
         }});
       },
       onTimeUpdate: (minuteOfDay, hour, period, gameDay) => {
@@ -425,15 +384,87 @@ async function main() {
   console.log(`  [+] NPC schedules: ${worldData.schedules.length} entries for ${new Set(worldData.schedules.map((s) => s.npcId)).size} NPCs`);
   console.log(`  [+] Mobile NPCs: ${Array.from(worldData.mobileNpcs).join(', ')}`);
 
+  return { world, eventStore, agents, positionManager, approachContexts, seed };
+}
+
+async function main() {
+  console.log('=== CLWA Server — Starting ===');
+  console.log(`  [Log] Writing to: ${_logFile}`);
+  console.log();
+
+  // ─── One-time setup ───
+  const worldPath = process.argv.find(a => a.startsWith('--world='))?.split('=')[1]
+    ?? join(dirname(dirname(dirname(import.meta.dir))), 'worlds', 'millhaven');
+
+  const savedData = loadFromDisk();
   if (savedData) {
-    world.loadState(savedData.world);
-    console.log(`  [Save] World state restored (gameMinute ${savedData.world.gameMinute ?? 'N/A'}, ${Object.keys(savedData.world.agents).length} agents)`);
+    console.log(`  [Save] Found save from ${savedData.savedAt}`);
   }
 
-  const server = startServer(world, eventStore, agents, { port: PORT }, {
-    onSave: () => saveToDisk(world, eventStore),
-    positionManager,
-  }, approachContexts);
+  const seedArg = process.argv.find(a => a.startsWith('--seed='))?.split('=')[1];
+  const initialSeed = seedArg ? parseInt(seedArg, 10)
+    : savedData?.seed ?? Date.now();
+
+  // Location graph — reusable across new-games (world topology doesn't change)
+  const worldData = loadWorld(worldPath);
+  const locationGraph = buildLocationGraph(worldData.locations);
+  console.log(`  [+] Location Graph — ${locationGraph.size} locations`);
+
+  // CG engine — created once, callback reads ctx (not captured refs)
+  // Pre-allocate context — fields filled by Object.assign(ctx, initial) below.
+  // Must exist before CG engine creation (callback captures ctx reference).
+  const ctx = { resetting: false } as GameContext;
+  const cgEngine = new ConsequenceEngine(CRIME_CG_RULES, {
+    onEvent: (event) => {
+      ctx.eventStore.append(event);
+      broadcast({ type: 'event', data: event });
+      ctx.world?.handleEventForGoals(event);
+    },
+  });
+  console.log(`  [+] Consequence engine — ${CRIME_CG_RULES.length} rules`);
+
+  // ─── First game context ───
+  const initial = await createGameContext(worldPath, initialSeed, cgEngine, locationGraph);
+  Object.assign(ctx, initial, { resetting: false });
+
+  // Restore from save (boot only, never on new-game)
+  if (savedData) {
+    ctx.eventStore.loadFromJSON(savedData.events);
+    console.log(`  [+] Event Store — restored ${savedData.events.length} events`);
+    ctx.world.loadState(savedData.world);
+    console.log(`  [Save] World state restored (gameMinute ${savedData.world.gameMinute ?? 'N/A'}, ${Object.keys(savedData.world.agents).length} agents)`);
+    if (savedData.positions) {
+      ctx.positionManager.loadFromJSON(savedData.positions);
+      console.log(`  [+] Positions restored from save`);
+    }
+  }
+
+  // ─── New Game handler (exposed to routes via ctx) ───
+  ctx.newGame = async (newSeed: number) => {
+    ctx.resetting = true;
+    // Graceful shutdown
+    ctx.world.stopMasterClock();
+    ctx.world.processingQueue.clear();
+    await ctx.world.processingQueue.drain();
+    // Build new context
+    console.log(`\n=== New Game (seed: ${newSeed}) ===`);
+    const newCtx = await createGameContext(worldPath, newSeed, cgEngine, locationGraph);
+    // Broadcast BEFORE unlock
+    broadcast({ type: 'new_game', data: { seed: newSeed } });
+    // Atomic swap (newCtx does NOT contain resetting)
+    Object.assign(ctx, newCtx);
+    ctx.resetting = false;
+    ctx.world.startMasterClock();
+    // Delete old save
+    try { unlinkSync(SAVE_PATH); } catch {}
+    console.log('  [+] New game ready\n');
+  };
+
+  // Expose onSave for routes.ts POST /api/save
+  ctx.onSave = () => saveToDisk(ctx);
+
+  // ─── Start server ───
+  const server = startServer(ctx, { port: PORT });
   console.log();
   console.log(`  HTTP:  http://localhost:${server.port}/api/agents`);
   console.log(`  WS:    ws://localhost:${server.port}/ws`);
@@ -446,24 +477,20 @@ async function main() {
   console.log('    GET  /api/memories/:id       — agent memories');
   console.log('    GET  /api/beliefs/:id        — agent beliefs');
   console.log('    GET  /api/relationships/:id  — agent relationships');
-  console.log('    POST /api/kill/:id           — player kills NPC');
-  console.log('    POST /api/npc-kill/:kid/:vid — NPC kills NPC');
-  console.log('    POST /api/observe            — inject event');
-  console.log('    POST /api/day                — advance day');
-  console.log('    POST /api/tick               — world tick');
-  console.log('    POST /api/auto               — toggle auto-tick');
+  console.log('    POST /api/new-game           — start new game');
   console.log('    POST /api/save               — save state to disk');
   console.log();
   console.log('  Server ready. Waiting for connections...');
 
-  // Start Master Clock — unified timer for time + processing
-  world.startMasterClock();
+  // Start Master Clock
+  ctx.world.startMasterClock();
 
   const shutdown = async () => {
+    if (ctx.resetting) { console.log('\n  Reset in progress, exiting'); process.exit(0); return; }
     console.log('\n  [Save] Shutting down — flushing pending work...');
-    world.stopMasterClock();
-    await world.flushPending();
-    saveToDisk(world, eventStore);
+    ctx.world.stopMasterClock();
+    await ctx.world.flushPending();
+    saveToDisk(ctx);
     process.exit(0);
   };
   process.on('SIGINT', () => { shutdown(); });

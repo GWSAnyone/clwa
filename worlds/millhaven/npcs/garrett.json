@@ -12,6 +12,14 @@
     "N": 0.2,
     "H": 0.7
   },
+  "randomRanges": {
+    "O": [0.2, 0.5],
+    "C": [0.5, 0.95],
+    "E": [0.3, 0.7],
+    "A": [0.2, 0.6],
+    "N": [0.1, 0.4],
+    "H": [0.3, 0.85]
+  },
   "enneagram": {
     "type": 6,
     "wing": 5,
@@ -35,6 +43,7 @@
   "startingLocation": "Town Gate",
   "mobile": false,
   "startingMood": 0.45,
+  "moodRange": [0.1, 0.5],
   "schedule": [
     {
       "period": "dawn",

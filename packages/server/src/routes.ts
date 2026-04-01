@@ -1,24 +1,12 @@
-import type { Agent } from '@clwa/engine';
-import type { World } from '@clwa/engine';
-import type { IEventStore } from '@clwa/engine';
 import type { EventType } from '@clwa/engine';
-import type { LocationGraph } from '@clwa/engine';
 import { broadcast } from './ws';
-import type { PositionManager } from './position-manager';
-
-export interface RouteOptions {
-  onSave?: () => void;
-  positionManager?: PositionManager;
-}
+import type { GameContext } from './game-context';
 
 /** Build all REST route handlers */
-export function handleRequest(
+export async function handleRequest(
   req: Request,
-  world: World,
-  eventStore: IEventStore,
-  agents: Map<string, Agent>,
-  options?: RouteOptions,
-): Response | Promise<Response> {
+  ctx: GameContext,
+): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
   const method = req.method;
@@ -35,9 +23,47 @@ export function handleRequest(
     return new Response(null, { status: 204, headers: cors });
   }
 
+  // ─── Resetting guard ───
+  if (ctx.resetting) {
+    return Response.json({ error: 'Server restarting' }, { status: 503, headers: cors });
+  }
+
+  // ─── Destructure ctx — all code below uses local vars unchanged ───
+  const { world, eventStore, agents, positionManager, seed } = ctx;
+  const options = { positionManager, onSave: ctx.onSave };
+
+  // ─── POST /api/new-game ───
+  if (method === 'POST' && path === '/api/new-game') {
+    const seedParam = url.searchParams.get('seed');
+    let newSeed: number;
+    if (seedParam) {
+      newSeed = parseInt(seedParam, 10);
+      if (isNaN(newSeed)) {
+        return Response.json({ error: 'Invalid seed' }, { status: 400, headers: cors });
+      }
+    } else {
+      newSeed = Date.now();
+    }
+    if (ctx.resetting) {
+      return Response.json({ error: 'Reset in progress' }, { status: 429, headers: cors });
+    }
+    // Delegate to newGame handler attached by index.ts
+    const newGameFn = ctx.newGame;
+    if (!newGameFn) {
+      return Response.json({ error: 'New game not available' }, { status: 501, headers: cors });
+    }
+    await newGameFn(newSeed);
+    return Response.json({ seed: newSeed, message: 'New game started' }, { headers: cors });
+  }
+
+  // ─── GET /api/seed ───
+  if (method === 'GET' && path === '/api/seed') {
+    return Response.json({ seed }, { headers: cors });
+  }
+
   // ─── GET /api/agents ───
   if (method === 'GET' && path === '/api/agents') {
-    const pm = options?.positionManager;
+    const pm = positionManager;
     const list = Array.from(agents.entries())
       .filter(([, agent]) => !agent.profile.isPlayer)
       .map(([id, agent]) => {
@@ -70,7 +96,7 @@ export function handleRequest(
     const agentId = path.split('/')[3];
     const agent = agents.get(agentId);
     if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
-    const pm = options?.positionManager;
+    const pm = positionManager;
     const pos = pm?.getPosition(agentId);
     return Response.json({
       id: agentId,
@@ -492,7 +518,7 @@ export function handleRequest(
   // ─── GET /api/player ───
   if (method === 'GET' && path === '/api/player') {
     const player = world.playerAgent;
-    const pm = options?.positionManager;
+    const pm = positionManager;
     const pos = pm?.getPosition('player');
     return Response.json({
       location: world.playerLocation,
@@ -506,7 +532,7 @@ export function handleRequest(
 
   // ─── POST /api/save ───
   if (method === 'POST' && path === '/api/save') {
-    if (options?.onSave) {
+    if (options.onSave) {
       options.onSave();
       return Response.json({ saved: true }, { headers: cors });
     }

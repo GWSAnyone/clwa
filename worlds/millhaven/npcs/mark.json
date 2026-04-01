@@ -12,6 +12,14 @@
     "N": 0.6,
     "H": 0.2
   },
+  "randomRanges": {
+    "O": [0.3, 0.7],
+    "C": [0.15, 0.5],
+    "E": [0.4, 0.85],
+    "A": [0.15, 0.5],
+    "N": [0.3, 0.8],
+    "H": [0.15, 0.5]
+  },
   "enneagram": {
     "type": 3,
     "wing": 2,
@@ -35,6 +43,7 @@
   "startingLocation": "Market Square",
   "mobile": true,
   "startingMood": -0.2,
+  "moodRange": [-0.6, 0.0],
   "schedule": [
     {
       "period": "dawn",

@@ -7,7 +7,19 @@
 >
 > **Every subsystem, every interface, every design decision targets a universal MMO world** — crime, economy, politics, social, combat are all just data modules on the same behavioral physics engine. Current milestone (Crime & Justice) is proof of concept, not the scope.
 
-**On session start**: read Serena memories `clwa/overview` and `clwa/engine-invariants` for full project context. Read `clwa/godot-client` when working on Godot. Full specs: @ARCHITECTURE.md | @ROADMAP.md | @DEMO_PLAN.md
+**On session start**: read Serena memories `clwa/overview` and `clwa/engine-invariants` for full project context. Read `clwa/godot-client` when working on Godot.
+
+### Documentation (`docs/`)
+
+| Document | Purpose |
+|----------|---------|
+| @docs/GDD_DETECTIVE.md | **Game design** — core loop, milestones, what to build next |
+| @docs/VISION.md | **Long-term vision** — Shangri-La world, multiplayer roadmap |
+| @docs/ARCHITECTURE.md | **Engine spec** — subsystems, invariants, data models |
+| @docs/ROADMAP.md | **Development roadmap** — phases, tasks, progress tracking |
+| @docs/DEMO_PLAN.md | **Demo plan** — E2E test scenarios, implementation details |
+| @docs/OVERVIEW.md | **Overview** — high-level CLWA concept for newcomers |
+| `docs/` (Obsidian vault) | **World design** — NPC profiles, locations, tensions, lore (open as Obsidian vault) |
 
 ## Design Philosophy (ALWAYS FOLLOW)
 
