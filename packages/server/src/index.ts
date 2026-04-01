@@ -442,22 +442,31 @@ async function main() {
   // ─── New Game handler (exposed to routes via ctx) ───
   ctx.newGame = async (newSeed: number) => {
     ctx.resetting = true;
-    // Graceful shutdown
-    ctx.world.stopMasterClock();
-    ctx.world.processingQueue.clear();
-    await ctx.world.processingQueue.drain();
-    // Build new context
-    console.log(`\n=== New Game (seed: ${newSeed}) ===`);
-    const newCtx = await createGameContext(worldPath, newSeed, cgEngine, locationGraph);
-    // Broadcast BEFORE unlock
-    broadcast({ type: 'new_game', data: { seed: newSeed } });
-    // Atomic swap (newCtx does NOT contain resetting)
-    Object.assign(ctx, newCtx);
-    ctx.resetting = false;
-    ctx.world.startMasterClock();
-    // Delete old save
-    try { unlinkSync(SAVE_PATH); } catch {}
-    console.log('  [+] New game ready\n');
+    try {
+      // Graceful shutdown
+      ctx.world.stopMasterClock();
+      ctx.world.processingQueue.clear();
+      await ctx.world.processingQueue.drain();
+      // Build new context
+      console.log(`\n=== New Game (seed: ${newSeed}) ===`);
+      const newCtx = await createGameContext(worldPath, newSeed, cgEngine, locationGraph);
+      // Broadcast BEFORE unlock
+      broadcast({ type: 'new_game', data: { seed: newSeed } });
+      // Atomic swap (newCtx does NOT contain resetting)
+      Object.assign(ctx, newCtx);
+      ctx.world.startMasterClock();
+      // Delete old save
+      try { unlinkSync(SAVE_PATH); } catch {}
+      console.log('  [+] New game ready\n');
+    } catch (err) {
+      console.error('  [NewGame] Failed:', err);
+      // Restart old world if new one failed
+      if (!ctx.world.isAutoTicking()) {
+        ctx.world.startMasterClock();
+      }
+    } finally {
+      ctx.resetting = false;
+    }
   };
 
   // Expose onSave for routes.ts POST /api/save
