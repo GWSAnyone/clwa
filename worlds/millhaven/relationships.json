@@ -29,7 +29,7 @@
     "type": "acquaintance",
     "note": "owes Mark money from gambling debts",
     "sentiment": -0.15,
-    "sentimentRange": [-0.3, 0.0],
+    "sentimentRange": [-0.45, 0.05],
     "trust": 0.3,
     "trustRange": [0.15, 0.45]
   },
@@ -107,7 +107,7 @@
     "type": "acquaintance",
     "note": "he asks too many questions, she is wary",
     "sentiment": -0.1,
-    "sentimentRange": [-0.25, 0.05],
+    "sentimentRange": [-0.5, 0.1],
     "trust": 0.3,
     "trustRange": [0.15, 0.45]
   },
@@ -129,7 +129,7 @@
     "type": "acquaintance",
     "note": "something about her does not add up",
     "sentiment": -0.1,
-    "sentimentRange": [-0.25, 0.05],
+    "sentimentRange": [-0.45, 0.1],
     "trust": 0.3,
     "trustRange": [0.15, 0.45]
   },
@@ -163,7 +163,7 @@
     "type": "friend",
     "note": "old drinking buddies, but her father died in his tavern",
     "sentiment": -0.2,
-    "sentimentRange": [-0.4, 0.1],
+    "sentimentRange": [-0.55, 0.15],
     "trust": 0.4,
     "trustRange": [0.2, 0.55]
   },

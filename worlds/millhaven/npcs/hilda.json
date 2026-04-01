@@ -43,7 +43,7 @@
   "startingLocation": "Blacksmith",
   "mobile": false,
   "startingMood": 0.2,
-  "moodRange": [-0.1, 0.35],
+  "moodRange": [-0.35, 0.35],
   "schedule": [
     {
       "period": "dawn",

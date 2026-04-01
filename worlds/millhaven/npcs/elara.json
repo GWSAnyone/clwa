@@ -43,7 +43,7 @@
   "startingLocation": "Silver Flagon Tavern",
   "mobile": true,
   "startingMood": 0.25,
-  "moodRange": [0.0, 0.4],
+  "moodRange": [-0.15, 0.4],
   "schedule": [
     {
       "period": "dawn",
