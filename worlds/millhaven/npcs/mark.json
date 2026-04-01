@@ -43,7 +43,7 @@
   "startingLocation": "Market Square",
   "mobile": true,
   "startingMood": -0.2,
-  "moodRange": [-0.6, 0.0],
+  "moodRange": [-0.55, -0.15],
   "schedule": [
     {
       "period": "dawn",

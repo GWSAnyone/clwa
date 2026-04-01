@@ -1,7 +1,7 @@
 # SPEC: World Tuning — Millhaven Data Design
 
 > Milestone 1, data layer. Числа которые определяют gameplay.
-> Статус: **реализовано** (kill moodBelow -0.6→-0.45, sentiment ranges widened, mood ranges widened)
+> Статус: **реализовано** (kill moodBelow -0.6→-0.45, sentiment ranges widened, mood ranges widened, moodBias -0.02, Mark mood always negative)
 
 ---
 
