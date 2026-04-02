@@ -644,6 +644,10 @@ export interface TickPhaseContext {
   crimeScenes: Map<string, import('./world-types').CrimeScene[]>;
   /** Location graph for spatial queries */
   locations: import('./world-types').LocationGraph;
+  /** Goal manager — for creating defensive/reactive goals from tick handlers */
+  goalManager?: import('./goals').GoalManager;
+  /** NPC home locations — for defensive goals (lay_low, etc.) */
+  npcHomes?: Map<string, string>;
 }
 
 export type TickPhaseHandlerFn = (ctx: TickPhaseContext) => Promise<void>;

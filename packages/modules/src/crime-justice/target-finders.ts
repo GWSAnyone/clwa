@@ -368,10 +368,49 @@ function findDetainedTarget(ctx: AffordanceContext): AffordanceTarget | null {
   return null;
 }
 
+// ─── Surveillance (crime prevention) ───
+
+/** Find most suspected NPC for surveillance based on guard's beliefs */
+export function findSurveillanceTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
+  if (!agent.state.beliefs) return null;
+  const suspects = new Map<string, number>();
+
+  for (const b of agent.state.beliefs.getAllBeliefs()) {
+    if (isTransferable(b.eventType) && b.subject && b.confidence >= 0.2) {
+      const current = suspects.get(b.subject) ?? 0;
+      suspects.set(b.subject, Math.max(current, b.confidence));
+    }
+  }
+
+  let bestName: string | null = null;
+  let bestConf = 0;
+  for (const [name, conf] of suspects) {
+    if (conf > bestConf) { bestName = name; bestConf = conf; }
+  }
+  if (!bestName) return null;
+
+  // Resolve name → agent
+  for (const [id, a] of ctx.agents) {
+    if (a.profile.name === bestName && a.state.alive && !isStatusAbsent(a.state.status)) {
+      return { targetId: id, targetName: bestName, targetLocation: a.state.location };
+    }
+  }
+  return null;
+}
+
+/** Check if NPC has any suspicion belief (broad — ANY transferable belief about anyone, conf >= 0.2) */
+export function hasSuspicionBelief(agent: Agent): boolean {
+  if (!agent.state.beliefs) return false;
+  return agent.state.beliefs.getAllBeliefs().some(
+    (b) => isTransferable(b.eventType) && b.subject !== null && b.confidence >= 0.2,
+  );
+}
+
 // ─── Registration ───
 
 export function registerCrimeTargetFinders(): void {
   // Proactive finders (used when NPC evaluates affordances each tick)
+  TARGET_FINDERS.set('surveillance', findSurveillanceTarget);
   TARGET_FINDERS.set('steal', findStealTarget);
   TARGET_FINDERS.set('kill', findMostHatedTarget);
   TARGET_FINDERS.set('motive', findMotiveTarget); // kept for other affordances if needed

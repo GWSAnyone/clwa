@@ -937,6 +937,7 @@ export class World {
       },
       discoveries: this.bodyDiscoveries, approaches: approachEvents,
       crimeScenes: this.crimeScenes, locations: this.locations,
+      goalManager: this.goalManager, npcHomes: this.npcHomes,
     };
     for (const handler of getTickPhaseHandlers()) await handler(tickCtx);
     if (approachEvents.length > 1) {

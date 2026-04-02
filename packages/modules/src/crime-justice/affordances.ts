@@ -637,4 +637,31 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
       { action: 'sentence_npc', targetId: '$target', importance: 9 },
     ],
   },
+
+  // ─── Surveillance (crime prevention) ───
+  {
+    id: 'surveillance',
+    isDuty: true,
+    actionVerb: 'watch',
+    actionDescription: 'keep watch on someone suspicious',
+    label: 'Keep watch on a suspicious person',
+    targetFinder: 'surveillance',
+    category: 'duty',
+    severity: 1,
+    requires: { isInvestigator: true, hasSuspicionBelief: true },
+    weights: [
+      { trait: 'C', direction: 'high', multiplier: 0.3 },
+      { trait: 'H', direction: 'high', multiplier: 0.1 },
+    ],
+    moodWeight: 0.0,
+    relationshipWeight: 0.0,
+    baseProbability: 0.2,
+    goalType: 'surveillance',
+    goalPriority: 5,
+    cooldownOverride: 120, // 2h game time between surveillance rounds
+    stepTemplates: [
+      { action: 'move_to', location: '$target', skipIfAt: true },
+      { action: 'wait', ticks: 8 },
+    ],
+  },
 ];

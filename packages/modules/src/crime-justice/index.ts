@@ -26,7 +26,7 @@ import {
   registerSecretEventType,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
-import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
+import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief, hasSuspicionBelief } from './target-finders';
 import { CRIME_EVIDENCE_RULES } from './evidence-rules';
 import { registerCrimeEvidenceSources } from './evidence-sources';
 import { justiceTopics, playerRumorTopics } from './topic-sources';
@@ -49,6 +49,7 @@ export function registerCrimeJusticeModule(): void {
   REQUIREMENT_CHECKERS.set('isWanted', (agent, ctx) => isWantedNpc(agent, ctx));
   REQUIREMENT_CHECKERS.set('hasDetainedNpc', (_agent, ctx) => hasDetainedNpc(ctx));
   REQUIREMENT_CHECKERS.set('hasWitnessBelief', (agent, _ctx) => hasWitnessBelief(agent));
+  REQUIREMENT_CHECKERS.set('hasSuspicionBelief', (agent, _ctx) => hasSuspicionBelief(agent));
   REQUIREMENT_CHECKERS.set('notPerpetrator', (agent, _ctx) => {
     if (!agent.state.beliefs) return true;
     return !agent.state.beliefs.getAllBeliefs().some(
@@ -319,6 +320,7 @@ export function registerCrimeJusticeModule(): void {
     leverage: ['blackmail'],
     flee: ['flee_town'],
     evaluate: ['evaluate_case'],
+    watch: ['surveillance'],
   });
 
   // Validate: every actionVerb must be registered in ACTION_VERB_MAP
@@ -633,6 +635,69 @@ export function registerCrimeJusticeModule(): void {
         }
         imprisonmentTimers.delete(npcId);
       }
+    }
+  });
+
+  // Tick phase handler: danger belief detection → defensive goals (crime prevention)
+  // When an NPC receives a belief that they are a potential victim, personality determines response.
+  registerTickPhaseHandler(async (ctx) => {
+    if (!ctx.goalManager || !ctx.npcHomes) return;
+
+    for (const [npcId, agent] of ctx.agents) {
+      if (!agent.state.alive || agent.profile.isPlayer) continue;
+      if (isStatusAbsent(agent.state.status)) continue;
+      if (!agent.state.beliefs) continue;
+
+      // Find "danger to self" beliefs — someone warned me I'm a target
+      const dangerBeliefs = agent.state.beliefs.getAllBeliefs().filter(
+        (b) => isTransferable(b.eventType) && b.object === agent.profile.name && b.confidence >= 0.25,
+      );
+      if (dangerBeliefs.length === 0) continue;
+
+      // Already reacting? Check for active defensive goal
+      const existingGoals = ctx.goalManager.getGoals(npcId);
+      if (existingGoals.some((g) => g.type === 'lay_low' || g.type === 'defensive')) continue;
+
+      // Cooldown: one defensive reaction per 120 game minutes
+      const cooldownKey = `danger_react:${npcId}`;
+      if (ctx.discoveries.has(cooldownKey)) continue;
+
+      const N = agent.profile.bigFive.neuroticism;
+      const C = agent.profile.bigFive.conscientiousness;
+
+      if (N > 0.6) {
+        // Fearful → go home and hide (lay_low)
+        const home = ctx.npcHomes.get(npcId) ?? agent.state.location;
+        ctx.goalManager.addGoal({
+          npcId, type: 'lay_low', priority: 6, state: 'pending', currentStep: 0,
+          steps: [
+            { action: 'move_to', location: home, skipIfAt: true },
+            { action: 'wait', ticks: 16 },
+          ],
+          data: {},
+        });
+        ctx.discoveries.add(cooldownKey);
+        console.log(`  [Prevention] ${agent.profile.name} (N=${N.toFixed(1)}) — fearful, going home to lay low`);
+      } else if (C > 0.6) {
+        // Dutiful → report the threat to guard
+        const guardId = Array.from(ctx.agents.entries()).find(
+          ([id, a]) => a.profile.investigator && a.state.alive && !isStatusAbsent(a.state.status) && id !== npcId,
+        )?.[0];
+        if (guardId) {
+          const guard = ctx.agents.get(guardId)!;
+          ctx.goalManager.addGoal({
+            npcId, type: 'defensive', priority: 6, state: 'pending', currentStep: 0,
+            steps: [
+              { action: 'move_to', location: guard.state.location, skipIfAt: true },
+              { action: 'interact', targetId: guardId, purpose: `report a threat: someone warned you that you are in danger. Tell ${guard.profile.name} about the threat and ask for protection`, importance: 6, beliefTransfer: true, beliefTransferDirection: 'owner-to-target' },
+            ],
+            data: {},
+          });
+          ctx.discoveries.add(cooldownKey);
+          console.log(`  [Prevention] ${agent.profile.name} (C=${C.toFixed(1)}) — dutiful, reporting threat to ${guard.profile.name}`);
+        }
+      }
+      // Low N + Low C: brave/careless — no defensive action (by design)
     }
   });
 
