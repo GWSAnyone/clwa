@@ -281,12 +281,15 @@ When the scenario resolves (or player decides to leave), show:
 > Player can actively investigate and act, not just watch.
 
 **Build:**
-- Player accusation mechanic (IL → evidence evaluation → NPC response)
-- Crime prevention (warn victim, confront suspect, alert guard)
-- Evidence presentation (show gathered evidence to NPC → belief transfer)
-- Journal improvements (track suspects, evidence, theories)
+- ~~Player accusation mechanic (IL → evidence evaluation → NPC response)~~ ✅ backend
+- ~~Crime prevention (warn victim, confront suspect, alert guard)~~ ✅ backend
+- ~~Evidence presentation (show gathered evidence to NPC → belief transfer)~~ ✅ backend
+- ~~Journal improvements (track suspects, evidence, theories)~~ ✅ backend
+- Web UI: evidence selector, journal grouping, suspect toggle (pending)
 
 **Result:** Player has real tools. Can gather clues, cross-reference, warn, accuse. Investigation is interactive.
+
+**Specs:** `SPEC-journal-v2` ✅ | `SPEC-evidence-presentation` ✅ | `SPEC-player-accusation` ✅ | `SPEC-crime-prevention` ✅ | `SPEC-conversation-session` (pending)
 
 **Test:** Player can prevent a crime by warning the victim. Player can convict the right criminal by building a case.
 
@@ -371,5 +374,5 @@ $125M budget, beautiful world, dead NPCs. Crimson Desert's core failure: scale w
 
 ---
 
-*Updated March 29, 2026*
+*Updated April 3, 2026*
 *Long-term vision: see VISION.md*
