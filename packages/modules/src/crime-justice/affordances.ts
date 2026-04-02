@@ -642,6 +642,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   {
     id: 'surveillance',
     isDuty: true,
+    minimumScore: 0.5,
     actionVerb: 'watch',
     actionDescription: 'keep watch on someone suspicious',
     label: 'Keep watch on a suspicious person',

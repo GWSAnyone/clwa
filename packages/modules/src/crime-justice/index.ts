@@ -640,6 +640,9 @@ export function registerCrimeJusticeModule(): void {
 
   // Tick phase handler: danger belief detection → defensive goals (crime prevention)
   // When an NPC receives a belief that they are a potential victim, personality determines response.
+  const dangerReactionCooldowns = new Map<string, number>(); // npcId → gameMinute expiry
+  const DANGER_COOLDOWN_MINUTES = 120;
+
   registerTickPhaseHandler(async (ctx) => {
     if (!ctx.goalManager || !ctx.npcHomes) return;
 
@@ -658,9 +661,9 @@ export function registerCrimeJusticeModule(): void {
       const existingGoals = ctx.goalManager.getGoals(npcId);
       if (existingGoals.some((g) => g.type === 'lay_low' || g.type === 'defensive')) continue;
 
-      // Cooldown: one defensive reaction per 120 game minutes
-      const cooldownKey = `danger_react:${npcId}`;
-      if (ctx.discoveries.has(cooldownKey)) continue;
+      // Time-based cooldown: one defensive reaction per 120 game minutes
+      const cooldownExpiry = dangerReactionCooldowns.get(npcId);
+      if (cooldownExpiry != null && ctx.gameMinute < cooldownExpiry) continue;
 
       const N = agent.profile.bigFive.neuroticism;
       const C = agent.profile.bigFive.conscientiousness;
@@ -676,7 +679,7 @@ export function registerCrimeJusticeModule(): void {
           ],
           data: {},
         });
-        ctx.discoveries.add(cooldownKey);
+        dangerReactionCooldowns.set(npcId, ctx.gameMinute + DANGER_COOLDOWN_MINUTES);
         console.log(`  [Prevention] ${agent.profile.name} (N=${N.toFixed(1)}) — fearful, going home to lay low`);
       } else if (C > 0.6) {
         // Dutiful → report the threat to guard
@@ -693,7 +696,7 @@ export function registerCrimeJusticeModule(): void {
             ],
             data: {},
           });
-          ctx.discoveries.add(cooldownKey);
+          dangerReactionCooldowns.set(npcId, ctx.gameMinute + DANGER_COOLDOWN_MINUTES);
           console.log(`  [Prevention] ${agent.profile.name} (C=${C.toFixed(1)}) — dutiful, reporting threat to ${guard.profile.name}`);
         }
       }

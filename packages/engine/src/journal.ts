@@ -30,14 +30,8 @@ export interface CaseSummary {
   suspectId: string;
   suspectName: string;
   entries: JournalEntry[];
-  evidence: {
-    physical: number;
-    opportunity: number;
-    motive: number;
-    testimony: number;
-    observation: number;
-    other: number;
-  };
+  /** Dynamic evidence category counts — keys come from module data, not engine */
+  evidence: Record<string, number>;
   totalScore: number;
   quality: 'strong' | 'moderate' | 'weak' | 'insufficient';
   summary: string;
@@ -198,20 +192,13 @@ export class PlayerJournal {
   getCaseSummary(suspectId: string, suspectName: string): CaseSummary {
     const entries = this.getEntriesForSuspect(suspectId);
 
-    const evidence = { physical: 0, opportunity: 0, motive: 0, testimony: 0, observation: 0, other: 0 };
+    const evidence: Record<string, number> = {};
     let totalScore = 0;
 
     for (const entry of entries) {
-      const cat = entry.evidenceCategory;
+      const cat = entry.evidenceCategory ?? entry.type;
       const weight = entry.evidenceWeight ?? DEFAULT_WEIGHTS[entry.type] ?? 0.08;
-
-      if (cat === 'physical') evidence.physical++;
-      else if (cat === 'opportunity') evidence.opportunity++;
-      else if (cat === 'motive') evidence.motive++;
-      else if (entry.type === 'testimony') evidence.testimony++;
-      else if (entry.type === 'observation') evidence.observation++;
-      else if (cat) evidence.other++;
-
+      evidence[cat] = (evidence[cat] ?? 0) + 1;
       totalScore += weight;
     }
 
@@ -221,13 +208,7 @@ export class PlayerJournal {
       totalScore >= 0.2 ? 'weak' :
       'insufficient';
 
-    const parts: string[] = [];
-    if (evidence.physical) parts.push(`${evidence.physical} physical`);
-    if (evidence.opportunity) parts.push(`${evidence.opportunity} opportunity`);
-    if (evidence.motive) parts.push(`${evidence.motive} motive`);
-    if (evidence.testimony) parts.push(`${evidence.testimony} testimony`);
-    if (evidence.observation) parts.push(`${evidence.observation} observation`);
-    if (evidence.other) parts.push(`${evidence.other} other`);
+    const parts = Object.entries(evidence).map(([cat, count]) => `${count} ${cat}`);
     const summary = parts.length ? parts.join(', ') : 'no evidence';
 
     return { suspectId, suspectName, entries, evidence, totalScore, quality, summary };

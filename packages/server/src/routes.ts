@@ -418,7 +418,8 @@ export async function handleRequest(
           relatedNpcs,
         );
         // Populate structured evidence fields from crime scene context
-        journalEntry.evidenceCategory = point.type || undefined;
+        // Note: point.type is display type ('bloodstain', 'body'), NOT evidence category.
+        // evidenceCategory comes from EL evidence entries below, not from examination points.
         journalEntry.eventType = scene.eventType;
         journalEntry.suspectId = scene.perpetratorId;
         journalEntry.victimId = scene.victimId;

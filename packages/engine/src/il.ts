@@ -519,17 +519,12 @@ export function processEvidencePresentation(ctx: ILEffectContext): string {
   for (const ev of evidence) {
     if (!ev.eventType) continue;
 
-    // Physical/opportunity/motive evidence: NOT trust-scaled — tangible facts
-    // Testimony entries from journal: fixed 0.5 (documented, not hearsay)
-    // Observation entries: trust-scaled (player's own word)
-    let confidence: number;
-    if (ev.evidenceCategory && ev.evidenceCategory !== 'witness') {
-      confidence = ev.evidenceWeight ?? 0.15;
-    } else if (ev.evidenceCategory === 'witness') {
-      confidence = 0.5;
-    } else {
-      confidence = 0.4 * playerTrust;
-    }
+    // Evidence confidence from weight field — no category string checks in engine.
+    // Modules set evidenceWeight at creation time: physical=0.15-0.25, witness=0.5, etc.
+    // Entries without evidenceWeight (player observations): trust-scaled fallback.
+    const confidence = ev.evidenceWeight != null
+      ? ev.evidenceWeight
+      : 0.4 * playerTrust;
 
     if (confidence < 0.05) continue;
 
@@ -604,7 +599,7 @@ export function buildAccusationContext(
 ): AccusationContext {
   const suspectAgent = agents.get(suspectId);
   const suspectName = suspectAgent?.profile.name ?? suspectId;
-  const crimeLabel = getEventLabel(claimEventType) ?? 'a crime';
+  const crimeLabel = getEventLabel(claimEventType) ?? 'wrongdoing';
 
   // Player's journal evidence
   const journalEvidence = playerJournal.getCaseSummary(suspectId, suspectName);
@@ -643,11 +638,7 @@ export function buildAccusationContext(
 /** Build NPC prompt section for formal accusation. */
 function buildAccusationPrompt(acc: AccusationContext, npc: Agent): string {
   const ev = acc.journalEvidence.evidence;
-  const evParts: string[] = [];
-  if (ev.physical) evParts.push(`${ev.physical} physical`);
-  if (ev.opportunity) evParts.push(`${ev.opportunity} circumstantial`);
-  if (ev.motive) evParts.push(`${ev.motive} motive`);
-  if (ev.testimony) evParts.push(`${ev.testimony} testimonies`);
+  const evParts = Object.entries(ev).filter(([, n]) => n > 0).map(([cat, n]) => `${n} ${cat}`);
   const evDesc = evParts.length ? evParts.join(', ') : 'none';
 
   const npcConfDesc = acc.npcMaxConfidence >= 0.6 ? 'significant suspicion'
@@ -677,7 +668,7 @@ function buildAccusationPrompt(acc: AccusationContext, npc: Agent): string {
         ? 'You might be open to... alternative forms of persuasion.'
         : 'You want to do the right thing but need convincing evidence.';
   } else if (npc.profile.canSentence) {
-    personalityNote = 'You cannot arrest anyone. Tell the player to bring this to the guard first.';
+    personalityNote = 'You cannot arrest anyone. Tell the player to bring this to someone with the authority to make arrests.';
   }
 
   return [
