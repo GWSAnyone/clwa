@@ -151,6 +151,9 @@ export async function llmStream(options: LlmStreamOptions): Promise<string> {
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 250,
       stream: true,
+      repeat_penalty: DEFAULT_WORLD_CONFIG.repeatPenalty ?? 1.1,
+      frequency_penalty: DEFAULT_WORLD_CONFIG.frequencyPenalty ?? 0.3,
+      presence_penalty: DEFAULT_WORLD_CONFIG.presencePenalty ?? 0.2,
     }),
   });
 

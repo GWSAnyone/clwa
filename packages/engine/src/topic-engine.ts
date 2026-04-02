@@ -19,6 +19,9 @@ export interface TopicProposal {
   responderHook?: string;
   /** Category for diversity tracking (e.g. "crime", "role", "mood") */
   category: string;
+  /** Diversity group — modules set this to control diversity tracking.
+   *  If omitted, resolved from category via TOPIC_GROUP_MAP registry. */
+  group?: string;
   /** Minimum importance floor for conversation memory (optional) */
   minImportance?: number;
   /** Maximum importance cap for conversation memory (optional) */
@@ -90,20 +93,39 @@ export const TOPIC_SOURCE_REGISTRY: TopicSource[] = [];
 
 // ─── Topic Groups (for diversity tracking + PM influence) ────────
 
-/** Derive a broad group from a topic category */
-export function getTopicGroup(category: string): string {
-  if (category.startsWith('casual')) return 'casual';
-  if (category.startsWith('event:')) return 'event';
-  if (category === 'memory') return 'event';              // recalling past events
-  if (category === 'relationship' || category === 'grief') return 'relationship';
-  if (category === 'opinion') return 'relationship';       // opinions about third NPC = social dynamics
-  if (category === 'mood') return 'mood';
-  if (category === 'inner') return 'inner';                // separate PM multiplier (0.5 + N*0.9)
-  if (category.startsWith('role:') || category === 'fact' || category.startsWith('fact:')) return 'knowledge';
-  if (category === 'question') return 'knowledge';         // seeking information
-  if (category === 'justice' || category === 'conflict' || category.startsWith('player_rumor')) return 'conflict';
-  if (category === 'idle') return 'casual';
-  return 'casual'; // default to casual instead of unmapped 'other'
+/** Registry: category → group mapping. Modules call registerTopicGroupMapping() at init. */
+const TOPIC_GROUP_MAP = new Map<string, string>();
+
+/** Register category → group mappings. Modules define which categories belong to which groups. */
+export function registerTopicGroupMapping(mappings: Record<string, string>): void {
+  for (const [category, group] of Object.entries(mappings)) {
+    TOPIC_GROUP_MAP.set(category, group);
+  }
+}
+
+/** Resolve diversity group for a topic proposal. Priority: proposal.group → registry → fallback 'casual'. */
+export function getTopicGroup(proposal: TopicProposal): string;
+export function getTopicGroup(categoryOrProposal: string | TopicProposal): string {
+  if (typeof categoryOrProposal !== 'string') {
+    // TopicProposal overload — check explicit group first
+    if (categoryOrProposal.group) return categoryOrProposal.group;
+    return resolveGroupFromCategory(categoryOrProposal.category);
+  }
+  return resolveGroupFromCategory(categoryOrProposal);
+}
+
+function resolveGroupFromCategory(category: string): string {
+  // Check registry first
+  const registered = TOPIC_GROUP_MAP.get(category);
+  if (registered) return registered;
+  // Prefix matching for namespaced categories (event:murder, role:guard, fact:lore)
+  const colonIdx = category.indexOf(':');
+  if (colonIdx > 0) {
+    const prefix = category.slice(0, colonIdx);
+    const prefixGroup = TOPIC_GROUP_MAP.get(prefix + ':');
+    if (prefixGroup) return prefixGroup;
+  }
+  return 'casual';
 }
 
 /** Target distribution ratios for topic diversity */
@@ -207,7 +229,7 @@ export class TopicEngine {
     const pmResp = responder.profile.bigFive;
     if (pmInit || pmResp) {
       for (const p of allProposals) {
-        const group = getTopicGroup(p.category);
+        const group = getTopicGroup(p);
         const multInit = pmInit ? pmGroupMultiplier(group, pmInit) : 1.0;
         const multResp = pmResp ? pmGroupMultiplier(group, pmResp) : 1.0;
         p.weight *= (multInit + multResp) / 2; // average of both personalities
@@ -217,7 +239,7 @@ export class TopicEngine {
     // 3. Apply diversity bonus — push toward target distribution
     if (this.dayConversationCount > 3) {
       for (const p of allProposals) {
-        const group = getTopicGroup(p.category);
+        const group = getTopicGroup(p);
         const actual = (this.dayDistribution.get(group) ?? 0) / this.dayConversationCount;
         const target = DIVERSITY_TARGETS[group] ?? 0.1;
         p.weight += (target - actual) * DIVERSITY_STRENGTH;
@@ -234,7 +256,7 @@ export class TopicEngine {
     this.topicHistory.set(key, history);
 
     // Track day distribution (for diversity)
-    const winnerGroup = getTopicGroup(winner.category);
+    const winnerGroup = getTopicGroup(winner);
     this.dayDistribution.set(winnerGroup, (this.dayDistribution.get(winnerGroup) ?? 0) + 1);
     this.dayConversationCount++;
 

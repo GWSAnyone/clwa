@@ -2,7 +2,7 @@ import {
   AFFORDANCE_REGISTRY, EVIDENCE_RULES, REQUIREMENT_CHECKERS, TOPIC_SOURCE_REGISTRY,
   registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerEventTypeFlagsBatch, registerSourceFlags,
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
-  registerAbsentStatuses, registerStepHandler, registerInteractPostHook,
+  registerAbsentStatuses, registerStepHandler, registerInteractPostHook, registerTopicGroupMapping,
   registerWitnessEventType, registerEventMoodShifts, registerGoalMoodBoost,
   registerBodyDiscoveryEventType, registerRumorEventType, registerDiscoveryHandler, BELIEF_SOURCE,
   registerBeliefCreator, registerMemoryTextBuilder,
@@ -304,6 +304,12 @@ export function registerCrimeJusticeModule(): void {
   // Topic sources for NPC conversations about justice events + player rumors
   TOPIC_SOURCE_REGISTRY.push(justiceTopics);
   TOPIC_SOURCE_REGISTRY.push(playerRumorTopics);
+
+  // Topic group mappings for crime-justice categories
+  registerTopicGroupMapping({
+    'justice': 'conflict', 'conflict': 'conflict', 'player_rumor': 'conflict',
+    'player_rumor:': 'conflict',
+  });
 
   // Action verb → affordance ID mapping for LLM DO/WHY parser
   registerActionVerbs({

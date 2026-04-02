@@ -3,6 +3,7 @@ import type { IEventStore } from './event-types';
 import type { WorldEvent } from './cg-types';
 import type { ConversationResult, ConversationLine, WorldConfig, LocationGraph } from './world-types';
 import type { TopicProposal } from './topic-engine';
+import { ENGINE_EVENT } from './event-registry';
 import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 import { getRelationshipLabel } from './event-registry';
@@ -166,7 +167,7 @@ export async function runConversation(
   // Record event in Event Store
   const event: WorldEvent = {
     id: crypto.randomUUID(),
-    type: 'NPC_CONVERSATION',
+    type: ENGINE_EVENT.NPC_CONVERSATION,
     subject: initiator.profile.id,
     object: responder.profile.id,
     location,

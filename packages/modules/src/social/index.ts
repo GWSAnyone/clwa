@@ -8,7 +8,7 @@
  * This is CONTENT (what NPCs do/talk about), not ENGINE (how it's selected).
  */
 
-import { TOPIC_SOURCE_REGISTRY, AFFORDANCE_REGISTRY, TARGET_FINDERS } from '@clwa/engine';
+import { TOPIC_SOURCE_REGISTRY, AFFORDANCE_REGISTRY, TARGET_FINDERS, registerTopicGroupMapping } from '@clwa/engine';
 import type { Agent, AffordanceContext, AffordanceTarget } from '@clwa/engine';
 import { SOCIAL_TOPIC_SOURCES } from './topic-sources';
 
@@ -41,6 +41,16 @@ function findSocializeTarget(npcId: string, agent: Agent, ctx: AffordanceContext
 export function registerSocialModule(): void {
   // Register all social topic sources
   TOPIC_SOURCE_REGISTRY.push(...SOCIAL_TOPIC_SOURCES);
+
+  // Topic group mappings — maps categories to diversity groups
+  registerTopicGroupMapping({
+    'casual': 'casual', 'casual:': 'casual', 'idle': 'casual',
+    'event:': 'event', 'memory': 'event',
+    'relationship': 'relationship', 'grief': 'relationship', 'opinion': 'relationship',
+    'mood': 'mood',
+    'inner': 'inner',
+    'role:': 'knowledge', 'fact': 'knowledge', 'fact:': 'knowledge', 'question': 'knowledge',
+  });
 
   // Social affordance — triggers LLM volition for extraverted NPCs even without crime events.
   // No actionVerb — doesn't appear in LLM action list. Provides instinct pressure only.

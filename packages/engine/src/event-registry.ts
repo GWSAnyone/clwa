@@ -311,6 +311,11 @@ export const BELIEF_SOURCE = {
   DEDUCTION: 'deduction',
 } as const;
 
+/** Engine-defined event type for NPC conversations (not module-specific) */
+export const ENGINE_EVENT = {
+  NPC_CONVERSATION: 'NPC_CONVERSATION',
+} as const;
+
 // ─── Belief Source Transfer Weights ───
 // When beliefs transfer between NPCs, confidence is multiplied by source weight
 const SOURCE_TRANSFER_WEIGHTS: Map<string, number> = new Map([

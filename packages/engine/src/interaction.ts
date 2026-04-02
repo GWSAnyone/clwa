@@ -5,7 +5,7 @@ import type { InteractionRunner, GoalStep } from './goals';
 import type { ConversationLine, LocationGraph } from './world-types';
 import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
-import { getInteractionResultHooks } from './event-registry';
+import { getInteractionResultHooks, ENGINE_EVENT } from './event-registry';
 
 /** Resolve location ID to display name. */
 function locName(id: string, locations?: LocationGraph): string {
@@ -115,7 +115,7 @@ export function createInteractionRunner(
     // Record conversation event
     const event: WorldEvent = {
       id: crypto.randomUUID(),
-      type: 'NPC_CONVERSATION',
+      type: ENGINE_EVENT.NPC_CONVERSATION,
       subject: initiator.profile.id,
       object: target.profile.id,
       location: initiator.state.location,

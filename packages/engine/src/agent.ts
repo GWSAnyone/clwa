@@ -3,6 +3,7 @@ import { ReflectionTracker } from './reflection';
 import type { ReflectionConfig } from './reflection';
 import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
+import { bigFiveToDescription } from './personality-prose';
 import { getEventLabel, isPursuitEvent, isTransferable, isPerpetrator, isFirsthand } from './event-registry';
 import { DEFAULT_WORLD_CONFIG } from './world-types';
 import { llmCall, llmStream } from './llm-client';
@@ -374,30 +375,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
   }
 
   private bigFiveToDescription(): string {
-    const b = this.profile.bigFive;
-    const traits: string[] = [];
-
-    if (b.openness > 0.7) traits.push('curious and imaginative');
-    else if (b.openness < 0.3) traits.push('practical and conventional');
-
-    if (b.conscientiousness > 0.7) traits.push('organized and dependable');
-    else if (b.conscientiousness < 0.3) traits.push('spontaneous and flexible');
-
-    if (b.extraversion > 0.7) traits.push('outgoing and talkative');
-    else if (b.extraversion < 0.3) traits.push('reserved and quiet');
-
-    if (b.agreeableness > 0.7) traits.push('warm and cooperative');
-    else if (b.agreeableness < 0.3) traits.push('direct and competitive');
-
-    if (b.neuroticism > 0.7) traits.push('emotionally sensitive and anxious');
-    else if (b.neuroticism < 0.3) traits.push('calm and emotionally stable');
-
-    if (b.honesty > 0.7) traits.push('sincere and fair-minded');
-    else if (b.honesty < 0.3) traits.push('shrewd and self-serving');
-
-    return traits.length > 0
-      ? `You are ${traits.join(', ')}.`
-      : 'You have a balanced, moderate personality.';
+    return `You are ${bigFiveToDescription(this.profile.bigFive)}.`;
   }
 
   /**
