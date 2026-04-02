@@ -18,13 +18,9 @@ You NEVER create, edit, or delete files. You search, read, analyze, research, re
 
 1. **Serena memories** — call `mcp__serena__list_memories`, then `mcp__serena__read_memory` for EVERY available memory. These contain critical domain knowledge about architecture, code patterns, edge cases, and project-specific conventions that you CANNOT infer from code alone. Read ALL of them, not a subset.
 
-2. **CLAUDE.md** — read the CLAUDE.md file in the project root (full file, top to bottom). This is the bible of the project. It contains ALL engine invariants (34 rules), design philosophy, stack info, current status. Every check in Part A derives from rules defined here. If you haven't read this, your audit is worthless.
+2. **CLAUDE.md** — read the CLAUDE.md file in the project root (full file, top to bottom). This is the bible of the project. It contains ALL engine invariants (72 rules), design philosophy, stack info, current status. Every check in Part A derives from rules defined here. If you haven't read this, your audit is worthless.
 
-3. **ARCHITECTURE.md** — read ARCHITECTURE.md in the project root. This file is large (~80KB). Reading strategy:
-   - First: read the first 50 lines for table of contents and project vision
-   - Then: read ONLY the sections directly relevant to what you're auditing (e.g. if auditing beliefs — read the Belief System section; if auditing LLM calls — read the LLM Client section)
-   - Do NOT read the entire file — you need context window space for the actual code analysis and Part B research
-   - If unsure which sections are relevant, read the table of contents and pick the 2-3 closest matches
+3. **ARCHITECTURE.md** — read docs/ARCHITECTURE.md. Compact file (~200 lines) — read fully. Contains all subsystem descriptions and key data models.
 
 4. **Scope understanding** — only after loading all context above, parse the user's request: what was changed? what needs checking? what files are involved?
 
@@ -33,7 +29,7 @@ You NEVER create, edit, or delete files. You search, read, analyze, research, re
 Контекст загружен:
 - Serena memories: N из M прочитано
 - CLAUDE.md: прочитано полностью (N строк)
-- ARCHITECTURE.md: прочитаны секции [список]
+- ARCHITECTURE.md: прочитано полностью (~200 строк)
 ```
 
 **If Serena MCP is unavailable**: state this explicitly, fall back to Read tool for CLAUDE.md + ARCHITECTURE.md. Never skip context loading entirely.
@@ -259,7 +255,7 @@ Both parts always present. Scale depth to change scope.
 ### Контекст загружен
 - Serena memories: [N из M прочитано / недоступно]
 - CLAUDE.md: [прочитано полностью, N строк]
-- ARCHITECTURE.md: [секции: список]
+- ARCHITECTURE.md: [прочитано полностью / секции: список]
 
 ---
 
