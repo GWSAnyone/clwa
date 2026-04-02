@@ -165,7 +165,7 @@ export { createCrimeScene, getPassiveNoticeText } from './crime-scene';
 
 // ─── Journal ───
 export { PlayerJournal } from './journal';
-export type { JournalEntry } from './journal';
+export type { JournalEntry, CaseSummary } from './journal';
 
 // ─── Secret Directives ───
 export { buildSecretDirectives } from './secret-directives';

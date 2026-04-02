@@ -251,8 +251,69 @@ export async function handleRequest(
   // ─── GET /api/journal ───
   if (method === 'GET' && path === '/api/journal') {
     const typeFilter = url.searchParams.get('type') as 'clue' | 'testimony' | 'observation' | null;
+    const groupBy = url.searchParams.get('groupBy');
+
+    if (groupBy === 'suspect') {
+      const entries = world.journal.getEntries(typeFilter ? { type: typeFilter } : undefined);
+      const grouped: Record<string, { name: string; isSuspect: boolean; entries: typeof entries; evidenceCount: number }> = {};
+      const unrelated: typeof entries = [];
+
+      for (const entry of entries) {
+        if (entry.relatedNpcs.length === 0) {
+          unrelated.push(entry);
+          continue;
+        }
+        for (const npcId of entry.relatedNpcs) {
+          if (!grouped[npcId]) {
+            const npcAgent = agents.get(npcId);
+            grouped[npcId] = {
+              name: npcAgent?.profile.name ?? npcId,
+              isSuspect: world.journal.isSuspect(npcId),
+              entries: [],
+              evidenceCount: 0,
+            };
+          }
+          grouped[npcId].entries.push(entry);
+          if (entry.evidenceCategory) grouped[npcId].evidenceCount++;
+        }
+      }
+      return Response.json({ suspects: grouped, unrelated }, { headers: cors });
+    }
+
     const entries = world.journal.getEntries(typeFilter ? { type: typeFilter } : undefined);
     return Response.json(entries, { headers: cors });
+  }
+
+  // ─── GET /api/journal/case/:npcId ───
+  if (method === 'GET' && path.startsWith('/api/journal/case/')) {
+    const npcId = decodeURIComponent(path.slice('/api/journal/case/'.length));
+    const npcAgent = agents.get(npcId);
+    if (!npcAgent) {
+      return Response.json({ error: 'NPC not found' }, { status: 404, headers: cors });
+    }
+    const summary = world.journal.getCaseSummary(npcId, npcAgent.profile.name);
+    return Response.json(summary, { headers: cors });
+  }
+
+  // ─── POST /api/journal/suspect/:npcId ───
+  if (method === 'POST' && path.startsWith('/api/journal/suspect/')) {
+    const npcId = decodeURIComponent(path.slice('/api/journal/suspect/'.length));
+    const npcAgent = agents.get(npcId);
+    if (!npcAgent) {
+      return Response.json({ error: 'NPC not found' }, { status: 404, headers: cors });
+    }
+    const isNowSuspect = world.journal.markSuspect(npcId);
+    return Response.json({ npcId, name: npcAgent.profile.name, isSuspect: isNowSuspect }, { headers: cors });
+  }
+
+  // ─── GET /api/journal/suspects ───
+  if (method === 'GET' && path === '/api/journal/suspects') {
+    const suspectIds = world.journal.getSuspects();
+    const suspects = suspectIds.map((id) => ({
+      id,
+      name: agents.get(id)?.profile.name ?? id,
+    }));
+    return Response.json(suspects, { headers: cors });
   }
 
   // ─── GET /api/evidence(/:locationId) ───
@@ -356,6 +417,11 @@ export async function handleRequest(
           scene.id,
           relatedNpcs,
         );
+        // Populate structured evidence fields from crime scene context
+        journalEntry.evidenceCategory = point.type || undefined;
+        journalEntry.eventType = scene.eventType;
+        journalEntry.suspectId = scene.perpetratorId;
+        journalEntry.victimId = scene.victimId;
         broadcast({ type: 'journal:entry', data: journalEntry });
 
         // Also discover any undiscovered EL evidence at this location for player
@@ -371,6 +437,12 @@ export async function handleRequest(
             undefined,
             [e.subjectId, e.objectId].filter(Boolean) as string[],
           );
+          // Populate structured evidence fields from EL
+          evEntry.evidenceCategory = e.category;
+          evEntry.evidenceWeight = e.weight;
+          evEntry.eventType = e.eventType;
+          evEntry.suspectId = e.subjectId ?? undefined;
+          evEntry.victimId = e.objectId ?? undefined;
           broadcast({ type: 'journal:entry', data: evEntry });
           evidenceEntries.push({ category: e.category, description: e.description, subjectName: e.subjectName });
         }

@@ -1419,7 +1419,7 @@ export class World {
     decisionCooldowns: Record<string, number>;
     bodyDiscoveries: string[];
     crimeScenes: Record<string, import('./world-types').CrimeSceneJSON[]>;
-    journal: import('./journal').JournalEntry[];
+    journal: import('./journal').JournalEntry[] | { entries: import('./journal').JournalEntry[]; suspects: string[] };
     goals: Record<string, import('./goals').NpcGoal[]>;
     topicEngine: object;
     agents: Record<string, {
