@@ -15,11 +15,10 @@
 |----------|---------|
 | @docs/GDD_DETECTIVE.md | **Game design** — core loop, milestones, what to build next |
 | @docs/VISION.md | **Long-term vision** — Shangri-La world, multiplayer roadmap |
-| @docs/ARCHITECTURE.md | **Engine spec** — subsystems, invariants, data models |
-| @docs/ROADMAP.md | **Development roadmap** — phases, tasks, progress tracking |
-| @docs/DEMO_PLAN.md | **Demo plan** — E2E test scenarios, implementation details |
-| @docs/OVERVIEW.md | **Overview** — high-level CLWA concept for newcomers |
-| `docs/` (Obsidian vault) | **World design** — NPC profiles, locations, tensions, lore (open as Obsidian vault) |
+| @docs/ARCHITECTURE.md | **Engine spec** — subsystems, data models |
+| @ROADMAP.md | **Development roadmap** — phases, subsystems, milestones |
+| `docs/specs/` | **Task specs** — detailed design for each feature |
+| `docs/` (Obsidian vault) | **World design** — NPC profiles, locations, tensions, lore |
 
 ## Design Philosophy (ALWAYS FOLLOW)
 
@@ -176,4 +175,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.10.0-dev. **Conversation Impact overhaul**: LLM-based analyzeConversationImpact replaced with deterministic computation from TopicProposal structured data (moodValence, mentionedNpcId, sentimentValence). Zero hallucinated mentions, zero negative bias, zero LLM latency per conversation. **Impact applies to participants + bystanders** (was bystanders-only). **_pendingImpactQueue** (array) replaces single-field _pendingImpactData — eliminates race condition on burst conversations. CONVERSATION_IMPACT tasks use composite npcId to prevent dedup collision. **Schedule post guard**: mobile NPCs don't random-wander from schedule location. **Visit inTransit fix**: NPC walks to target's transitTo instead of silent null. **Pair cooldown in volition**: socialOnly visit rejected if pair on cooldown (isPairOnCooldown on AffordanceContext). **Co-located visit wait**: socialOnly + co-located → wait(2) goal instead of null; NPCs in wait steps eligible for conversation pairing. **Per-NPC conversation cooldown**: 30 game min gap in scheduler prevents conversation monopoly. **parseDialogue hardening**: empty/punctuation speech → gesture fallback; trailing style metadata stripped. **Anti-echo**: stronger responder prompt. **innerConflict hook**: uses actual profile.innerConflict text. **ConversationConfig.relationshipMoodModifier**: friend/rival thresholds + bonuses from config, not hardcoded. **moodBias removed** from server bootstrap (was hidden -0.01 penalty). **File logger**: per-session log files with timestamps in `logs/`. **Previous (v0.9.9)**: Clock-Driven Architecture, IL v2 (dynamic schema, bilateral parity, ILEffect), ILConfig + ConversationConfig, Web UI (Canvas2D, chat, NPC Mind, IL badges).
+v0.11.0-dev. Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) backend complete — accusation, evidence presentation, crime prevention, journal v2. Web UI pending. 14 engine subsystems, 30+ registries, 20+ affordances. See ROADMAP.md for details.
