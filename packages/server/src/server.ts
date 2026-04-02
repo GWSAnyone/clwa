@@ -5,7 +5,7 @@ import type { Agent } from '@clwa/engine';
 import type { World } from '@clwa/engine';
 import type { IEventStore } from '@clwa/engine';
 import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, getAllRegisteredVerbs, createGoalFromRequest } from '@clwa/engine';
-import type { ILContext, ILEffectContext } from '@clwa/engine';
+import type { ILContext, ILEffectContext, PresentedEvidence } from '@clwa/engine';
 import { handleRequest } from './routes';
 import { addClient, removeClient, broadcast, sendTo, clientCount } from './ws';
 import type { WSClientMessage } from './ws';
@@ -148,6 +148,34 @@ export function startServer(
             }
             console.log(`  [IL] ${meaning.speechAct}${meaning.claims ? ` claims:${meaning.claims.length}` : ''}${meaning.questions ? ` questions:${meaning.questions.length}` : ''}${meaning.requestedAction ? ` request:${meaning.requestedAction.action}` : ''} (conf:${meaning.extractionConfidence.toFixed(2)})`);
 
+            // Validate and resolve evidence entries attached to this message
+            let presentedEvidence: PresentedEvidence[] | undefined;
+            if (msg.evidenceIds && Array.isArray(msg.evidenceIds) && msg.evidenceIds.length > 0) {
+              presentedEvidence = [];
+              for (const entryId of msg.evidenceIds.slice(0, 5)) { // max 5 per message
+                if (!world.journal.canPresent(entryId, msg.agentId)) continue;
+                const entry = world.journal.getEntry(entryId);
+                if (!entry) continue;
+                const suspectName = entry.suspectId ? agents.get(entry.suspectId)?.profile.name : undefined;
+                presentedEvidence.push({
+                  entryId: entry.id,
+                  text: entry.text,
+                  evidenceCategory: entry.evidenceCategory,
+                  evidenceWeight: entry.evidenceWeight,
+                  eventType: entry.eventType,
+                  suspectId: entry.suspectId,
+                  suspectName,
+                  victimId: entry.victimId,
+                });
+                world.journal.markPresented(entryId, msg.agentId);
+              }
+              if (presentedEvidence.length > 0) {
+                console.log(`  [Evidence] ${presentedEvidence.length} entries presented to ${agent.profile.name}`);
+              } else {
+                presentedEvidence = undefined;
+              }
+            }
+
             // Apply IL effects to engine systems (beliefs, mood, relationships)
             let ilAdditionalContext = '';
             const ilEffects: import('@clwa/engine').ILEffect[] = [];
@@ -163,6 +191,7 @@ export function startServer(
                 gameDay: agent.state.currentDay,
                 effects: ilEffects,
                 ilConfig: world.resolvedILConfig,
+                presentedEvidence,
                 goalCreator: (npcId, action, target) => {
                   const goal = createGoalFromRequest(npcId, action, world.buildAffordanceContext(), target);
                   if (goal) {

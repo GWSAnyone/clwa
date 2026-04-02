@@ -23,7 +23,7 @@ export type WSMessage =
 
 /** Client → server messages */
 export type WSClientMessage =
-  | { type: 'chat'; agentId: string; message: string }
+  | { type: 'chat'; agentId: string; message: string; evidenceIds?: string[] }
   | { type: 'player_move'; x: number; y: number };
 
 /** Connected WebSocket clients */

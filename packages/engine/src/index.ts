@@ -142,8 +142,8 @@ export type { TopicContext, TopicProposal } from './topic-engine';
 
 
 // ─── IL (Intent Layer) — Dialogue Meaning Extraction ───
-export { extractDialogueMeaning, applyDialogueMeaning, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from './il';
-export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect } from './il';
+export { extractDialogueMeaning, applyDialogueMeaning, processEvidencePresentation, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from './il';
+export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect, PresentedEvidence } from './il';
 
 // ─── Interaction ───
 export { createInteractionRunner } from './interaction';

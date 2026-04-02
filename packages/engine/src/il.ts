@@ -466,6 +466,18 @@ export type ILEffect =
   | { type: 'event_stored'; eventType: string; action: string }
   | { type: 'memory_stored'; text: string; importance: number };
 
+/** Journal evidence entry attached to chat message for Evidence Presentation */
+export interface PresentedEvidence {
+  entryId: string;
+  text: string;
+  evidenceCategory?: string;
+  evidenceWeight?: number;
+  eventType?: string;
+  suspectId?: string;
+  suspectName?: string;
+  victimId?: string;
+}
+
 export interface ILEffectContext {
   /** The NPC being talked to */
   targetAgent: Agent;
@@ -483,6 +495,76 @@ export interface ILEffectContext {
   effects: ILEffect[];
   /** Behavioral parameters (thresholds, multipliers). Defaults from DEFAULT_IL_CONFIG. */
   ilConfig?: ILConfig;
+  /** Evidence entries from journal attached to this message */
+  presentedEvidence?: PresentedEvidence[];
+}
+
+/**
+ * Process evidence entries attached to a chat message.
+ * Creates beliefs with source EVIDENCE — physical evidence is NOT trust-scaled.
+ * Returns prompt context string describing the presented evidence.
+ */
+export function processEvidencePresentation(ctx: ILEffectContext): string {
+  const evidence = ctx.presentedEvidence;
+  if (!evidence || evidence.length === 0) return '';
+
+  const npc = ctx.targetAgent;
+  const playerId = ctx.playerAgent.profile.id;
+  const playerTrust = npc.state.relationships?.getRelationship(playerId)?.trust ?? 0;
+  const lines: string[] = [];
+
+  for (const ev of evidence) {
+    if (!ev.eventType) continue;
+
+    // Physical/opportunity/motive evidence: NOT trust-scaled — tangible facts
+    // Testimony entries from journal: fixed 0.5 (documented, not hearsay)
+    // Observation entries: trust-scaled (player's own word)
+    let confidence: number;
+    if (ev.evidenceCategory && ev.evidenceCategory !== 'witness') {
+      confidence = ev.evidenceWeight ?? 0.15;
+    } else if (ev.evidenceCategory === 'witness') {
+      confidence = 0.5;
+    } else {
+      confidence = 0.4 * playerTrust;
+    }
+
+    if (confidence < 0.05) continue;
+
+    npc.state.beliefs?.addBelief({
+      id: crypto.randomUUID(),
+      eventType: ev.eventType,
+      subject: ev.suspectName ?? null,
+      object: null,
+      location: null,
+      confidence,
+      source: BELIEF_SOURCE.EVIDENCE,
+      sourceNpcId: playerId,
+      gameDay: ctx.gameDay,
+      lastUpdated: ctx.gameDay,
+    });
+
+    ctx.effects.push({
+      type: 'belief_created',
+      eventType: ev.eventType,
+      subject: ev.suspectName ?? null,
+      confidence: +confidence.toFixed(2),
+      trust: +playerTrust.toFixed(2),
+    });
+
+    const catLabel = ev.evidenceCategory ?? 'evidence';
+    lines.push(`- "${ev.text}" (${catLabel}${ev.suspectName ? `, pointing to ${ev.suspectName}` : ''})`);
+    console.log(`  [IL] Evidence belief: ${ev.eventType} suspect=${ev.suspectName} conf=${confidence.toFixed(2)} cat=${catLabel} (NOT trust-scaled)`);
+  }
+
+  if (lines.length === 0) return '';
+
+  return [
+    '[EVIDENCE PRESENTED]',
+    'The player shows you documented evidence:',
+    ...lines,
+    'This is tangible evidence from the crime scene investigation, not just hearsay.',
+    'Consider it alongside your own knowledge.',
+  ].join('\n');
 }
 
 /**
@@ -504,6 +586,10 @@ export async function applyDialogueMeaning(
   const playerName = ctx.playerAgent.profile.name;
   const sections: string[] = [];
   const cfg = ctx.ilConfig ?? DEFAULT_IL_CONFIG;
+
+  // 0. Evidence presentation → beliefs with source EVIDENCE (NOT trust-scaled)
+  const evidenceContext = processEvidencePresentation(ctx);
+  if (evidenceContext) sections.push(evidenceContext);
 
   // 1. Claims → create beliefs in NPC (consistent with NPC-NPC beliefTransfer)
   if (meaning.claims && meaning.claims.length > 0) {
