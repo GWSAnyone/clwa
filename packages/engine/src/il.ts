@@ -18,6 +18,7 @@ import type { Agent } from './agent';
 import type { IEventStore } from './event-store';
 import { getEventLabel, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb } from './event-registry';
 import type { ILConfig } from './world-types';
+import type { PlayerJournal, CaseSummary } from './journal';
 import { DEFAULT_IL_CONFIG } from './world-types';
 import { TIME_PERIODS } from './schedule';
 import { llmCall } from './llm-client';
@@ -497,6 +498,8 @@ export interface ILEffectContext {
   ilConfig?: ILConfig;
   /** Evidence entries from journal attached to this message */
   presentedEvidence?: PresentedEvidence[];
+  /** Player journal — needed for accusation evidence aggregation */
+  playerJournal?: PlayerJournal;
 }
 
 /**
@@ -564,6 +567,131 @@ export function processEvidencePresentation(ctx: ILEffectContext): string {
     ...lines,
     'This is tangible evidence from the crime scene investigation, not just hearsay.',
     'Consider it alongside your own knowledge.',
+  ].join('\n');
+}
+
+// ─── Accusation System ───
+
+export interface AccusationContext {
+  suspectId: string;
+  suspectName: string;
+  crimeLabel: string;
+  journalEvidence: CaseSummary;
+  npcMaxConfidence: number;
+  npcHasOwnEvidence: boolean;
+  playerTrust: number;
+  combinedScore: number;
+  combinedQuality: 'strong' | 'moderate' | 'weak' | 'insufficient';
+}
+
+function computeTrustBonus(trust: number): number {
+  if (trust >= 0.7) return 1.0;
+  if (trust >= 0.4) return 0.6;
+  return 0.2;
+}
+
+/**
+ * Build accusation context for authority NPCs (investigator/canSentence).
+ * Evidence quality is computed DETERMINISTICALLY — LLM provides voice, engine provides logic.
+ */
+export function buildAccusationContext(
+  suspectId: string,
+  claimEventType: string,
+  npc: Agent,
+  playerJournal: PlayerJournal,
+  playerTrust: number,
+  agents: Map<string, Agent>,
+): AccusationContext {
+  const suspectAgent = agents.get(suspectId);
+  const suspectName = suspectAgent?.profile.name ?? suspectId;
+  const crimeLabel = getEventLabel(claimEventType) ?? 'a crime';
+
+  // Player's journal evidence
+  const journalEvidence = playerJournal.getCaseSummary(suspectId, suspectName);
+
+  // NPC's own beliefs about suspect
+  let npcMaxConfidence = 0;
+  let npcHasOwnEvidence = false;
+  if (npc.state.beliefs) {
+    for (const b of npc.state.beliefs.getAllBeliefs()) {
+      if (b.subject === suspectName && isTransferable(b.eventType)) {
+        if (b.confidence > npcMaxConfidence) npcMaxConfidence = b.confidence;
+        if (b.source !== BELIEF_SOURCE.TESTIMONY) npcHasOwnEvidence = true;
+      }
+    }
+  }
+
+  // Combined score: journal 50% + NPC beliefs 35% + trust bonus 15%
+  const trustBonus = computeTrustBonus(playerTrust);
+  const combinedScore = journalEvidence.totalScore * 0.5
+    + npcMaxConfidence * 0.35
+    + trustBonus * 0.15;
+
+  const combinedQuality: AccusationContext['combinedQuality'] =
+    combinedScore >= 0.7 ? 'strong' :
+    combinedScore >= 0.4 ? 'moderate' :
+    combinedScore >= 0.2 ? 'weak' :
+    'insufficient';
+
+  return {
+    suspectId, suspectName, crimeLabel,
+    journalEvidence, npcMaxConfidence, npcHasOwnEvidence,
+    playerTrust, combinedScore, combinedQuality,
+  };
+}
+
+/** Build NPC prompt section for formal accusation. */
+function buildAccusationPrompt(acc: AccusationContext, npc: Agent): string {
+  const ev = acc.journalEvidence.evidence;
+  const evParts: string[] = [];
+  if (ev.physical) evParts.push(`${ev.physical} physical`);
+  if (ev.opportunity) evParts.push(`${ev.opportunity} circumstantial`);
+  if (ev.motive) evParts.push(`${ev.motive} motive`);
+  if (ev.testimony) evParts.push(`${ev.testimony} testimonies`);
+  const evDesc = evParts.length ? evParts.join(', ') : 'none';
+
+  const npcConfDesc = acc.npcMaxConfidence >= 0.6 ? 'significant suspicion'
+    : acc.npcMaxConfidence >= 0.3 ? 'some suspicion'
+    : acc.npcMaxConfidence > 0 ? 'faint suspicion'
+    : 'no independent findings';
+
+  const trustDesc = acc.playerTrust >= 0.7 ? 'well-established'
+    : acc.playerTrust >= 0.4 ? 'moderate'
+    : 'low';
+
+  const qualityGuidance: Record<string, string> = {
+    strong: 'This evidence warrants immediate action.',
+    moderate: 'Worth investigating further. Tell the player what additional evidence would help.',
+    weak: 'Not enough to act on. Explain what is missing.',
+    insufficient: 'This accusation has no real basis. Warn the player about making unfounded accusations.',
+  };
+
+  // Personality modulation
+  let personalityNote = '';
+  const H = npc.profile.bigFive.honesty;
+  const C = npc.profile.bigFive.conscientiousness;
+  if (npc.profile.investigator) {
+    personalityNote = C >= 0.7
+      ? 'As a disciplined investigator, you need solid evidence before acting.'
+      : H < 0.5
+        ? 'You might be open to... alternative forms of persuasion.'
+        : 'You want to do the right thing but need convincing evidence.';
+  } else if (npc.profile.canSentence) {
+    personalityNote = 'You cannot arrest anyone. Tell the player to bring this to the guard first.';
+  }
+
+  return [
+    '[FORMAL ACCUSATION]',
+    `The player formally accuses ${acc.suspectName} of ${acc.crimeLabel}.`,
+    '',
+    'Evidence assessment:',
+    `- Player documented evidence: ${acc.journalEvidence.quality} (${evDesc})`,
+    `- Your own findings: ${npcConfDesc}`,
+    `- Player trustworthiness: ${trustDesc}`,
+    `- Combined evidence quality: ${acc.combinedQuality.toUpperCase()}`,
+    '',
+    qualityGuidance[acc.combinedQuality],
+    personalityNote,
   ].join('\n');
 }
 
@@ -637,6 +765,51 @@ export async function applyDialogueMeaning(
       } else if (claim.subject || claim.location) {
         const details = [claim.subject, claim.location, claim.timePeriod].filter(Boolean);
         sections.push(`${playerName} mentions: ${details.join(', ')}. Consider this in your response.`);
+      }
+    }
+  }
+
+  // 1b. Accusation evaluation — only for authority NPCs (investigator/canSentence)
+  if (meaning.speechAct === 'accuse' && meaning.claims && meaning.claims.length > 0) {
+    const isAuthority = npc.profile.investigator || npc.profile.canSentence;
+    if (isAuthority && ctx.playerJournal) {
+      const suspectClaim = meaning.claims.find((c) => c.subject);
+      if (suspectClaim?.subject) {
+        const suspectAgent = findAgentByName(suspectClaim.subject, ctx.agents);
+        if (suspectAgent) {
+          const playerTrust = npc.state.relationships?.getRelationship(playerId)?.trust ?? 0;
+          const acc = buildAccusationContext(
+            suspectAgent.profile.id, suspectClaim.eventType ?? '', npc,
+            ctx.playerJournal, playerTrust, ctx.agents,
+          );
+
+          // Prompt injection with structured evidence assessment
+          sections.push(buildAccusationPrompt(acc, npc));
+
+          // Mechanical effects based on evidence quality
+          if (acc.combinedQuality === 'strong' && npc.profile.investigator && ctx.goalCreator) {
+            const created = ctx.goalCreator(npc.profile.id, 'arrest', suspectAgent.profile.name);
+            if (created) {
+              ctx.effects.push({ type: 'goal_created', action: 'arrest', affordanceId: 'arrest', target: suspectAgent.profile.name });
+            }
+            npc.state.relationships?.adjustTrust(playerId, 0.05);
+            ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: 0.05 });
+          } else if (acc.combinedQuality === 'moderate' && npc.profile.investigator && ctx.goalCreator) {
+            const created = ctx.goalCreator(npc.profile.id, 'investigate', suspectAgent.profile.name);
+            if (created) {
+              ctx.effects.push({ type: 'goal_created', action: 'investigate', affordanceId: 'investigate', target: suspectAgent.profile.name });
+            }
+          } else if (acc.combinedQuality === 'weak') {
+            npc.state.relationships?.adjustTrust(playerId, -0.03);
+            ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.03 });
+          } else if (acc.combinedQuality === 'insufficient') {
+            npc.state.relationships?.adjustTrust(playerId, -0.08);
+            ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.08 });
+            ctx.effects.push({ type: 'goal_rejected', action: 'accuse', reason: 'insufficient_evidence' });
+          }
+
+          console.log(`  [IL] Accusation: ${suspectAgent.profile.name} — journal=${acc.journalEvidence.totalScore.toFixed(2)} npc=${acc.npcMaxConfidence.toFixed(2)} trust=${playerTrust.toFixed(2)} → combined=${acc.combinedScore.toFixed(2)} (${acc.combinedQuality})`);
+        }
       }
     }
   }

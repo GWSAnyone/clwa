@@ -192,6 +192,7 @@ export function startServer(
                 effects: ilEffects,
                 ilConfig: world.resolvedILConfig,
                 presentedEvidence,
+                playerJournal: world.journal,
                 goalCreator: (npcId, action, target) => {
                   const goal = createGoalFromRequest(npcId, action, world.buildAffordanceContext(), target);
                   if (goal) {
