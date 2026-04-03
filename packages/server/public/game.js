@@ -1587,6 +1587,10 @@ function closeChat() {
   finalizeChatStream();
   closeShop();
   clearEvidenceSelection();
+  // Notify server to destroy conversation session
+  if (state.chatNpcId && state.ws && state.connected) {
+    state.ws.send(JSON.stringify({ type: 'chat_close', agentId: state.chatNpcId }));
+  }
   state.chatOpen = false; state.chatNpcId = null;
   document.getElementById('chat-panel').classList.remove('open');
 

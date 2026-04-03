@@ -479,6 +479,21 @@ export interface PresentedEvidence {
   victimId?: string;
 }
 
+/** Per-chat transient state for multi-turn detective interaction */
+export interface ConversationSession {
+  npcId: string;
+  startedAt: number; // gameMinute
+  messageCount: number;
+  /** Tracks repeated accusations per suspect within this chat */
+  accusationHistory: Map<string, {
+    count: number;
+    /** Journal entry count for suspect at time of accusation — detects new evidence */
+    lastJournalHash: number;
+  }>;
+  /** Log of formal accusations made in this chat — detects scatter-accusing */
+  formalAccusations: Array<{ suspectId: string; suspectName: string; tick: number }>;
+}
+
 export interface ILEffectContext {
   /** The NPC being talked to */
   targetAgent: Agent;
@@ -500,6 +515,8 @@ export interface ILEffectContext {
   presentedEvidence?: PresentedEvidence[];
   /** Player journal — needed for accusation evidence aggregation */
   playerJournal?: PlayerJournal;
+  /** Per-chat session state — repetition tracking, multiple suspect detection */
+  chatSession?: ConversationSession;
 }
 
 /**
@@ -776,6 +793,50 @@ export async function applyDialogueMeaning(
 
           // Prompt injection with structured evidence assessment
           sections.push(buildAccusationPrompt(acc, npc));
+
+          // Session-based repetition + multiple suspect tracking
+          if (ctx.chatSession) {
+            const session = ctx.chatSession;
+            const suspId = suspectAgent.profile.id;
+            const suspName = suspectAgent.profile.name;
+            const currentHash = ctx.playerJournal.getEntriesForSuspect(suspId).length;
+            const history = session.accusationHistory.get(suspId);
+
+            if (history) {
+              if (currentHash !== history.lastJournalHash) {
+                // New evidence found — reset
+                history.count = 1;
+                history.lastJournalHash = currentHash;
+              } else {
+                // Same evidence, repeated accusation
+                history.count++;
+                if (history.count === 2) {
+                  sections.push(`The player has already accused ${suspName} of this. They haven't presented new evidence.`);
+                } else {
+                  sections.push(`The player keeps repeating the same accusation against ${suspName} without new evidence. This is becoming tiresome and undermining their credibility.`);
+                }
+                const penalty = history.count === 2 ? -0.10 : -0.12;
+                npc.state.relationships?.adjustTrust(playerId, penalty);
+                ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: penalty });
+              }
+            } else {
+              session.accusationHistory.set(suspId, { count: 1, lastJournalHash: currentHash });
+            }
+
+            // Multiple suspect detection
+            const prevAccusations = session.formalAccusations.filter(a => a.suspectId !== suspId);
+            if (prevAccusations.length > 0) {
+              const prevNames = prevAccusations.map(a => a.suspectName).join(', ');
+              if (prevAccusations.length === 1) {
+                sections.push(`Note: this player previously formally accused ${prevNames}. Now they're accusing ${suspName}. Their investigative judgment may be questionable.`);
+              } else {
+                sections.push(`This player has now accused ${prevAccusations.length + 1} different people (${prevNames}, now ${suspName}). They seem to be guessing rather than investigating.`);
+              }
+              npc.state.relationships?.adjustTrust(playerId, -0.05);
+              ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.05 });
+            }
+            session.formalAccusations.push({ suspectId: suspId, suspectName: suspName, tick: ctx.gameDay });
+          }
 
           // Mechanical effects based on evidence quality
           if (acc.combinedQuality === 'strong' && npc.profile.investigator && ctx.goalCreator) {

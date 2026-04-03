@@ -5,13 +5,16 @@ import type { Agent } from '@clwa/engine';
 import type { World } from '@clwa/engine';
 import type { IEventStore } from '@clwa/engine';
 import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, getAllRegisteredVerbs, createGoalFromRequest } from '@clwa/engine';
-import type { ILContext, ILEffectContext, PresentedEvidence } from '@clwa/engine';
+import type { ILContext, ILEffectContext, PresentedEvidence, ConversationSession } from '@clwa/engine';
 import { handleRequest } from './routes';
 import { addClient, removeClient, broadcast, sendTo, clientCount } from './ws';
 import type { WSClientMessage } from './ws';
 import type { GameContext } from './game-context';
 
 const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'public');
+
+/** Per-chat transient sessions — tracks accusation repetition, multiple suspects */
+const chatSessions = new Map<string, ConversationSession>();
 
 export interface ServerConfig {
   port: number;
@@ -99,6 +102,11 @@ export function startServer(
             return;
           }
 
+          if (msg.type === 'chat_close') {
+            chatSessions.delete(msg.agentId);
+            return;
+          }
+
           if (msg.type === 'chat') {
             chatAgentId = msg.agentId;
             const agent = agents.get(msg.agentId);
@@ -120,6 +128,19 @@ export function startServer(
 
             // Freeze NPC during conversation — tick skips movement/goals for this agent
             agent.state.inPlayerChat = true;
+
+            // Create or reuse per-chat session
+            if (!chatSessions.has(msg.agentId)) {
+              chatSessions.set(msg.agentId, {
+                npcId: msg.agentId,
+                startedAt: world.gameMinute,
+                messageCount: 0,
+                accusationHistory: new Map(),
+                formalAccusations: [],
+              });
+            }
+            const chatSession = chatSessions.get(msg.agentId)!;
+            chatSession.messageCount++;
 
             // ── IL: Extract structured meaning from player speech ──
             const npcNames = Array.from(agents.values())
@@ -193,6 +214,7 @@ export function startServer(
                 ilConfig: world.resolvedILConfig,
                 presentedEvidence,
                 playerJournal: world.journal,
+                chatSession,
                 goalCreator: (npcId, action, target) => {
                   const goal = createGoalFromRequest(npcId, action, world.buildAffordanceContext(), target);
                   if (goal) {
