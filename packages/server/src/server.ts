@@ -226,6 +226,8 @@ export function startServer(
                 },
               };
               ilAdditionalContext = await applyDialogueMeaning(meaning, effectCtx);
+              // Track interaction for loneliness decay
+              agent.state.lastInteractionMinute = world.gameMinute;
             }
 
             // IL result → WS event with full structured effects for client

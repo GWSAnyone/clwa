@@ -74,6 +74,6 @@
   "config": {
     "startMinute": 420,
     "exchangeCount": 2,
-    "moodBias": -0.02
+    "moodBias": 0
   }
 }

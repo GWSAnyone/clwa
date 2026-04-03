@@ -114,6 +114,8 @@ export interface AgentState {
   transitStartMinute?: number;
   /** Total game minutes for this transit */
   transitDuration?: number;
+  /** Game minute of last social interaction — for loneliness decay. Transient, not persisted. */
+  lastInteractionMinute?: number;
 }
 
 export interface Memory {

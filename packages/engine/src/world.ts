@@ -372,6 +372,14 @@ export class World {
       }
     }
 
+    if (this._gameMinute % 5 === 0) {
+      try {
+        this._applyLonelinessDecay();
+      } catch (err) {
+        console.error('  [MasterClock] _applyLonelinessDecay error:', err);
+      }
+    }
+
     try {
       this._enqueueWork();
     } catch (err) {
@@ -436,6 +444,35 @@ export class World {
     agent.state.transitStartMinute = this._gameMinute;
     agent.state.transitDuration = path.length * minutesPerHop;
     return true;
+  }
+
+  /**
+   * Apply loneliness mood decay to NPCs without recent social interaction.
+   * Called every 5 game minutes. Rate depends on Extraversion.
+   */
+  private _applyLonelinessDecay(): void {
+    const THRESHOLD = 30; // game minutes without interaction before decay starts
+    const BASE_RATE = 0.001; // mood decay per 5 game minutes (base)
+
+    for (const [, agent] of this.agents) {
+      if (agent.profile.isPlayer) continue;
+      if (!agent.state.alive) continue;
+      if (isStatusAbsent(agent.state.status)) continue;
+
+      const lastInteraction = agent.state.lastInteractionMinute ?? 0;
+      const minutesSince = this._gameMinute - lastInteraction;
+      if (minutesSince < THRESHOLD) continue;
+
+      const E = agent.profile.bigFive.E;
+      const rate = BASE_RATE * (E * 1.5 + 0.5);
+      const oldMood = agent.state.mood;
+      agent.state.mood = Math.max(-1, agent.state.mood - rate);
+
+      // Broadcast mood change for WS overlay (only if significant)
+      if (Math.abs(agent.state.mood - oldMood) > 0.0005) {
+        this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, agent.state.mood);
+      }
+    }
   }
 
   /**
@@ -837,6 +874,13 @@ export class World {
         this.callbacks.onMovement?.([action.movement]);
       }
 
+      // Track interaction for loneliness decay
+      if (action.interaction) {
+        agent.state.lastInteractionMinute = this._gameMinute;
+        const target = this.agents.get(action.interaction.targetId);
+        if (target) target.state.lastInteractionMinute = this._gameMinute;
+      }
+
       if (action.goalCompleted) break;
       if (agent.state.inTransit) { agent.state.processingState = 'in_transit'; break; }
       if (action.action === 'interact' || action.action === 'interact_present') break;
@@ -919,6 +963,10 @@ export class World {
       });
       // Store impact data for the handler
       this._pendingImpactQueue.push({ conversation: convCopy, topic: topicCopy });
+
+      // Track social interaction for loneliness decay
+      initiator.state.lastInteractionMinute = this._gameMinute;
+      responder.state.lastInteractionMinute = this._gameMinute;
     } finally {
       initiator.state.processingState = 'idle';
       responder.state.processingState = 'idle';
