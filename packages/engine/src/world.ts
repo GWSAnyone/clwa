@@ -364,10 +364,9 @@ export class World {
       console.error('  [MasterClock] _advanceTransits error:', err);
     }
 
-    if (this._gameMinute % 5 === 0) {
+    if (this._gameMinute % 1 === 0) {
       try {
-        const currentDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
-        this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, currentDay);
+        this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, this.getCurrentDay());
       } catch (err) {
         console.error('  [MasterClock] onTimeUpdate error:', err);
       }
