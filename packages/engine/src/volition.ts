@@ -185,8 +185,12 @@ export async function evaluateAllVolition(
       const affDef = AFFORDANCE_REGISTRY.find(a => a.id === goal.data?.affordanceId);
       setAffordanceCooldown(ctx, npcId, goal.data?.affordanceId as string, ctx.gameMinute, affDef);
     } else {
-      // NPC chose "wait" — apply extended cooldown (×3) so they don't re-evaluate every tick
-      setDecisionCooldownExtended(ctx, npcId, ctx.gameMinute);
+      // NPC chose "wait" or system rejected — apply extended cooldown only if not already set
+      // (pair cooldown rejection sets a shorter cooldown directly in intentionToGoal)
+      const existing = ctx.decisionCooldowns?.get(npcId) ?? 0;
+      if (existing <= ctx.gameMinute) {
+        setDecisionCooldownExtended(ctx, npcId, ctx.gameMinute);
+      }
     }
   }
 
@@ -815,7 +819,11 @@ function intentionToGoal(
 
       // Social visit: skip if pair is on conversation cooldown (avoids repetitive targeting)
       if (socialOnly && ctx.isPairOnCooldown?.(npcId, targetId)) {
-        console.log(`  [AL:debug] ${agent.profile.name}: visit ${targetAgent.profile.name} rejected (pair cooldown)`);
+        console.log(`  [AL:retry] ${agent.profile.name}: visit ${targetAgent.profile.name} rejected (pair cooldown) — 15min cooldown`);
+        // Minimal cooldown (15 min) instead of extended (180 min) — system rejected, not NPC's choice
+        if (ctx.decisionCooldowns) {
+          ctx.decisionCooldowns.set(npcId, ctx.gameMinute + 15);
+        }
         return null;
       }
 
