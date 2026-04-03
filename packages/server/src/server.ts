@@ -224,6 +224,7 @@ export function startServer(
                   }
                   return false;
                 },
+                addMoodModifier: (npcId, mod) => world.addModifier(npcId, mod),
               };
               ilAdditionalContext = await applyDialogueMeaning(meaning, effectCtx);
               // Track interaction for loneliness decay

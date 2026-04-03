@@ -85,7 +85,11 @@ export interface AgentState {
   /** Legal/movement status — detained NPCs can't act, exiled/fled are removed from world */
   status: NpcStatus;
   location: string;
-  mood: number;              // -1 to 1
+  mood: number;              // -1 to 1 — computed effectiveMood from baseMood + modifiers
+  /** Personality-derived mood baseline: 0.3 - N×0.4 + E×0.2 */
+  baseMood: number;
+  /** Active mood modifiers (SPEC-mood-modifiers) */
+  moodModifiers: import('./world-types').MoodModifier[];
   currentDay: number;
   knownFacts: string[];
   /** Structured beliefs about events (who did what). Optional for backward compat */

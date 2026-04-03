@@ -115,7 +115,8 @@ export type {
 } from './world-types';
 export { DEFAULT_MOVEMENT_CONFIG, DEFAULT_WORLD_CONFIG, DEFAULT_IL_CONFIG, DEFAULT_CONVERSATION_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
 export type { ILConfig, ConversationConfig, PressureEffect, ImportanceConfig } from './world-types';
-export type { LocationGraph } from './world-types';
+export type { LocationGraph, MoodModifier } from './world-types';
+export { modifierEffective } from './world-types';
 
 // ─── Schedule ───
 export { ScheduleManager, getTimePeriod, minuteToHour, tickToHour, MINUTES_PER_DAY, TICKS_PER_DAY } from './schedule';

@@ -13,10 +13,13 @@ import { findPath } from './pathfinding';
 import { GoalManager } from './goals';
 import type { GoalActionResult, NpcGoal } from './goals';
 import { createInteractionRunner } from './interaction';
+import {
+  modifierEffective,
+} from './world-types';
 import type {
   WorldConfig, TickResult, ConversationLine, ConversationResult,
   LocationGraph, NpcMovementConfig, MovementResult, NpcHome,
-  CrimeScene, CrimeSceneJSON,
+  CrimeScene, CrimeSceneJSON, MoodModifier,
 } from './world-types';
 import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
 import type { ILConfig, ConversationConfig } from './world-types';
@@ -386,9 +389,9 @@ export class World {
 
     if (this._gameMinute % 5 === 0) {
       try {
-        this._applySocialStress();
+        this._tickMoodSystem();
       } catch (err) {
-        console.error('  [MasterClock] _applySocialStress error:', err);
+        console.error('  [MasterClock] _tickMoodSystem error:', err);
       }
     }
 
@@ -463,81 +466,136 @@ export class World {
   }
 
   /**
-   * Apply social stress + loneliness mood decay to NPCs.
-   * Called every 5 game minutes (SPEC-mood-pressure).
+   * Tick the mood modifier system. Called every 5 game minutes (SPEC-mood-modifiers).
    *
-   * Social stress: negative relationships → ambient mood pressure.
-   * Formula: negativePressure(sent²) − positiveBuffer × factor → scaled by personality → clamped.
-   * Loneliness: isolation → decay (original mechanism, additive).
+   * 1. Tick all modifiers (decrement remaining, remove expired)
+   * 2. Recalculate social stress permanent modifier
+   * 3. Loneliness permanent modifier
+   * 4. Compute effectiveMood = baseMood + Σ decayed magnitudes
+   * 5. Record mood snapshot for history
    */
-  private _applySocialStress(): void {
-    const ss = this.config.socialStress ?? {};
-    const SS_BASE_RATE = ss.baseRate ?? 0.006;
-    const SS_BUFFER_FACTOR = ss.bufferFactor ?? 0.5;
-    const SS_MAX_RATE = ss.maxRate ?? 0.006;
-
-    const LONELINESS_THRESHOLD = this.config.lonelinessThresholdMinutes ?? 30;
-    const LONELINESS_BASE_RATE = this.config.lonelinessBaseRate ?? 0.001;
+  private _tickMoodSystem(): void {
+    const ms = this.config.moodSystem ?? {};
+    const SS_RATE = ms.socialStressRate ?? 0.5;   // target weight: stress × personality × this = target magnitude
+    const SS_BUFFER = ms.socialStressBuffer ?? 0.5;
+    const SS_DRIFT = ms.socialStressDrift ?? 0.02; // drift rate per 5min toward target (0.02 = 63% in 4h)
+    const LONE_THRESHOLD = ms.lonelinessThreshold ?? 30;
+    const LONE_RATE = ms.lonelinessRate ?? 0.001;
 
     for (const [, agent] of this.agents) {
       if (agent.profile.isPlayer) continue;
       if (!agent.state.alive) continue;
       if (isStatusAbsent(agent.state.status)) continue;
+      if (!agent.state.moodModifiers) agent.state.moodModifiers = [];
 
       const oldMood = agent.state.mood;
-      if (typeof oldMood !== 'number' || isNaN(oldMood)) continue;
+      const mods = agent.state.moodModifiers;
 
-      let totalDelta = 0;
-
-      // ── Social Stress: ambient pressure from negative relationships ──
-      const rels = agent.state.relationships;
-      if (rels) {
-        let negativePressure = 0;
-        let positiveBuffer = 0;
-        const allRels = rels.getAllRelationships();
-        for (const rel of allRels) {
-          if (rel.sentiment < 0) {
-            negativePressure += -rel.sentiment; // |sent| — linear, less seed variance than sent²
-          } else if (rel.sentiment > 0) {
-            positiveBuffer += rel.sentiment;
-          }
-        }
-        const socialStress = Math.max(0, negativePressure - positiveBuffer * SS_BUFFER_FACTOR);
-        if (socialStress > 0) {
-          const { N, A, H } = agent.profile.bigFive;
-          const personalityScale = N * 1.5 + (1 - A) * 0.5 + (1 - H) * 0.3;
-          const stressDelta = Math.max(-SS_MAX_RATE, -(socialStress * personalityScale * SS_BASE_RATE));
-          totalDelta += stressDelta;
+      // 1. Tick modifiers: decrement remaining, remove expired
+      for (let i = mods.length - 1; i >= 0; i--) {
+        const m = mods[i];
+        if (m.duration > 0) { // non-permanent
+          m.remaining -= 5;
+          if (m.remaining <= 0) { mods.splice(i, 1); }
         }
       }
 
-      // ── Loneliness: isolation decay (original mechanism) ──
+      // 2. Social stress — permanent modifier, DRIFTS toward target (exponential approach)
+      //    Target = -stress × personalityScale × weight. Modifier drifts, never overshoots.
+      //    If relationships improve → target rises → modifier drifts back up.
+      const rels = agent.state.relationships;
+      if (rels) {
+        let negPressure = 0, posBuf = 0;
+        for (const rel of rels.getAllRelationships()) {
+          if (rel.sentiment < 0) negPressure += -rel.sentiment;
+          else if (rel.sentiment > 0) posBuf += rel.sentiment;
+        }
+        const stress = Math.max(0, negPressure - posBuf * SS_BUFFER);
+        let target = 0;
+        if (stress > 0) {
+          const bf = agent.profile.bigFive;
+          const ps = bf.neuroticism * 1.5 + (1 - bf.agreeableness) * 0.5 + (1 - bf.honesty) * 0.3;
+          target = Math.max(-1, -(stress * ps * SS_RATE));
+        }
+        const existing = mods.find(m => m.category === 'social_stress');
+        if (existing) {
+          existing.magnitude += (target - existing.magnitude) * SS_DRIFT; // drift toward target
+        } else if (target !== 0) {
+          mods.push({ id: 'social_stress', source: 'social_stress', category: 'social_stress',
+            magnitude: target * SS_DRIFT, remaining: 0, duration: 0, decay: 'none', negative: true });
+        }
+      }
+
+      // 3. Loneliness — permanent modifier
       let lastInteraction = agent.state.lastInteractionMinute;
       if (lastInteraction === undefined) {
         lastInteraction = this._gameMinute;
         agent.state.lastInteractionMinute = this._gameMinute;
       }
-      const minutesSince = this._gameMinute - lastInteraction;
-      if (minutesSince >= LONELINESS_THRESHOLD) {
-        const E = agent.profile.bigFive.E;
-        totalDelta -= LONELINESS_BASE_RATE * (E * 1.5 + 0.5);
+      const loneMag = (this._gameMinute - lastInteraction >= LONE_THRESHOLD)
+        ? -(LONE_RATE * (agent.profile.bigFive.extraversion * 1.5 + 0.5))
+        : 0;
+      const loneExisting = mods.find(m => m.category === 'loneliness');
+      if (loneExisting) { loneExisting.magnitude = loneMag; }
+      else if (loneMag !== 0) {
+        mods.push({ id: 'loneliness', source: 'loneliness', category: 'loneliness',
+          magnitude: loneMag, remaining: 0, duration: 0, decay: 'none', negative: true });
       }
 
-      // ── Apply combined delta ──
-      if (Math.abs(totalDelta) > 0.0001) {
-        const newMood = Math.max(-1, Math.min(1, oldMood + totalDelta));
-        agent.state.mood = newMood;
-        if (Math.abs(newMood - oldMood) > 0.0005) {
-          this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, newMood);
-        }
+      // 4. Compute effectiveMood = baseMood + Σ decayed magnitudes
+      let sum = 0;
+      for (const m of mods) {
+        sum += modifierEffective(m);
+      }
+      const baseMood = agent.state.baseMood ?? 0.2;
+      const newMood = Math.max(-1, Math.min(1, baseMood + sum));
+      agent.state.mood = newMood;
+
+      if (Math.abs(newMood - oldMood) > 0.0005) {
+        this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, newMood);
       }
 
-      // ── Mood snapshot for history tracking ──
+      // 5. Mood snapshot for history
       const hist = this._moodHistory.get(agent.profile.id) ?? [];
-      hist.push({ minute: this._gameMinute, mood: agent.state.mood });
+      hist.push({ minute: this._gameMinute, mood: newMood });
       if (hist.length > this.MOOD_HISTORY_MAX) hist.shift();
       this._moodHistory.set(agent.profile.id, hist);
     }
+  }
+
+  /**
+   * Add a mood modifier to an NPC (SPEC-mood-modifiers).
+   * Enforces stacking limit per category.
+   */
+  addModifier(npcId: string, mod: Omit<import('./world-types').MoodModifier, 'id' | 'negative'>): void {
+    const agent = this.agents.get(npcId);
+    if (!agent) return;
+    if (!agent.state.moodModifiers) agent.state.moodModifiers = [];
+
+    const maxPerCat = this.config.moodSystem?.maxPerCategory ?? 3;
+    const mods = agent.state.moodModifiers;
+    const full: import('./world-types').MoodModifier = {
+      ...mod,
+      id: crypto.randomUUID(),
+      negative: mod.magnitude < 0,
+    };
+
+    // Stacking: if category full, remove weakest
+    const sameCat = mods.filter(m => m.category === full.category && m.duration > 0); // only non-permanent
+    if (sameCat.length >= maxPerCat) {
+      const weakest = sameCat.reduce((a, b) => Math.abs(modifierEffective(a)) < Math.abs(modifierEffective(b)) ? a : b);
+      const idx = mods.indexOf(weakest);
+      if (idx >= 0) mods.splice(idx, 1);
+    }
+
+    mods.push(full);
+  }
+
+  /** Remove all modifiers matching a category for an NPC */
+  removeModifiers(npcId: string, category: string): void {
+    const agent = this.agents.get(npcId);
+    if (!agent?.state.moodModifiers) return;
+    agent.state.moodModifiers = agent.state.moodModifiers.filter(m => m.category !== category);
   }
 
   /** Get mood history for an NPC (time-series snapshots every 5 game minutes) */
@@ -785,13 +843,24 @@ export class World {
 
     console.log(`  [Impact:debug] ${initAgent.profile.name}↔${respAgent.profile.name}: moodValence=${topic.moodValence ?? 'undefined'}, relSentiment=${rel?.sentiment?.toFixed(2) ?? 'none'}, rivalScale=${rm.rivalMoodScale}, friendScale=${rm.friendMoodScale}, delta=${moodDelta.toFixed(3)}, topic="${topic.subject}", bystanders=${bystanderIds.length}`);
 
-    // Apply mood to participants + bystanders
+    // Apply mood via modifiers (SPEC-mood-modifiers)
     if (Math.abs(moodDelta) > 0.005) {
-      for (const id of allAffectedIds) {
-        const agent = this.agents.get(id);
-        if (agent) agent.state.mood = Math.max(-1, Math.min(1, agent.state.mood + moodDelta));
+      const isNeg = moodDelta < 0;
+      const participantDur = isNeg ? 360 : 120; // rivals 6h exponential, friends 2h linear
+      const participantDecay = isNeg ? 'exponential' as const : 'linear' as const;
+      const source = `conv_${initAgent.profile.name}_${respAgent.profile.name}`.slice(0, 40);
+
+      // Participants get full modifier
+      for (const id of [conversation.initiator, conversation.responder]) {
+        this.addModifier(id, { source, category: 'conversation', magnitude: moodDelta,
+          remaining: participantDur, duration: participantDur, decay: participantDecay });
       }
-      console.log(`  [Mood] Conversation mood impact: ${moodDelta > 0 ? '+' : ''}${moodDelta.toFixed(3)} (tone: ${topic.tone})`);
+      // Bystanders get half magnitude, short duration
+      for (const id of bystanderIds) {
+        this.addModifier(id, { source, category: 'conversation', magnitude: moodDelta * 0.5,
+          remaining: 60, duration: 60, decay: 'linear' });
+      }
+      console.log(`  [Mood] Conversation modifier: ${moodDelta > 0 ? '+' : ''}${moodDelta.toFixed(3)} (tone: ${topic.tone}, dur: ${participantDur}min)`);
     }
 
     // 2. Sentiment toward discussed NPC (mentionedNpcId or beliefTransfer.subject fallback)
@@ -935,9 +1004,10 @@ export class World {
 
       if (action.goalCompleted && action.isRoutine) this.scheduleManager?.clearScheduleGoal(action.ownerId);
       if (action.goalCompleted && !action.isRoutine) {
-        const owner = this.agents.get(action.ownerId);
-        if (owner?.state.alive) {
-          owner.state.mood = Math.min(1, owner.state.mood + getGoalMoodBoost(action.goalType));
+        const boost = getGoalMoodBoost(action.goalType);
+        if (boost !== 0) {
+          this.addModifier(action.ownerId, { source: `goal_${action.goalType}`, category: 'routine',
+            magnitude: boost, remaining: 180, duration: 180, decay: 'linear' });
         }
       }
       if (action.movement) {
@@ -1286,13 +1356,7 @@ export class World {
       newDay = agent.advanceDay();
       // Decay beliefs slightly each day
       agent.state.beliefs?.decayBeliefs(newDay);
-      // Mood natural recovery: drift 20% toward personality baseline each day
-      // baseline ≈ 0.3 - N*0.4 + E*0.2 (neurotic → lower, extraverted → higher)
-      if (agent.state.alive) {
-        const bf = agent.profile.bigFive;
-        const baseline = 0.3 - bf.neuroticism * 0.4 + bf.extraversion * 0.2;
-        agent.state.mood += (baseline - agent.state.mood) * 0.2;
-      }
+      // Day advance mood: baseMood + modifier decay handles drift naturally (SPEC-mood-modifiers)
     }
 
     // Reset daily conversation tracking
@@ -1372,7 +1436,8 @@ export class World {
     const suspectName = killer ? killer.profile.name : (playerAgent?.profile.name ?? 'unknown');
 
     victim.state.alive = false;
-    victim.state.mood = -1;
+    this.addModifier(victim.profile.id, { source: 'death', category: 'event',
+      magnitude: -1.0, remaining: 0, duration: 0, decay: 'none' });
     this._clearTransit(victim); // Cancel movement
     // Cancel all goals for dead NPC
     for (const g of this.goalManager.getGoals(victimId)) {
@@ -1479,7 +1544,11 @@ export class World {
 
   /** Build WorldContext for ConsequenceEngine.process() */
   private buildCgContext(): import('./cg-engine').WorldContext {
-    return { agents: this.agents, publicPlaces: this.config.publicPlaces || new Set() };
+    return {
+      agents: this.agents,
+      publicPlaces: this.config.publicPlaces || new Set(),
+      addMoodModifier: (npcId, mod) => this.addModifier(npcId, mod),
+    };
   }
 
   /** Install onChange callbacks on each agent's RelationshipGraph */
@@ -1565,6 +1634,8 @@ export class World {
         status: agent.state.status ?? null,
         location: agent.state.location,
         mood: agent.state.mood,
+        baseMood: agent.state.baseMood,
+        moodModifiers: agent.state.moodModifiers ?? [],
         currentDay: agent.state.currentDay,
         knownFacts: agent.state.knownFacts,
         beliefs: agent.state.beliefs?.toJSON() ?? [],
@@ -1658,6 +1729,8 @@ export class World {
       agent.state.status = (saved as any).status === 'free' ? undefined : ((saved as any).status ?? undefined);
       agent.state.location = saved.location;
       agent.state.mood = saved.mood;
+      agent.state.baseMood = (saved as any).baseMood ?? (0.3 - agent.profile.bigFive.neuroticism * 0.4 + agent.profile.bigFive.extraversion * 0.2);
+      agent.state.moodModifiers = (saved as any).moodModifiers ?? [];
       agent.state.currentDay = saved.currentDay;
       agent.state.knownFacts = saved.knownFacts;
 

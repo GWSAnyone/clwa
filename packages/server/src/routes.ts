@@ -699,7 +699,12 @@ export async function handleRequest(
 
       return {
         id, name: agent.profile.name,
-        mood: currentMood, startMood, moodDelta: startMood != null ? currentMood - startMood : null,
+        mood: currentMood, baseMood: agent.state.baseMood, startMood,
+        moodDelta: startMood != null ? currentMood - startMood : null,
+        modifiers: (agent.state.moodModifiers ?? []).map(m => ({
+          source: m.source, category: m.category, magnitude: +m.magnitude.toFixed(4),
+          remaining: m.remaining, duration: m.duration, decay: m.decay,
+        })),
         location: agent.state.location, alive: agent.state.alive,
         status: agent.state.status ?? null,
         processingState: agent.state.processingState,

@@ -1,5 +1,26 @@
 import type { Agent } from './agent';
 
+// ─── Mood Modifiers (SPEC-mood-modifiers) ───
+
+export interface MoodModifier {
+  id: string;
+  source: string;           // human-readable: 'argument_with_bess', 'social_stress'
+  category: string;         // stacking group: 'social_stress', 'conversation', 'event', 'pressure', 'routine'
+  magnitude: number;        // -0.35 to +0.35
+  remaining: number;        // game minutes left (0 = permanent until removed)
+  duration: number;         // original duration (for decay calc; 0 = permanent)
+  decay: 'exponential' | 'linear' | 'none';
+  negative: boolean;        // cached: magnitude < 0
+}
+
+/** Compute decayed effective magnitude of a modifier */
+export function modifierEffective(m: MoodModifier): number {
+  if (m.decay === 'none' || m.duration === 0) return m.magnitude;
+  const ratio = m.remaining / m.duration;
+  if (m.decay === 'exponential') return m.magnitude * ratio * ratio;
+  return m.magnitude * ratio; // linear
+}
+
 /** Location definition */
 export interface LocationDef {
   id: string;
@@ -190,18 +211,20 @@ export interface WorldConfig {
   il?: Partial<ILConfig>;
   /** NPC-NPC conversation behavioral constants */
   conversationBehavior?: Partial<ConversationConfig>;
-  /** Game minutes without interaction before loneliness mood decay starts (default: 30) */
-  lonelinessThresholdMinutes?: number;
-  /** Base loneliness mood decay per 5 game minutes (default: 0.001). Scaled by E * 1.5 + 0.5 */
-  lonelinessBaseRate?: number;
-  /** Social stress: ambient mood pressure from negative relationships (SPEC-mood-pressure) */
-  socialStress?: {
-    /** Mood loss per 5min per unit of stress×personality (default: 0.003) */
-    baseRate?: number;
-    /** How much positive relationships offset negative (default: 0.5) */
-    bufferFactor?: number;
-    /** Max mood loss per tick — prevents instant crash for extreme cases (default: 0.003) */
-    maxRate?: number;
+  /** Mood modifier system config (SPEC-mood-modifiers) */
+  moodSystem?: {
+    /** Social stress target weight: target = -stress × personality × this (default: 0.5) */
+    socialStressRate?: number;
+    /** Drift rate per 5min toward target (default: 0.02 → 63% in 4h, 87% in 8h) */
+    socialStressDrift?: number;
+    /** Positive relationship buffer factor (default: 0.5) */
+    socialStressBuffer?: number;
+    /** Max modifiers per stacking category (default: 3) */
+    maxPerCategory?: number;
+    /** Game minutes without interaction before loneliness kicks in (default: 30) */
+    lonelinessThreshold?: number;
+    /** Loneliness rate per 5min (default: 0.001), scaled by E (default: 0.001) */
+    lonelinessRate?: number;
   };
 }
 

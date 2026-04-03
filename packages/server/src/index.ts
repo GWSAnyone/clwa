@@ -116,12 +116,25 @@ function buildLocationGraph(locs: LocationDef[]): LocationGraph {
   }
   return graph;
 }
-function makeState(location: string, npcId: string, wd: import('./world-loader').LoadedWorld, startMinute: number): AgentState {
+function makeState(location: string, npcId: string, wd: import('./world-loader').LoadedWorld, startMinute: number, profile: AgentProfile): AgentState {
+  const bf = profile.bigFive;
+  const baseMood = 0.3 - bf.neuroticism * 0.4 + bf.extraversion * 0.2;
   return {
     alive: true,
     status: undefined,
     location,
-    mood: wd.startingMoods[npcId] ?? 0.2,
+    mood: wd.startingMoods[npcId] ?? baseMood,
+    baseMood,
+    moodModifiers: (() => {
+      // Starting mood offset as initial modifier — preserves randomization
+      const startMood = wd.startingMoods[npcId];
+      if (startMood != null && Math.abs(startMood - baseMood) > 0.01) {
+        return [{ id: 'initial_mood', source: 'initial_conditions', category: 'event',
+          magnitude: startMood - baseMood, remaining: 1440, duration: 1440,
+          decay: 'exponential' as const, negative: (startMood - baseMood) < 0 }];
+      }
+      return [];
+    })(),
     currentDay: 1,
     knownFacts: wd.lore.slice(),
     processingState: 'idle',
@@ -188,7 +201,7 @@ async function createGameContext(
     const memory = new VectorMemory(profile.id);
     await memory.init({ reset: true });
     const startMin = worldData.config.startMinute ?? 420;
-    const agent = new Agent(profile, makeState(npcLocation, profile.id, worldData, startMin), memory, {
+    const agent = new Agent(profile, makeState(npcLocation, profile.id, worldData, startMin, profile), memory, {
       reflection: { threshold: 30 },
       onReflection: (name, text) => {
         console.log(`  [Reflection] ${name}: "${text}"`);
@@ -272,7 +285,7 @@ async function createGameContext(
   const playerAgent = new Agent(playerProfile, {
     alive: true, status: undefined,
     location: worldData.locationNameToId.get('Town Square') ?? 'town-square',
-    mood: 0.3, currentDay: 1,
+    mood: 0.3, baseMood: 0.3, moodModifiers: [], currentDay: 1,
     knownFacts: ['# You are a traveler who just arrived in this small town. You know nothing about the locals yet.'],
     beliefs: new BeliefManager(),
     relationships: playerRelationships,

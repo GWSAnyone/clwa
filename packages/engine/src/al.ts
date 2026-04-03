@@ -457,13 +457,20 @@ const TRAIT_MAP: Record<OceanHTrait, keyof Agent['profile']['bigFive']> = {
  * - Numbness (-0.8 to -1.0): reduced effect ×0.6 (apathy, not action)
  * - Positive mood: returns negative value (inhibits crime, enables social)
  */
-function moodCurve(mood: number): number {
+function moodCurve(mood: number, H: number = 0.5): number {
   if (mood >= 0) return -mood * 0.3; // positive mood → negative score (inhibits)
+
+  // Personality-shifted zones (SPEC-mood-modifiers):
+  // Low H → enters sliding zone earlier (more crime-prone)
+  const slidingEntry = 0.30 - (1 - H) * 0.20; // H=0.2: 0.14, H=0.5: 0.20, H=0.9: 0.28
+  const desperationEntry = slidingEntry + 0.30;
+  const numbnessEntry = slidingEntry + 0.50;
+
   const absMood = -mood; // 0 to 1
-  if (absMood <= 0.3) return absMood * 0.5;       // mild bad day
-  if (absMood <= 0.6) return 0.15 + (absMood - 0.3) * 1.5; // sliding zone — ×1.5
-  if (absMood <= 0.8) return 0.60 + (absMood - 0.6) * 1.0; // desperation
-  return 0.80 + (absMood - 0.8) * 0.6;                      // numbness plateau
+  if (absMood <= slidingEntry) return absMood * (0.5 / 0.3) * slidingEntry; // proportional mild zone
+  if (absMood <= desperationEntry) return 0.15 + (absMood - slidingEntry) * 1.5; // sliding zone — ×1.5
+  if (absMood <= numbnessEntry) return 0.60 + (absMood - desperationEntry) * 1.0; // desperation
+  return 0.80 + (absMood - numbnessEntry) * 0.6; // numbness plateau
 }
 
 /**
@@ -491,7 +498,7 @@ export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: 
   }
 
   // 2. Mood (non-linear, bidirectional)
-  const moodContribution = aff.moodWeight * moodCurve(agent.state.mood);
+  const moodContribution = aff.moodWeight * moodCurve(agent.state.mood, agent.profile.bigFive.honesty);
 
   // 3. Relationship (non-linear, bidirectional)
   let relationshipContribution = 0;

@@ -8,6 +8,8 @@ export interface WorldContext {
   witnessIds?: Set<string>;
   /** Public gathering places (for is_public_place CG condition) */
   publicPlaces?: Set<string>;
+  /** Add a mood modifier to an NPC (SPEC-mood-modifiers) */
+  addMoodModifier?: (npcId: string, mod: { source: string; category: string; magnitude: number; remaining: number; duration: number; decay: 'exponential' | 'linear' | 'none' }) => void;
 }
 
 export interface EngineOptions {
@@ -91,7 +93,8 @@ export class ConsequenceEngine {
         if (victimId && agent.state.relationships) {
           const griefPenalty = agent.state.relationships.getGriefPenalty(victimId);
           if (griefPenalty !== 0) {
-            agent.state.mood = Math.max(-1, agent.state.mood + griefPenalty);
+            ctx.addMoodModifier?.(targetId, { source: `grief_${victimId}`, category: 'event',
+              magnitude: griefPenalty, remaining: 720, duration: 720, decay: 'exponential' });
           }
         }
 
@@ -114,9 +117,10 @@ export class ConsequenceEngine {
           }
         }
 
-        // Fix #5: shift mood on traumatic events
+        // Mood shift on traumatic events via modifier
         if (moodShift !== 0) {
-          agent.state.mood = Math.max(-1, Math.min(1, agent.state.mood + moodShift));
+          ctx.addMoodModifier?.(targetId, { source: `event_${rule.consequence.type}`, category: 'event',
+            magnitude: moodShift, remaining: 1440, duration: 1440, decay: 'exponential' });
         }
 
         // Track witnesses (rules declare tracksWitness: true)
