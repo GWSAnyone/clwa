@@ -72,6 +72,7 @@ export function startServer(
 
       close(ws: ServerWebSocket<unknown>) {
         removeClient(ws);
+        chatSessions.clear(); // single-player: all sessions belong to this client
         console.log(`  [WS] Client disconnected (${clientCount()} total)`);
       },
 

@@ -823,19 +823,22 @@ export async function applyDialogueMeaning(
               session.accusationHistory.set(suspId, { count: 1, lastJournalHash: currentHash });
             }
 
-            // Multiple suspect detection
-            const prevAccusations = session.formalAccusations.filter(a => a.suspectId !== suspId);
-            if (prevAccusations.length > 0) {
-              const prevNames = prevAccusations.map(a => a.suspectName).join(', ');
-              if (prevAccusations.length === 1) {
+            // Multiple suspect detection — unique suspects only
+            const prevSuspects = session.formalAccusations.filter(a => a.suspectId !== suspId);
+            if (prevSuspects.length > 0) {
+              const prevNames = [...new Set(prevSuspects.map(a => a.suspectName))].join(', ');
+              const uniqueCount = new Set(prevSuspects.map(a => a.suspectId)).size;
+              if (uniqueCount === 1) {
                 sections.push(`Note: this player previously formally accused ${prevNames}. Now they're accusing ${suspName}. Their investigative judgment may be questionable.`);
               } else {
-                sections.push(`This player has now accused ${prevAccusations.length + 1} different people (${prevNames}, now ${suspName}). They seem to be guessing rather than investigating.`);
+                sections.push(`This player has now accused ${uniqueCount + 1} different people (${prevNames}, now ${suspName}). They seem to be guessing rather than investigating.`);
               }
               npc.state.relationships?.adjustTrust(playerId, -0.05);
               ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.05 });
             }
-            session.formalAccusations.push({ suspectId: suspId, suspectName: suspName, tick: ctx.gameDay });
+            if (!session.formalAccusations.some(a => a.suspectId === suspId)) {
+              session.formalAccusations.push({ suspectId: suspId, suspectName: suspName, tick: ctx.gameDay });
+            }
           }
 
           // Mechanical effects based on evidence quality
