@@ -116,7 +116,7 @@ function buildLocationGraph(locs: LocationDef[]): LocationGraph {
   }
   return graph;
 }
-function makeState(location: string, npcId: string, wd: import('./world-loader').LoadedWorld): AgentState {
+function makeState(location: string, npcId: string, wd: import('./world-loader').LoadedWorld, startMinute: number): AgentState {
   return {
     alive: true,
     status: undefined,
@@ -126,6 +126,7 @@ function makeState(location: string, npcId: string, wd: import('./world-loader')
     knownFacts: wd.lore.slice(),
     beliefs: new BeliefManager(),
     relationships: buildRelationshipsFromData(npcId, wd.profiles, wd.relationships),
+    lastInteractionMinute: startMinute, // explicit init — no loneliness on first tick
   };
 }
 
@@ -185,7 +186,8 @@ async function createGameContext(
     const npcLocation = worldData.startingLocations.get(profile.id) ?? profile.id;
     const memory = new VectorMemory(profile.id);
     await memory.init({ reset: true });
-    const agent = new Agent(profile, makeState(npcLocation, profile.id, worldData), memory, {
+    const startMin = worldData.config.startMinute ?? 420;
+    const agent = new Agent(profile, makeState(npcLocation, profile.id, worldData, startMin), memory, {
       reflection: { threshold: 30 },
       onReflection: (name, text) => {
         console.log(`  [Reflection] ${name}: "${text}"`);

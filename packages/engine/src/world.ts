@@ -191,6 +191,7 @@ export class World {
       Object.defineProperty(agent.state, 'mood', {
         get: () => _mood,
         set: (v: number) => {
+          if (typeof v !== 'number' || isNaN(v)) return; // safety: reject NaN
           const old = _mood;
           _mood = v;
           if (Math.abs(old - v) > 0.001) cb(id, name, old, v);
@@ -451,22 +452,23 @@ export class World {
    * Called every 5 game minutes. Rate depends on Extraversion.
    */
   private _applyLonelinessDecay(): void {
-    const THRESHOLD = 30; // game minutes without interaction before decay starts
-    const BASE_RATE = 0.001; // mood decay per 5 game minutes (base)
+    const THRESHOLD = this.config.lonelinessThresholdMinutes ?? 30;
+    const BASE_RATE = this.config.lonelinessBaseRate ?? 0.001;
 
     for (const [, agent] of this.agents) {
       if (agent.profile.isPlayer) continue;
       if (!agent.state.alive) continue;
       if (isStatusAbsent(agent.state.status)) continue;
 
-      const lastInteraction = agent.state.lastInteractionMinute ?? 0;
+      const lastInteraction = agent.state.lastInteractionMinute ?? this._gameMinute; // fallback for legacy saves
       const minutesSince = this._gameMinute - lastInteraction;
       if (minutesSince < THRESHOLD) continue;
 
       const E = agent.profile.bigFive.E;
       const rate = BASE_RATE * (E * 1.5 + 0.5);
       const oldMood = agent.state.mood;
-      agent.state.mood = Math.max(-1, agent.state.mood - rate);
+      if (typeof oldMood !== 'number' || isNaN(oldMood)) continue; // guard: skip corrupted mood
+      agent.state.mood = Math.max(-1, oldMood - rate);
 
       // Broadcast mood change for WS overlay (only if significant)
       if (Math.abs(agent.state.mood - oldMood) > 0.0005) {

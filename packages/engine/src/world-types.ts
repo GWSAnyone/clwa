@@ -190,6 +190,10 @@ export interface WorldConfig {
   il?: Partial<ILConfig>;
   /** NPC-NPC conversation behavioral constants */
   conversationBehavior?: Partial<ConversationConfig>;
+  /** Game minutes without interaction before loneliness mood decay starts (default: 30) */
+  lonelinessThresholdMinutes?: number;
+  /** Base loneliness mood decay per 5 game minutes (default: 0.001). Scaled by E * 1.5 + 0.5 */
+  lonelinessBaseRate?: number;
 }
 
 // ─── IL Config ───
