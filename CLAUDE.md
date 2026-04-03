@@ -16,8 +16,9 @@
 | @docs/GDD_DETECTIVE.md | **Game design** — core loop, milestones, what to build next |
 | @docs/VISION.md | **Long-term vision** — Shangri-La world, multiplayer roadmap |
 | @docs/ARCHITECTURE.md | **Engine spec** — subsystems, data models |
-| @ROADMAP.md | **Development roadmap** — phases, subsystems, milestones |
-| `docs/specs/` | **Task specs** — detailed design for each feature |
+| @docs/ROADMAP.md | **Development roadmap** — phases, subsystems, milestones |
+| @docs/MOOD_REVIEW.md | **Mood system analysis** — industry/academic research, deferred features |
+| `docs/specs/` | **Task specs** — detailed design for each feature (14 specs) |
 | `docs/` (Obsidian vault) | **World design** — NPC profiles, locations, tensions, lore |
 
 ## Design Philosophy (ALWAYS FOLLOW)
@@ -44,7 +45,8 @@ Engine contains **empty registries** (30+ in event-registry.ts). Modules fill th
 ### 3. PM = Instinct, LLM = Consciousness
 Personality Model computes utility scores → instinct-builder generates vivid prose (7 tiers × 3 textures × Enneagram × resistance). LLM freely decides — may follow instinct or transcend it. **No reflex bypass** — LLM always has final say. Stronger instincts = more vivid descriptions = harder to resist naturally.
 - **Volition prompt**: NO RP framing ("you are a character in simulation" triggers safety alignment). Just character identity + instincts.
-- **Scoring v2**: non-linear moodCurve (sliding/desperation/numbness zones), bidirectional (positive mood inhibits crime), trust as 5th input, DEBT_PRESSURE beliefModifiers.
+- **Scoring v2**: non-linear moodCurve with personality-shifted zones (`moodCurve(mood, H)` — low H enters sliding earlier), bidirectional (positive mood inhibits crime), trust as 5th input, DEBT_PRESSURE beliefModifiers.
+- **Mood Modifiers (SPEC-mood-modifiers)**: all mood changes via structured MoodModifier objects {source, category, magnitude, duration, decay}. `effectiveMood = baseMood + Σ(decayed modifiers)`. baseMood = 0.3 - N×0.4 + E×0.2. Social stress = drift-based permanent modifier. No direct `mood +=` anywhere.
 
 ### 4. Emergent Narrative
 We build **capabilities**, not scenarios. Nobody hardcodes "Mark kills Bess" — personality + mood + relationship + opportunity converge organically.
@@ -66,7 +68,7 @@ bun install && bun run packages/server/src/index.ts  # → http://localhost:3000
 ```
 - **Runtime**: Bun | **LLM**: LM Studio, `qwen3.5-9b-abliterated` (lukey03, patched GGUF) | **Embeddings**: raw fetch (NOT OpenAI SDK)
 - **LLM API**: OpenAI-compatible `/v1/chat/completions` с `response_format: json_schema` для structured output
-- **GGUF Patch**: thinking отключён патчем в GGUF binary. В chat template заменено `enable_thinking is defined and` → `if true` (same-length binary replace). Backup: `.bak`. Если нужно перепатчить новый GGUF — см. `training/patch-gguf-thinking.py`
+- **GGUF Patch**: thinking отключён патчем в GGUF binary. В chat template заменено `enable_thinking is defined and` → `if true` (same-length binary replace). Backup: `.bak`.
 - **Web UI**: `http://localhost:3000/game.html` — Canvas2D, Tiny Swords sprites, A* pathfinding. Primary demo client
 - **Godot**: 4.6.1, deferred. Top-down 2D scenes preserved in `godot/`. Old 3D archived to `_archive/clwa-godot-3d/`
 - **Save**: `packages/server/data/save.json` (includes positions)
@@ -142,7 +144,7 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 55. **ProcessingQueue**: 7 task types, priority sort, dedup (per-NPC + conversation pair + global), async consumer with setTimeout(0) yield between tasks. No batch `_tick()` — all processing through queue.
 56. **NpcProcessingState**: explicit 6-state machine on AgentState. `_handleConversation` uses try/finally to guarantee state reset on exception. processingState is transient (not persisted).
 57. **Cooldown persistence**: affordanceCooldowns (Map<string, Map<string, number>>) and decisionCooldowns (Map<string, number>) serialized in toJSON/loadState. Old saves without cooldowns = natural reset.
-58. **CONVERSATION_IMPACT**: deterministic (no LLM). Reads moodValence/sentimentValence/mentionedNpcId from TopicProposal. _pendingImpactQueue (array, not single field) + composite npcId on task prevents dedup collision. Applies mood/sentiment to participants + bystanders. NPCs in wait steps remain eligible for conversation pairing.
+58. **CONVERSATION_IMPACT**: deterministic (no LLM). Reads moodValence/sentimentValence/mentionedNpcId from TopicProposal. _pendingImpactQueue (array, not single field) + composite npcId on task prevents dedup collision. Mood changes via addModifier: participants get full magnitude (rival 6h exponential / friend 2h linear), bystanders get ×0.5 magnitude 1h linear. Sentiment unchanged. NPCs in wait steps remain eligible for conversation pairing.
 59. **Structured conversation memories**: raw LLM dialogue → UI only. Memories store belief summaries (3rd person via `summarizeForMemory`), topic tone, mood. Self-reference cascade impossible by construction.
 60. **Belief relevance filter**: `summarizeForMemory(name, max, eventTypeFilter?)` — only topic-relevant beliefs in memory. Prevents unrelated beliefs polluting conversation recall.
 61. **Interrogation structured outcome**: `lastInteractionOutcome` on AgentState (confession/denial/alibi). Set by post-hook from checkGuilt + honesty. Unified with belief summary in single observe.
@@ -155,8 +157,13 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 68. **Co-located social wait**: socialOnly + co-located → wait(2) goal instead of null. Blocks schedule check for 2 game minutes → scheduler pairs NPCs for conversation. NPCs in wait steps NOT excluded from conversation pairing (currentStep.action === 'wait' → eligible).
 69. **Per-NPC conversation cooldown**: scheduler.findPair skips NPCs who talked within 30 game minutes. Prevents one NPC dominating consecutive conversations at crowded locations.
 70. **Pair cooldown in volition**: isPairOnCooldown on AffordanceContext. socialOnly visit → pair on cooldown → return null. Prevents NPC walking to target only for scheduler to reject the pair.
-71. **ConversationConfig.relationshipMoodModifier**: friendThreshold, friendBonus, rivalThreshold, rivalPenalty. Zero hardcoded behavioral constants in conversation impact. All from resolved config.
+71. **ConversationConfig.relationshipMoodModifier**: rivalMoodScale, friendMoodScale (proportional to sentiment, no threshold). Conversation mood impact creates structured modifiers via World.addModifier(). All constants from resolved config.
 72. **File logger**: `initFileLogger()` in server — intercepts console.log/warn/error, appends to `logs/clwa-YYYY-MM-DD_HH-MM-SS.log` with timestamps. One file per server session.
+73. **Mood modifiers (SPEC-mood-modifiers)**: all mood changes via `World.addModifier()`. Never `agent.state.mood +=` directly. mood field is computed: `effectiveMood = baseMood + Σ modifierEffective(m)`. baseMood + moodModifiers[] on AgentState. Serialized in save.json.
+74. **Social stress drift**: permanent modifier with exponential approach to target. Target = -stress × personalityScale × weight. Drift rate 0.02/tick. Responsive to relationship changes — if rels improve, modifier drifts back toward 0.
+75. **Personality-shifted moodCurve**: `moodCurve(mood, H)`. slidingEntry = -0.30 + (1-H)×0.20. Low H NPCs enter crime zone at higher (less negative) mood.
+76. **addMoodModifier callback**: CG and IL access mood modifiers via callback on WorldContext/ILEffectContext. Engine provides mechanism, callsite provides modifier data.
+77. **Dev tools**: `GET /api/debug/snapshot` (all NPCs: mood, baseMood, modifiers, personality, relationships, top affordance). `GET /api/debug/mood-history/:id?last=N` (time-series sampled every 5 game min, ring buffer 500). Server starts with auto-tick ON.
 
 ## Clock-Driven Architecture
 
@@ -169,10 +176,11 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 - **Goal Step Chaining**: non-LLM steps (announce, examine_scene) chain instantly. Loop until transit/LLM/wait/MAX_CHAIN=10.
 - **Cooldowns** (game minutes): affordance=180 (3h), decision=60 (1h), pair=240 (4h). Configurable via WorldConfig. Persisted in save.json.
 - **Transit**: NPC перемещаются с `duration = hops × minutesPerHop` (default 30). Master Clock advances `transitProgress`. Arrival triggers co-location checks.
-- **Conversation flow**: CONVERSATION task → findPair (NPCs in wait steps eligible) → runConversation → beliefTransfer → _pendingImpactQueue.push → CONVERSATION_IMPACT task (deterministic, no LLM) → mood/sentiment to participants+bystanders → memories → overhear. try/finally on processingState.
+- **Mood system tick** (`_tickMoodSystem`): every 5 game min. Ticks modifier durations, recalculates social stress (drift to target), loneliness, computes effectiveMood = baseMood + Σ modifiers, records mood snapshot for history.
+- **Conversation flow**: CONVERSATION task → findPair (NPCs in wait steps eligible) → runConversation → beliefTransfer → _pendingImpactQueue.push → CONVERSATION_IMPACT task (deterministic, no LLM) → mood modifiers to participants+bystanders → memories → overhear. try/finally on processingState.
 - **Interact pursuit**: target not at location → chase to current location (up to 3 attempts for priority ≥ 7). Not passive timeout.
 - **Belief-gated affordances**: investigate blocked by `deductionBelowThreshold` (conf ≥ 0.7 → arrest only). Structured check, not cooldown.
 
 ## Current Status
 
-v0.11.0-dev. Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) backend complete — accusation, evidence presentation, crime prevention, journal v2. Web UI pending. 14 engine subsystems, 30+ registries, 20+ affordances. See ROADMAP.md for details.
+v0.11.0-dev. Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) backend complete — accusation, evidence presentation, crime prevention, journal v2. Mood modifier system (SPEC-mood-modifiers) implemented — calibration WIP. Web UI pending. 14 engine subsystems, 30+ registries, 20+ affordances, 14 specs. See docs/ROADMAP.md for details.

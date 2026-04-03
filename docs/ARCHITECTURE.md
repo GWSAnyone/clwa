@@ -29,7 +29,9 @@ State (mood, beliefs, relationships, location)
 
 **AffordanceDefinition:** declarative record — requirements, PM weights, step templates, target finder. Новое поведение = новая запись, ноль кода.
 
-**computeUtility:** `personality + moodCurve(mood) + sentimentCurve(sentiment) + beliefModifiers + trust`. Non-linear curves: sliding zone (-0.3 to -0.6), desperation (-0.6 to -0.8), numbness (-0.8+). Bidirectional: positive mood inhibits crime.
+**computeUtility:** `personality + moodCurve(mood, H) + sentimentCurve(sentiment) + beliefModifiers + trust`. Non-linear curves with personality-shifted zones: slidingEntry = -0.30 + (1-H)×0.20, desperation +0.30, numbness +0.50. Low H NPCs enter crime zone at higher mood. Bidirectional: positive mood inhibits crime.
+
+**Mood Modifiers (SPEC-mood-modifiers):** All mood changes via structured MoodModifier objects {source, category, magnitude, duration, decay}. `effectiveMood = baseMood + Σ(decayed modifiers)`. baseMood = personality-derived (0.3 - N×0.4 + E×0.2). Social stress = drift-based permanent modifier (exponential approach to target from relationships). Conversation impact = temporary modifiers (rival 6h exponential, friend 2h linear, bystander ×0.5 1h). No direct `mood +=` mutations.
 
 **Instinct Builder v2:** score → vivid prose. 7 intensity tiers × 3 texture classes × Enneagram drive × resistance (opposing traits) × escalation. No reflex bypass — LLM always decides.
 
