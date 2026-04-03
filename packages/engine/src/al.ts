@@ -3,7 +3,7 @@ import type { Belief } from './beliefs';
 import type { WorldEvent } from './cg-types';
 import type { LocationGraph } from './world-types';
 import type { TimePeriod } from './schedule';
-import { getEventLabel, isTransferable } from './event-registry';
+import { getEventLabelSafe, isTransferable } from './event-registry';
 import type { NpcFilter } from './goals';
 
 // ─── Affordance Data Model ───
@@ -259,7 +259,7 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
     if (crimeBelief.subject) { extra.suspectName = crimeBelief.subject; }
     if (crimeBelief.object) extra.victimName = crimeBelief.object;
     if (crimeBelief.location) extra.crimeLocation = crimeBelief.location;
-    extra.crimeType = getEventLabel(crimeBelief.eventType) ?? 'an incident';
+    extra.crimeType = getEventLabelSafe(crimeBelief.eventType);
   }
 
   return { targetId: best.id, targetName: best.name, targetLocation: best.location, extra };

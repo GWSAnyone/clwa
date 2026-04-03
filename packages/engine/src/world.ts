@@ -32,7 +32,7 @@ import { ProcessingQueue } from './processing-queue';
 import type { ProcessingTask, TaskType } from './processing-queue';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, getEventLabel } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, getEventLabel, getEventLabelSafe } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -396,7 +396,11 @@ export class World {
     for (const [id, agent] of this.agents) {
       if (!agent.state.inTransit || !agent.state.transitDuration) continue;
 
-      const elapsed = this._gameMinute - (agent.state.transitStartMinute ?? this._gameMinute);
+      if (agent.state.transitStartMinute === undefined) {
+        console.error(`  [Transit] ${agent.profile.name} inTransit=true but transitStartMinute undefined — skipping`);
+        continue;
+      }
+      const elapsed = this._gameMinute - agent.state.transitStartMinute;
       agent.state.transitProgress = Math.min(1, elapsed / agent.state.transitDuration);
 
       // Arrival
@@ -460,7 +464,12 @@ export class World {
       if (!agent.state.alive) continue;
       if (isStatusAbsent(agent.state.status)) continue;
 
-      const lastInteraction = agent.state.lastInteractionMinute ?? this._gameMinute; // fallback for legacy saves
+      let lastInteraction = agent.state.lastInteractionMinute;
+      if (lastInteraction === undefined) {
+        lastInteraction = this._gameMinute; // legacy save without field — initialize now
+        agent.state.lastInteractionMinute = this._gameMinute;
+        console.warn(`  [Loneliness] ${agent.profile.name}: lastInteractionMinute undefined, initialized to ${this._gameMinute}`);
+      }
       const minutesSince = this._gameMinute - lastInteraction;
       if (minutesSince < THRESHOLD) continue;
 
@@ -517,7 +526,7 @@ export class World {
       if (!agent.state.alive || agent.state.inPlayerChat || agent.state.inTransit) continue;
       if (isStatusAbsent(agent.state.status)) continue;
 
-      const ps = agent.state.processingState ?? 'idle';
+      const ps = agent.state.processingState || 'idle'; // initialized in makeState; || for legacy save compat
 
       // Goal step: NPC has active goal and is not blocked
       if (this.goalManager.hasActiveGoal(id) && (ps === 'idle' || ps === 'executing_goal')) {
@@ -624,7 +633,7 @@ export class World {
       }
       const randomMovements = processMovement(
         this.agents, this.locations, this.movementConfig, excludeFromMovement,
-        this._gameMinute, this.config.minutesPerHop,
+        this._gameMinute, this.config.minutesPerHop ?? 30,
       );
       for (const m of randomMovements) {
         this.callbacks.onMovement?.([m]);
@@ -1063,7 +1072,7 @@ export class World {
           b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object),
         );
         if (sourceBelief) {
-          const verb = getEventLabel(sourceBelief.eventType) ?? 'something';
+          const verb = getEventLabelSafe(sourceBelief.eventType, 'something');
           overheardClaim = ` Picked up that ${sourceBelief.subject ?? 'someone'} may be involved in ${verb}.`;
           const conf = Math.max(0.2, sourceBelief.confidence * 0.3);
           agent.state.beliefs.addBelief({

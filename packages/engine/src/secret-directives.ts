@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
-import { getSecretDirectiveBuilders, isTransferable, isConcealment, isFirsthand, getEventLabel } from './event-registry';
+import { getSecretDirectiveBuilders, isTransferable, isConcealment, isFirsthand, getEventLabelSafe } from './event-registry';
 
 /**
  * Build behavioral directives based on what an NPC secretly knows.
@@ -24,7 +24,7 @@ export function buildSecretDirectives(
   if (ownCrimes.length > 0) {
     const crime = ownCrimes[ownCrimes.length - 1];
     const victimName = (crime.payload?.victimName as string) ?? 'someone';
-    const crimeLabel = getEventLabel(crime.type) ?? 'an incident';
+    const crimeLabel = getEventLabelSafe(crime.type);
     sections.push(
       `## HIDDEN: You committed ${crimeLabel}\n` +
       `You committed ${crimeLabel} against ${victimName}. Nobody must find out.\n` +
@@ -49,7 +49,7 @@ export function buildSecretDirectives(
       const rel = agent.state.relationships?.getRelationship(coveredId);
       const relType = rel?.type ?? 'acquaintance';
 
-      const coverCrimeLabel = getEventLabel(belief.eventType) ?? 'something wrong';
+      const coverCrimeLabel = getEventLabelSafe(belief.eventType, 'something wrong');
       sections.push(
         `## HIDDEN: You are covering for ${coveredName}\n` +
         `You saw ${coveredName} commit ${coverCrimeLabel}, but you are protecting them because they are your ${relType}.\n` +
@@ -79,7 +79,7 @@ export function buildSecretDirectives(
       const sentiment = rel?.sentiment ?? 0;
 
       if (sentiment < -0.2) {
-        const justiceCrimeLabel = getEventLabel(wb.eventType) ?? 'a crime';
+        const justiceCrimeLabel = getEventLabelSafe(wb.eventType, 'a crime');
         sections.push(
           `## HIDDEN: You want justice\n` +
           `You have information about ${justiceCrimeLabel} and you suspect ${suspectName}.\n` +

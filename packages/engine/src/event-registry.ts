@@ -111,6 +111,15 @@ export function getEventLabel(eventType: string): string | null {
   return EVENT_LABELS.get(eventType) ?? null;
 }
 
+/** Get event label with warning if unregistered. For display text where null is not acceptable. */
+export function getEventLabelSafe(eventType: string, fallback = 'an incident'): string {
+  const label = EVENT_LABELS.get(eventType);
+  if (!label) {
+    console.warn(`  [Registry] No label registered for event type "${eventType}" — using fallback "${fallback}"`);
+  }
+  return label ?? fallback;
+}
+
 // ─── Event → Goal Cleanup ───
 // When an event fires, which goal types should be completed
 const EVENT_GOAL_CLEANUP: Map<string, string[]> = new Map();

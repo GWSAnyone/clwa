@@ -16,7 +16,7 @@
 import { llmSemaphore } from './agent';
 import type { Agent } from './agent';
 import type { IEventStore } from './event-store';
-import { getEventLabel, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb } from './event-registry';
+import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb } from './event-registry';
 import type { ILConfig } from './world-types';
 import type { PlayerJournal, CaseSummary } from './journal';
 import { DEFAULT_IL_CONFIG } from './world-types';
@@ -616,7 +616,7 @@ export function buildAccusationContext(
 ): AccusationContext {
   const suspectAgent = agents.get(suspectId);
   const suspectName = suspectAgent?.profile.name ?? suspectId;
-  const crimeLabel = getEventLabel(claimEventType) ?? 'wrongdoing';
+  const crimeLabel = getEventLabelSafe(claimEventType, 'wrongdoing');
 
   // Player's journal evidence
   const journalEvidence = playerJournal.getCaseSummary(suspectId, suspectName);
@@ -768,7 +768,7 @@ export async function applyDialogueMeaning(
 
         ctx.effects.push({ type: 'belief_created', eventType: claim.eventType, subject: claim.subject ?? null, confidence: +effectiveConfidence.toFixed(2), trust: +playerTrust.toFixed(2) });
         console.log(`  [IL] Belief created in ${npc.profile.name}: ${claim.eventType} subject=${claim.subject} conf=${effectiveConfidence.toFixed(2)} (trust=${playerTrust.toFixed(2)})`);
-        const eventLabel = getEventLabel(claim.eventType) ?? 'an incident';
+        const eventLabel = getEventLabelSafe(claim.eventType);
         sections.push(`${playerName} claims: ${claim.subject ?? 'someone'} was involved in ${eventLabel.toLowerCase()}${claim.object ? ` against ${claim.object}` : ''}. You ${playerTrust >= cfg.trustThresholdForGoals ? 'find this somewhat credible' : 'are skeptical about this claim'}.`);
       } else if (claim.subject || claim.location) {
         const details = [claim.subject, claim.location, claim.timePeriod].filter(Boolean);
@@ -880,7 +880,7 @@ export async function applyDialogueMeaning(
           // Use natural language summary — never expose raw event types or confidence numbers to LLM
           const beliefSummary = beliefs.slice(0, 3).map((b) => {
             const certainty = b.confidence > 0.8 ? 'are certain' : b.confidence > 0.5 ? 'believe' : 'have heard rumors';
-            const verb = getEventLabel(b.eventType) ?? 'something';
+            const verb = getEventLabelSafe(b.eventType, 'something');
             const who = b.subject ?? 'someone unknown';
             const target = b.object ? ` against ${b.object}` : '';
             return `you ${certainty} that ${who} committed ${verb}${target}`;

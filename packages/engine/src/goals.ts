@@ -133,6 +133,7 @@ export class GoalManager {
 
   /** Add a goal for an NPC */
   addGoal(goal: NpcGoal): void {
+    if (goal.waitTicks === undefined) goal.waitTicks = 0;
     const list = this.goals.get(goal.ownerId) ?? [];
     list.push(goal);
     // Sort by priority descending
@@ -368,7 +369,7 @@ export class GoalManager {
 
           // Chase: pursue target to their CURRENT location
           const maxChase = goal.priority >= 7 ? 3 : goal.priority >= 4 ? 2 : 1;
-          goal.waitTicks = (goal.waitTicks ?? 0) + 1;
+          goal.waitTicks!++;
           if (goal.waitTicks >= maxChase) {
             goal.currentStep++;
             goal.waitTicks = 0;

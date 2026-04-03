@@ -176,7 +176,7 @@ export {
   registerEventTypeFlags, registerEventTypeFlagsBatch, isTransferable, isInformationOnly,
   registerSourceFlags, isPerpetrator, isFirsthand, isConcealment,
   BELIEF_SOURCE,
-  registerEventLabels, getEventLabel,
+  registerEventLabels, getEventLabel, getEventLabelSafe,
   registerEventGoalCleanup, getGoalCleanupForEvent,
   registerEventSceneTypes, getSceneTypeForEvent,
   registerDeathEvents, isDeathEvent, getDefaultDeathEvent,

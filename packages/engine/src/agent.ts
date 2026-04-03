@@ -4,7 +4,7 @@ import type { ReflectionConfig } from './reflection';
 import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
 import { bigFiveToDescription } from './personality-prose';
-import { getEventLabel, isPursuitEvent, isTransferable, isPerpetrator, isFirsthand } from './event-registry';
+import { getEventLabel, getEventLabelSafe, isPursuitEvent, isTransferable, isPerpetrator, isFirsthand } from './event-registry';
 import { DEFAULT_WORLD_CONFIG } from './world-types';
 import { llmCall, llmStream } from './llm-client';
 
@@ -327,7 +327,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
       if (this.profile.investigator && crimeBeliefs.length > 0) {
         const top = crimeBeliefs.sort((a, b) => b.confidence - a.confidence)[0];
         const suspect = top.subject ?? 'an unknown perpetrator';
-        const crimeWord = getEventLabel(top.eventType) ?? 'an incident';
+        const crimeWord = getEventLabelSafe(top.eventType);
         const victim = top.object ?? 'a victim';
         sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}. This is your top priority.`);
       } else if (crimeBeliefs.some((b) => isPerpetrator(b.source))) {

@@ -23,9 +23,9 @@ export function processMovement(
   agents: Map<string, Agent>,
   locations: LocationGraph,
   config: NpcMovementConfig,
-  excludeIds?: Set<string>,
-  gameMinute?: number,
-  minutesPerHop?: number,
+  excludeIds: Set<string> | undefined,
+  gameMinute: number,
+  minutesPerHop: number,
 ): MovementResult[] {
   const results: MovementResult[] = [];
 
@@ -47,14 +47,14 @@ export function processMovement(
     if (!targetLoc) continue;
 
     const from = agent.state.location;
-    const hopMin = minutesPerHop ?? 30;
+    const hopMin = minutesPerHop;
 
     // Start transit (1 hop to adjacent location)
     agent.state.inTransit = true;
     agent.state.transitTo = targetId;
     agent.state.transitPath = [targetId];
     agent.state.transitProgress = 0;
-    agent.state.transitStartMinute = gameMinute ?? 0;
+    agent.state.transitStartMinute = gameMinute;
     agent.state.transitDuration = hopMin;
 
     results.push({

@@ -124,6 +124,7 @@ function makeState(location: string, npcId: string, wd: import('./world-loader')
     mood: wd.startingMoods[npcId] ?? 0.2,
     currentDay: 1,
     knownFacts: wd.lore.slice(),
+    processingState: 'idle',
     beliefs: new BeliefManager(),
     relationships: buildRelationshipsFromData(npcId, wd.profiles, wd.relationships),
     lastInteractionMinute: startMinute, // explicit init — no loneliness on first tick
