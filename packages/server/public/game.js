@@ -475,12 +475,19 @@ function handleWS(type, data) {
         npc.location = m.to;
 
         if (m.arrived) {
-          // NPC arrived — snap to final position, stop walking
+          // NPC arrived — update location, let animation finish naturally
+          // Only snap if NPC is far from destination (e.g. reconnect/desync)
           const tx = m.targetX ?? m.x ?? npc.x;
           const ty = m.targetY ?? m.y ?? npc.y;
-          npc.x = tx; npc.y = ty;
-          npc.moving = false;
-          npc.waypoints = [];
+          const dx = tx - npc.x, dy = ty - npc.y;
+          const distToTarget = Math.sqrt(dx * dx + dy * dy);
+          if (distToTarget > 150) {
+            // Far away — snap (reconnect scenario)
+            npc.x = tx; npc.y = ty;
+            npc.moving = false;
+            npc.waypoints = [];
+          }
+          // Close or walking — let client animation finish, just clear transit state
           npc.transitDist = 0;
           npc.transitDuration = 0;
         } else {
@@ -525,8 +532,8 @@ function handleWS(type, data) {
       if (ap) {
         const initNpc = Object.values(state.agents).find(a => a.name === data.initiator);
         const respNpc = Object.values(state.agents).find(a => a.name === data.responder);
-        if (initNpc) { initNpc.waypoints = astarPath(initNpc.x, initNpc.y, ap.ax, ap.ay); initNpc.wpIdx = 0; initNpc.moving = true; }
-        if (respNpc) { respNpc.waypoints = astarPath(respNpc.x, respNpc.y, ap.bx, ap.by); respNpc.wpIdx = 0; respNpc.moving = true; }
+        if (initNpc) { initNpc.waypoints = astarPath(initNpc.x, initNpc.y, ap.ax, ap.ay); initNpc.wpIdx = 0; initNpc.moving = true; initNpc.transitDist = 0; initNpc.transitDuration = 0; }
+        if (respNpc) { respNpc.waypoints = astarPath(respNpc.x, respNpc.y, ap.bx, ap.by); respNpc.wpIdx = 0; respNpc.moving = true; respNpc.transitDist = 0; respNpc.transitDuration = 0; }
       }
       break;
     }
