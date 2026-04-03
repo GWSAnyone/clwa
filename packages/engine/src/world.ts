@@ -124,6 +124,13 @@ export class World {
   private _pendingImpactQueue: Array<{ conversation: import('./world-types').ConversationResult; topic: import('./topic-engine').TopicProposal }> = [];
   /** Processing queue — async task consumer, one task at a time, yields between tasks */
   readonly processingQueue: ProcessingQueue;
+  /** Mood history: npcId → ring buffer of {minute, mood} snapshots (sampled every 5 game min) */
+  private _moodHistory: Map<string, { minute: number; mood: number }[]> = new Map();
+  private readonly MOOD_HISTORY_MAX = 500;
+  /** Starting moods: npcId → mood at world creation (for delta tracking) */
+  private _startingMoods: Map<string, number> = new Map();
+  /** Randomization seed used for this run */
+  seed: number = 0;
 
   constructor(
     agents: Map<string, Agent>,
@@ -177,6 +184,10 @@ export class World {
 
     // Install mood interceptors — captures all mood changes (engine + modules) via property setter
     this.installMoodInterceptors();
+    // Record starting moods for delta tracking
+    for (const [id, agent] of this.agents) {
+      this._startingMoods.set(id, agent.state.mood);
+    }
     // Install relationship change callbacks on each agent's graph
     this.installRelationshipCallbacks();
   }
@@ -375,9 +386,9 @@ export class World {
 
     if (this._gameMinute % 5 === 0) {
       try {
-        this._applyLonelinessDecay();
+        this._applySocialStress();
       } catch (err) {
-        console.error('  [MasterClock] _applyLonelinessDecay error:', err);
+        console.error('  [MasterClock] _applySocialStress error:', err);
       }
     }
 
@@ -452,38 +463,92 @@ export class World {
   }
 
   /**
-   * Apply loneliness mood decay to NPCs without recent social interaction.
-   * Called every 5 game minutes. Rate depends on Extraversion.
+   * Apply social stress + loneliness mood decay to NPCs.
+   * Called every 5 game minutes (SPEC-mood-pressure).
+   *
+   * Social stress: negative relationships → ambient mood pressure.
+   * Formula: negativePressure(sent²) − positiveBuffer × factor → scaled by personality → clamped.
+   * Loneliness: isolation → decay (original mechanism, additive).
    */
-  private _applyLonelinessDecay(): void {
-    const THRESHOLD = this.config.lonelinessThresholdMinutes ?? 30;
-    const BASE_RATE = this.config.lonelinessBaseRate ?? 0.001;
+  private _applySocialStress(): void {
+    const ss = this.config.socialStress ?? {};
+    const SS_BASE_RATE = ss.baseRate ?? 0.006;
+    const SS_BUFFER_FACTOR = ss.bufferFactor ?? 0.5;
+    const SS_MAX_RATE = ss.maxRate ?? 0.006;
+
+    const LONELINESS_THRESHOLD = this.config.lonelinessThresholdMinutes ?? 30;
+    const LONELINESS_BASE_RATE = this.config.lonelinessBaseRate ?? 0.001;
 
     for (const [, agent] of this.agents) {
       if (agent.profile.isPlayer) continue;
       if (!agent.state.alive) continue;
       if (isStatusAbsent(agent.state.status)) continue;
 
+      const oldMood = agent.state.mood;
+      if (typeof oldMood !== 'number' || isNaN(oldMood)) continue;
+
+      let totalDelta = 0;
+
+      // ── Social Stress: ambient pressure from negative relationships ──
+      const rels = agent.state.relationships;
+      if (rels) {
+        let negativePressure = 0;
+        let positiveBuffer = 0;
+        const allRels = rels.getAllRelationships();
+        for (const rel of allRels) {
+          if (rel.sentiment < 0) {
+            negativePressure += -rel.sentiment; // |sent| — linear, less seed variance than sent²
+          } else if (rel.sentiment > 0) {
+            positiveBuffer += rel.sentiment;
+          }
+        }
+        const socialStress = Math.max(0, negativePressure - positiveBuffer * SS_BUFFER_FACTOR);
+        if (socialStress > 0) {
+          const { N, A, H } = agent.profile.bigFive;
+          const personalityScale = N * 1.5 + (1 - A) * 0.5 + (1 - H) * 0.3;
+          const stressDelta = Math.max(-SS_MAX_RATE, -(socialStress * personalityScale * SS_BASE_RATE));
+          totalDelta += stressDelta;
+        }
+      }
+
+      // ── Loneliness: isolation decay (original mechanism) ──
       let lastInteraction = agent.state.lastInteractionMinute;
       if (lastInteraction === undefined) {
-        lastInteraction = this._gameMinute; // legacy save without field — initialize now
+        lastInteraction = this._gameMinute;
         agent.state.lastInteractionMinute = this._gameMinute;
-        console.warn(`  [Loneliness] ${agent.profile.name}: lastInteractionMinute undefined, initialized to ${this._gameMinute}`);
       }
       const minutesSince = this._gameMinute - lastInteraction;
-      if (minutesSince < THRESHOLD) continue;
-
-      const E = agent.profile.bigFive.E;
-      const rate = BASE_RATE * (E * 1.5 + 0.5);
-      const oldMood = agent.state.mood;
-      if (typeof oldMood !== 'number' || isNaN(oldMood)) continue; // guard: skip corrupted mood
-      agent.state.mood = Math.max(-1, oldMood - rate);
-
-      // Broadcast mood change for WS overlay (only if significant)
-      if (Math.abs(agent.state.mood - oldMood) > 0.0005) {
-        this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, agent.state.mood);
+      if (minutesSince >= LONELINESS_THRESHOLD) {
+        const E = agent.profile.bigFive.E;
+        totalDelta -= LONELINESS_BASE_RATE * (E * 1.5 + 0.5);
       }
+
+      // ── Apply combined delta ──
+      if (Math.abs(totalDelta) > 0.0001) {
+        const newMood = Math.max(-1, Math.min(1, oldMood + totalDelta));
+        agent.state.mood = newMood;
+        if (Math.abs(newMood - oldMood) > 0.0005) {
+          this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, newMood);
+        }
+      }
+
+      // ── Mood snapshot for history tracking ──
+      const hist = this._moodHistory.get(agent.profile.id) ?? [];
+      hist.push({ minute: this._gameMinute, mood: agent.state.mood });
+      if (hist.length > this.MOOD_HISTORY_MAX) hist.shift();
+      this._moodHistory.set(agent.profile.id, hist);
     }
+  }
+
+  /** Get mood history for an NPC (time-series snapshots every 5 game minutes) */
+  getMoodHistory(npcId: string, last?: number): { minute: number; mood: number }[] {
+    const hist = this._moodHistory.get(npcId) ?? [];
+    return last ? hist.slice(-last) : hist;
+  }
+
+  /** Get starting mood for an NPC (at world creation, before any simulation) */
+  getStartingMood(npcId: string): number | undefined {
+    return this._startingMoods.get(npcId);
   }
 
   /**
@@ -709,16 +774,16 @@ export class World {
       console.warn(`  [Impact] Suspicious moodValence ${topic.moodValence} for topic "${topic.subject}"`);
     }
 
-    // Relationship modifier from config: friends chatting → slight boost, rivals → slight dip
+    // Relationship modifier: proportional to sentiment, always applies (SPEC-mood-pressure)
     const rel = initAgent.state.relationships?.getRelationship(respAgent.profile.id);
-    if (rel) {
-      if (rel.sentiment > rm.friendThreshold) moodDelta += rm.friendBonus;
-      else if (rel.sentiment < rm.rivalThreshold) moodDelta += rm.rivalPenalty;
+    if (rel && Math.abs(rel.sentiment) > 0.01) {
+      const scale = rel.sentiment < 0 ? rm.rivalMoodScale : rm.friendMoodScale;
+      moodDelta += rel.sentiment * scale; // e.g., -0.70 × 0.04 = -0.028, -0.10 × 0.04 = -0.004
     }
 
     moodDelta = Math.max(mc.min, Math.min(mc.max, moodDelta)) + (this.config.moodBias ?? 0);
 
-    console.log(`  [Impact:debug] ${initAgent.profile.name}↔${respAgent.profile.name}: moodValence=${topic.moodValence ?? 'undefined'}, relSentiment=${rel?.sentiment?.toFixed(2) ?? 'none'}, rmPenalty=${rm.rivalPenalty}, rmBonus=${rm.friendBonus}, delta=${moodDelta.toFixed(3)}, topic="${topic.subject}", bystanders=${bystanderIds.length}`);
+    console.log(`  [Impact:debug] ${initAgent.profile.name}↔${respAgent.profile.name}: moodValence=${topic.moodValence ?? 'undefined'}, relSentiment=${rel?.sentiment?.toFixed(2) ?? 'none'}, rivalScale=${rm.rivalMoodScale}, friendScale=${rm.friendMoodScale}, delta=${moodDelta.toFixed(3)}, topic="${topic.subject}", bystanders=${bystanderIds.length}`);
 
     // Apply mood to participants + bystanders
     if (Math.abs(moodDelta) > 0.005) {

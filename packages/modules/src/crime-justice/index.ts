@@ -254,7 +254,8 @@ export function registerCrimeJusticeModule(): void {
 
   registerGoalMoodBoost({
     report_crime: 0.1, investigate: 0.08, confront: 0.08,
-    gossip: 0.05, grief: 0.03, steal: 0.1, blackmail: 0.08,
+    gossip: 0.05, grief: 0.03,
+    // Crime goals: no mood boost — crime is desperate, not satisfying (SPEC-mood-pressure)
   });
 
   // CG belief creators — how beliefs are created from consequence types

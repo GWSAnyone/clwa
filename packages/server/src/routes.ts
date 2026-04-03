@@ -677,6 +677,75 @@ export async function handleRequest(
     return Response.json({ id: beliefMatch[1], eventType, subject, object: objectName, confidence, source }, { headers: cors });
   }
 
+  // ─── GET /api/debug/snapshot ───
+  if (method === 'GET' && path === '/api/debug/snapshot') {
+    const npcs = Array.from(agents.entries()).map(([id, agent]) => {
+      const startMood = world.getStartingMood(id);
+      const currentMood = agent.state.mood;
+      const rels = agent.state.relationships?.getAllRelationships() ?? [];
+      const goals = world.goalManager.getGoals(id);
+      const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
+
+      // Top affordance from volition
+      let topAffordance: { id: string; score: number } | null = null;
+      try {
+        const volition = world.debugVolition(id);
+        const passed = volition.filter((r) => r.passed);
+        if (passed.length > 0) {
+          const best = passed.reduce((a, b) => (a.score ?? 0) > (b.score ?? 0) ? a : b);
+          topAffordance = { id: best.id, score: best.score ?? 0 };
+        }
+      } catch {}
+
+      return {
+        id, name: agent.profile.name,
+        mood: currentMood, startMood, moodDelta: startMood != null ? currentMood - startMood : null,
+        location: agent.state.location, alive: agent.state.alive,
+        status: agent.state.status ?? null,
+        processingState: agent.state.processingState,
+        personality: agent.profile.bigFive,
+        enneagram: { type: agent.profile.enneagram.type, wing: agent.profile.enneagram.wing },
+        relationships: rels.map((r) => ({ targetId: r.targetId, sentiment: r.sentiment, trust: r.trust })),
+        goalCount: goals.length, beliefCount: beliefs.length,
+        topAffordance,
+      };
+    });
+
+    return Response.json({
+      time: {
+        gameMinute: world.gameMinute, minuteOfDay: world.minuteOfDay,
+        hour: world.currentHour, period: world.currentPeriod, day: world.getCurrentDay(),
+      },
+      seed,
+      npcs,
+      events: {
+        total: eventStore.getAll().length,
+        dead: Array.from(agents.values()).filter((a) => !a.state.alive).map((a) => a.profile.name),
+        wanted: eventStore.getAll().filter((e) => e.type === 'WANTED_STATUS').map((e) => e.subject),
+      },
+      queue: { length: world.processingQueue.length, processing: world.processingQueue.isProcessing },
+    }, { headers: cors });
+  }
+
+  // ─── GET /api/debug/mood-history/:id ───
+  const moodHistMatch = path.match(/^\/api\/debug\/mood-history\/([^/]+)$/);
+  if (method === 'GET' && moodHistMatch) {
+    const npcId = moodHistMatch[1];
+    const agent = agents.get(npcId);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+
+    const last = parseInt(url.searchParams.get('last') ?? '0') || undefined;
+    const history = world.getMoodHistory(npcId, last);
+
+    return Response.json({
+      npcId, name: agent.profile.name,
+      startMood: world.getStartingMood(npcId),
+      currentMood: agent.state.mood,
+      entries: history.length,
+      history,
+    }, { headers: cors });
+  }
+
   // ─── 404 ───
   return Response.json({ error: 'Not found' }, { status: 404, headers: cors });
 }

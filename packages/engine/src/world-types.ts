@@ -194,6 +194,15 @@ export interface WorldConfig {
   lonelinessThresholdMinutes?: number;
   /** Base loneliness mood decay per 5 game minutes (default: 0.001). Scaled by E * 1.5 + 0.5 */
   lonelinessBaseRate?: number;
+  /** Social stress: ambient mood pressure from negative relationships (SPEC-mood-pressure) */
+  socialStress?: {
+    /** Mood loss per 5min per unit of stress×personality (default: 0.003) */
+    baseRate?: number;
+    /** How much positive relationships offset negative (default: 0.5) */
+    bufferFactor?: number;
+    /** Max mood loss per tick — prevents instant crash for extreme cases (default: 0.003) */
+    maxRate?: number;
+  };
 }
 
 // ─── IL Config ───
@@ -270,12 +279,11 @@ export interface ConversationConfig {
   sentimentValenceThreshold: number;
   /** Confidence for secret discovery beliefs */
   secretDiscoveryConfidence: number;
-  /** Mood modifier based on participant relationship (friends feel slightly better, rivals worse) */
+  /** Mood modifier based on participant relationship — proportional to sentiment (SPEC-mood-pressure).
+   *  Always applied: negative sentiment → rivalMoodScale, positive → friendMoodScale. No threshold. */
   relationshipMoodModifier: {
-    friendThreshold: number;
-    friendBonus: number;
-    rivalThreshold: number;
-    rivalPenalty: number;
+    friendMoodScale: number;   // sentiment × scale for friends (e.g., 0.5 × 0.02 = +0.01)
+    rivalMoodScale: number;    // sentiment × scale for rivals (e.g., -0.7 × 0.04 = -0.028)
   };
 }
 
@@ -286,10 +294,8 @@ export const DEFAULT_CONVERSATION_CONFIG: ConversationConfig = {
   sentimentValenceThreshold: 0.02,
   secretDiscoveryConfidence: 0.4,
   relationshipMoodModifier: {
-    friendThreshold: 0.3,
-    friendBonus: 0.01,
-    rivalThreshold: -0.2,
-    rivalPenalty: -0.01,
+    friendMoodScale: 0.02,
+    rivalMoodScale: 0.04,
   },
 };
 
