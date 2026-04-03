@@ -325,11 +325,23 @@ async function createGameContext(
       onMovement: (movements) => {
         const enriched = movements.map(m => {
           const agent = agents.get(m.agentId);
+          if (m.arrived) {
+            // NPC arrived — snap to target position, no new movement
+            positionManager.completeMovement(m.agentId);
+            const pos = positionManager.getPosition(m.agentId);
+            console.log(`  [Arrived] ${m.agentName} at ${m.to}`);
+            return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: pos?.x ?? 0, targetY: pos?.y ?? 0, transitDuration: 0 };
+          }
           const target = positionManager.startMovement(m.agentId, m.to);
           const pos = positionManager.getPosition(m.agentId);
-          const transitDuration = agent?.state.transitDuration ?? 0;
-          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to}${transitDuration ? ` (${transitDuration}min)` : ''}`);
-          return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: target.targetX, targetY: target.targetY, transitDuration };
+          // Distance-based transit: fixed speed, variable time
+          const TRANSIT_PX_PER_MIN = 80;
+          const MIN_TRANSIT_MIN = 3;
+          const distanceDuration = Math.max(MIN_TRANSIT_MIN, Math.ceil(target.distance / TRANSIT_PX_PER_MIN));
+          // Override engine's flat hops*minutesPerHop with distance-proportional value
+          if (agent) agent.state.transitDuration = distanceDuration;
+          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to} (${Math.round(target.distance)}px, ${distanceDuration}min)`);
+          return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: target.targetX, targetY: target.targetY, transitDuration: distanceDuration };
         });
         broadcast({ type: 'movement', data: enriched });
       },

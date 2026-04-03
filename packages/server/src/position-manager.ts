@@ -68,10 +68,10 @@ export class PositionManager {
   }
 
   /** NPC starts moving to new location — compute target and mark in-transit */
-  startMovement(entityId: string, targetLocationSlug: string): { targetX: number; targetY: number } {
+  startMovement(entityId: string, targetLocationSlug: string): { targetX: number; targetY: number; distance: number } {
     const zone = this.zones.get(targetLocationSlug);
     const pos = this.positions.get(entityId);
-    if (!zone || !pos) return { targetX: 0, targetY: 0 };
+    if (!zone || !pos) return { targetX: 0, targetY: 0, distance: 0 };
 
     // Commit previous movement — self-heal position drift
     if (pos.targetX !== undefined && pos.targetY !== undefined) {
@@ -80,10 +80,12 @@ export class PositionManager {
     }
 
     const target = this.seededPointInZone(entityId, zone);
+    const dx = target.x - pos.x, dy = target.y - pos.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
     pos.targetX = target.x;
     pos.targetY = target.y;
     pos.inTransit = true;
-    return { targetX: target.x, targetY: target.y };
+    return { targetX: target.x, targetY: target.y, distance };
   }
 
   /** NPC arrived at destination */

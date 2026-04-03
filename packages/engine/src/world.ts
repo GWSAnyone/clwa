@@ -401,12 +401,13 @@ export class World {
         agent.state.processingState = this.goalManager.hasActiveGoal(id) ? 'executing_goal' : 'idle';
         console.log(`  [Transit] ${agent.profile.name} arrived at ${to}`);
 
-        // Broadcast arrival as movement
+        // Broadcast arrival
         this.callbacks.onMovement?.([{
           agentId: id,
           agentName: agent.profile.name,
           from,
           to,
+          arrived: true,
         }]);
       }
     }

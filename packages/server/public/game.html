@@ -399,6 +399,144 @@
     .journal-entry-day { color: #5a7a8a; font-size: 9px; text-transform: uppercase; }
     .journal-entry-text { margin-top: 2px; }
 
+    /* Journal tabs */
+    .journal-tabs {
+      display: flex; gap: 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .journal-tab {
+      flex: 1; padding: 8px 12px; background: none; border: none;
+      color: #5a6a7a; font-size: 11px; cursor: pointer; text-align: center;
+      border-bottom: 2px solid transparent; transition: all 0.15s;
+    }
+    .journal-tab:hover { color: #8a9aaa; }
+    .journal-tab.active { color: #d0c8b0; border-bottom-color: #c0b080; }
+    .journal-tab-count {
+      display: inline-block; min-width: 14px; padding: 0 4px;
+      background: rgba(220,160,60,0.2); color: #da4; border-radius: 8px;
+      font-size: 9px; font-weight: 700; line-height: 14px; margin-left: 4px;
+    }
+    .journal-tab-count:empty { display: none; }
+
+    /* Journal entry — enhanced */
+    .journal-entry-header {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    }
+    .journal-entry-type {
+      font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 1px 5px; border-radius: 3px; flex-shrink: 0;
+    }
+    .journal-entry-type.clue { background: rgba(180,160,100,0.2); color: #c0b080; }
+    .journal-entry-type.testimony { background: rgba(100,160,255,0.15); color: #6af; }
+    .journal-entry-type.observation { background: rgba(100,180,100,0.15); color: #6a6; }
+    .journal-entry-meta {
+      display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap;
+    }
+    .journal-badge {
+      font-size: 8px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+      padding: 1px 5px; border-radius: 3px;
+    }
+    .journal-badge.physical { background: rgba(220,80,80,0.15); color: #f88; }
+    .journal-badge.motive { background: rgba(220,160,60,0.15); color: #da4; }
+    .journal-badge.opportunity { background: rgba(80,180,80,0.15); color: #6c6; }
+    .journal-badge.witness { background: rgba(100,160,255,0.15); color: #6af; }
+    .journal-badge.alibi { background: rgba(160,100,220,0.15); color: #a6f; }
+    .journal-weight { font-size: 9px; color: #5a6a7a; font-weight: 600; }
+    .journal-suspect-link {
+      font-size: 9px; color: #da4; cursor: pointer; margin-left: auto;
+    }
+    .journal-suspect-link:hover { text-decoration: underline; }
+    .journal-presented { font-size: 8px; color: #4a5a6a; font-style: italic; }
+
+    /* Suspect grouping */
+    .journal-suspect-group {
+      margin-bottom: 10px; border-radius: 6px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+    .journal-suspect-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; cursor: pointer;
+      background: rgba(255,255,255,0.04);
+    }
+    .journal-suspect-header:hover { background: rgba(255,255,255,0.06); }
+    .journal-suspect-name { color: #d0c8b0; font-size: 12px; font-weight: 600; flex: 1; }
+    .journal-case-quality {
+      font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 1px 6px; border-radius: 3px;
+    }
+    .journal-case-quality.strong { background: rgba(80,180,80,0.2); color: #6c6; }
+    .journal-case-quality.moderate { background: rgba(220,160,60,0.2); color: #da4; }
+    .journal-case-quality.weak { background: rgba(220,80,80,0.2); color: #f88; }
+    .journal-case-quality.insufficient { background: rgba(100,100,100,0.2); color: #888; }
+    .journal-case-score { font-size: 9px; color: #5a6a7a; }
+    .journal-suspect-toggle {
+      font-size: 8px; font-weight: 600; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 3px; cursor: pointer; border: none;
+      background: rgba(100,100,100,0.2); color: #888; transition: all 0.15s;
+    }
+    .journal-suspect-toggle.active { background: rgba(220,80,80,0.2); color: #f88; }
+    .journal-suspect-toggle:hover { filter: brightness(1.2); }
+    .journal-suspect-entries { padding: 4px 6px; }
+    .journal-suspect-entries .journal-entry { margin-bottom: 4px; }
+    .journal-suspect-group.collapsed .journal-suspect-entries,
+    .journal-suspect-group.collapsed .journal-case-breakdown { display: none; }
+    .journal-case-breakdown {
+      display: flex; gap: 8px; padding: 6px 10px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+      font-size: 9px; color: #5a6a7a;
+    }
+    .journal-case-breakdown span { white-space: nowrap; }
+    .journal-section-title {
+      color: #5a6a7a; font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+      padding: 8px 0 4px; margin-top: 8px;
+    }
+
+    /* Evidence presenter in chat */
+    #evidence-presenter {
+      display: none; max-height: 180px; overflow-y: auto;
+      padding: 8px; border-top: 1px solid rgba(255,255,255,0.06);
+      background: rgba(0,0,0,0.15);
+      scrollbar-width: thin; scrollbar-color: transparent transparent;
+    }
+    #evidence-presenter:hover { scrollbar-color: rgba(255,255,255,0.08) transparent; }
+    #evidence-presenter.open { display: block; }
+    .evidence-title {
+      color: #6a8aaa; font-size: 9px; text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .evidence-item {
+      display: flex; align-items: flex-start; gap: 6px;
+      padding: 5px 8px; margin-bottom: 2px; border-radius: 4px;
+      cursor: pointer; font-size: 10px; color: #a0b0c0;
+      background: rgba(255,255,255,0.02); transition: background 0.1s;
+    }
+    .evidence-item:hover { background: rgba(255,255,255,0.05); }
+    .evidence-item.selected { background: rgba(100,160,220,0.1); }
+    .evidence-item.already-shown { opacity: 0.4; pointer-events: none; }
+    .evidence-item-check {
+      width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; margin-top: 1px;
+      border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.03);
+    }
+    .evidence-item.selected .evidence-item-check { background: #4af; border-color: #4af; }
+    .evidence-item-text { flex: 1; line-height: 1.3; }
+    .evidence-item-shown { font-size: 8px; color: #4a5a6a; font-style: italic; }
+    .evidence-empty { color: #4a5a6a; font-size: 10px; font-style: italic; padding: 8px; text-align: center; }
+    .evidence-selected-tags {
+      display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 12px 0;
+    }
+    .evidence-selected-tags:empty { display: none; padding: 0; }
+    .evidence-tag {
+      font-size: 9px; padding: 2px 8px; border-radius: 4px;
+      background: rgba(100,160,220,0.15); color: #6af; cursor: pointer;
+    }
+    .evidence-tag:hover { background: rgba(220,80,80,0.2); color: #f88; }
+    #btn-evidence {
+      background: rgba(100,160,220,0.15); border: 1px solid rgba(100,160,220,0.2);
+      color: #6af; padding: 10px 12px; border-radius: 10px; cursor: pointer;
+      font-size: 11px; font-weight: 600; transition: all 0.15s; white-space: nowrap;
+    }
+    #btn-evidence:hover { background: rgba(100,160,220,0.25); }
+    #btn-evidence.has-selection { background: rgba(100,160,220,0.3); border-color: #4af; }
+
     /* Journal button in HUD */
     .btn-journal {
       background: rgba(180,160,100,0.15); border: 1px solid rgba(180,160,100,0.2);
@@ -450,6 +588,7 @@
     <span>MILLHAVEN</span> — Day <span class="day" id="hud-day">1</span>
     <span class="time" id="hud-time">07:00</span>
     <span id="hud-period">morning</span>
+    <span id="hud-seed" style="color:#555;font-size:10px;margin-left:8px;cursor:pointer" title="Click to copy seed" onclick="navigator.clipboard.writeText(this.dataset.seed)"></span>
     <span id="ws-status"></span>
   </div>
   <div class="hud-right">
@@ -463,6 +602,7 @@
       <button class="hud-btn speed-btn" data-speed="3">3x</button>
     </span>
     <button class="btn-journal" id="btn-journal" onclick="toggleJournal()">Journal</button>
+    <button class="hud-btn" id="btn-new-game" style="color:#f88;border-color:rgba(220,80,80,0.3)">New Game</button>
   </div>
 </div>
 
@@ -529,8 +669,11 @@
     <div class="shop-title"><span>Shop</span><span class="shop-close" onclick="closeShop()">&times;</span></div>
     <div id="shop-items"></div>
   </div>
+  <div id="evidence-presenter"></div>
+  <div class="evidence-selected-tags" id="evidence-tags"></div>
   <form id="chat-form">
     <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off">
+    <button id="btn-evidence" type="button" onclick="toggleEvidencePresenter()">Evidence</button>
     <button id="btn-shop" type="button" style="display:none" onclick="toggleShop()">Shop</button>
     <button id="chat-send" type="submit">Send</button>
   </form>
@@ -562,6 +705,10 @@
   <div class="journal-header">
     <span class="journal-title">Journal</span>
     <span class="journal-close" onclick="toggleJournal()">&times;</span>
+  </div>
+  <div class="journal-tabs">
+    <button class="journal-tab active" id="journal-tab-all" onclick="setJournalTab('all')">All</button>
+    <button class="journal-tab" id="journal-tab-suspects" onclick="setJournalTab('suspects')">Suspects <span id="journal-suspect-count" class="journal-tab-count"></span></button>
   </div>
   <div class="journal-body" id="journal-body">
     <div class="journal-empty">No entries yet. Examine crime scenes to collect evidence.</div>

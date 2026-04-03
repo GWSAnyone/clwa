@@ -27,6 +27,8 @@ export interface MovementResult {
   agentName: string;
   from: string;
   to: string;
+  /** True when NPC has arrived at destination (not starting transit) */
+  arrived?: boolean;
 }
 
 /** Single line of NPC-to-NPC dialogue */

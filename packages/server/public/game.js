@@ -361,6 +361,25 @@ async function init() {
   syncSpeedButtons(state.gameSpeed);
   updateHUD();
 
+  // Load journal state
+  try {
+    const [journalRes, suspectsRes] = await Promise.all([
+      fetch('/api/journal'),
+      fetch('/api/journal/suspects'),
+    ]);
+    const journalData = await journalRes.json();
+    if (Array.isArray(journalData)) {
+      _journalEntries.length = 0;
+      _journalEntries.push(...journalData);
+    }
+    const suspectsData = await suspectsRes.json();
+    if (Array.isArray(suspectsData)) {
+      _journalSuspects.clear();
+      for (const s of suspectsData) _journalSuspects.add(s.id);
+    }
+    renderJournal();
+  } catch { /* journal not critical */ }
+
   // WS
   connectWS();
 
@@ -380,10 +399,18 @@ async function init() {
   canvas.addEventListener('mousemove', onCanvasMouseMove);
   canvas.addEventListener('wheel', onWheel, { passive: false });
 
+  // Load seed
+  fetch('/api/seed').then(r => r.json()).then(d => {
+    const el = document.getElementById('hud-seed');
+    el.textContent = `#${d.seed}`;
+    el.dataset.seed = d.seed;
+  }).catch(() => {});
+
   // Buttons
   document.getElementById('btn-tick').onclick = () => fetch('/api/tick', {method:'POST'});
   document.getElementById('btn-day').onclick = () => fetch('/api/day', {method:'POST'});
   document.getElementById('btn-auto').onclick = toggleAuto;
+  document.getElementById('btn-new-game').onclick = newGame;
   // Speed buttons
   for (const btn of document.querySelectorAll('.speed-btn')) {
     btn.onclick = () => {
@@ -444,20 +471,30 @@ function handleWS(type, data) {
       const moves = Array.isArray(data) ? data : [];
       for (const m of moves) {
         const npc = Object.values(state.agents).find(a => a.name === m.agentName);
-        if (npc) {
+        if (!npc) continue;
+        npc.location = m.to;
+
+        if (m.arrived) {
+          // NPC arrived — snap to final position, stop walking
+          const tx = m.targetX ?? m.x ?? npc.x;
+          const ty = m.targetY ?? m.y ?? npc.y;
+          npc.x = tx; npc.y = ty;
+          npc.moving = false;
+          npc.waypoints = [];
+          npc.transitDist = 0;
+          npc.transitDuration = 0;
+        } else {
+          // Start walking to target
           const tx = m.targetX ?? 0, ty = m.targetY ?? 0;
           npc.waypoints = astarPath(npc.x, npc.y, tx, ty);
           npc.wpIdx = 0;
           npc.moving = true;
-          npc.location = m.to;
-          // Compute walk speed from transit duration (game minutes → real seconds at current speed)
           if (m.transitDuration > 0) {
-            const totalDist = pathLength(npc.waypoints, npc.x, npc.y);
-            const gameSpeed = state.gameSpeed || 1;
-            const realSeconds = m.transitDuration / gameSpeed;
-            npc.walkSpeed = totalDist / Math.max(1, realSeconds);
+            npc.transitDist = pathLength(npc.waypoints, npc.x, npc.y);
+            npc.transitDuration = m.transitDuration;
           } else {
-            npc.walkSpeed = NPC_SPEED;
+            npc.transitDist = 0;
+            npc.transitDuration = 0;
           }
           addEvent('movement', `${m.agentName} → ${LOCATIONS[m.to]?.label || m.to}`);
         }
@@ -819,6 +856,8 @@ async function examineScene() {
 
 // ─── JOURNAL ───
 const _journalEntries = [];
+const _journalSuspects = new Set();
+let _journalTab = 'all';
 
 function addJournalEntry(data) {
   _journalEntries.unshift(data);
@@ -826,22 +865,209 @@ function addJournalEntry(data) {
   showToast('New journal entry', 'info', 3000);
 }
 
+function setJournalTab(tab) {
+  _journalTab = tab;
+  document.getElementById('journal-tab-all').classList.toggle('active', tab === 'all');
+  document.getElementById('journal-tab-suspects').classList.toggle('active', tab === 'suspects');
+  renderJournal();
+}
+
 function renderJournal() {
   const body = document.getElementById('journal-body');
   if (_journalEntries.length === 0) {
     body.innerHTML = '<div class="journal-empty">No entries yet. Examine crime scenes to collect evidence.</div>';
+    updateSuspectCount();
     return;
   }
-  body.innerHTML = _journalEntries.map(e => `
-    <div class="journal-entry">
-      <div class="journal-entry-day">Day ${e.gameDay || '?'} — ${e.location || ''}</div>
-      <div class="journal-entry-text">${escapeHTML(e.text || e.clueText || e.description || '')}</div>
+  if (_journalTab === 'suspects') {
+    renderJournalSuspects(body);
+  } else {
+    renderJournalAll(body);
+  }
+  updateSuspectCount();
+}
+
+function updateSuspectCount() {
+  const el = document.getElementById('journal-suspect-count');
+  if (el) el.textContent = _journalSuspects.size || '';
+}
+
+function renderJournalAll(body) {
+  body.innerHTML = _journalEntries.map(renderJournalEntry).join('');
+}
+
+function renderJournalEntry(e) {
+  const day = `Day ${e.gameDay || '?'} — ${e.location || e.locationId || ''}`;
+  const text = escapeHTML(e.text || e.clueText || e.description || '');
+  const type = e.type || 'clue';
+
+  let meta = '';
+  if (e.evidenceCategory) {
+    meta += `<span class="journal-badge ${e.evidenceCategory}">${e.evidenceCategory}</span>`;
+  }
+  if (e.evidenceWeight) {
+    meta += `<span class="journal-weight">${e.evidenceWeight.toFixed(2)}</span>`;
+  }
+  if (e.suspectId) {
+    const suspectName = state.agents[e.suspectId]?.name || e.suspectId;
+    meta += `<span class="journal-suspect-link" onclick="toggleSuspect('${e.suspectId}')">${escapeHTML(suspectName)}</span>`;
+  }
+  if (e.presentedTo && e.presentedTo.length > 0) {
+    const names = e.presentedTo.map(id => state.agents[id]?.name || id).join(', ');
+    meta += `<span class="journal-presented">shown to ${escapeHTML(names)}</span>`;
+  }
+
+  return `<div class="journal-entry" data-id="${e.id || ''}">
+    <div class="journal-entry-header">
+      <span class="journal-entry-day">${day}</span>
+      <span class="journal-entry-type ${type}">${type}</span>
     </div>
-  `).join('');
+    <div class="journal-entry-text">${text}</div>
+    ${meta ? `<div class="journal-entry-meta">${meta}</div>` : ''}
+  </div>`;
+}
+
+function renderJournalSuspects(body) {
+  const groups = {};
+  const unrelated = [];
+  for (const e of _journalEntries) {
+    if (e.suspectId) {
+      if (!groups[e.suspectId]) groups[e.suspectId] = [];
+      groups[e.suspectId].push(e);
+    } else if (e.relatedNpcs && e.relatedNpcs.length > 0) {
+      for (const npcId of e.relatedNpcs) {
+        if (!groups[npcId]) groups[npcId] = [];
+        groups[npcId].push(e);
+      }
+    } else {
+      unrelated.push(e);
+    }
+  }
+
+  const sortedIds = Object.keys(groups).sort((a, b) => {
+    const aSusp = _journalSuspects.has(a) ? 1 : 0;
+    const bSusp = _journalSuspects.has(b) ? 1 : 0;
+    if (aSusp !== bSusp) return bSusp - aSusp;
+    return groups[b].length - groups[a].length;
+  });
+
+  let html = '';
+  const defaultWeights = { clue: 0.10, testimony: 0.12, observation: 0.08 };
+
+  for (const npcId of sortedIds) {
+    const entries = groups[npcId];
+    const name = state.agents[npcId]?.name || npcId;
+    const isSuspect = _journalSuspects.has(npcId);
+
+    const cats = { physical: 0, motive: 0, opportunity: 0, witness: 0, alibi: 0 };
+    let totalScore = 0;
+    for (const e of entries) {
+      if (e.evidenceCategory && cats[e.evidenceCategory] !== undefined) cats[e.evidenceCategory]++;
+      totalScore += e.evidenceWeight ?? defaultWeights[e.type] ?? 0.08;
+    }
+    const quality = totalScore >= 0.7 ? 'strong' : totalScore >= 0.4 ? 'moderate' : totalScore >= 0.2 ? 'weak' : 'insufficient';
+
+    const breakdown = Object.entries(cats)
+      .filter(([, v]) => v > 0)
+      .map(([k, v]) => `<span>${k}: ${v}</span>`)
+      .join('');
+
+    html += `<div class="journal-suspect-group">
+      <div class="journal-suspect-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="journal-suspect-name">${escapeHTML(name)}</span>
+        <span class="journal-case-quality ${quality}">${quality}</span>
+        <span class="journal-case-score">${totalScore.toFixed(2)}</span>
+        <button class="journal-suspect-toggle ${isSuspect ? 'active' : ''}"
+          onclick="event.stopPropagation(); toggleSuspect('${npcId}')">
+          ${isSuspect ? 'Suspect' : 'Mark'}
+        </button>
+      </div>
+      <div class="journal-suspect-entries">${entries.map(renderJournalEntry).join('')}</div>
+      ${breakdown ? `<div class="journal-case-breakdown">${breakdown}</div>` : ''}
+    </div>`;
+  }
+
+  if (unrelated.length > 0) {
+    html += '<div class="journal-section-title">Other</div>';
+    html += unrelated.map(renderJournalEntry).join('');
+  }
+
+  if (!html) html = '<div class="journal-empty">No evidence linked to any NPC yet.</div>';
+  body.innerHTML = html;
+}
+
+async function toggleSuspect(npcId) {
+  try {
+    const res = await fetch(`/api/journal/suspect/${npcId}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.isSuspect) _journalSuspects.add(npcId);
+    else _journalSuspects.delete(npcId);
+    renderJournal();
+  } catch { /* ignore */ }
 }
 
 function toggleJournal() {
   document.getElementById('journal-panel').classList.toggle('open');
+}
+
+// ─── EVIDENCE PRESENTER ───
+const _selectedEvidence = new Set();
+
+function toggleEvidencePresenter() {
+  const panel = document.getElementById('evidence-presenter');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) renderEvidencePresenter();
+}
+
+function renderEvidencePresenter() {
+  const panel = document.getElementById('evidence-presenter');
+  const npcId = state.chatNpcId;
+  // Filter entries that have evidence data
+  const entries = _journalEntries.filter(e => e.id && (e.evidenceCategory || e.type === 'testimony'));
+  if (entries.length === 0) {
+    panel.innerHTML = '<div class="evidence-empty">No evidence to present.</div>';
+    return;
+  }
+
+  panel.innerHTML = '<div class="evidence-title">Select evidence to present</div>' +
+    entries.map(e => {
+      const alreadyShown = npcId && e.presentedTo && e.presentedTo.includes(npcId);
+      const selected = _selectedEvidence.has(e.id);
+      const cls = `evidence-item${selected ? ' selected' : ''}${alreadyShown ? ' already-shown' : ''}`;
+      const text = escapeHTML(e.text || e.clueText || e.description || '');
+      const cat = e.evidenceCategory ? `<span class="journal-badge ${e.evidenceCategory}">${e.evidenceCategory}</span> ` : '';
+      const shown = alreadyShown ? '<div class="evidence-item-shown">already shown</div>' : '';
+      return `<div class="${cls}" onclick="toggleEvidenceItem('${e.id}')">
+        <div class="evidence-item-check"></div>
+        <div class="evidence-item-text">${cat}${text}${shown}</div>
+      </div>`;
+    }).join('');
+}
+
+function toggleEvidenceItem(entryId) {
+  if (_selectedEvidence.has(entryId)) _selectedEvidence.delete(entryId);
+  else _selectedEvidence.add(entryId);
+  renderEvidencePresenter();
+  renderEvidenceTags();
+  document.getElementById('btn-evidence').classList.toggle('has-selection', _selectedEvidence.size > 0);
+}
+
+function renderEvidenceTags() {
+  const container = document.getElementById('evidence-tags');
+  if (_selectedEvidence.size === 0) { container.innerHTML = ''; return; }
+  container.innerHTML = [..._selectedEvidence].map(id => {
+    const e = _journalEntries.find(j => j.id === id);
+    const label = e ? (e.evidenceCategory || e.type || 'evidence') : id;
+    return `<span class="evidence-tag" onclick="toggleEvidenceItem('${id}')" title="Click to remove">${label}</span>`;
+  }).join('');
+}
+
+function clearEvidenceSelection() {
+  _selectedEvidence.clear();
+  renderEvidenceTags();
+  document.getElementById('btn-evidence').classList.remove('has-selection');
+  document.getElementById('evidence-presenter').classList.remove('open');
+  document.getElementById('evidence-presenter').innerHTML = '';
 }
 
 // ─── EVENT FEED ───
@@ -861,6 +1087,7 @@ function renderEventFeed() {
 // ─── CHAT ───
 function openChat(npcId) {
   state.chatOpen = true; state.chatNpcId = npcId;
+  clearEvidenceSelection();
   const a = state.agents[npcId];
   if (!a) return;
 
@@ -1352,6 +1579,7 @@ function finalizeChatStream() {
 function closeChat() {
   finalizeChatStream();
   closeShop();
+  clearEvidenceSelection();
   state.chatOpen = false; state.chatNpcId = null;
   document.getElementById('chat-panel').classList.remove('open');
 
@@ -1366,7 +1594,21 @@ function sendChat(e) {
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
   if (!text || !state.chatNpcId || !state.ws) return;
-  state.ws.send(JSON.stringify({ type: 'chat', agentId: state.chatNpcId, message: text }));
+  const msg = { type: 'chat', agentId: state.chatNpcId, message: text };
+  if (_selectedEvidence.size > 0) {
+    msg.evidenceIds = [..._selectedEvidence];
+    // Mark entries as presented locally
+    for (const id of msg.evidenceIds) {
+      const entry = _journalEntries.find(j => j.id === id);
+      if (entry) {
+        if (!entry.presentedTo) entry.presentedTo = [];
+        if (!entry.presentedTo.includes(state.chatNpcId)) entry.presentedTo.push(state.chatNpcId);
+      }
+    }
+    clearEvidenceSelection();
+    renderJournal();
+  }
+  state.ws.send(JSON.stringify(msg));
   addChatMessage('You', text, 'player');
   input.value = '';
 }
@@ -1422,6 +1664,19 @@ async function toggleAuto() {
   const btn = document.getElementById('btn-auto');
   btn.textContent = state.autoTick ? 'Auto: ON' : 'Auto';
   btn.classList.toggle('active', state.autoTick);
+}
+
+// ─── NEW GAME ───
+async function newGame() {
+  if (!confirm('Start a new game? Current progress will be lost.')) return;
+  try {
+    const res = await fetch('/api/new-game', { method: 'POST' });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'info'); return; }
+    showToast(`New game started (seed: ${data.seed})`, 'discovery', 4000);
+    // Full page reload to re-init everything
+    setTimeout(() => location.reload(), 500);
+  } catch { showToast('Failed to start new game', 'info'); }
 }
 
 // ─── CANVAS INTERACTION ───
@@ -1614,7 +1869,13 @@ function update(dt) {
           a.moving = false;
         }
       } else {
-        const spd = a.walkSpeed || NPC_SPEED;
+        let spd;
+        if (a.transitDist > 0 && a.transitDuration > 0) {
+          const realSeconds = a.transitDuration / Math.max(0.1, state.gameSpeed || 1);
+          spd = a.transitDist / Math.max(1, realSeconds);
+        } else {
+          spd = NPC_SPEED;
+        }
         a.x += (dx/dist) * spd * dt;
         a.y += (dy/dist) * spd * dt;
         if (Math.abs(dx) > 2) a.flipH = dx < 0;
