@@ -615,11 +615,17 @@ export async function handleRequest(
   // ─── GET /api/debug/mood/:id/:value ───
   const moodMatch = path.match(/^\/api\/debug\/mood\/([^/]+)\/([-\d.]+)$/);
   if (method === 'GET' && moodMatch) {
-    const agent = agents.get(moodMatch[1]);
+    const npcId = moodMatch[1];
+    const agent = agents.get(npcId);
     if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
     const oldMood = agent.state.mood;
-    agent.state.mood = Math.max(-1, Math.min(1, parseFloat(moodMatch[2])));
-    return Response.json({ id: moodMatch[1], name: agent.profile.name, oldMood, newMood: agent.state.mood }, { headers: cors });
+    const targetMood = Math.max(-1, Math.min(1, parseFloat(moodMatch[2])));
+    // Clear existing debug modifiers, add new one to reach target mood via modifier system
+    world.removeModifiers(npcId, 'debug');
+    const debugMag = targetMood - (agent.state.baseMood ?? 0);
+    world.addModifier(npcId, { source: 'debug_set', category: 'debug',
+      magnitude: debugMag, remaining: 0, duration: 0, decay: 'none' });
+    return Response.json({ id: npcId, name: agent.profile.name, oldMood, targetMood, debugModifier: debugMag }, { headers: cors });
   }
 
   // ─── GET /api/debug/move/:id/:location ───

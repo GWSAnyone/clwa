@@ -10,6 +10,12 @@
  */
 import type { Agent } from './agent';
 
+/** Callback for adding mood modifiers from module code (SPEC-mood-modifiers) */
+export type MoodModifierCallback = (npcId: string, mod: {
+  source: string; category: string; magnitude: number;
+  remaining: number; duration: number; decay: 'exponential' | 'linear' | 'none';
+}) => void;
+
 // ─── Event Type Flags ───
 // Engine defines WHAT properties exist. Modules declare WHICH event types have them.
 // Same pattern as AgentProfile capability flags (investigator, detersCrime, canSentence).
@@ -202,6 +208,8 @@ export interface EventHandlerContext {
   bodyDiscoveries: Set<string>;
   /** Trigger reactive affordance evaluation for a specific NPC on this event. Engine handles AL mechanics. */
   triggerReactiveEvaluation: (npcId: string, event: WorldEvent) => Promise<void>;
+  /** Add a mood modifier to an NPC (SPEC-mood-modifiers) */
+  addMoodModifier: MoodModifierCallback;
 }
 
 export type EventHandlerFn = (event: WorldEvent, ctx: EventHandlerContext) => void | Promise<void>;
@@ -382,6 +390,8 @@ export interface StepExecutionContext {
   evidenceLayer?: EvidenceLayer;
   /** GoalManager for clearing goals (arrest → clear target goals, flee → clear own goals) */
   goalManager: GoalManager;
+  /** Add a mood modifier to an NPC (SPEC-mood-modifiers) */
+  addMoodModifier: MoodModifierCallback;
 }
 
 export type StepHandlerFn = (ctx: StepExecutionContext) => Promise<GoalActionResult | null>;
@@ -551,6 +561,8 @@ export interface DiscoveryContext {
   gameDay: number;
   /** Event type from associated scene (e.g., 'NPC_KILLED'). null if no scene. */
   deathEventType: string | null;
+  /** Add a mood modifier to an NPC (SPEC-mood-modifiers) */
+  addMoodModifier: MoodModifierCallback;
 }
 export type DiscoveryHandlerFn = (ctx: DiscoveryContext) => Promise<void>;
 
@@ -610,6 +622,8 @@ export interface DayAdvanceContext {
   eventStore: IEventStore;
   onEvent?: (event: WorldEvent) => void;
   publicPlaces: Set<string>;
+  /** Add a mood modifier to an NPC (SPEC-mood-modifiers) */
+  addMoodModifier: MoodModifierCallback;
 }
 
 export type DayAdvanceHandlerFn = (ctx: DayAdvanceContext) => Promise<void>;
@@ -662,6 +676,8 @@ export interface TickPhaseContext {
   goalManager?: import('./goals').GoalManager;
   /** NPC home locations — for defensive goals (lay_low, etc.) */
   npcHomes?: Map<string, string>;
+  /** Add a mood modifier to an NPC (SPEC-mood-modifiers) */
+  addMoodModifier: MoodModifierCallback;
 }
 
 export type TickPhaseHandlerFn = (ctx: TickPhaseContext) => Promise<void>;

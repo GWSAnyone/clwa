@@ -131,7 +131,7 @@ function makeState(location: string, npcId: string, wd: import('./world-loader')
       if (startMood != null && Math.abs(startMood - baseMood) > 0.01) {
         return [{ id: 'initial_mood', source: 'initial_conditions', category: 'event',
           magnitude: startMood - baseMood, remaining: 1440, duration: 1440,
-          decay: 'exponential' as const, negative: (startMood - baseMood) < 0 }];
+          decay: 'exponential' as const }];
       }
       return [];
     })(),

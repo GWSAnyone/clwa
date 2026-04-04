@@ -467,7 +467,7 @@ function moodCurve(mood: number, H: number = 0.5): number {
   const numbnessEntry = slidingEntry + 0.50;
 
   const absMood = -mood; // 0 to 1
-  if (absMood <= slidingEntry) return absMood * (0.5 / 0.3) * slidingEntry; // proportional mild zone
+  if (absMood <= slidingEntry) return absMood * (0.15 / slidingEntry); // continuous at boundary: slidingEntry * 0.15/slidingEntry = 0.15
   if (absMood <= desperationEntry) return 0.15 + (absMood - slidingEntry) * 1.5; // sliding zone — ×1.5
   if (absMood <= numbnessEntry) return 0.60 + (absMood - desperationEntry) * 1.0; // desperation
   return 0.80 + (absMood - numbnessEntry) * 0.6; // numbness plateau

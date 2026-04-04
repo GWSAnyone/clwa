@@ -195,25 +195,11 @@ export class World {
     this.installRelationshipCallbacks();
   }
 
-  /** Intercept mood property on each agent's state to emit onMoodChange callback */
+  /** @deprecated — mood interceptor removed. All mood changes go through _tickMoodSystem which
+   *  calls onMoodChange explicitly. No more Object.defineProperty hack. (Audit B1 fix) */
   private installMoodInterceptors(): void {
-    if (!this.callbacks.onMoodChange) return;
-    for (const [id, agent] of this.agents) {
-      let _mood = agent.state.mood;
-      const cb = this.callbacks.onMoodChange;
-      const name = agent.profile.name;
-      Object.defineProperty(agent.state, 'mood', {
-        get: () => _mood,
-        set: (v: number) => {
-          if (typeof v !== 'number' || isNaN(v)) return; // safety: reject NaN
-          const old = _mood;
-          _mood = v;
-          if (Math.abs(old - v) > 0.001) cb(id, name, old, v);
-        },
-        enumerable: true,
-        configurable: true,
-      });
-    }
+    // No-op. Kept as empty method to avoid breaking constructor call.
+    // TODO: remove method and constructor call in next cleanup pass.
   }
 
   /** Resolve and cache the player Agent (isPlayer flag on profile) */
@@ -282,6 +268,7 @@ export class World {
           );
           this.addReactiveGoalsFiltered(goals);
         },
+        addMoodModifier: (npcId, mod) => this.addModifier(npcId, mod),
       };
       for (const handler of handlers) {
         await handler(event, handlerCtx);
@@ -483,7 +470,6 @@ export class World {
     const LONE_RATE = ms.lonelinessRate ?? 0.001;
 
     for (const [, agent] of this.agents) {
-      if (agent.profile.isPlayer) continue;
       if (!agent.state.alive) continue;
       if (isStatusAbsent(agent.state.status)) continue;
       if (!agent.state.moodModifiers) agent.state.moodModifiers = [];
@@ -522,7 +508,7 @@ export class World {
           existing.magnitude += (target - existing.magnitude) * SS_DRIFT; // drift toward target
         } else if (target !== 0) {
           mods.push({ id: 'social_stress', source: 'social_stress', category: 'social_stress',
-            magnitude: target * SS_DRIFT, remaining: 0, duration: 0, decay: 'none', negative: true });
+            magnitude: target * SS_DRIFT, remaining: 0, duration: 0, decay: 'none' });
         }
       }
 
@@ -539,7 +525,7 @@ export class World {
       if (loneExisting) { loneExisting.magnitude = loneMag; }
       else if (loneMag !== 0) {
         mods.push({ id: 'loneliness', source: 'loneliness', category: 'loneliness',
-          magnitude: loneMag, remaining: 0, duration: 0, decay: 'none', negative: true });
+          magnitude: loneMag, remaining: 0, duration: 0, decay: 'none' });
       }
 
       // 4. Compute effectiveMood = baseMood + Σ decayed magnitudes
@@ -567,7 +553,7 @@ export class World {
    * Add a mood modifier to an NPC (SPEC-mood-modifiers).
    * Enforces stacking limit per category.
    */
-  addModifier(npcId: string, mod: Omit<import('./world-types').MoodModifier, 'id' | 'negative'>): void {
+  addModifier(npcId: string, mod: Omit<import('./world-types').MoodModifier, 'id'>): void {
     const agent = this.agents.get(npcId);
     if (!agent) return;
     if (!agent.state.moodModifiers) agent.state.moodModifiers = [];
@@ -577,7 +563,6 @@ export class World {
     const full: import('./world-types').MoodModifier = {
       ...mod,
       id: crypto.randomUUID(),
-      negative: mod.magnitude < 0,
     };
 
     // Stacking: if category full, remove weakest
@@ -1000,6 +985,7 @@ export class World {
       const action = await this.goalManager.processGoalTick(
         npcId, this.agents, this.locations, interactionRunner,
         crimeHandler, this.crimeScenes, this.evidence,
+        (npcId, mod) => this.addModifier(npcId, mod),
       );
       if (!action) break;
       this.callbacks.onGoalAction?.(action);
@@ -1134,6 +1120,7 @@ export class World {
       discoveries: this.bodyDiscoveries, approaches: approachEvents,
       crimeScenes: this.crimeScenes, locations: this.locations,
       goalManager: this.goalManager, npcHomes: this.npcHomes,
+      addMoodModifier: (npcId: string, mod: any) => this.addModifier(npcId, mod),
     };
     for (const handler of getTickPhaseHandlers()) await handler(tickCtx);
     if (approachEvents.length > 1) {
@@ -1317,6 +1304,7 @@ export class World {
               location: agent.state.location,
               gameDay: this.getCurrentDay(),
               deathEventType: deathEventType ?? null,
+              addMoodModifier: (npcId, mod) => this.addModifier(npcId, mod),
             });
           }
         } catch (err) {
@@ -1373,6 +1361,7 @@ export class World {
         this.eventStore.append(e);
       } : undefined,
       publicPlaces: this.config.publicPlaces || new Set<string>(),
+      addMoodModifier: (npcId: string, mod: any) => this.addModifier(npcId, mod),
     };
     for (const handler of getDayAdvanceHandlers()) {
       await handler(dayCtx);

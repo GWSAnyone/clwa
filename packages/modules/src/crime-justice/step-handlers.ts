@@ -199,7 +199,6 @@ export function registerCrimeStepHandlers(): void {
     }
     goal.waitTicks = 0;
     await owner.observe(`I stole goods from ${target.profile.name}'s shop. I was desperate — I had no choice. The guilt weighs on me.`, step.importance);
-    owner.state.mood = Math.min(1, owner.state.mood + 0.15);
     if (ctx.onCrimeEvent) {
       await ctx.onCrimeEvent({ type: 'GOODS_STOLEN', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { suspectName: owner.profile.name, victimName: target.profile.name, victimRole: target.profile.role } });
     }
@@ -224,13 +223,12 @@ export function registerCrimeStepHandlers(): void {
     if (isLethal) {
       target.state.alive = false;
       await owner.observe(`You killed ${target.profile.name}. ${step.reason}. It is done. The weight of what you have done is crushing.`, 10);
-      owner.state.mood = Math.max(-1, owner.state.mood - 0.5);
+      ctx.addMoodModifier(goal.ownerId, { source: 'murder_committed', category: 'event', magnitude: -0.5, remaining: 1440, duration: 1440, decay: 'exponential' });
       owner.state.beliefs?.addBelief({ id: crypto.randomUUID(), eventType: 'NPC_KILLED', subject: owner.profile.name, object: target.profile.name, location: target.state.location, confidence: 1.0, source: 'perpetrator', sourceNpcId: null, gameDay: owner.state.currentDay, lastUpdated: owner.state.currentDay });
     } else {
       await owner.observe(`I attacked ${target.profile.name}. ${step.reason}. My hands are shaking — but they deserved it.`, step.importance);
       await target.observe(`${owner.profile.name} attacked me! They were furious, screaming about ${step.reason}. I'm hurt and terrified.`, step.importance);
-      owner.state.mood = Math.min(1, owner.state.mood + 0.1);
-      target.state.mood = Math.max(-1, target.state.mood - 0.4);
+      ctx.addMoodModifier(step.targetId, { source: 'attack_victim', category: 'event', magnitude: -0.4, remaining: 1440, duration: 1440, decay: 'exponential' });
     }
     if (target.state.relationships) { target.state.relationships.adjustSentiment(goal.ownerId, -0.5); target.state.relationships.adjustTrust(goal.ownerId, -0.6); }
     if (owner.state.relationships) { owner.state.relationships.adjustSentiment(step.targetId, -0.2); }
@@ -266,7 +264,7 @@ export function registerCrimeStepHandlers(): void {
     ctx.goalManager.clearGoals(step.targetId);
     await owner.observe(`I arrested ${target.profile.name} and escorted them to the Courthouse. Justice will be served.`, step.importance);
     await target.observe(`${owner.profile.name} arrested me. I am being held at the Courthouse awaiting judgment.`, step.importance);
-    target.state.mood = Math.max(-1, target.state.mood - 0.4);
+    ctx.addMoodModifier(step.targetId, { source: 'arrest_shock', category: 'event', magnitude: -0.4, remaining: 720, duration: 720, decay: 'exponential' });
     if (ctx.onCrimeEvent) {
       await ctx.onCrimeEvent({ type: 'NPC_ARRESTED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { guardName: owner.profile.name, suspectName: target.profile.name, suspectRole: target.profile.role, affectedTargets: Array.from(agents.keys()) } });
     }
@@ -291,7 +289,7 @@ export function registerCrimeStepHandlers(): void {
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     owner.state.status = 'fled';
     await owner.observe(`I fled the town through the gate. I can never return. Everything I had here is gone.`, step.importance);
-    owner.state.mood = Math.max(-1, owner.state.mood - 0.3);
+    ctx.addMoodModifier(goal.ownerId, { source: 'fled_town', category: 'event', magnitude: -0.3, remaining: 1440, duration: 1440, decay: 'exponential' });
     if (ctx.onCrimeEvent) {
       await ctx.onCrimeEvent({ type: 'NPC_FLED', subject: goal.ownerId, location: owner.state.location, importance: step.importance, payload: { fledName: owner.profile.name, fledRole: owner.profile.role, affectedTargets: Array.from(agents.keys()) } });
     }
@@ -464,7 +462,7 @@ export function registerCrimeStepHandlers(): void {
       ctx.goalManager.clearGoals(step.targetId as string);
       await owner.observe(`I sentenced ${target.profile.name} to permanent exile. ${reasoning}`, step.importance as number);
       await target.observe(`Magistrate ${owner.profile.name} banished me from the village forever. ${reasoning}`, step.importance as number);
-      target.state.mood = -1;
+      ctx.addMoodModifier(step.targetId as string, { source: 'sentence_exile', category: 'event', magnitude: -2.0, remaining: 1440, duration: 1440, decay: 'exponential' });
     } else if (chosenVerdict === 'imprisonment') {
       target.state.status = 'imprisoned';
       const durationDays = verdictDef.effects.durationDays ?? 2;
@@ -473,25 +471,25 @@ export function registerCrimeStepHandlers(): void {
       imprisonmentTimers.set(target.profile.id, releaseDay);
       await owner.observe(`I sentenced ${target.profile.name} to ${durationDays} days of imprisonment. ${reasoning}`, step.importance as number);
       await target.observe(`Magistrate ${owner.profile.name} sentenced me to ${durationDays} days of imprisonment. I must serve my time.`, step.importance as number);
-      target.state.mood = Math.max(-1, target.state.mood + verdictDef.effects.moodShift);
+      ctx.addMoodModifier(step.targetId as string, { source: 'sentence_imprisonment', category: 'event', magnitude: verdictDef.effects.moodShift, remaining: 720, duration: 720, decay: 'exponential' });
     } else if (chosenVerdict === 'release') {
       target.state.status = undefined;
       await owner.observe(`I released ${target.profile.name}. ${reasoning}`, step.importance as number);
       await target.observe(`Magistrate ${owner.profile.name} released me. I am free.`, step.importance as number);
-      target.state.mood = Math.min(1, target.state.mood + 0.3);
+      ctx.addMoodModifier(step.targetId as string, { source: 'sentence_release', category: 'event', magnitude: 0.3, remaining: 720, duration: 720, decay: 'exponential' });
     } else {
       // warning, fine — NPC is freed but punished. Social stigma remains.
       target.state.status = undefined;
       await owner.observe(`I gave ${target.profile.name} a ${verdictLabel.toLowerCase()}. ${reasoning}`, step.importance as number);
       await target.observe(`Magistrate ${owner.profile.name} sentenced me: ${verdictLabel.toLowerCase()}. The shame is public. ${reasoning}`, step.importance as number);
-      target.state.mood = Math.max(-1, target.state.mood + verdictDef.effects.moodShift);
+      ctx.addMoodModifier(step.targetId as string, { source: 'sentence_reaction', category: 'event', magnitude: verdictDef.effects.moodShift, remaining: 720, duration: 720, decay: 'exponential' });
       // Victim reaction: mild punishments may frustrate the victim
       if (victimId) {
         const victim = agents.get(victimId);
         if (victim?.state.alive) {
           victim.state.relationships?.adjustSentiment(step.targetId as string, -0.1);
           if (chosenVerdict === 'warning') {
-            victim.state.mood = Math.max(-1, victim.state.mood - 0.1);
+            ctx.addMoodModifier(victimId as string, { source: 'verdict_frustration', category: 'pressure', magnitude: -0.1, remaining: 240, duration: 240, decay: 'linear' });
           }
         }
       }

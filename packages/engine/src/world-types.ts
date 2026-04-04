@@ -10,7 +10,6 @@ export interface MoodModifier {
   remaining: number;        // game minutes left (0 = permanent until removed)
   duration: number;         // original duration (for decay calc; 0 = permanent)
   decay: 'exponential' | 'linear' | 'none';
-  negative: boolean;        // cached: magnitude < 0
 }
 
 /** Compute decayed effective magnitude of a modifier */

@@ -138,7 +138,7 @@ export function registerCrimeJusticeModule(): void {
       8,
     );
     // Mood: direct trauma (stronger than cascade's -0.15)
-    ctx.discoverer.state.mood = Math.max(-1, ctx.discoverer.state.mood - 0.35);
+    ctx.addMoodModifier(ctx.discoverer.profile.id, { source: 'body_discovery_trauma', category: 'event', magnitude: -0.35, remaining: 1440, duration: 1440, decay: 'exponential' });
     // Belief: discoverer knows someone died, but not who did it
     if (ctx.discoverer.state.beliefs && ctx.deathEventType) {
       ctx.discoverer.state.beliefs.addBelief({
@@ -157,7 +157,7 @@ export function registerCrimeJusticeModule(): void {
     // Grief: relationship-based mood penalty
     if (ctx.discoverer.state.relationships) {
       const grief = ctx.discoverer.state.relationships.getGriefPenalty(ctx.victimId);
-      if (grief !== 0) ctx.discoverer.state.mood = Math.max(-1, ctx.discoverer.state.mood + grief);
+      if (grief !== 0) ctx.addMoodModifier(ctx.discoverer.profile.id, { source: 'grief_discovery', category: 'event', magnitude: grief, remaining: 720, duration: 720, decay: 'exponential' });
     }
   });
   registerRumorEventType('RUMOR_SPREAD');
@@ -471,7 +471,7 @@ export function registerCrimeJusticeModule(): void {
         lastUpdated: ctx.currentDay,
       });
 
-      owner.state.mood = Math.max(-1, owner.state.mood - 0.3);
+      ctx.addMoodModifier(ownerId, { source: 'theft_discovered', category: 'event', magnitude: -0.3, remaining: 1440, duration: 1440, decay: 'exponential' });
 
       const discoveryEvent = {
         id: crypto.randomUUID(),
@@ -625,7 +625,7 @@ export function registerCrimeJusticeModule(): void {
         const agent = ctx.agents.get(npcId);
         if (agent && agent.state.status === 'imprisoned') {
           agent.state.status = undefined;
-          agent.state.mood = Math.min(1, agent.state.mood + 0.2);
+          ctx.addMoodModifier(npcId, { source: 'prison_release', category: 'event', magnitude: 0.2, remaining: 720, duration: 720, decay: 'exponential' });
           await agent.observe(`I have served my sentence and been released from imprisonment. I am free, but the shame lingers.`, 6);
           console.log(`  [Prison] ${agent.profile.name} released after serving sentence`);
           // Fire release event
@@ -754,7 +754,7 @@ export function registerCrimeJusticeModule(): void {
 
         const rumorText = `I heard a rumor: ${criminalName} committed ${crimeLabel} of ${victimName} at ${crimeLocation}. The townsfolk are alarmed.`;
         await target.observe(rumorText, 6);
-        target.state.mood = Math.max(-1, target.state.mood - 0.15);
+        ctx.addMoodModifier(targetId, { source: 'rumor_heard', category: 'event', magnitude: -0.15, remaining: 480, duration: 480, decay: 'exponential' });
 
         const rumorEvent = {
           id: crypto.randomUUID(),
@@ -781,7 +781,7 @@ export function registerCrimeJusticeModule(): void {
         if (target.profile.investigator && !existingWanted.has(targetId)) {
           const wantedText = `URGENT: I received reports that ${criminalName} committed ${crimeLabel} of ${victimName} at ${crimeLocation}. I must investigate immediately.`;
           await target.observe(wantedText, 7);
-          target.state.mood = Math.max(-1, target.state.mood - 0.1);
+          ctx.addMoodModifier(targetId, { source: 'rumor_urgent', category: 'pressure', magnitude: -0.1, remaining: 240, duration: 240, decay: 'linear' });
 
           const wantedEvent = {
             id: crypto.randomUUID(),

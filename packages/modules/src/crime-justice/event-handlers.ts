@@ -41,7 +41,7 @@ export function registerCrimeEventHandlers(): void {
       lastUpdated: ctx.getCurrentDay(),
     });
     // Mood penalty if not already applied (API kills don't go through attack_npc)
-    killer.state.mood = Math.max(-1, killer.state.mood - 0.3);
+    ctx.addMoodModifier(event.subject, { source: 'murder_committed', category: 'event', magnitude: -0.3, remaining: 1440, duration: 1440, decay: 'exponential' });
   });
 
   // WANTED_STATUS: investigator sentiment + criminal awareness
@@ -64,7 +64,7 @@ export function registerCrimeEventHandlers(): void {
     }
 
     // Criminal learns they're wanted: mood penalty + stress
-    criminal.state.mood = Math.max(-1, criminal.state.mood - 0.2);
+    ctx.addMoodModifier(criminalId, { source: 'wanted_stress', category: 'pressure', magnitude: -0.2, remaining: 240, duration: 240, decay: 'linear' });
     criminal.state.beliefs?.addBelief({
       id: crypto.randomUUID(),
       eventType: 'WANTED_STATUS',

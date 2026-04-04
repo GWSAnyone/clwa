@@ -4,6 +4,7 @@ import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
 import type { EvidenceLayer } from './evidence';
 import { findPath } from './pathfinding';
 import { getEventLabel, getBeliefSourceLabel, getSourceTransferWeight, getStepHandler, runInteractPostHooks, isTransferable, BELIEF_SOURCE } from './event-registry';
+import type { MoodModifierCallback } from './event-registry';
 
 // ─── Step Primitives ───
 
@@ -264,6 +265,7 @@ export class GoalManager {
     onCrimeEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>,
     crimeScenes?: Map<string, import('./world-types').CrimeScene[]>,
     evidenceLayer?: EvidenceLayer,
+    addMoodModifier?: MoodModifierCallback,
   ): Promise<GoalActionResult | null> {
     const goal = this.getActiveGoal(ownerId);
     if (!goal) return null;
@@ -297,7 +299,7 @@ export class GoalManager {
     }
 
     const step = goal.steps[goal.currentStep];
-    return this.executeStep(goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer);
+    return this.executeStep(goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer, addMoodModifier);
   }
 
   private async executeStep(
@@ -311,6 +313,7 @@ export class GoalManager {
     onCrimeEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>,
     crimeScenes?: Map<string, import('./world-types').CrimeScene[]>,
     evidenceLayer?: EvidenceLayer,
+    addMoodModifier?: MoodModifierCallback,
   ): Promise<GoalActionResult | null> {
     const baseResult = {
       goalId: goal.id,
@@ -592,7 +595,7 @@ export class GoalManager {
       default: {
         const handler = getStepHandler(step.action);
         if (handler) {
-          return handler({ goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer, goalManager: this });
+          return handler({ goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer, goalManager: this, addMoodModifier: addMoodModifier ?? (() => {}) });
         }
         return null;
       }
