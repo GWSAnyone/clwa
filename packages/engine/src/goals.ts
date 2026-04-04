@@ -595,7 +595,8 @@ export class GoalManager {
       default: {
         const handler = getStepHandler(step.action);
         if (handler) {
-          return handler({ goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer, goalManager: this, addMoodModifier: addMoodModifier ?? (() => {}) });
+          return handler({ goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer, goalManager: this,
+            addMoodModifier: addMoodModifier ?? ((id, m) => console.warn(`[Goals] addMoodModifier not provided for ${id}, modifier ${m.source} lost`)) });
         }
         return null;
       }

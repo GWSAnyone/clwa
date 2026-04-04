@@ -913,7 +913,7 @@ export async function applyDialogueMeaning(
       if (moodDelta) {
         ctx.addMoodModifier?.(npc.profile.id, { source: `pressure_${ep.type}`, category: 'pressure',
           magnitude: moodDelta, remaining: 240, duration: 240, decay: 'exponential' });
-        ctx.effects.push({ type: 'mood_change', delta: +moodDelta.toFixed(2), newMood: +(npc.state.mood + moodDelta).toFixed(2) });
+        ctx.effects.push({ type: 'mood_change', delta: +moodDelta.toFixed(2), newMood: +npc.state.mood.toFixed(2) }); // newMood = current; actual change applies on next mood tick
       }
       if (sentDelta || trustDelta) {
         adjustBilateral(ctx.playerAgent, npc, sentDelta, trustDelta, cfg.bilateralFactor);
@@ -969,7 +969,7 @@ export async function applyDialogueMeaning(
       if (sae.mood) {
         ctx.addMoodModifier?.(npc.profile.id, { source: `speechact_${meaning.speechAct}`, category: 'pressure',
           magnitude: sae.mood, remaining: 120, duration: 120, decay: 'linear' });
-        ctx.effects.push({ type: 'mood_change', delta: sae.mood, newMood: +(npc.state.mood + sae.mood).toFixed(2) });
+        ctx.effects.push({ type: 'mood_change', delta: sae.mood, newMood: +npc.state.mood.toFixed(2) }); // newMood = current; actual change applies on next mood tick
       }
       if (sae.sentiment || sae.trust) {
         adjustBilateral(ctx.playerAgent, npc, sae.sentiment, sae.trust, cfg.bilateralFactor);
