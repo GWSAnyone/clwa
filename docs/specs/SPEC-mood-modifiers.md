@@ -109,15 +109,19 @@ Every 5 game minutes (in `_tickMoodSystem`, renamed from `_applySocialStress`):
 ```
 for each NPC:
   1. Tick all modifiers: remaining -= 5. Remove expired (remaining ≤ 0).
-  2. Recalculate social stress modifier from current relationships:
+  2. Social stress — drift-based permanent modifier:
      negPressure = Σ|sent_i| for negative rels
      posPressure = Σ sent_i for positive rels
-     stress = max(0, negPressure - posPressure × 0.5)
+     stress = max(0, negPressure - posPressure × bufferFactor(0.5))
      personalityScale = N × 1.5 + (1-A) × 0.5 + (1-H) × 0.3
-     magnitude = -stress × personalityScale × baseRate(0.006)
-     clamped to [-maxRate(0.006), 0]
-     → find existing modifier with category='social_stress', update magnitude IN-PLACE.
-       If not found, create. Never delete+recreate (avoids churn).
+     target = max(-1, -stress × personalityScale × weight(0.5))
+     → find existing modifier with category='social_stress':
+       magnitude += (target - magnitude) × driftRate(0.02)   // exponential approach
+       If not found, create with magnitude = target × driftRate.
+     
+     Properties: caps naturally at target (no infinite accumulation).
+     If relationships improve → target rises → modifier drifts back toward 0.
+     63% of target reached in ~4h, 87% in ~8h (at driftRate 0.02/5min).
   3. Loneliness check (kept as sub-mechanism):
      → add/update 'loneliness' modifier if threshold exceeded
   4. Compute effectiveMood = baseMood + Σ decayed magnitudes
@@ -195,36 +199,23 @@ Backwards compatibility: old saves without `moodModifiers` → initialize empty 
 ```
 baseMood = 0.3 - 0.24 + 0.14 = 0.20
 slidingEntry = -0.14
+Social stress target = -(0.70+0.15+0.10+0.10) × (0.6×1.5+0.7×0.5+0.8×0.3) × 0.5
+                     = -1.05 × 1.49 × 0.5 = -0.782 (capped at -1.0)
+  → target ≈ -0.78
 
-Starting state: effectiveMood = baseMood + no modifiers = 0.20
-Above slidingEntry → no crime utility from mood.
+Drift at rate 0.02/tick:
 
-After 30 min:
-  Social stress modifier: -0.006/5min × 6 ticks = magnitude -0.036 (permanent, no decay)
-  effectiveMood = 0.20 - 0.036 = 0.164 → still above sliding
+After 240 min (4h, 48 ticks):
+  Social stress magnitude ≈ -0.78 × (1 - 0.98^48) = -0.78 × 0.62 = -0.484
+  Rival convos (3 stacked, decaying): ~-0.04
+  Positive convos: +0.02
+  effectiveMood = 0.20 - 0.484 - 0.04 + 0.02 = -0.304 → BELOW -0.14!
+  Mark deep in sliding zone at 4h ✓
 
-After 60 min (1 game hour):
-  Social stress: -0.072
-  1 rival conversation with Bess: magnitude -0.042, duration 360min, exponential
-  effectiveMood = 0.20 - 0.072 - 0.042 = 0.086 → above sliding
-
-After 180 min (3 game hours):
-  Social stress: -0.216
-  Rival convos accumulated (3 modifiers, stacking limit): ~-0.08 effective
-  Some positive convos: +0.02 effective (decayed fast)
-  effectiveMood = 0.20 - 0.216 - 0.08 + 0.02 = -0.076 → still above -0.14
-
-After 300 min (5 game hours):
-  Social stress: -0.360
-  Rival modifiers: ~-0.06 effective (older ones decaying)
-  Positive: +0.01 effective
-  effectiveMood = 0.20 - 0.360 - 0.06 + 0.01 = -0.210 → BELOW -0.14!
-  Mark in sliding zone. Crime utility rising.
-
-After 420 min (7 game hours):
-  Social stress: -0.504 → clamped by maxRate sum: ~-0.43
-  effectiveMood ≈ -0.30 → deep in sliding zone
-  Crime likely within next 1-2 hours → total ~8-9 game hours ✓
+After 480 min (8h, 96 ticks):
+  Social stress ≈ -0.78 × 0.86 = -0.671
+  effectiveMood ≈ 0.20 - 0.671 - 0.03 + 0.01 = -0.491
+  Deep in desperation zone. Crime very likely. ✓
 ```
 
 ### Aldric (H=0.9, N=0.4, E=0.5, mostly positive rels)
@@ -233,25 +224,25 @@ After 420 min (7 game hours):
 baseMood = 0.3 - 0.16 + 0.10 = 0.24
 slidingEntry = -0.28
 
-Social stress ≈ 0 (no negative relationships)
-Positive conversation modifiers: ~+0.01-0.02 effective
+Social stress target = 0 (no negative rels, buffer covers)
+  → modifier stays at 0
 effectiveMood stays ~0.24-0.26
 Never approaches -0.28 → no crime ✓
 ```
 
-### Mild seed Mark (N=0.31, Bess sent=-0.39)
+### Mild seed Mark (N=0.31, H=0.45, Bess sent=-0.39)
 
 ```
-baseMood = 0.3 - 0.124 + 0.14 = 0.316 (higher baseline)
-slidingEntry = -0.14 (same — depends only on H)
+baseMood = 0.3 - 0.124 + 0.14 = 0.316
+slidingEntry = -0.30 + (1-0.45)×0.20 = -0.19
 
-Social stress rate: much lower (weak rels + low personalityScale)
-~-0.0012/5min → -0.144 over 10h
-effectiveMood after 10h ≈ 0.316 - 0.144 - 0.03 + 0.02 = 0.162
-Still above -0.14 → no crime on mild seed
+Social stress target = -(0.39+0.03+0.04+0.02) × (0.31×1.5+0.53×0.5+0.55×0.3) × 0.5
+                     = -0.48 × 0.895 × 0.5 = -0.215
 
-But H might also be randomized. If H=0.15: slidingEntry = -0.13
-If H=0.45: slidingEntry = -0.19
+After 8h (96 ticks):
+  Social stress ≈ -0.215 × 0.86 = -0.185
+  effectiveMood ≈ 0.316 - 0.185 - 0.02 + 0.01 = 0.121
+  Still above -0.19 → no crime on mild seed → BY DESIGN
 ```
 
 **Insight:** On truly mild seeds (low N, high baseMood, weak relationships), Mark may not reach crime. This is BY DESIGN — "each restart shuffles the deck." The randomization system already has `crime-capable` validation that ensures at least one NPC has the potential for crime.
@@ -264,10 +255,10 @@ All constants in `WorldConfig.moodSystem`:
 
 ```typescript
 moodSystem?: {
-  /** Social stress base rate per 5min per unit of stress×personality (default: 0.006) */
+  /** Social stress target weight: target = -stress × personality × this (default: 0.5) */
   socialStressRate?: number;
-  /** Max social stress magnitude per tick (default: 0.006) */
-  socialStressMax?: number;
+  /** Drift rate per 5min toward target (default: 0.02 → 63% in 4h, 87% in 8h) */
+  socialStressDrift?: number;
   /** Positive relationship buffer factor (default: 0.5) */
   socialStressBuffer?: number;
   /** Max modifiers per category (default: 3) */

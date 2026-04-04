@@ -221,6 +221,15 @@ export interface WorldConfig {
     socialStressBuffer?: number;
     /** Max modifiers per stacking category (default: 3) */
     maxPerCategory?: number;
+    /** Modifier duration defaults (game minutes) */
+    durations?: {
+      conversationNeg?: number;   // rival/negative conversation (default: 360 = 6h)
+      conversationPos?: number;   // friend/positive conversation (default: 120 = 2h)
+      bystander?: number;         // bystander overhear (default: 60 = 1h)
+      event?: number;             // traumatic event (default: 1440 = 24h)
+      pressure?: number;          // IL pressure (default: 240 = 4h)
+      routine?: number;           // goal completion (default: 180 = 3h)
+    };
     /** Game minutes without interaction before loneliness kicks in (default: 30) */
     lonelinessThreshold?: number;
     /** Loneliness rate per 5min (default: 0.001), scaled by E (default: 0.001) */

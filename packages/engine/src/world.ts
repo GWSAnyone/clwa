@@ -846,8 +846,10 @@ export class World {
     // Apply mood via modifiers (SPEC-mood-modifiers)
     if (Math.abs(moodDelta) > 0.005) {
       const isNeg = moodDelta < 0;
-      const participantDur = isNeg ? 360 : 120; // rivals 6h exponential, friends 2h linear
+      const dur = this.config.moodSystem?.durations;
+      const participantDur = isNeg ? (dur?.conversationNeg ?? 360) : (dur?.conversationPos ?? 120);
       const participantDecay = isNeg ? 'exponential' as const : 'linear' as const;
+      const bystanderDur = dur?.bystander ?? 60;
       const source = `conv_${initAgent.profile.name}_${respAgent.profile.name}`.slice(0, 40);
 
       // Participants get full modifier
@@ -858,7 +860,7 @@ export class World {
       // Bystanders get half magnitude, short duration
       for (const id of bystanderIds) {
         this.addModifier(id, { source, category: 'conversation', magnitude: moodDelta * 0.5,
-          remaining: 60, duration: 60, decay: 'linear' });
+          remaining: bystanderDur, duration: bystanderDur, decay: 'linear' });
       }
       console.log(`  [Mood] Conversation modifier: ${moodDelta > 0 ? '+' : ''}${moodDelta.toFixed(3)} (tone: ${topic.tone}, dur: ${participantDur}min)`);
     }
