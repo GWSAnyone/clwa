@@ -477,9 +477,15 @@ export class World {
       const oldMood = agent.state.mood;
       const mods = agent.state.moodModifiers;
 
-      // 1. Tick modifiers: decrement remaining, remove expired
+      // 1. Tick modifiers: decrement remaining, remove expired/invalid
       for (let i = mods.length - 1; i >= 0; i--) {
         const m = mods[i];
+        // NaN guard: corrupted modifiers poison effectiveMood forever if not removed
+        if (!Number.isFinite(m.magnitude) || !Number.isFinite(m.remaining)) {
+          console.warn(`  [Mood] Removing NaN modifier for ${agent.profile.name}: ${m.source}`);
+          mods.splice(i, 1);
+          continue;
+        }
         if (m.duration > 0) { // non-permanent
           m.remaining -= 5;
           if (m.remaining <= 0) { mods.splice(i, 1); }
@@ -556,6 +562,11 @@ export class World {
   addModifier(npcId: string, mod: Omit<import('./world-types').MoodModifier, 'id'>): void {
     const agent = this.agents.get(npcId);
     if (!agent) return;
+    // Input validation: reject NaN/Infinity modifiers from buggy callers or corrupted data
+    if (!Number.isFinite(mod.magnitude) || !Number.isFinite(mod.remaining)) {
+      console.warn(`[Mood] Rejected invalid modifier for ${npcId}: ${mod.source} mag=${mod.magnitude} rem=${mod.remaining}`);
+      return;
+    }
     if (!agent.state.moodModifiers) agent.state.moodModifiers = [];
 
     const maxPerCat = this.config.moodSystem?.maxPerCategory ?? 3;
@@ -1721,7 +1732,8 @@ export class World {
       agent.state.location = saved.location;
       agent.state.mood = saved.mood;
       agent.state.baseMood = (saved as any).baseMood ?? (0.3 - agent.profile.bigFive.neuroticism * 0.4 + agent.profile.bigFive.extraversion * 0.2);
-      agent.state.moodModifiers = (saved as any).moodModifiers ?? [];
+      agent.state.moodModifiers = ((saved as any).moodModifiers ?? [])
+        .filter((m: any) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
       agent.state.currentDay = saved.currentDay;
       agent.state.knownFacts = saved.knownFacts;
 
