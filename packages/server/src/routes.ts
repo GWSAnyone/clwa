@@ -703,10 +703,18 @@ export async function handleRequest(
         }
       } catch {}
 
+      // Derived mood thresholds
+      const H = agent.profile.bigFive.honesty;
+      const slidingEntry = -(0.30 - (1 - H) * 0.20); // negative mood where sliding zone starts
+      const socialStressMod = (agent.state.moodModifiers ?? []).find(m => m.category === 'social_stress');
+
       return {
         id, name: agent.profile.name,
         mood: currentMood, baseMood: agent.state.baseMood, startMood,
         moodDelta: startMood != null ? currentMood - startMood : null,
+        slidingEntry, // mood threshold where crime utility starts rising
+        inSlidingZone: currentMood < slidingEntry,
+        socialStress: socialStressMod ? +socialStressMod.magnitude.toFixed(4) : 0,
         modifiers: (agent.state.moodModifiers ?? []).map(m => ({
           source: m.source, category: m.category, magnitude: +m.magnitude.toFixed(4),
           remaining: m.remaining, duration: m.duration, decay: m.decay,
