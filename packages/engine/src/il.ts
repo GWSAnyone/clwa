@@ -844,7 +844,7 @@ export async function applyDialogueMeaning(
           }
 
           // Mechanical effects based on evidence quality
-          if (acc.combinedQuality === 'strong' && npc.profile.investigator && ctx.goalCreator) {
+          if (acc.combinedQuality === 'strong' && (npc.profile.investigator || npc.profile.canSentence) && ctx.goalCreator) {
             const created = ctx.goalCreator(npc.profile.id, 'arrest', suspectAgent.profile.name);
             if (created) {
               ctx.effects.push({ type: 'goal_created', action: 'arrest', affordanceId: 'arrest', target: suspectAgent.profile.name });
@@ -865,7 +865,12 @@ export async function applyDialogueMeaning(
             ctx.effects.push({ type: 'goal_rejected', action: 'accuse', reason: 'insufficient_evidence' });
           }
 
-          console.log(`  [IL] Accusation: ${suspectAgent.profile.name} — journal=${acc.journalEvidence.totalScore.toFixed(2)} npc=${acc.npcMaxConfidence.toFixed(2)} trust=${playerTrust.toFixed(2)} → combined=${acc.combinedScore.toFixed(2)} (${acc.combinedQuality})`);
+          // Accused NPC reacts to accusation — hostile consequences (Trigger 3)
+          suspectAgent.state.relationships?.adjustSentiment(playerId, -0.3);
+          suspectAgent.state.relationships?.adjustTrust(playerId, -0.3);
+          ctx.effects.push({ type: 'relationship_change', field: 'sentiment', delta: -0.3 });
+
+          console.log(`  [IL] Accusation: ${suspectAgent.profile.name} — journal=${acc.journalEvidence.totalScore.toFixed(2)} npc=${acc.npcMaxConfidence.toFixed(2)} trust=${playerTrust.toFixed(2)} → combined=${acc.combinedScore.toFixed(2)} (${acc.combinedQuality}). Accused hostile: sent-0.3, trust-0.3`);
         }
       }
     }

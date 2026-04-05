@@ -35,7 +35,6 @@ interface MoodModifier {
   remaining: number;       // game minutes left (0 = permanent until removed)
   duration: number;        // original duration (for decay calculation)
   decay: 'exponential' | 'linear' | 'none';
-  negative: boolean;       // cached: magnitude < 0
 }
 ```
 
@@ -58,15 +57,15 @@ if decay === 'none':
   effectiveMag = magnitude
 ```
 
-**Stacking:** Max 3 modifiers per category. If a 4th arrives, weakest (by current effectiveMag) is removed. This prevents 20 micro-conversations from stacking to a huge mood shift.
+**Stacking:** Max 3 non-permanent modifiers per category. If a 4th arrives, weakest (by current effectiveMag) is removed. Permanent modifiers (duration=0, like social_stress/loneliness) are excluded from stacking count — they're managed by _tickMoodSystem directly.
 
 **Asymmetry — built into modifier definitions, not global multiplier:**
 
 | Source | Magnitude | Duration | Decay | Category |
 |--------|-----------|----------|-------|----------|
 | Social stress (recalculated) | varies | permanent | none | social_stress |
-| Conversation with rival | sent × 0.06 | 360 min (6h) | exponential | conversation |
-| Conversation with friend | sent × 0.03 | 120 min (2h) | linear | conversation |
+| Conversation with rival | sent × rivalMoodScale(0.04) | 360 min (6h) | exponential | conversation |
+| Conversation with friend | sent × friendMoodScale(0.02) | 120 min (2h) | linear | conversation |
 | Conversation bystander | moodValence × 0.5 | 60 min (1h) | linear | conversation |
 | Witness traumatic event | -0.20 to -0.30 | 1440 min (24h) | exponential | event |
 | Goal completion (duty) | +0.05 to +0.10 | 180 min (3h) | linear | routine |
@@ -265,11 +264,16 @@ moodSystem?: {
   maxPerCategory?: number;
   /** Modifier duration defaults (game minutes) — overridable per modifier */
   durations?: {
-    conversation?: number;         // default: 120 (positive), 360 (negative)
+    conversationNeg?: number;      // default: 360 (6h, rival)
+    conversationPos?: number;      // default: 120 (2h, friend)
+    bystander?: number;            // default: 60 (1h)
     event?: number;                // default: 1440
     pressure?: number;             // default: 240
     routine?: number;              // default: 180
   };
+  /** Loneliness sub-mechanism */
+  lonelinessThreshold?: number;    // default: 30 (game min without interaction)
+  lonelinessRate?: number;         // default: 0.001
 };
 ```
 

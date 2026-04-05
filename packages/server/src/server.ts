@@ -104,7 +104,10 @@ export function startServer(
           }
 
           if (msg.type === 'chat_close') {
-            chatSessions.delete(msg.agentId);
+            // Keep accusation history across chat sessions (persistent within game run).
+            // Only reset messageCount — accusationHistory and formalAccusations survive.
+            const session = chatSessions.get(msg.agentId);
+            if (session) session.messageCount = 0;
             return;
           }
 
