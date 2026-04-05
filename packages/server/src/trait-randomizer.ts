@@ -108,6 +108,7 @@ function validatePopulation(profiles: AgentProfile[]): void {
     const sorted = [...npcs].sort((a, b) => a.bigFive.honesty - b.bigFive.honesty);
     for (let i = 0; i < Math.min(2, sorted.length); i++) {
       if (sorted[i].bigFive.honesty >= 0.5) {
+        console.warn(`  [Randomization] CLAMPED ${sorted[i].name} H: ${sorted[i].bigFive.honesty.toFixed(2)} → 0.45 (constraint: crime-capable)`);
         sorted[i].bigFive.honesty = 0.45;
       }
     }
@@ -119,6 +120,7 @@ function validatePopulation(profiles: AgentProfile[]): void {
     const sorted = [...npcs].sort((a, b) => b.bigFive.extraversion - a.bigFive.extraversion);
     for (let i = 0; i < Math.min(2, sorted.length); i++) {
       if (sorted[i].bigFive.extraversion <= 0.5) {
+        console.warn(`  [Randomization] CLAMPED ${sorted[i].name} E: ${sorted[i].bigFive.extraversion.toFixed(2)} → 0.55 (constraint: social)`);
         sorted[i].bigFive.extraversion = 0.55;
       }
     }
@@ -130,6 +132,7 @@ function validatePopulation(profiles: AgentProfile[]): void {
     const sorted = [...npcs].sort((a, b) => b.bigFive.honesty - a.bigFive.honesty);
     for (let i = 0; i < Math.min(2, sorted.length); i++) {
       if (sorted[i].bigFive.honesty <= 0.6) {
+        console.warn(`  [Randomization] CLAMPED ${sorted[i].name} H: ${sorted[i].bigFive.honesty.toFixed(2)} → 0.65 (constraint: honest-resister)`);
         sorted[i].bigFive.honesty = 0.65;
       }
     }

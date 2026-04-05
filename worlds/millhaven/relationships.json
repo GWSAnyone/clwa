@@ -45,7 +45,7 @@
     "type": "acquaintance",
     "note": "she knows too much about herbs",
     "sentiment": -0.7,
-    "sentimentRange": [-0.9, -0.3],
+    "sentimentRange": [-0.9, -0.45],
     "trust": 0.0,
     "trustRange": [0.0, 0.15]
   },
