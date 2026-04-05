@@ -787,6 +787,17 @@ export async function applyDialogueMeaning(
       if (suspectClaim?.subject) {
         const suspectAgent = findAgentByName(suspectClaim.subject, ctx.agents);
         if (suspectAgent) {
+          // Guards: can't accuse dead NPCs, yourself, or the authority you're talking to
+          if (!suspectAgent.state.alive) {
+            sections.push(`${suspectAgent.profile.name} is dead. This accusation makes no sense.`);
+          } else if (suspectAgent.profile.isPlayer) {
+            sections.push(`You cannot accuse yourself.`);
+          } else if (suspectAgent.profile.id === npc.profile.id) {
+            sections.push(`You are accusing ME? That is absurd. I am the law here.`);
+            npc.state.relationships?.adjustSentiment(playerId, -0.2);
+            npc.state.relationships?.adjustTrust(playerId, -0.15);
+            ctx.effects.push({ type: 'relationship_change', field: 'sentiment', delta: -0.2 });
+          } else {
           const playerTrust = npc.state.relationships?.getRelationship(playerId)?.trust ?? 0;
           const acc = buildAccusationContext(
             suspectAgent.profile.id, suspectClaim.eventType ?? '', npc,
@@ -871,6 +882,7 @@ export async function applyDialogueMeaning(
           ctx.effects.push({ type: 'relationship_change', field: 'sentiment', delta: -0.3 });
 
           console.log(`  [IL] Accusation: ${suspectAgent.profile.name} — journal=${acc.journalEvidence.totalScore.toFixed(2)} npc=${acc.npcMaxConfidence.toFixed(2)} trust=${playerTrust.toFixed(2)} → combined=${acc.combinedScore.toFixed(2)} (${acc.combinedQuality}). Accused hostile: sent-0.3, trust-0.3`);
+          } // end else (valid target — not dead/player/self)
         }
       }
     }

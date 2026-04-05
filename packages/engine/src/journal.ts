@@ -201,6 +201,7 @@ export class PlayerJournal {
       evidence[cat] = (evidence[cat] ?? 0) + 1;
       totalScore += weight;
     }
+    totalScore = Math.min(totalScore, 1.0); // cap: volume of evidence doesn't exceed max quality
 
     const quality: CaseSummary['quality'] =
       totalScore >= 0.7 ? 'strong' :
