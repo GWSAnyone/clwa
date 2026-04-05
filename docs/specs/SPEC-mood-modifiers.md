@@ -1,6 +1,6 @@
 # SPEC-mood-modifiers: Structured Mood System
 
-> **Status:** Draft
+> **Status:** Implemented & Verified (2026-04-06). Audit: A-.
 > **Replaces:** Direct mood mutations, social stress hack, SPEC-mood-pressure (partial)
 > **Reference:** docs/MOOD_REVIEW.md (industry/academic analysis)
 > **Deferred to M3:** Dual-layer (surface/deep), criminal confidence

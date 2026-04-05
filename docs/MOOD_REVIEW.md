@@ -470,3 +470,18 @@ Same events:     slidingEntry = -0.28
 
 *Prepared for CLWA v0.11.0-dev. Targeted at GDD Detective Mode session pacing.*
 *Архитектурная совместимость: все предложения respecting engine/module boundary, registry pattern, WorldConfig centralization.*
+
+---
+
+## Implementation Status (2026-04-06)
+
+| # | Feature | Status | Notes |
+|---|---------|--------|-------|
+| 1 | Mood Modifiers with Duration | **DONE** | SPEC-mood-modifiers. Audit A-. |
+| 2 | Dual-Layer (surface + deep) | Deferred M3 | baseMood + modifier decay provides partial equivalent |
+| 3 | Personality-shifted zones | **DONE** | slidingEntry = -0.30 + (1-H)×0.20 |
+| 4 | Criminal Confidence | Deferred M3 | |
+| 5 | Arousal dimension | Deferred M5 | |
+| 6 | Emotional tagging | Deferred M5 | |
+
+**Verified:** Mark commits theft organically at ~12 game hours. Social stress drift + conversation modifiers + shifted zones = correct pacing. All other NPCs stable.
