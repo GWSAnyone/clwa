@@ -49,6 +49,15 @@ DELETE /api/debug/save/:name   — delete a save
 
 **Why clear Qdrant:** Vector memories are NOT saved in JSON. If we don't clear, NPCs retain memories from AFTER the checkpoint — "ghost memories from the future." Clearing + re-seeding from knownFacts gives clean baseline. Mechanical decisions (volition, goals, verdicts) use beliefs/relationships (saved), not vector memories.
 
+**List response** includes metadata per save:
+```json
+{
+  "saves": [
+    { "name": "pre-crime", "gameMinute": 720, "day": 1, "agents": 9, "size": "48KB", "created": "2026-04-06T22:30:00Z" }
+  ]
+}
+```
+
 **Limitation (documented):** Post-load NPC conversations may be slightly generic (no conversation history in vector memory). Mechanical behavior is fully accurate. For conversation quality testing, let NPCs talk organically for a few minutes post-load.
 
 ### Response
@@ -100,7 +109,9 @@ Body: {
 | CG cascade (beliefs, mood modifiers, witness memories) | Execute step handlers (no actual kill/steal) |
 | Reactive goal creation (investigate, report_crime) | Move NPCs physically |
 | EventStore recording | Trigger LLM decisions |
-| Mood modifiers via addMoodModifier | Change NPC alive/dead status |
+| Mood modifiers via addMoodModifier | Mutate physical state (alive, inventory, location) |
+
+**Important:** Event injection does NOT change physical state. If a CG rule depends on `target.alive === false` (e.g., body discovery), chain with Status Set: inject event first, then set status manually. The injection gives you information spreading; manual status gives you physical reality.
 
 ### Response
 
@@ -202,7 +213,7 @@ Advance mood modifier math without running full simulation. For calibrating mood
 
 ```
 POST /api/debug/advance-mood
-Body: { "minutes": 480 }
+Body: { "minutes": 480, "npcId"?: "mark" }
 ```
 
 ### Implementation
@@ -226,11 +237,48 @@ Response includes warning:
   "minutes": 480,
   "ticks": 96,
   "results": [
-    { "id": "mark", "name": "Mark", "before": -0.32, "after": -0.71, "delta": -0.39 },
-    { "id": "aldric", "name": "Father Aldric", "before": 0.17, "after": 0.18, "delta": 0.01 }
+    { "id": "mark", "name": "Mark", "before": -0.32, "after": -0.71, "delta": -0.39,
+      "curve": [-0.32, -0.34, -0.37, -0.40, "...96 entries..."] }
   ]
 }
 ```
+
+---
+
+## Tool 6: Tick Step
+
+Run exactly N full simulation ticks (with LLM). Unlike auto-tick, returns control after N ticks with a summary of what happened. Unlike mood advance, this is FULL simulation.
+
+### Endpoint
+
+```
+POST /api/debug/tick
+Body: { "count": 5 }
+```
+
+### Implementation
+
+1. Pause Master Clock (if running)
+2. Call `world.tick()` exactly N times, collecting results
+3. Resume Master Clock (if was running)
+4. Return summary: events, goal actions, mood changes, conversations
+
+### Response
+
+```json
+{
+  "ok": true,
+  "action": "tick",
+  "count": 5,
+  "elapsed": 3200,
+  "events": 2,
+  "goalActions": ["Mark: move_to silver-flagon-tavern", "Garrett: investigate"],
+  "moodChanges": [{ "id": "mark", "before": -0.45, "after": -0.48 }],
+  "conversations": 1
+}
+```
+
+**Note:** Each tick may involve LLM calls (~500ms-2s). 5 ticks ≈ 3-10 seconds. Not instant, but controlled.
 
 ---
 
@@ -298,6 +346,7 @@ curl localhost:3000/api/debug/snapshot | jq '.npcs[] | select(.id=="garrett") | 
 | Status set | AgentState.status | Status = registry string |
 | Force affordance | AFFORDANCE_REGISTRY, GoalManager | Affordance ID = registry string |
 | Mood advance | _tickMoodSystem internals | No |
+| Tick step | World.tick() | No |
 
 All tools use existing engine API. Server layer only adds HTTP exposure. New modules register new event types, statuses, affordances → tools work automatically.
 
@@ -307,7 +356,7 @@ All tools use existing engine API. Server layer only adds HTTP exposure. New mod
 
 | File | Change |
 |------|--------|
-| `server/src/routes.ts` | 5 new endpoint handlers |
+| `server/src/routes.ts` | 6 new endpoint handlers |
 | `engine/src/world.ts` | `advanceMoodMath(minutes)` method (extracted from _tickMoodSystem) |
 | `server/data/saves/` | Directory for named save files |
 
@@ -322,3 +371,17 @@ No engine interface changes. No module changes. Pure additive.
 3. Force affordance creates executable goal (NPC acts on next tick)
 4. Mood advance 480min produces same social stress drift as 480min of real auto-tick (±0.01 tolerance, excluding conversation effects)
 5. Full verdict test workflow (save → event → status → force → wait → check) completes in <2 min
+6. Tick step with count=1 returns within 5 seconds (LLM bound)
+
+---
+
+## Phase 2 (Deferred)
+
+Tools that are useful but not blocking current milestone:
+
+| Tool | Purpose | When |
+|------|---------|------|
+| **Relationship manipulation** | `POST /api/debug/relationship/:id/:targetId` — set trust/sentiment | When testing trust gates, IL confidence, cooperation |
+| **Belief injection** | `POST /api/debug/belief/:npcId` — addBelief with arbitrary params | When testing "what if Garrett already knows?" |
+| **State diff** | `GET /api/debug/diff?from=SAVE_A&to=SAVE_B` — what changed | When debugging emergent behavior |
+| **Qdrant snapshots** | Native Qdrant snapshot per save | Phase 4+ when vector count justifies complexity |
