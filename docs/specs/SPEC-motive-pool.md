@@ -1,6 +1,6 @@
 # SPEC-motive-pool: Motives as Beliefs
 
-> **Status:** Draft v2
+> **Status:** Draft v3
 > **Scope:** GDD M1 — "Motive network expansion" + "Conditional motives"
 > **Depends on:** SPEC-trait-randomization, belief system (BeliefManager)
 > **Engine changes:** EventTypeFlags.decayRate (1 field). Rest = module + server.
@@ -25,11 +25,13 @@ No new system. Extend beliefs. Register motive event types. Use existing beliefM
 
 ```
 eventType: 'PERSONAL_GRUDGE' | 'REVENGE_DESIRE' | 'THREAT_PERCEIVED'
-subject: target NPC name        // who the motive is directed at
-object: null                    // NOT narrative reason (that goes in memory)
+subject: null                   // not used (perpetrator semantics don't apply)
+object: target NPC name         // who the motive is directed at (dedup key!)
 confidence: 0.0–1.0             // strength of motive
 source: 'personal_motive'       // new source type, transfer weight = 0
 ```
+
+**Why object, not subject:** Belief dedup key = `(eventType, object, source)`. Using `object = targetName` allows multiple motives of the same type toward different NPCs. If object were null, only ONE PERSONAL_GRUDGE could exist per NPC — adding a second would overwrite the first.
 
 ### Narrative Reason
 
@@ -61,11 +63,22 @@ export interface EventTypeFlags {
 }
 ```
 
-`decayBeliefs()` reads `decayRate` per eventType. At rate 0.1: confidence 0.9 → 0.5 in ~23 game days. Session = ~5 game days → motive barely decays.
+`decayBeliefs()` combines source-based and eventType-based rates:
+```
+effectiveRate = sourceDecayRate × (eventTypeDecayRate ?? 1.0)
+```
+At eventType rate 0.1: effective decay = sourceRate × 0.1 (10x slower). Confidence 0.9 → 0.5 in ~23 game days. Session = ~5 game days → motive barely decays.
+
+Per-eventType differentiation possible:
+- `REVENGE_DESIRE`: decayRate 0.05 (semi-permanent — trauma persists)
+- `PERSONAL_GRUDGE`: decayRate 0.1 (slow fade without reinforcement)
+- `THREAT_PERCEIVED`: decayRate 0.2 (situational — fades faster if threat not reinforced)
 
 ---
 
 ## Motive Pool (Millhaven)
+
+9 motives across 6 NPCs. Probabilities balanced to produce 3+ different criminals in 10 seeds.
 
 ```json
 [
@@ -75,7 +88,7 @@ export interface EventTypeFlags {
     "type": "THREAT_PERCEIVED",
     "reason": "Old Bess figured out your exotic spices are common herbs. She hinted she might tell everyone.",
     "confidence": 0.9,
-    "probability": 0.75,
+    "probability": 0.6,
     "requires": { "fromHBelow": 0.45 }
   },
   {
@@ -84,7 +97,7 @@ export interface EventTypeFlags {
     "type": "REVENGE_DESIRE",
     "reason": "Your father bled out on the tavern floor while Ted watched and did nothing to help.",
     "confidence": 0.85,
-    "probability": 0.5,
+    "probability": 0.45,
     "requires": { "sentimentBelow": -0.15 }
   },
   {
@@ -102,7 +115,7 @@ export interface EventTypeFlags {
     "type": "THREAT_PERCEIVED",
     "reason": "Garrett has been asking too many questions about your past. He's getting close to things that should stay buried.",
     "confidence": 0.75,
-    "probability": 0.4,
+    "probability": 0.35,
     "requires": { "fromHBelow": 0.5, "sentimentBelow": -0.15 }
   },
   {
@@ -120,8 +133,35 @@ export interface EventTypeFlags {
     "type": "PERSONAL_GRUDGE",
     "reason": "Mark sells fake herbs as medicine. Someone could get hurt. Perhaps someone should ensure he stops.",
     "confidence": 0.65,
-    "probability": 0.2,
+    "probability": 0.25,
     "requires": { "fromHBelow": 0.6, "fromNAbove": 0.5, "sentimentBelow": -0.3 }
+  },
+  {
+    "id": "corrupt_suspicion",
+    "from": "garrett", "to": "elara",
+    "type": "PERSONAL_GRUDGE",
+    "reason": "Elara's stories always seem to know too much. She's hiding something, and you intend to find out — or make her pay.",
+    "confidence": 0.6,
+    "probability": 0.3,
+    "requires": { "fromHBelow": 0.6, "sentimentBelow": -0.1 }
+  },
+  {
+    "id": "moral_disgust",
+    "from": "aldric", "to": "ted",
+    "type": "PERSONAL_GRUDGE",
+    "reason": "Ted waters down ale and cheats honest folk. You've prayed for his soul, but patience has limits.",
+    "confidence": 0.5,
+    "probability": 0.2,
+    "requires": { "fromHBelow": 0.7, "fromNAbove": 0.4 }
+  },
+  {
+    "id": "political_threat",
+    "from": "ted", "to": "bess",
+    "type": "THREAT_PERCEIVED",
+    "reason": "Bess has been asking pointed questions about your finances. She knows about the debts, and she talks to everyone.",
+    "confidence": 0.65,
+    "probability": 0.3,
+    "requires": { "fromHBelow": 0.5, "sentimentBelow": -0.15 }
   }
 ]
 ```
@@ -135,8 +175,8 @@ for each motive in pool:
   if passes:
     agent.beliefs.addBelief({
       eventType: motive.type,
-      subject: targetName,
-      object: null,
+      subject: null,
+      object: targetName,  // dedup key includes object — allows multiple motives per type
       confidence: motive.confidence,
       source: 'personal_motive',
       location: agent.location,
@@ -210,7 +250,7 @@ function findMotiveTarget(npcId, agent, ctx): AffordanceTarget | null {
   for (const b of agent.state.beliefs.getAllBeliefs()) {
     if (!isEventCategory(b.eventType, 'motive')) continue;
     if (b.confidence < 0.3) continue;
-    const target = findAgentByNameOrId(b.subject, ctx.agents);
+    const target = findAgentByNameOrId(b.object, ctx.agents); // object = target name (dedup-safe)
     if (!target || target.id === npcId) continue;
     if (!best || b.confidence > best.conf) {
       best = { id: target.id, name: target.name, conf: b.confidence };
@@ -268,3 +308,16 @@ Combines with memory recall (narrative reason stored as observation).
 4. Motive confidence barely decays over 5 game days (decayRate 0.1)
 5. Motive beliefs NOT transferred through gossip (source weight 0)
 6. Same seed always produces same motive assignment
+7. NPC can have 2 motives of same type toward different targets (dedup by object)
+
+---
+
+## Deferred (not blockers for M1)
+
+| Feature | When | Notes |
+|---------|------|-------|
+| **Motive resolution** | M3 | Target dies/exiled → cleanup motive beliefs. Handler on NPC_KILLED/NPC_SENTENCED |
+| **Positive motives** | M3 | PROTECT, LOYALTY event types → defensive affordances (warn, shield) |
+| **Escalation** | M3 | PERSONAL_GRUDGE + provocative event → auto-upgrade to REVENGE_DESIRE |
+| **Enneagram integration** | M3 | Stress type modulates motive confidence (Type 8 stress → withdrawal → -conf) |
+| **Social awareness** | M4 | "I know X hates Y" — separate from personal motives. Different transfer mechanism |
