@@ -1,40 +1,69 @@
-# SPEC-motive-pool: Randomized Motive Assignment
+# SPEC-motive-pool: Motives as Beliefs
 
-> **Status:** Draft v1
+> **Status:** Draft v2
 > **Scope:** GDD M1 — "Motive network expansion" + "Conditional motives"
-> **Depends on:** SPEC-trait-randomization (traits + relationships already randomized)
-> **Changes:** server only. Zero engine, zero module changes.
+> **Depends on:** SPEC-trait-randomization, belief system (BeliefManager)
+> **Engine changes:** EventTypeFlags.decayRate (1 field). Rest = module + server.
 
 ---
 
 ## Problem
 
-Mark always hates Bess. Hilda always hates Ted. Every seed produces the same potential criminals. GDD promises "each restart shuffles the deck" — but only traits shuffle, motives are fixed.
+`profile.motive` is a string in JSON. It decorates LLM prompts but has zero mechanical effect. Kill uses `crime_belief` target finder (not motive). Steal uses `targetHasShop`. Blackmail uses `secret_belief`. The motive field is narrative decoration, not a system.
 
-Hilda has a motive (father's death in Ted's tavern) but her numbers never reach crime zone. Ted and Elara are crime-capable by H range but have no motives. Result: Mark commits crime 100% of runs.
+Meanwhile, the belief system (BeliefManager) already does everything motives need: confidence, decay, source tracking, transfer, event categories, beliefModifiers on affordances. Creating a parallel motive system = unnecessary entity.
 
-## Solution: Motive Pool
+## Solution: Motives = Beliefs with category 'motive'
 
-Define a pool of possible motives in world data. At randomization time, evaluate conditions against randomized traits/relationships. Roll seeded dice. Different seed = different NPCs get motives = different criminals.
+No new system. Extend beliefs. Register motive event types. Use existing beliefModifiers for mechanical crime scoring. Motive beliefs emerge from events and relationships during gameplay.
 
 ---
 
-## Motive Definition
+## Architecture
+
+### Motive Belief Structure
+
+```
+eventType: 'PERSONAL_GRUDGE' | 'REVENGE_DESIRE' | 'THREAT_PERCEIVED'
+subject: target NPC name        // who the motive is directed at
+object: null                    // NOT narrative reason (that goes in memory)
+confidence: 0.0–1.0             // strength of motive
+source: 'personal_motive'       // new source type, transfer weight = 0
+```
+
+### Narrative Reason
+
+Separate from belief. Stored as agent memory (observe):
+```
+agent.observe("Bess knows my spices are fake. She could ruin everything.", 8)
+```
+Belief = mechanical effect. Memory = LLM prompt context. Different systems, different purposes.
+
+### Registration (crime-justice module)
 
 ```typescript
-interface MotiveDefinition {
-  id: string;                    // unique identifier
-  from: string;                  // NPC id (or "any" for generic)
-  to: string;                    // target NPC id (or "any_has_shop", etc.)
-  reason: string;                // narrative text for LLM prompts
-  probability: number;           // 0-1, chance of activation after conditions pass
-  requires?: {
-    fromHBelow?: number;         // from NPC honesty must be below this
-    fromNAbove?: number;         // from NPC neuroticism must be above this
-    sentimentBelow?: number;     // from→to sentiment must be below this
-  };
+registerEventCategory('motive', ['PERSONAL_GRUDGE', 'REVENGE_DESIRE', 'THREAT_PERCEIVED']);
+registerSourceTransferWeights({ personal_motive: 0 }); // grudges don't gossip
+registerEventTypeFlagsBatch(['PERSONAL_GRUDGE', 'REVENGE_DESIRE', 'THREAT_PERCEIVED'], {
+  decayRate: 0.1,  // 10x slower than facts — grudges persist
+});
+```
+
+### Engine Addition: decayRate on EventTypeFlags
+
+```typescript
+// EventTypeFlags (event-registry.ts):
+export interface EventTypeFlags {
+  transferable?: boolean;
+  informationOnly?: boolean;
+  subjectReacts?: boolean;
+  decayRate?: number;        // NEW: multiplier for belief decay. Default 1.0. Motives: 0.1.
 }
 ```
+
+`decayBeliefs()` reads `decayRate` per eventType. At rate 0.1: confidence 0.9 → 0.5 in ~23 game days. Session = ~5 game days → motive barely decays.
+
+---
 
 ## Motive Pool (Millhaven)
 
@@ -43,158 +72,175 @@ interface MotiveDefinition {
   {
     "id": "secret_exposed",
     "from": "mark", "to": "bess",
+    "type": "THREAT_PERCEIVED",
     "reason": "Old Bess figured out your exotic spices are common herbs. She hinted she might tell everyone.",
+    "confidence": 0.9,
     "probability": 0.75,
     "requires": { "fromHBelow": 0.45 }
   },
   {
     "id": "fathers_death",
     "from": "hilda", "to": "ted",
+    "type": "REVENGE_DESIRE",
     "reason": "Your father bled out on the tavern floor while Ted watched and did nothing to help.",
+    "confidence": 0.85,
     "probability": 0.5,
     "requires": { "sentimentBelow": -0.15 }
   },
   {
     "id": "gambling_debt",
     "from": "ted", "to": "mark",
-    "reason": "Mark holds your gambling debts over your head. Every day the interest grows. One night you could settle this permanently.",
+    "type": "PERSONAL_GRUDGE",
+    "reason": "Mark holds your gambling debts over your head. Every day the interest grows.",
+    "confidence": 0.7,
     "probability": 0.35,
     "requires": { "fromHBelow": 0.5, "sentimentBelow": -0.2 }
   },
   {
     "id": "too_many_questions",
     "from": "elara", "to": "garrett",
+    "type": "THREAT_PERCEIVED",
     "reason": "Garrett has been asking too many questions about your past. He's getting close to things that should stay buried.",
+    "confidence": 0.75,
     "probability": 0.4,
     "requires": { "fromHBelow": 0.5, "sentimentBelow": -0.15 }
   },
   {
     "id": "trade_rivalry",
     "from": "mark", "to": "hilda",
+    "type": "PERSONAL_GRUDGE",
     "reason": "Hilda overcharges you for metalwork and everyone knows it. She's bleeding you dry on purpose.",
+    "confidence": 0.6,
     "probability": 0.3,
     "requires": { "fromHBelow": 0.4, "sentimentBelow": -0.15 }
   },
   {
     "id": "herbal_knowledge",
     "from": "bess", "to": "mark",
-    "reason": "Mark has been selling fake herbs as medicine. Someone could get hurt. Perhaps someone should ensure he stops — permanently.",
+    "type": "PERSONAL_GRUDGE",
+    "reason": "Mark sells fake herbs as medicine. Someone could get hurt. Perhaps someone should ensure he stops.",
+    "confidence": 0.65,
     "probability": 0.2,
     "requires": { "fromHBelow": 0.6, "fromNAbove": 0.5, "sentimentBelow": -0.3 }
   }
 ]
 ```
 
-### Pool Properties
-
-- **6 motives** for 8 NPCs (not everyone has a potential motive)
-- **Mark appears in 2** (as aggressor): secret_exposed + trade_rivalry. Can get 0, 1, or 2 motives per seed.
-- **Hilda, Ted, Elara, Bess** each have 1 potential motive — activates only on right seed
-- **Aldric, Garrett, Theron** — no motives in pool (authority/peaceful roles). They never commit crime.
-- **Probabilities** calibrated: Mark's primary motive 0.75 (usually active), others 0.2-0.5 (less frequent)
-- **Conditions** gate on randomized traits + relationships — motive only fires if NPC is "that kind of person" on this seed
-
----
-
-## Assignment Algorithm
-
-In `trait-randomizer.ts`, after traits + moods + relationships randomized:
+### Assignment at Game Start
 
 ```
-function assignMotives(pool, profiles, relationships, seed):
-  for each motive in pool:
-    from = findProfile(motive.from)
-    to = findProfile(motive.to)
-    if not from or not to: skip
-
-    // Check trait conditions against RANDOMIZED values
-    if motive.requires.fromHBelow and from.bigFive.honesty >= fromHBelow: skip
-    if motive.requires.fromNAbove and from.bigFive.neuroticism < fromNAbove: skip
-
-    // Check relationship conditions against RANDOMIZED sentiment
-    sentiment = getRandomizedSentiment(from.id, to.id, relationships)
-    if motive.requires.sentimentBelow and sentiment >= sentimentBelow: skip
-
-    // Seeded probability roll
-    rng = mulberry32(seed + hashString('motive_' + motive.id))
-    if rng() > motive.probability: skip
-
-    // Assign motive to NPC
-    from.motive = { targetId: to.id, reason: motive.reason }
+for each motive in pool:
+  check conditions against randomized traits/relationships
+  roll seeded dice (per-motive sub-seed)
+  if passes:
+    agent.beliefs.addBelief({
+      eventType: motive.type,
+      subject: targetName,
+      object: null,
+      confidence: motive.confidence,
+      source: 'personal_motive',
+      location: agent.location,
+      gameDay: 1,
+    })
+    agent.observe(motive.reason, 8)  // narrative in memory, not belief
 ```
 
-**Per-motive sub-seed** — same pattern as per-NPC trait randomization. Adding/removing motives from pool doesn't change dice rolls for existing ones.
+Side effects: if motive assigned but sentiment too weak for social stress, push sentiment floor to -0.35.
 
 ---
 
-## Side Effects of Motive Assignment
+## Emergent Motives (During Gameplay)
 
-When NPC gets a motive, the relationship pressure should match:
+### Event-driven
 
-1. **Sentiment floor**: if motive assigned but from→to sentiment is weak (> -0.3), push sentiment down to at least -0.35. Criminal needs negative relationship for social stress to drive mood down.
+| Trigger | Motive Created | On Who | Confidence |
+|---------|---------------|--------|------------|
+| THEFT_DISCOVERED (victim) | REVENGE_DESIRE | victim | 0.8 |
+| NPC_KILLED (friend of victim) | REVENGE_DESIRE | friend (sentiment > 0.3) | sentiment × 0.8 |
+| Blackmail step (when implemented) | THREAT_PERCEIVED | blackmail target | 0.7 |
+| NPC_ARRESTED (if wrongfully?) | PERSONAL_GRUDGE | arrested NPC | 0.6 |
 
-2. **Initial mood push**: if motive assigned but starting mood is too high (> baseMood - 0.1), add extra negative initial_conditions modifier. Criminal needs to start trending down.
+Implementation: in event handlers (crime-justice module), alongside existing mood/belief effects.
 
-These ensure that HAVING a motive produces enough mechanical pressure for crime to be reachable — not guaranteed, but possible.
+### Relationship-driven
 
----
+In tick handler or conversation impact: if sentiment < -0.5 AND no existing motive belief against target → create PERSONAL_GRUDGE with confidence = |sentiment| × 0.7. Create once (hasMotiveBelief guard). Slow-burn grudge from repeated negative interactions.
 
-## What Motives Do (no changes)
+### Reinforcement
 
-Existing systems already use `motive`:
-- **Target finders**: `findMotiveTarget()` reads `agent.motive.targetId`
-- **Secret directives**: includes motive reason in LLM system prompt
-- **Instinct builder**: `{reason:...}` interpolation from motive
-- **Kill affordance**: `sentimentBelow: -0.4` → checks relationship, motive drives sentiment down
-
-Zero engine changes needed. Motive assignment = data preparation, same as trait randomization.
-
----
-
-## Calibration: What Changes Per Seed
-
-### Scenario examples with pool
-
-**Seed A** (H rolls low for Mark, Hilda gets moderate):
-- Mark: H=0.20, Bess sentiment=-0.75 → secret_exposed passes (H<0.45, prob 0.75, roll passes)
-- Hilda: H=0.55, Ted sentiment=-0.20 → fathers_death passes conditions (sent<-0.15) but roll fails (0.5, bad luck)
-- **Criminal: Mark only**
-
-**Seed B** (Mark H moderate, Hilda H low):
-- Mark: H=0.38, Bess sentiment=-0.50 → secret_exposed passes
-- Hilda: H=0.42, Ted sentiment=-0.45 → fathers_death passes (sent<-0.15, prob 0.5, roll passes)
-- **Criminals: Mark AND Hilda** → who strikes first depends on mood trajectory
-
-**Seed C** (Mark H too high, Ted gets desperate):
-- Mark: H=0.48 → secret_exposed FAILS (H not < 0.45)
-- Ted: H=0.38, Mark sentiment=-0.35 → gambling_debt passes (H<0.5, sent<-0.2, prob 0.35, roll passes)
-- **Criminal: Ted** → totally different story!
-
-**Seed D** (everyone moderate):
-- All motives fail conditions or probability → no motives assigned
-- Generic fallback: find NPC with lowest H + strongest negative relationship → auto-assign "deep grudge"
-- **Criminal: whoever drew worst personality cards**
+Conversation impact: if topic mentions NPC who is target of speaker's motive belief → confidence += 0.05 (capped at 1.0). Talking about/with your enemy reinforces your grudge.
 
 ---
 
-## Fallback: Generic Grudge
+## Crime Integration
 
-If zero narrative motives pass, assign a generic motive to the most crime-prone NPC:
+### beliefModifiers on Affordances
 
-```
-if no NPC has motive:
-  candidates = NPCs sorted by H ascending
-  for each candidate:
-    strongestEnemy = relationship with lowest sentiment
-    if strongestEnemy.sentiment < -0.2:
-      candidate.motive = {
-        targetId: strongestEnemy.id,
-        reason: "You cannot stand {name}. Something about them makes your blood boil."
-      }
-      break
+```typescript
+// kill (pre-meditated murder):
+beliefModifiers: [
+  { eventType: 'REVENGE_DESIRE', weight: 0.5 },
+  { eventType: 'PERSONAL_GRUDGE', weight: 0.4 },
+  { eventType: 'THREAT_PERCEIVED', weight: 0.3 },
+]
+
+// steal:
+beliefModifiers: [
+  { eventType: 'DEBT_PRESSURE', weight: 0.3 },
+  { eventType: 'PERSONAL_GRUDGE', weight: 0.15 },
+]
+
+// blackmail:
+beliefModifiers: [
+  { eventType: 'PERSONAL_SECRET', weight: 0.3 },
+  { eventType: 'THREAT_PERCEIVED', weight: 0.2 },
+]
 ```
 
-This ensures at least one potential criminal per run. Generic motive = less narrative richness, but crime still happens.
+Mark with THREAT_PERCEIVED (conf 0.9) about Bess → kill score += 0.9 × 0.3 = **+0.27**. Mechanical boost, not decoration.
+
+### Target Finders
+
+New: `'motive_target'` — finds NPC with highest confidence motive-category belief.
+
+```typescript
+function findMotiveTarget(npcId, agent, ctx): AffordanceTarget | null {
+  if (!agent.state.beliefs) return null;
+  let best: { id: string; name: string; conf: number } | null = null;
+  for (const b of agent.state.beliefs.getAllBeliefs()) {
+    if (!isEventCategory(b.eventType, 'motive')) continue;
+    if (b.confidence < 0.3) continue;
+    const target = findAgentByNameOrId(b.subject, ctx.agents);
+    if (!target || target.id === npcId) continue;
+    if (!best || b.confidence > best.conf) {
+      best = { id: target.id, name: target.name, conf: b.confidence };
+    }
+  }
+  if (!best) return null;
+  const targetAgent = ctx.agents.get(best.id)!;
+  return { targetId: best.id, targetName: best.name, targetLocation: targetAgent.state.location, extra: {} };
+}
+```
+
+Kill affordance: `targetFinder: 'motive_target'` (pre-meditated).
+Vigilante: keeps `targetFinder: 'crime_belief'` (reactive).
+
+### Secret Directives
+
+`buildSecretDirectives` reads motive beliefs instead of `profile.motive`:
+```
+const motiveBeliefs = agent.beliefs.filter(b => isEventCategory(b.eventType, 'motive'));
+```
+Combines with memory recall (narrative reason stored as observation).
+
+---
+
+## Migration
+
+1. `profile.motive` → deprecated. World-loader still reads it.
+2. At game start: if profile.motive exists AND no pool entry, convert to belief (backward compat).
+3. Pool entries override profile.motive (pool is authoritative).
+4. Eventually: remove motive field from NPC JSONs.
 
 ---
 
@@ -202,20 +248,23 @@ This ensures at least one potential criminal per run. Generic motive = less narr
 
 | File | Change |
 |------|--------|
-| `worlds/millhaven/motives.json` | New — motive pool (6 entries) |
-| `worlds/millhaven/npcs/*.json` | Remove hardcoded `motive` field (→ null, assigned at runtime) |
-| `server/src/trait-randomizer.ts` | `assignMotives()` function |
+| `engine/src/event-registry.ts` | Add `decayRate` to EventTypeFlags |
+| `engine/src/beliefs.ts` | `decayBeliefs` reads decayRate per eventType |
+| `modules/src/crime-justice/index.ts` | Register motive category, source, flags, beliefModifiers |
+| `modules/src/crime-justice/affordances.ts` | Add beliefModifiers for motive types, kill targetFinder → 'motive_target' |
+| `modules/src/crime-justice/target-finders.ts` | New findMotiveTarget |
+| `modules/src/crime-justice/event-handlers.ts` | Create REVENGE_DESIRE on victimization |
+| `server/src/trait-randomizer.ts` | assignMotives from pool → beliefs + memories |
 | `server/src/world-loader.ts` | Load motives.json |
-| `server/src/index.ts` | Call assignMotives after randomizeRelationships |
-
-No engine changes. No module changes. Pure server + data.
+| `worlds/millhaven/motives.json` | New — motive pool |
 
 ---
 
 ## Test Metric
 
 1. 10 seeds → at least 3 different primary criminals
-2. At least 1 seed where Mark is NOT the criminal
-3. At least 1 seed with 2 potential criminals (competition for who strikes first)
-4. Fallback produces a criminal when all narrative motives fail
-5. Same seed always produces same motive assignment (deterministic)
+2. Mark with THREAT_PERCEIVED belief → kill score measurably higher than without
+3. Hilda victimized by theft → REVENGE_DESIRE belief created → Hilda becomes potential criminal
+4. Motive confidence barely decays over 5 game days (decayRate 0.1)
+5. Motive beliefs NOT transferred through gossip (source weight 0)
+6. Same seed always produces same motive assignment
