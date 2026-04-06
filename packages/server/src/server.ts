@@ -16,6 +16,9 @@ const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'publi
 /** Per-chat transient sessions — tracks accusation repetition, multiple suspects */
 const chatSessions = new Map<string, ConversationSession>();
 
+/** Clear all chat sessions — call on new-game to prevent stale accusation history */
+export function clearChatSessions() { chatSessions.clear(); }
+
 export interface ServerConfig {
   port: number;
   hostname?: string;

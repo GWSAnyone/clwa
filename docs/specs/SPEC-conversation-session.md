@@ -2,7 +2,7 @@
 
 > Решает deferred задачи из SPEC-player-accusation (repetition tracking, multiple suspects).
 > Необходим для M3 multi-turn interrogations.
-> Статус: **спека**
+> Статус: **implemented** (v0.11.0-dev)
 
 ---
 
@@ -54,7 +54,7 @@ interface ConversationSession {
 }
 ```
 
-### Lifecycle
+### Lifecycle (as implemented)
 
 ```
 Player clicks NPC → WS 'chat' message → server checks:
@@ -67,10 +67,16 @@ Each WS 'chat' message:
 
 Player closes chat (Escape / click away):
   agent.state.inPlayerChat = false (existing finally block)
-  sessions.delete(npcId) → session destroyed
+  session.messageCount = 0 (reset counter, keep accusation history)
+
+New game (POST /api/new-game):
+  clearChatSessions() → all sessions destroyed
+
+WS disconnect:
+  chatSessions.clear() → all sessions destroyed
 ```
 
-**Не персистируется.** Session = transient, живёт пока чат открыт. При перезапуске сервера — все sessions пусты (roguelike, OK). При закрытии/открытии чата — новая session (NPC "новый разговор").
+**Persistent within game run.** Sessions survive chat close — accusationHistory and formalAccusations persist so NPCs remember prior accusations across conversations. Destroyed on new-game or WS disconnect. Not saved to disk (roguelike, OK).
 
 ### Storage: server-level Map
 
@@ -227,21 +233,24 @@ export type WSClientMessage =
 | Файл | Изменения |
 |------|-----------|
 | `packages/engine/src/il.ts` | ConversationSession interface, ILEffectContext.chatSession field, repetition + multiple suspect logic in accusation section |
-| `packages/server/src/server.ts` | chatSessions Map, create/reuse on 'chat', delete on 'chat_close', pass to effectCtx |
-| `packages/server/src/ws.ts` | WSClientMessage: add 'chat_close' type |
+| `packages/server/src/server.ts` | chatSessions Map, create/reuse on 'chat', reset messageCount on 'chat_close', clearChatSessions() export, pass to effectCtx |
+| `packages/server/src/index.ts` | clearChatSessions() call in newGame handler |
+| `packages/server/src/ws.ts` | WSClientMessage: 'chat_close' type |
 | `packages/server/public/game.js` | Send 'chat_close' WS message on Escape/close |
 
 ---
 
-## Edge Cases
+## Edge Cases (as implemented)
 
 | Ситуация | Поведение |
 |----------|----------|
 | Player opens chat, sends nothing, closes | No session created (created on first 'chat' message) |
-| Player opens chat with A, then opens with B | Session A destroyed on close, session B created |
-| Server restart mid-chat | Sessions lost (transient). Next message creates fresh session. OK for roguelike |
-| Player accuses Mark to Garrett, closes chat, reopens | New session. Garrett "forgets" the repetition context. But beliefs/trust persist. OK — it's a new conversation |
+| Player opens chat with A, then opens with B | Session A persists (messageCount reset), session B created |
+| Server restart mid-chat | Sessions lost. Next message creates fresh session. OK for roguelike |
+| Player accuses Mark to Garrett, closes chat, reopens | **Same session reused.** Garrett remembers prior accusations — repetition penalty applies if no new evidence |
 | Player accuses Mark to Garrett, then Mark to Theron | Different NPCs, different sessions. No cross-NPC tracking (by design) |
+| New game started | All sessions cleared via clearChatSessions(). Clean slate |
+| WS client disconnects | All sessions cleared (single-player assumption) |
 
 ---
 
@@ -251,17 +260,9 @@ export type WSClientMessage =
 |---------|-----------|
 | Bilateral | NPC-NPC conversations don't have sessions (single exchange). Player sessions are asymmetric but justified — player has multi-turn conversations, NPCs don't |
 | Engine purity | ConversationSession lives in engine (il.ts types). Session management in server. No module-specific content |
-| Structured data | accusationHistory uses journal entry counts (hash), not text comparison |
+| Structured data | accusationHistory uses journal entry counts (hash), not text comparison. Dedup via Set for unique suspects |
 | No artificial markers | Repetition detection is organic — NPC naturally responds "you already said this", not a UI error message |
-| Transient | Not persisted. Session = one conversation opening. Clean, no stale state |
-
----
-
-## Когда реализовать
-
-**Вместе с M2 UI фронтенд** — client needs to send 'chat_close' WS message. Backend + frontend change together.
-
-**Зависимость:** game.js chat close handler (UI task).
+| Game-run scoped | Sessions persist within a game run (survive chat close). Cleared on new-game and WS disconnect. Not saved to disk |
 
 ---
 
@@ -271,5 +272,6 @@ export type WSClientMessage =
 2. Player accuses Mark AGAIN in same chat, no new evidence → escalated prompt "already accused", trust -0.10
 3. Player finds new clue, accuses Mark again → journal hash changed → fresh accusation, no escalation
 4. Player accuses Mark, then Ted in same chat → prompt notes "previously accused Mark", additional trust -0.05
-5. Player closes chat, reopens → new session, no repetition memory (correct — new conversation)
+5. Player closes chat, reopens, accuses Mark again without new evidence → **repetition detected** (session persists across chat close)
 6. Player accuses Mark to Garrett, opens chat with Theron, accuses Mark → separate session, no cross-NPC tracking
+7. New game → accuse Mark → no repetition penalty (sessions cleared on new-game)

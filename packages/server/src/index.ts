@@ -10,7 +10,7 @@ import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/e
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
 import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from '@clwa/engine';
 import { broadcast } from './ws';
-import { startServer } from './server';
+import { startServer, clearChatSessions } from './server';
 import { loadWorld } from './world-loader';
 import { PositionManager } from './position-manager';
 import { randomizeTraits, logRandomization, randomizeMoods, logMoodRandomization, randomizeRelationships, logRelationshipRandomization, assignMotives } from './trait-randomizer';
@@ -484,6 +484,8 @@ async function main() {
       // Build new context
       console.log(`\n=== New Game (seed: ${newSeed}) ===`);
       const newCtx = await createGameContext(worldPath, newSeed, cgEngine, locationGraph);
+      // Clear stale chat sessions from previous game
+      clearChatSessions();
       // Broadcast BEFORE unlock
       broadcast({ type: 'new_game', data: { seed: newSeed } });
       // Atomic swap (newCtx does NOT contain resetting)
