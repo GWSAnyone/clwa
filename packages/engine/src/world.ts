@@ -955,8 +955,8 @@ export class World {
 
     // 4. Participant memories — 3rd person beliefs + topic tone
     const topicEventType = topic.beliefTransfer?.eventType;
-    const respBeliefs3p = respAgent.state.beliefs?.summarizeForMemory(respAgent.profile.name, 1, topicEventType) ?? '';
-    const initBeliefs3p = initAgent.state.beliefs?.summarizeForMemory(initAgent.profile.name, 1, topicEventType) ?? '';
+    const respBeliefs3p = respAgent.state.beliefs?.summarizeForMemory(respAgent.profile.name, 1, topicEventType, respAgent.nameResolver) ?? '';
+    const initBeliefs3p = initAgent.state.beliefs?.summarizeForMemory(initAgent.profile.name, 1, topicEventType, initAgent.nameResolver) ?? '';
     await initAgent.observe(
       buildMemoryText(respAgent.profile.name, topic.subject, topic.tone, respBeliefs3p, respAgent.state.mood),
       conversation.importance,

@@ -25,14 +25,14 @@ export function registerCrimeEventHandlers(): void {
     if (!killer || !killer.state.beliefs) return;
     // Only add if killer doesn't already have perpetrator belief (attack_npc step already added one)
     const existing = killer.state.beliefs.getAllBeliefs().find(
-      (b) => b.eventType === event.type && b.source === 'perpetrator' && b.object === (event.payload?.victimName as string),
+      (b) => b.eventType === event.type && b.source === 'perpetrator' && b.object === event.object,
     );
     if (existing) return;
     killer.state.beliefs.addBelief({
       id: crypto.randomUUID(),
       eventType: event.type,
-      subject: killer.profile.name,
-      object: (event.payload?.victimName as string) ?? null,
+      subject: event.subject,
+      object: event.object ?? null,
       location: event.location,
       confidence: 1.0,
       source: 'perpetrator',
@@ -118,8 +118,8 @@ export function registerCrimeEventHandlers(): void {
     criminal.state.beliefs?.addBelief({
       id: crypto.randomUUID(),
       eventType: 'WANTED_STATUS',
-      subject: criminal.profile.name,
-      object: criminal.profile.name,
+      subject: criminalId,
+      object: criminalId,
       location: criminal.state.location,
       confidence: 0.9,
       source: 'observation',
@@ -194,8 +194,8 @@ export function registerCrimeEventHandlers(): void {
       agent?.state.beliefs?.addBelief({
         id: crypto.randomUUID(),
         eventType: 'NPC_ARRESTED',
-        subject: (event.payload?.guardName as string) ?? null,
-        object: suspectName,
+        subject: event.subject ?? null,
+        object: event.object ?? suspectName,
         location: event.location,
         confidence: 0.8,
         source: npcId === event.subject ? 'observation' : 'rumor',
@@ -233,8 +233,8 @@ export function registerCrimeEventHandlers(): void {
       agent?.state.beliefs?.addBelief({
         id: crypto.randomUUID(),
         eventType: 'NPC_SENTENCED',
-        subject: (event.payload?.judgeName as string) ?? null,
-        object: suspectName ? `${suspectName} (${verdict})` : null,
+        subject: event.subject ?? null,
+        object: suspectId ?? null,
         location: event.location,
         confidence: 0.9,
         source: 'rumor',
@@ -249,13 +249,12 @@ export function registerCrimeEventHandlers(): void {
       const suspect = ctx.agents.get(suspectId);
       if (suspect && (verdict === 'exile' || verdict === 'imprisonment')) {
         // FULL resolution: zero transferable beliefs + deactivate crime scenes
-        // Collect victim names from crime scenes linked to this suspect
-        const victimNames = new Set<string>();
+        // Collect victim IDs from crime scenes linked to this suspect
+        const victimIds = new Set<string>();
         for (const [, scenes] of ctx.crimeScenes) {
           for (const scene of scenes) {
             if (scene.perpetratorId === suspectId && scene.victimId) {
-              const victim = ctx.agents.get(scene.victimId);
-              if (victim) victimNames.add(victim.profile.name);
+              victimIds.add(scene.victimId);
             }
           }
         }
@@ -264,8 +263,8 @@ export function registerCrimeEventHandlers(): void {
           if (!agent.state.beliefs) continue;
           for (const b of agent.state.beliefs.getAllBeliefs()) {
             if (!isTransferable(b.eventType)) continue;
-            const aboutSuspect = b.subject === suspect.profile.name || b.subject === suspectId;
-            const aboutVictim = b.object != null && victimNames.has(b.object);
+            const aboutSuspect = b.subject === suspectId;
+            const aboutVictim = b.object != null && victimIds.has(b.object);
             if (aboutSuspect || aboutVictim) {
               b.confidence = 0;
             }
@@ -292,7 +291,7 @@ export function registerCrimeEventHandlers(): void {
             if (!agent.state.beliefs) continue;
             for (const b of agent.state.beliefs.getAllBeliefs()) {
               if (!isTransferable(b.eventType)) continue;
-              if (b.subject === suspect2.profile.name || b.subject === suspectId) {
+              if (b.subject === suspectId) {
                 b.confidence = Math.max(0, b.confidence * 0.3); // reduce to 30%
               }
             }
@@ -336,8 +335,8 @@ export function registerCrimeEventHandlers(): void {
       agent?.state.beliefs?.addBelief({
         id: crypto.randomUUID(),
         eventType: 'NPC_FLED',
-        subject: fledName,
-        object: fledName,
+        subject: event.object ?? fledName,
+        object: event.object ?? fledName,
         location: event.location,
         confidence: 0.7,
         source: 'rumor',

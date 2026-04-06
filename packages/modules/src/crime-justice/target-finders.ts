@@ -5,6 +5,12 @@ import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, g
 
 // ─── Helpers ───
 
+/** Resolve NPC ID to display name via agents Map */
+function resolveName(id: string | null | undefined, agents: Map<string, Agent>): string {
+  if (!id) return 'someone';
+  return agents.get(id)?.profile.name ?? id;
+}
+
 /** Match belief subject/object against NPC (handles "Name the role" format from CE cascade) */
 function matchesNpc(name: string | null | undefined, agent: Agent): boolean {
   if (!name) return false;
@@ -95,7 +101,7 @@ function findCrimeBeliefTarget(npcId: string, agent: Agent, ctx: AffordanceConte
       if (belief.subject && matchesNpc(belief.subject, other)) {
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
-          extra: { beliefId: belief.id, eventType: belief.eventType, victimName: belief.object, reason: `${belief.eventType === 'NPC_KILLED' ? 'murder' : 'crime'} of ${belief.object ?? 'someone'}` },
+          extra: { beliefId: belief.id, eventType: belief.eventType, victimName: resolveName(belief.object, ctx.agents), reason: `${belief.eventType === 'NPC_KILLED' ? 'murder' : 'crime'} of ${resolveName(belief.object, ctx.agents)}` },
         };
       }
     }
@@ -118,7 +124,7 @@ function findBlackmailTarget(npcId: string, agent: Agent, ctx: AffordanceContext
           targetId: otherId,
           targetName: other.profile.name,
           targetLocation: other.state.location,
-          extra: { secretDetail: belief.object ?? 'has a secret', secretBelief: belief.id },
+          extra: { secretDetail: resolveName(belief.object, ctx.agents), secretBelief: belief.id },
         };
       }
     }
@@ -236,7 +242,7 @@ function findInterrogationTarget(npcId: string, agent: Agent, ctx: AffordanceCon
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
             crimeType: getEventLabel(belief.eventType) ?? 'crime',
-            victimName: belief.object ?? 'someone',
+            victimName: resolveName(belief.object, ctx.agents),
             crimeLocation: belief.location,
           },
         };
@@ -278,7 +284,7 @@ function findArrestTarget(npcId: string, agent: Agent, ctx: AffordanceContext, e
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
             crimeType: getEventLabel(belief.eventType) ?? 'crime',
-            victimName: belief.object ?? 'someone',
+            victimName: resolveName(belief.object, ctx.agents),
           },
         };
       }
@@ -358,9 +364,9 @@ function findInvestigateTarget(npcId: string, agent: Agent, ctx: AffordanceConte
     targetLocation: belief.location!,
     extra: {
       crimeType: getEventLabel(belief.eventType) ?? 'crime',
-      victimName: belief.object ?? 'someone',
+      victimName: resolveName(belief.object, ctx.agents),
       crimeLocation: belief.location!,
-      suspectName: belief.subject ?? 'an unknown suspect',
+      suspectName: resolveName(belief.subject, ctx.agents),
     },
   };
 }

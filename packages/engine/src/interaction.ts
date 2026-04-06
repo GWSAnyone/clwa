@@ -72,8 +72,8 @@ export function createInteractionRunner(
     const cleanPurpose = purpose.replace(/\[CRIME[^\]]*\]\s*/g, '');
 
     // Inject belief context — what each NPC actually KNOWS (prevents hallucination)
-    const initiatorBeliefs = initiator.state.beliefs?.summarizeForPrompt(3) ?? '';
-    const targetBeliefs = target.state.beliefs?.summarizeForPrompt(3) ?? '';
+    const initiatorBeliefs = initiator.state.beliefs?.summarizeForPrompt(3, initiator.nameResolver) ?? '';
+    const targetBeliefs = target.state.beliefs?.summarizeForPrompt(3, target.nameResolver) ?? '';
     const initiatorCtx = initiatorBeliefs ? `\n## What you know (facts, not speculation):\n${initiatorBeliefs}\nOnly reference these facts. Do not invent details.` : '';
     const targetCtx = targetBeliefs ? `\n## What you know (facts, not speculation):\n${targetBeliefs}\nOnly reference these facts. Do not invent details.` : '';
 
@@ -105,7 +105,7 @@ export function createInteractionRunner(
 
     // Initiator memory created by goals.ts (unified with post-hook outcome — avoids double entry)
     // Target memory: structured belief summary (no raw dialogue)
-    const initiatorBeliefs3p = initiator.state.beliefs?.summarizeForMemory(initiator.profile.name, 1) ?? '';
+    const initiatorBeliefs3p = initiator.state.beliefs?.summarizeForMemory(initiator.profile.name, 1, undefined, initiator.nameResolver) ?? '';
     const purposeShort = cleanPurpose.length > 60 ? cleanPurpose.slice(0, 60) + '...' : cleanPurpose;
     await target.observe(
       `${initiator.profile.name} came to talk about ${purposeShort}.${initiatorBeliefs3p ? ` ${initiatorBeliefs3p}.` : ''}`,
@@ -162,7 +162,7 @@ function speechReminder(agent: Agent): string {
 
 function buildPurposePrompt(initiator: Agent, target: Agent, purpose: string, locations?: LocationGraph): string {
   const speech = speechReminder(initiator);
-  const beliefContext = initiator.state.beliefs?.summarizeForPrompt(2);
+  const beliefContext = initiator.state.beliefs?.summarizeForPrompt(2, initiator.nameResolver);
   const beliefLine = beliefContext ? `\nWhat you know: ${beliefContext}` : '';
   return `You are at ${locName(initiator.state.location, locations)}. You approach ${target.profile.name} the ${target.profile.role}.${beliefLine}
 
@@ -181,7 +181,7 @@ function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: str
     : `${initiator.profile.name} approached you. Respond to what they said, drawing on your own knowledge.`;
 
   const speech = speechReminder(target);
-  const beliefContext = target.state.beliefs?.summarizeForPrompt(2);
+  const beliefContext = target.state.beliefs?.summarizeForPrompt(2, target.nameResolver);
   const beliefLine = beliefContext ? `\nWhat you already know: ${beliefContext}` : '';
   return `${initiator.profile.name} the ${initiator.profile.role} says:
 "${initiatorLine}"

@@ -208,6 +208,7 @@ async function createGameContext(
         broadcast({ type: 'reflection', data: { agentName: name, text } });
       },
       locationResolver: (id) => locationGraph.get(id)?.name ?? id,
+      nameResolver: (id) => agents.get(id)?.profile.name ?? id,
     });
     agents.set(profile.id, agent);
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npcLocation}`);

@@ -126,7 +126,8 @@ export class BeliefManager {
   }
 
   /** Compact summary for LLM system prompt (2nd person: "You certain: X committed...") */
-  summarizeForPrompt(maxBeliefs = 3): string {
+  summarizeForPrompt(maxBeliefs = 3, nameResolver?: (id: string) => string): string {
+    const resolveName = nameResolver ?? ((id: string) => id);
     const beliefs = this.getAllBeliefs()
       .filter(b => b.object != null || b.subject != null)
       .slice(0, maxBeliefs);
@@ -136,8 +137,8 @@ export class BeliefManager {
       const certainty = b.confidence > 0.8 ? 'certain' : b.confidence > 0.5 ? 'believe' : 'heard rumor';
       const verb = getEventLabel(b.eventType);
       if (!verb) return null;
-      const who = b.subject ?? 'someone unknown';
-      const target = b.object ?? 'someone';
+      const who = b.subject ? resolveName(b.subject) : 'someone unknown';
+      const target = b.object ? resolveName(b.object) : 'someone';
       const where = b.location ? ` at ${b.location}` : '';
       const how = getBeliefSourceLabel(b.source);
       return `- You ${certainty}: ${who} committed ${verb} against ${target}${where} (${how})`;
@@ -149,7 +150,8 @@ export class BeliefManager {
    * Optional eventTypeFilter: only include beliefs matching the conversation topic's eventType.
    * Falls back to top beliefs by confidence if filter yields nothing.
    */
-  summarizeForMemory(ownerName: string, maxBeliefs = 2, eventTypeFilter?: string): string {
+  summarizeForMemory(ownerName: string, maxBeliefs = 2, eventTypeFilter?: string, nameResolver?: (id: string) => string): string {
+    const resolveName = nameResolver ?? ((id: string) => id);
     const all = this.getAllBeliefs()
       .filter(b => b.object != null || b.subject != null);
 
@@ -164,8 +166,8 @@ export class BeliefManager {
       const conf = b.confidence > 0.7 ? 'is convinced' : b.confidence > 0.4 ? 'believes' : 'has heard';
       const verb = getEventLabel(b.eventType);
       if (!verb) return null;
-      const who = b.subject ?? 'someone';
-      const target = b.object ?? 'someone';
+      const who = b.subject ? resolveName(b.subject) : 'someone';
+      const target = b.object ? resolveName(b.object) : 'someone';
       return `${ownerName} ${conf} ${who} committed ${verb} against ${target}`;
     }).filter(Boolean).join('. ');
   }

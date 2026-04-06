@@ -224,7 +224,7 @@ export function registerCrimeStepHandlers(): void {
       target.state.alive = false;
       await owner.observe(`You killed ${target.profile.name}. ${step.reason}. It is done. The weight of what you have done is crushing.`, 10);
       ctx.addMoodModifier(goal.ownerId, { source: 'murder_committed', category: 'event', magnitude: -0.5, remaining: 1440, duration: 1440, decay: 'exponential' });
-      owner.state.beliefs?.addBelief({ id: crypto.randomUUID(), eventType: 'NPC_KILLED', subject: owner.profile.name, object: target.profile.name, location: target.state.location, confidence: 1.0, source: 'perpetrator', sourceNpcId: null, gameDay: owner.state.currentDay, lastUpdated: owner.state.currentDay });
+      owner.state.beliefs?.addBelief({ id: crypto.randomUUID(), eventType: 'NPC_KILLED', subject: goal.ownerId, object: step.targetId, location: target.state.location, confidence: 1.0, source: 'perpetrator', sourceNpcId: null, gameDay: owner.state.currentDay, lastUpdated: owner.state.currentDay });
     } else {
       await owner.observe(`I attacked ${target.profile.name}. ${step.reason}. My hands are shaking — but they deserved it.`, step.importance);
       await target.observe(`${owner.profile.name} attacked me! They were furious, screaming about ${step.reason}. I'm hurt and terrified.`, step.importance);

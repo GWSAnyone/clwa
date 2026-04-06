@@ -46,6 +46,8 @@ export interface AgentOptions {
   onReflection?: (agentName: string, text: string) => void;
   /** Resolve location ID to display name for LLM prompts */
   locationResolver?: (id: string) => string;
+  /** Resolve NPC ID to display name for LLM prompts */
+  nameResolver?: (id: string) => string;
 }
 
 export class Agent {
@@ -57,6 +59,8 @@ export class Agent {
   private reflectionTracker: ReflectionTracker;
   private onReflection?: (agentName: string, text: string) => void;
   private locationResolver: (id: string) => string;
+  /** Resolve NPC ID to display name (e.g. "bess" → "Old Bess") */
+  readonly nameResolver: (id: string) => string;
   /** Short-term conversation buffer for multi-turn player chat (last N exchanges) */
   private _chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
@@ -77,6 +81,7 @@ export class Agent {
     this.model = options?.model ?? DEFAULT_WORLD_CONFIG.model;
     this.baseUrl = options?.lmStudioUrl ?? 'http://localhost:1234';
     this.locationResolver = options?.locationResolver ?? ((id) => id);
+    this.nameResolver = options?.nameResolver ?? ((id) => id);
     this.reflectionTracker = new ReflectionTracker({
       lmStudioUrl: this.baseUrl,
       model: this.model,
@@ -318,7 +323,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
     // 1. Beliefs section (structured, not keyword-matched)
     const beliefs = this.state.beliefs;
     if (beliefs) {
-      const summary = beliefs.summarizeForPrompt(3);
+      const summary = beliefs.summarizeForPrompt(3, this.nameResolver);
       if (summary) {
         sections.push(`## What you know\n${summary}`);
       }
@@ -338,12 +343,12 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
         const b = crimeBeliefs.find((b) => isPerpetrator(b.source))!;
         const n = this.profile.bigFive?.neuroticism ?? 0.5;
         const guilt = n > 0.6 ? 'Guilt gnaws at you constantly. You flinch at every mention of' : 'You keep your composure but the weight of what you did to';
-        sections.push(`## How you feel right now\n${guilt} ${b.object} hangs over you.`);
+        sections.push(`## How you feel right now\n${guilt} ${this.nameResolver(b.object ?? '')} hangs over you.`);
       } else if (crimeBeliefs.some((b) => isFirsthand(b.source))) {
         const b = crimeBeliefs.find((b) => isFirsthand(b.source))!;
         const n = this.profile.bigFive?.neuroticism ?? 0.5;
         const reaction = n > 0.6 ? 'The memory haunts you — you can barely focus.' : 'You process what happened calmly but it stays with you.';
-        sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${b.object}. ${reaction}`);
+        sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${this.nameResolver(b.object ?? '')}. ${reaction}`);
       } else if (crimeBeliefs.length > 0) {
         const n = this.profile.bigFive?.neuroticism ?? 0.5;
         const unease = n > 0.6 ? 'You feel deeply unsettled — the news shook you.' : 'You are aware something bad happened in town.';

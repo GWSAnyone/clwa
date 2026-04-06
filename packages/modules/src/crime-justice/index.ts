@@ -596,7 +596,7 @@ export function registerCrimeJusticeModule(): void {
           ctx.approaches.push({
             npcId,
             npcName: npc.profile.name,
-            promptContext: `You have urgent information to share with ${playerAgent.profile.name}. You ${isFirsthand(belief.source) ? 'witnessed' : 'heard about'} ${eventLabel.toLowerCase()}${belief.object ? ` involving ${belief.object}` : ''}. You want to tell them about it.`,
+            promptContext: `You have urgent information to share with ${playerAgent.profile.name}. You ${isFirsthand(belief.source) ? 'witnessed' : 'heard about'} ${eventLabel.toLowerCase()}${belief.object ? ` involving ${ctx.agents.get(belief.object)?.profile.name ?? belief.object}` : ''}. You want to tell them about it.`,
             displayText: `${npc.profile.name} approaches you urgently`,
             urgency: 0.8,
           });
@@ -682,7 +682,7 @@ export function registerCrimeJusticeModule(): void {
 
       // Find "danger to self" beliefs — someone warned me I'm a target
       const dangerBeliefs = agent.state.beliefs.getAllBeliefs().filter(
-        (b) => isTransferable(b.eventType) && b.object === agent.profile.name && b.confidence >= 0.25,
+        (b) => isTransferable(b.eventType) && b.object === npcId && b.confidence >= 0.25,
       );
       if (dangerBeliefs.length === 0) continue;
 
@@ -786,8 +786,10 @@ export function registerCrimeJusticeModule(): void {
       if (crimeBeliefs.length === 0) continue;
 
       const belief = crimeBeliefs.sort((a: any, b: any) => b.confidence - a.confidence)[0];
-      const criminalName = belief.subject ?? 'someone';
-      const victimName = belief.object ?? 'someone';
+      const criminalId = belief.subject;
+      const victimId = belief.object;
+      const criminalName = criminalId ? (ctx.agents.get(criminalId)?.profile.name ?? criminalId) : 'someone';
+      const victimName = victimId ? (ctx.agents.get(victimId)?.profile.name ?? victimId) : 'someone';
       const crimeLocation = belief.location ?? witness.state.location;
       const crimeLabel = getEventLabel(belief.eventType);
       if (!crimeLabel) continue;
@@ -799,7 +801,7 @@ export function registerCrimeJusticeModule(): void {
 
         if (target.state.beliefs) {
           const alreadyKnows = target.state.beliefs.getAllBeliefs().some(
-            (b: any) => isEventCategory(b.eventType, 'crime') && b.object === victimName,
+            (b: any) => isEventCategory(b.eventType, 'crime') && b.object === victimId,
           );
           if (alreadyKnows) continue;
         }

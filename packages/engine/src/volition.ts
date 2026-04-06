@@ -401,7 +401,7 @@ function buildDecisionPrompt(
   const stressGrowth = getStressGrowthDirective(mood, enn);
 
   // ── Beliefs & relationships (compact) ──
-  const beliefSummary = agent.state.beliefs?.summarizeForPrompt(3) ?? '';
+  const beliefSummary = agent.state.beliefs?.summarizeForPrompt(3, agent.nameResolver) ?? '';
   const relSummary = agent.state.relationships?.summarizeForPrompt() ?? '';
 
   // ── System prompt (identity + personality — no beliefs, those go in user prompt) ──

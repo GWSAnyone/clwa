@@ -32,11 +32,12 @@ export const justiceTopics: TopicSource = (init, resp, ctx) => {
     const label = getEventLabel(belief.eventType);
     if (!label) return;
 
-    const name = belief.eventType === 'NPC_FLED'
+    const targetId = belief.eventType === 'NPC_FLED'
       ? (belief.subject ?? 'someone')
       : (belief.object ?? 'someone');
+    const name = ctx.agents?.get(targetId)?.profile.name ?? targetId;
 
-    const key = `justice:${belief.eventType}:${name}`;
+    const key = `justice:${belief.eventType}:${targetId}`;
     if (proposed.has(key)) return;
     proposed.add(key);
 

@@ -894,14 +894,15 @@ export async function applyDialogueMeaning(
       const aboutAgent = findAgentByName(q.about, ctx.agents);
       if (aboutAgent && npc.state.beliefs) {
         const beliefs = npc.state.beliefs.getAllBeliefs()
-          .filter((b) => b.subject === aboutAgent.profile.name || b.object === aboutAgent.profile.name);
+          .filter((b) => b.subject === aboutAgent.profile.id || b.object === aboutAgent.profile.id);
         if (beliefs.length > 0) {
           // Use natural language summary — never expose raw event types or confidence numbers to LLM
+          const resolve = npc.nameResolver;
           const beliefSummary = beliefs.slice(0, 3).map((b) => {
             const certainty = b.confidence > 0.8 ? 'are certain' : b.confidence > 0.5 ? 'believe' : 'have heard rumors';
             const verb = getEventLabelSafe(b.eventType, 'something');
-            const who = b.subject ?? 'someone unknown';
-            const target = b.object ? ` against ${b.object}` : '';
+            const who = b.subject ? resolve(b.subject) : 'someone unknown';
+            const target = b.object ? ` against ${resolve(b.object)}` : '';
             return `you ${certainty} that ${who} committed ${verb}${target}`;
           }).filter(Boolean).join('; ');
           sections.push(`About ${aboutAgent.profile.name}: ${beliefSummary}. Answer from your knowledge.`);

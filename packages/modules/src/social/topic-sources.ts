@@ -42,7 +42,7 @@ const beliefTopics: TopicSource = (init, resp, ctx) => {
     if (proposed.has(key)) return;
     proposed.add(key);
 
-    const victim = belief.object ?? 'someone';
+    const victim = belief.object ? (ctx.agents?.get(belief.object)?.profile.name ?? belief.object) : 'someone';
     const topicCategory = `event:${belief.eventType}`;
 
     // Recency bonus: beliefs from today/yesterday are more urgent
@@ -150,7 +150,7 @@ const relationshipTopics: TopicSource = (init, resp) => {
   const deathBeliefs = init.state.beliefs?.getAllBeliefs()
     .filter(b => isDeathEvent(b.eventType) && b.object) ?? [];
   for (const db of deathBeliefs) {
-    const victimRel = allRels.find(r => r.targetName === db.object || r.targetId === db.object);
+    const victimRel = allRels.find(r => r.targetId === db.object);
     if (victimRel && victimRel.sentiment > 0.2) {
       proposals.push({
         subject: `the loss of ${victimRel.targetName}`,
@@ -447,7 +447,7 @@ const memoryTopics: TopicSource = (init, resp, ctx) => {
   for (const belief of oldBeliefs) {
     const eventLabel = getEventLabel(belief.eventType);
     if (!eventLabel) continue;
-    const victim = belief.object ?? 'someone';
+    const victim = belief.object ? (ctx.agents?.get(belief.object)?.profile.name ?? belief.object) : 'someone';
     const daysAgo = ctx.gameDay - (belief.gameDay ?? 0);
 
     // Does responder also remember this?
@@ -457,7 +457,7 @@ const memoryTopics: TopicSource = (init, resp, ctx) => {
 
     if (respAlsoKnows) {
       proposals.push({
-        topicKey: `event:${belief.eventType}:${victim}`,
+        topicKey: `event:${belief.eventType}:${belief.object}`,
         subject: `what happened to ${victim}`,
         tone: 'reflective, heavy',
         moodValence: -0.015,
@@ -598,11 +598,11 @@ const questionTopics: TopicSource = (init, resp) => {
 
     proposals.push({
       topicKey: `event:${belief.eventType}:${belief.object}`,
-      subject: `rumors about ${belief.object}`,
+      subject: `rumors about ${ctx.agents?.get(belief.object!)?.profile.name ?? belief.object}`,
       tone: 'curious, probing',
       moodValence: -0.005,
       weight: 2,
-      initiatorHook: `You heard something vague about the ${eventLabel} of ${belief.object}. Ask if ${resp.profile.name} knows more.`,
+      initiatorHook: `You heard something vague about the ${eventLabel} of ${ctx.agents?.get(belief.object!)?.profile.name ?? belief.object}. Ask if ${resp.profile.name} knows more.`,
       responderHook: resp.state.beliefs?.getAllBeliefs().some(
         b => b.eventType === belief.eventType && b.object === belief.object && b.confidence >= 0.4,
       )
