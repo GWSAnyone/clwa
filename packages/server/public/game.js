@@ -335,6 +335,7 @@ async function init() {
       mood: a.mood, alive: a.alive, status: a.status || '',
       background: a.background || '',
       hasShop: a.hasShop || false,
+      investigator: a.investigator || false,
       chatHistory: loadChatHistory(a.id),
       x: a.x ?? 0, y: a.y ?? 0, targetX: a.x ?? 0, targetY: a.y ?? 0,
       moving: false, waypoints: [], wpIdx: 0,
@@ -345,6 +346,7 @@ async function init() {
   // Player start — restore position from server (persists across page refresh)
   const playerRes = await fetch('/api/player');
   const playerData = await playerRes.json();
+  if (playerData.id) state.player.id = playerData.id;
   if (playerData.x != null && playerData.y != null && (playerData.x || playerData.y)) {
     state.player.x = playerData.x; state.player.y = playerData.y;
   } else {
@@ -432,6 +434,9 @@ async function init() {
   }).catch(() => {});
   document.getElementById('chat-close').onclick = closeChat;
   document.getElementById('chat-form').onsubmit = sendChat;
+
+  // Minimap
+  initMinimap();
 
   // Start game loop
   requestAnimationFrame(gameLoop);
@@ -540,13 +545,24 @@ function handleWS(type, data) {
 
     case 'event': {
       const evType = data.type || '';
-      addEvent(evType.includes('KILL') || evType.includes('STOLEN') ? 'crime' : 'conversation',
-        `${evType}: ${data.subject || ''} → ${data.object || ''}`);
-      // Toast + status updates for key events
       const subjectAgent = data.subject ? state.agents[data.subject] : null;
       const objectAgent = data.object ? state.agents[data.object] : null;
       const subjectName = subjectAgent?.name || data.subject || '?';
       const objectName = objectAgent?.name || data.object || '?';
+
+      // Enriched event feed text
+      const isCrime = evType.includes('KILL') || evType.includes('STOLEN');
+      let feedText;
+      if (evType === 'NPC_ARRESTED') feedText = `${subjectName} arrested ${objectName}`;
+      else if (evType === 'NPC_SENTENCED') feedText = `${objectName} was ${data.payload?.verdict || 'sentenced'}`;
+      else if (evType === 'BODY_DISCOVERED') feedText = `${subjectName} discovered a body`;
+      else if (evType === 'GOODS_STOLEN') feedText = `Theft at ${data.location || '?'}`;
+      else if (evType === 'NPC_FLED') feedText = `${objectName} fled the town`;
+      else if (evType === 'NPC_KILLED') feedText = `${subjectName} killed ${objectName}`;
+      else feedText = `${evType}: ${subjectName} → ${objectName}`;
+      addEvent(isCrime ? 'crime' : evType === 'NPC_ARRESTED' ? 'crime' : 'conversation', feedText);
+
+      // State updates + toasts
       if (evType === 'NPC_ARRESTED' && objectAgent) {
         objectAgent.status = 'detained';
         showToast(`${subjectName} arrested ${objectName}`, 'arrest');
@@ -583,12 +599,32 @@ function handleWS(type, data) {
 
     case 'mood_update': {
       const mNpc = state.agents[data.npcId];
-      if (mNpc) mNpc.mood = data.newMood;
+      if (mNpc) {
+        mNpc.mood = data.newMood;
+        // Mood visual cue — pulse on significant shift
+        if (Math.abs(data.newMood - data.oldMood) > 0.05) {
+          mNpc._moodPulse = { timer: 1.0, positive: data.newMood > data.oldMood };
+        }
+      }
       if (state.chatOpen && state.chatNpcId === data.npcId) {
         updateChatMoodBar(data.newMood);
       }
       if (Math.abs(data.newMood - data.oldMood) > 0.05) {
         addEvent('mood', `${data.npcName} mood: ${data.oldMood.toFixed(2)} → ${data.newMood.toFixed(2)}`);
+      }
+      break;
+    }
+
+    case 'state:update': {
+      const suNpc = state.agents[data.agentId];
+      if (suNpc) {
+        if (data.mood != null) suNpc.mood = data.mood;
+        if (data.alive != null) suNpc.alive = data.alive;
+        if (data.location != null) suNpc.location = data.location;
+        if (data.status != null) suNpc.status = data.status;
+      }
+      if (state.chatOpen && state.chatNpcId === data.agentId && data.mood != null) {
+        updateChatMoodBar(data.mood);
       }
       break;
     }
@@ -643,6 +679,11 @@ function handleWS(type, data) {
       if (!state.crimeScenes) state.crimeScenes = [];
       state.crimeScenes.push({ id: data.id, locationId: data.locationId, crimeType: data.crimeType });
       showToast(`Crime scene at ${LOCATIONS[data.locationId]?.label || data.locationId}`, 'crime');
+      // If player is at this location, trigger examine panel refresh
+      if (state._examineLocationId === data.locationId) {
+        state._examineLocationId = null; // force re-fetch
+        state._examineSceneData = null;
+      }
       break;
 
     case 'npc_approach': {
@@ -653,6 +694,7 @@ function handleWS(type, data) {
 
     case 'journal:entry':
       addJournalEntry(data);
+      if (state.chatOpen) updateDetectiveHint(state.chatNpcId);
       break;
 
     case 'il_result':
@@ -747,8 +789,6 @@ function drawActionEffects() {
 
     // Line between actors
     if (fx.line) {
-      ctx.strokeStyle = fx.color.replace(')', `,${alpha * 0.4})`).replace('rgb', 'rgba').replace('#', '');
-      // Convert hex to rgba
       const r = parseInt(fx.color.slice(1,3),16), g = parseInt(fx.color.slice(3,5),16), b = parseInt(fx.color.slice(5,7),16);
       ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.4})`;
       ctx.lineWidth = 2;
@@ -827,38 +867,110 @@ function closeShop() {
 }
 
 // ─── EXAMINE CRIME SCENE ───
-function updateExaminePrompt() {
-  const prompt = document.getElementById('examine-prompt');
-  if (!state.crimeScenes || state.crimeScenes.length === 0) { prompt.style.display = 'none'; return; }
-  // Check if player is near any crime scene
+const EXAMINE_VERBS = { body: 'Look closer', trail: 'Follow it', object: 'Pick it up', weapon: 'Pick it up', bloodstain: 'Inspect' };
+
+function updateExaminePanel() {
+  const panel = document.getElementById('examine-panel');
+  if (!state.crimeScenes || state.crimeScenes.length === 0 || state.chatOpen) {
+    panel.style.display = 'none'; return;
+  }
   const nearby = state.crimeScenes.find(cs => {
     const loc = LOCATIONS[cs.locationId];
     if (!loc) return false;
     const dx = state.player.x - loc.px, dy = state.player.y - loc.py;
     return Math.sqrt(dx*dx + dy*dy) < 200;
   });
-  prompt.style.display = nearby ? 'block' : 'none';
-  prompt._sceneLocationId = nearby?.locationId;
+  if (!nearby) {
+    panel.style.display = 'none';
+    state._examineLocationId = null;
+    state._examineSceneData = null;
+    return;
+  }
+  // Only fetch when entering a new crime scene zone
+  if (state._examineLocationId !== nearby.locationId) {
+    state._examineLocationId = nearby.locationId;
+    state._examineSceneData = null;
+    fetchExamineScene(nearby.locationId);
+  }
+  if (state._examineSceneData) panel.style.display = 'block';
 }
 
-async function examineScene() {
-  const prompt = document.getElementById('examine-prompt');
-  const locationId = prompt._sceneLocationId;
-  if (!locationId) return;
+async function fetchExamineScene(locationId) {
   try {
-    const res = await fetch(`/api/examine/${locationId}/0`, { method: 'POST' });
+    const res = await fetch(`/api/crime-scene/${encodeURIComponent(locationId)}`);
+    if (!res.ok) { state._examineLocationId = null; return; }
+    const data = await res.json();
+    if (!data.points || data.points.length === 0) {
+      showToast('Nothing to examine here', 'info');
+      state._examineLocationId = null; return;
+    }
+    state._examineSceneData = data;
+    renderExaminePanel(data);
+    document.getElementById('examine-panel').style.display = 'block';
+  } catch { state._examineLocationId = null; }
+}
+
+function renderExaminePanel(data) {
+  const panel = document.getElementById('examine-panel');
+  const allExamined = data.points.every(p => p.examined);
+  let html = `<div class="examine-title">Crime Scene</div>`;
+  html += `<div class="examine-intro">You survey the scene and notice several things worth investigating:</div>`;
+
+  for (const pt of data.points) {
+    if (pt.examined) {
+      html += `<div class="examine-point examined">
+        <div class="examine-point-desc">\u2713 ${escapeHTML(pt.description)}</div>
+        <div class="examine-point-clue">${escapeHTML(pt.clueText)}</div>
+      </div>`;
+    } else {
+      const verb = EXAMINE_VERBS[pt.type] || 'Inspect';
+      html += `<div class="examine-point" id="ep-${pt.id}">
+        <div class="examine-point-desc">\uD83D\uDD0D ${escapeHTML(pt.description)}</div>
+        <button class="examine-btn" onclick="examinePoint('${escapeHTML(data.locationId)}','${escapeHTML(pt.id)}')">${escapeHTML(verb)}</button>
+      </div>`;
+    }
+  }
+
+  if (allExamined) {
+    html += `<div class="examine-done">You've examined everything at this scene.</div>`;
+  }
+  html += `<button class="examine-leave" onclick="closeExaminePanel()">Leave</button>`;
+  panel.innerHTML = html;
+}
+
+async function examinePoint(locationId, pointId) {
+  const btn = document.querySelector(`#ep-${pointId} .examine-btn`);
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const res = await fetch(`/api/examine/${encodeURIComponent(locationId)}/${encodeURIComponent(pointId)}`, { method: 'POST' });
     const data = await res.json();
     if (data.error) {
       showToast(data.error, 'info');
-    } else {
-      showToast(`Found: ${data.clueText || data.description}`, 'discovery');
-      if (data.evidence && data.evidence.length > 0) {
-        for (const e of data.evidence) {
-          showToast(`Evidence: ${e.description}`, 'discovery', 7000);
-        }
+      if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+      return;
+    }
+    showToast(`Found: ${data.clueText || data.description}`, 'discovery');
+    if (data.evidence && data.evidence.length > 0) {
+      for (const e of data.evidence) {
+        showToast(`Evidence: ${e.description}`, 'discovery', 7000);
       }
     }
-  } catch { showToast('Failed to examine', 'info'); }
+    // Update cached scene data and re-render
+    if (state._examineSceneData) {
+      const pt = state._examineSceneData.points.find(p => p.id === pointId);
+      if (pt) pt.examined = true;
+      renderExaminePanel(state._examineSceneData);
+    }
+  } catch {
+    showToast('Failed to examine', 'info');
+    if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+  }
+}
+
+function closeExaminePanel() {
+  document.getElementById('examine-panel').style.display = 'none';
+  state._examineLocationId = null;
+  state._examineSceneData = null;
 }
 
 // ─── JOURNAL ───
@@ -899,8 +1011,30 @@ function updateSuspectCount() {
   if (el) el.textContent = _journalSuspects.size || '';
 }
 
+let _journalCategoryFilter = null;
+
 function renderJournalAll(body) {
-  body.innerHTML = _journalEntries.map(renderJournalEntry).join('');
+  // Dynamic category filter buttons
+  const cats = new Set(_journalEntries.map(e => e.evidenceCategory).filter(Boolean));
+  let filterHtml = '';
+  if (cats.size > 0) {
+    filterHtml = '<div class="journal-filter-bar">';
+    filterHtml += `<button class="journal-filter-btn${!_journalCategoryFilter ? ' active' : ''}" onclick="setJournalCategoryFilter(null)">All</button>`;
+    for (const cat of cats) {
+      filterHtml += `<button class="journal-filter-btn${_journalCategoryFilter === cat ? ' active' : ''}" onclick="setJournalCategoryFilter('${escapeHTML(cat)}')">${escapeHTML(cat)}</button>`;
+    }
+    filterHtml += '</div>';
+  }
+
+  const filtered = _journalCategoryFilter
+    ? _journalEntries.filter(e => e.evidenceCategory === _journalCategoryFilter)
+    : _journalEntries;
+  body.innerHTML = filterHtml + filtered.map(renderJournalEntry).join('');
+}
+
+function setJournalCategoryFilter(cat) {
+  _journalCategoryFilter = cat;
+  renderJournal();
 }
 
 function renderJournalEntry(e) {
@@ -984,6 +1118,8 @@ function renderJournalSuspects(body) {
         <span class="journal-suspect-name">${escapeHTML(name)}</span>
         <span class="journal-case-quality ${quality}">${quality}</span>
         <span class="journal-case-score">${totalScore.toFixed(2)}</span>
+        <button class="journal-case-btn"
+          onclick="event.stopPropagation(); openCaseReview('${npcId}')">Case File</button>
         <button class="journal-suspect-toggle ${isSuspect ? 'active' : ''}"
           onclick="event.stopPropagation(); toggleSuspect('${npcId}')">
           ${isSuspect ? 'Suspect' : 'Mark'}
@@ -1011,6 +1147,67 @@ async function toggleSuspect(npcId) {
     else _journalSuspects.delete(npcId);
     renderJournal();
   } catch { /* ignore */ }
+}
+
+async function openCaseReview(npcId) {
+  const body = document.getElementById('journal-body');
+  body.innerHTML = '<div class="journal-empty">Loading case file...</div>';
+  try {
+    const res = await fetch(`/api/journal/case/${encodeURIComponent(npcId)}`);
+    const data = await res.json();
+    if (data.error) { renderJournal(); return; }
+    renderCaseReview(data);
+  } catch { renderJournal(); }
+}
+
+function renderCaseReview(data) {
+  const body = document.getElementById('journal-body');
+  const name = escapeHTML(data.suspectName || data.suspectId);
+
+  if (!data.entries || data.entries.length === 0) {
+    body.innerHTML = `<div class="case-review">
+      <div class="case-review-title">Case File: ${name}</div>
+      <div class="journal-empty">No evidence collected yet. Investigate the crime scene and talk to people.</div>
+      <button class="case-review-back" onclick="renderJournal()">Back to Suspects</button>
+    </div>`;
+    return;
+  }
+
+  // Evidence summary — only categories with count > 0
+  let summaryHtml = '<div class="case-review-summary">';
+  if (data.evidence) {
+    for (const [cat, count] of Object.entries(data.evidence)) {
+      if (count > 0) {
+        summaryHtml += `<div class="case-review-cat">
+          <span class="case-cat-name">${escapeHTML(cat)}</span>
+          <span class="case-cat-count">${count}</span>
+        </div>`;
+      }
+    }
+  }
+  summaryHtml += '</div>';
+
+  // Evidence details
+  let detailsHtml = '<div class="case-review-details"><div class="case-review-divider">Details</div>';
+  for (const e of data.entries) {
+    const text = escapeHTML(e.text || e.clueText || e.description || '');
+    const cat = e.evidenceCategory ? `<span class="journal-badge ${e.evidenceCategory}">${escapeHTML(e.evidenceCategory)}</span>` : '';
+    const loc = e.locationId || e.location || '';
+    const source = e.type || '';
+    const meta = [source, loc].filter(Boolean).join(', ');
+    detailsHtml += `<div class="case-review-entry">
+      <div class="case-review-entry-text">${text}</div>
+      <div class="case-review-entry-meta">${cat}${meta ? `<span class="case-meta-info">${escapeHTML(meta)}</span>` : ''}</div>
+    </div>`;
+  }
+  detailsHtml += '</div>';
+
+  body.innerHTML = `<div class="case-review">
+    <div class="case-review-title">Case File: ${name}</div>
+    ${summaryHtml}
+    ${detailsHtml}
+    <button class="case-review-back" onclick="renderJournal()">Back to Suspects</button>
+  </div>`;
 }
 
 function toggleJournal() {
@@ -1081,19 +1278,26 @@ function clearEvidenceSelection() {
 function addEvent(cls, text) {
   state.events.unshift({ cls, text, time: state.time });
   if (state.events.length > 50) state.events.pop();
-  renderEventFeed();
+  // Incremental DOM — prepend new element, trim overflow
+  const feed = document.getElementById('event-feed');
+  const el = document.createElement('div');
+  el.className = `feed-item ${cls}`;
+  el.innerHTML = `<span class="time">${escapeHTML(state.time)}</span> ${escapeHTML(text)}`;
+  feed.prepend(el);
+  while (feed.children.length > 50) feed.lastChild.remove();
 }
 
 function renderEventFeed() {
   const feed = document.getElementById('event-feed');
   feed.innerHTML = state.events.map(e =>
-    `<div class="feed-item ${e.cls}"><span class="time">${e.time}</span> ${e.text}</div>`
+    `<div class="feed-item ${e.cls}"><span class="time">${escapeHTML(e.time)}</span> ${escapeHTML(e.text)}</div>`
   ).join('');
 }
 
 // ─── CHAT ───
 function openChat(npcId) {
   state.chatOpen = true; state.chatNpcId = npcId;
+  document.getElementById('examine-panel').style.display = 'none';
   clearEvidenceSelection();
   const a = state.agents[npcId];
   if (!a) return;
@@ -1209,7 +1413,61 @@ function openChat(npcId) {
   state._chatZoomTarget = Math.max(state.camera.zoom, 1.5);
   state._chatCamTarget = { x: a.x, y: a.y };
 
+  updateDetectiveHint(npcId);
   setTimeout(() => document.getElementById('chat-input').focus(), 100);
+}
+
+// ─── DETECTIVE INTUITION HINTS ───
+function updateDetectiveHint(npcId) {
+  const hintEl = document.getElementById('detective-hint');
+  if (!npcId) { hintEl.style.display = 'none'; return; }
+  const a = state.agents[npcId];
+  if (!a) { hintEl.style.display = 'none'; return; }
+
+  // Gather context data
+  const suspectIds = new Set(_journalSuspects);
+  const isSuspect = suspectIds.has(npcId);
+  const isInvestigator = a.investigator;
+  const npcEntries = _journalEntries.filter(e => e.suspectId === npcId && (e.evidenceCategory || e.type === 'testimony'));
+  const hasEvidence = npcEntries.length > 0;
+  const hasCrimeBeliefs = _journalEntries.length > 0;
+
+  // Check if NPC knows a suspect (from relationships loaded in Mind accordion)
+  let knownSuspectName = null;
+  if (!isSuspect && !isInvestigator && suspectIds.size > 0) {
+    // We check agent data — relationships are fetched lazily, so just check if this NPC
+    // is related to any suspect via journal entries mentioning them
+    for (const sid of suspectIds) {
+      const sa = state.agents[sid];
+      if (sa) { knownSuspectName = sa.name; break; }
+    }
+  }
+
+  // Priority-ordered hint selection
+  let hint = null;
+  if (isSuspect && hasEvidence) {
+    hint = `You have evidence linking ${a.name} to the crime. This might be the time to press them on it.`;
+  } else if (isSuspect && !hasEvidence) {
+    hint = `Something about ${a.name} doesn't sit right. You might try asking about their whereabouts.`;
+  } else if (isInvestigator && hasCrimeBeliefs) {
+    hint = `The guard could help investigate. You could share what you've learned about the crime.`;
+  } else if (knownSuspectName) {
+    hint = `${a.name} might know something about ${knownSuspectName}. They could have information.`;
+  }
+
+  if (!hint || hintEl._dismissed === npcId) {
+    hintEl.style.display = 'none';
+    return;
+  }
+
+  hintEl.style.display = 'block';
+  hintEl.innerHTML = `<span class="hint-close" onclick="dismissHint()">&times;</span>${escapeHTML(hint)}`;
+}
+
+function dismissHint() {
+  const hintEl = document.getElementById('detective-hint');
+  hintEl.style.display = 'none';
+  hintEl._dismissed = state.chatNpcId;
 }
 
 function updateChatMoodBar(mood) {
@@ -1767,6 +2025,80 @@ function onWheel(e) {
   state.camera.zoom = Math.max(0.3, Math.min(3.0, state.camera.zoom * factor));
 }
 
+// ─── MINIMAP ───
+const _minimap = { canvas: null, ctx: null, scale: 0, ox: 0, oy: 0 };
+function initMinimap() {
+  _minimap.canvas = document.getElementById('minimap');
+  if (!_minimap.canvas) return;
+  _minimap.ctx = _minimap.canvas.getContext('2d');
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const loc of Object.values(LOCATIONS)) {
+    if (loc.px < minX) minX = loc.px; if (loc.px > maxX) maxX = loc.px;
+    if (loc.py < minY) minY = loc.py; if (loc.py > maxY) maxY = loc.py;
+  }
+  const pad = 100;
+  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  const w = maxX - minX, h = maxY - minY;
+  _minimap.scale = Math.min(200 / w, 150 / h);
+  _minimap.ox = -minX; _minimap.oy = -minY;
+  _minimap.canvas.addEventListener('click', (e) => {
+    const rect = _minimap.canvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / _minimap.scale - _minimap.ox;
+    const my = (e.clientY - rect.top) / _minimap.scale - _minimap.oy;
+    let best = null, bestD = Infinity;
+    for (const loc of Object.values(LOCATIONS)) {
+      const d = Math.hypot(loc.px - mx, loc.py - my);
+      if (d < bestD) { bestD = d; best = loc; }
+    }
+    if (best) { state.camera.fx = best.px; state.camera.fy = best.py; }
+  });
+}
+
+function drawMinimap() {
+  if (!_minimap.ctx) return;
+  const mc = _minimap.ctx;
+  const s = _minimap.scale, ox = _minimap.ox, oy = _minimap.oy;
+  mc.clearRect(0, 0, 200, 150);
+
+  // Roads
+  mc.strokeStyle = 'rgba(100,140,180,0.2)';
+  mc.lineWidth = 1;
+  for (const [a, b] of ROADS) {
+    const la = LOCATIONS[a], lb = LOCATIONS[b];
+    if (!la || !lb) continue;
+    mc.beginPath();
+    mc.moveTo((la.px + ox) * s, (la.py + oy) * s);
+    mc.lineTo((lb.px + ox) * s, (lb.py + oy) * s);
+    mc.stroke();
+  }
+
+  // Location nodes
+  for (const [id, loc] of Object.entries(LOCATIONS)) {
+    const x = (loc.px + ox) * s, y = (loc.py + oy) * s;
+    const hasCrime = state.crimeScenes?.some(cs => cs.locationId === id);
+    if (hasCrime) {
+      const pulse = 0.4 + Math.sin(Date.now() / 400) * 0.3;
+      mc.beginPath(); mc.arc(x, y, 6, 0, Math.PI * 2);
+      mc.fillStyle = `rgba(220,60,60,${pulse})`; mc.fill();
+    }
+    mc.beginPath(); mc.arc(x, y, 3, 0, Math.PI * 2);
+    mc.fillStyle = 'rgba(100,140,180,0.5)'; mc.fill();
+  }
+
+  // NPC dots
+  for (const a of Object.values(state.agents)) {
+    if (!a.alive || a.status === 'exiled' || a.status === 'fled') continue;
+    const x = (a.x + ox) * s, y = (a.y + oy) * s;
+    mc.beginPath(); mc.arc(x, y, 2, 0, Math.PI * 2);
+    mc.fillStyle = moodColor(a.mood).replace('0.5)', '0.8)'); mc.fill();
+  }
+
+  // Player
+  const px = (state.player.x + ox) * s, py = (state.player.y + oy) * s;
+  mc.beginPath(); mc.arc(px, py, 3.5, 0, Math.PI * 2);
+  mc.fillStyle = '#fff'; mc.fill();
+}
+
 // ─── GAME LOOP ───
 let lastTime = 0;
 
@@ -1777,7 +2109,8 @@ function gameLoop(timestamp) {
   update(dt);
   updateActionEffects(dt);
   render();
-  updateExaminePrompt();
+  drawMinimap();
+  updateExaminePanel();
   requestAnimationFrame(gameLoop);
 }
 
@@ -2060,6 +2393,19 @@ function drawNPCs() {
       ctx.arc(a.x, a.y + 10, 20, 0, Math.PI * 2);
       ctx.fillStyle = moodColor(a.mood);
       ctx.fill();
+      // Mood pulse effect on significant shift
+      if (a._moodPulse && a._moodPulse.timer > 0) {
+        const p = a._moodPulse;
+        const progress = 1 - p.timer;
+        const radius = 20 + progress * 15;
+        const alpha = p.timer * 0.6;
+        ctx.beginPath();
+        ctx.arc(a.x, a.y + 10, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = p.positive ? `rgba(100,200,100,${alpha})` : `rgba(200,80,80,${alpha})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        p.timer -= 0.016; // ~60fps
+      }
     }
 
     // Approach glow
@@ -2094,14 +2440,6 @@ function drawNPCs() {
       ctx.drawImage(sheet, frame * frameW, 0, frameW, frameH, a.x - sw/2, a.y - sh/2, sw, sh);
     }
     ctx.restore();
-
-    // Detained indicator
-    if (isDetained) {
-      ctx.fillStyle = 'rgba(40,80,200,0.6)';
-      ctx.font = 'bold 8px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('DETAINED', a.x, a.y + 30);
-    }
 
     // Name
     ctx.fillStyle = isDead ? '#888' : isDetained ? '#8ac' : '#fff';

@@ -86,6 +86,7 @@ export async function handleRequest(
           beliefCount: agent.state.beliefs?.getAllBeliefs().length ?? 0,
           relationshipCount: agent.state.relationships?.getAllRelationships().length ?? 0,
           hasShop: !!(agent.profile.shop && agent.profile.shop.length > 0),
+          investigator: agent.profile.investigator ?? false,
         };
       });
     return Response.json(list, { headers: cors });
@@ -594,6 +595,7 @@ export async function handleRequest(
     const pm = positionManager;
     const pos = pm?.getPosition('player');
     return Response.json({
+      id: player?.profile.id,
       location: world.playerLocation,
       mood: player?.state.mood,
       alive: player?.state.alive,
