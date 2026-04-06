@@ -25,6 +25,8 @@ export interface EventTypeFlags {
   transferable?: boolean;
   /** Purely informational events — skip reactive volition evaluation */
   informationOnly?: boolean;
+  /** Subject of this event should be included as reactor in reactive volition (e.g., criminal reacts to WANTED_STATUS by fleeing) */
+  subjectReacts?: boolean;
 }
 
 const EVENT_TYPE_FLAGS: Map<string, EventTypeFlags> = new Map();
@@ -48,6 +50,11 @@ export function isTransferable(eventType: string): boolean {
 /** Check if this event type is purely informational (skip reactive volition) */
 export function isInformationOnly(eventType: string): boolean {
   return EVENT_TYPE_FLAGS.get(eventType)?.informationOnly === true;
+}
+
+/** Check if the subject of this event should react (e.g., criminal flees on WANTED_STATUS) */
+export function subjectReacts(eventType: string): boolean {
+  return EVENT_TYPE_FLAGS.get(eventType)?.subjectReacts === true;
 }
 
 // ─── Source Flags ───

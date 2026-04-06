@@ -85,6 +85,7 @@ export function registerCrimeJusticeModule(): void {
   // Event type flags — engine checks boolean properties, not category names
   registerEventTypeFlagsBatch(['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE'], { transferable: true });
   registerEventTypeFlagsBatch(['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED'], { informationOnly: true });
+  registerEventTypeFlagsBatch(['WANTED_STATUS'], { subjectReacts: true }); // criminal reacts to being wanted (flee, lay_low)
 
   // Secret event type — used by engine conversation impact for secret discovery beliefs
   registerSecretEventType('PERSONAL_SECRET');

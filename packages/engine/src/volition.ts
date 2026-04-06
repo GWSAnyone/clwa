@@ -4,7 +4,7 @@ import type { WorldEvent } from './cg-types';
 import type { NpcGoal, GoalStep } from './goals';
 import { llmCall } from './llm-client';
 import { buildInstinctDescription, getTierName } from './instinct-builder';
-import { getAllRegisteredVerbs } from './event-registry';
+import { getAllRegisteredVerbs, subjectReacts } from './event-registry';
 import { bigFiveToDescription, getStressGrowthDirective } from './personality-prose';
 import {
   AFFORDANCE_REGISTRY,
@@ -217,6 +217,10 @@ export function evaluateReactiveVolition(
   if (event.object) reactors.add(event.object);
   const bodyDiscoveryType = getBodyDiscoveryEventType();
   if (event.subject && bodyDiscoveryType && event.type === bodyDiscoveryType) {
+    reactors.add(event.subject);
+  }
+  // Subject reacts for event types flagged subjectReacts (e.g., WANTED_STATUS → criminal flees)
+  if (event.subject && subjectReacts(event.type)) {
     reactors.add(event.subject);
   }
 

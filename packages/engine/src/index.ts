@@ -174,7 +174,7 @@ export { buildSecretDirectives } from './secret-directives';
 // ─── Event Registry ───
 export {
   registerEventCategory, isEventCategory, getAllRegisteredEventTypes,
-  registerEventTypeFlags, registerEventTypeFlagsBatch, isTransferable, isInformationOnly,
+  registerEventTypeFlags, registerEventTypeFlagsBatch, isTransferable, isInformationOnly, subjectReacts,
   registerSourceFlags, isPerpetrator, isFirsthand, isConcealment,
   BELIEF_SOURCE,
   registerEventLabels, getEventLabel, getEventLabelSafe,
