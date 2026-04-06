@@ -324,44 +324,50 @@ async function loadMapData() {
 async function init() {
   await loadMapData();
   buildWalkableGrid();
-  // Fetch agents
-  const res = await fetch('/api/agents');
-  const agents = await res.json();
-  for (const a of agents) {
-    // Use server-authoritative positions (x, y from /api/agents)
-    const sprites = getUnitSprites(a.id);
-    state.agents[a.id] = {
-      name: a.name, role: a.role, location: a.location,
-      mood: a.mood, alive: a.alive, status: a.status || '',
-      background: a.background || '',
-      hasShop: a.hasShop || false,
-      investigator: a.investigator || false,
-      chatHistory: loadChatHistory(a.id),
-      x: a.x ?? 0, y: a.y ?? 0, targetX: a.x ?? 0, targetY: a.y ?? 0,
-      moving: false, waypoints: [], wpIdx: 0,
-      sprites, frameIdx: 0, animTimer: 0, flipH: false,
-    };
-  }
 
-  // Player start — restore position from server (persists across page refresh)
-  const playerRes = await fetch('/api/player');
-  const playerData = await playerRes.json();
-  if (playerData.id) state.player.id = playerData.id;
-  if (playerData.x != null && playerData.y != null && (playerData.x || playerData.y)) {
-    state.player.x = playerData.x; state.player.y = playerData.y;
-  } else {
-    const sq = locCenter('town-square');
-    state.player.x = sq.x; state.player.y = sq.y;
-  }
-  state.player.sprites = getUnitSprites('player');
+  try {
+    const res = await fetch('/api/agents');
+    if (!res.ok) throw new Error(`agents: ${res.status}`);
+    const agents = await res.json();
+    for (const a of agents) {
+      const sprites = getUnitSprites(a.id);
+      state.agents[a.id] = {
+        name: a.name, role: a.role, location: a.location,
+        mood: a.mood, alive: a.alive, status: a.status || '',
+        background: a.background || '',
+        hasShop: a.hasShop || false,
+        investigator: a.investigator || false,
+        chatHistory: loadChatHistory(a.id),
+        x: a.x ?? 0, y: a.y ?? 0, targetX: a.x ?? 0, targetY: a.y ?? 0,
+        moving: false, waypoints: [], wpIdx: 0,
+        sprites, frameIdx: 0, animTimer: 0, flipH: false,
+      };
+    }
 
-  // Fetch time
-  const timeRes = await fetch('/api/time');
-  const timeData = await timeRes.json();
-  state.day = timeData.gameDay; state.time = timeData.hour; state.period = timeData.period;
-  state.gameSpeed = timeData.gameSpeed ?? 1;
-  syncSpeedButtons(state.gameSpeed);
-  updateHUD();
+    const playerRes = await fetch('/api/player');
+    if (!playerRes.ok) throw new Error(`player: ${playerRes.status}`);
+    const playerData = await playerRes.json();
+    if (playerData.id) state.player.id = playerData.id;
+    if (playerData.x != null && playerData.y != null && (playerData.x || playerData.y)) {
+      state.player.x = playerData.x; state.player.y = playerData.y;
+    } else {
+      const sq = locCenter('town-square');
+      state.player.x = sq.x; state.player.y = sq.y;
+    }
+    state.player.sprites = getUnitSprites('player');
+
+    const timeRes = await fetch('/api/time');
+    if (!timeRes.ok) throw new Error(`time: ${timeRes.status}`);
+    const timeData = await timeRes.json();
+    state.day = timeData.gameDay; state.time = timeData.hour; state.period = timeData.period;
+    state.gameSpeed = timeData.gameSpeed ?? 1;
+    syncSpeedButtons(state.gameSpeed);
+    updateHUD();
+  } catch (e) {
+    showToast('Server unavailable — retrying...', 'info', 4000);
+    setTimeout(init, 3000);
+    return;
+  }
 
   // Load journal state
   try {
@@ -395,6 +401,16 @@ async function init() {
     }
     // Escape — close chat
     if (e.key === 'Escape' && state.chatOpen) closeChat();
+    // Focus trap in chat panel
+    if (e.key === 'Tab' && state.chatOpen) {
+      const panel = document.getElementById('chat-panel');
+      const focusable = panel.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])');
+      if (focusable.length) {
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
   });
   window.addEventListener('keyup', e => { state.keys[e.key.toLowerCase()] = false; });
   canvas.addEventListener('click', onCanvasClick);
@@ -1051,7 +1067,7 @@ function renderJournalEntry(e) {
 
   let meta = '';
   if (e.evidenceCategory) {
-    meta += `<span class="journal-badge ${e.evidenceCategory}">${e.evidenceCategory}</span>`;
+    meta += `<span class="journal-badge ${safeCssClass(e.evidenceCategory)}">${escapeHTML(e.evidenceCategory)}</span>`;
   }
   if (e.evidenceWeight) {
     meta += `<span class="journal-weight">${e.evidenceWeight.toFixed(2)}</span>`;
@@ -1198,7 +1214,7 @@ function renderCaseReview(data) {
   let detailsHtml = '<div class="case-review-details"><div class="case-review-divider">Details</div>';
   for (const e of data.entries) {
     const text = escapeHTML(e.text || e.clueText || e.description || '');
-    const cat = e.evidenceCategory ? `<span class="journal-badge ${e.evidenceCategory}">${escapeHTML(e.evidenceCategory)}</span>` : '';
+    const cat = e.evidenceCategory ? `<span class="journal-badge ${safeCssClass(e.evidenceCategory)}">${escapeHTML(e.evidenceCategory)}</span>` : '';
     const loc = e.locationId || e.location || '';
     const source = e.type || '';
     const meta = [source, loc].filter(Boolean).join(', ');
@@ -1246,7 +1262,7 @@ function renderEvidencePresenter() {
       const selected = _selectedEvidence.has(e.id);
       const cls = `evidence-item${selected ? ' selected' : ''}${alreadyShown ? ' already-shown' : ''}`;
       const text = escapeHTML(e.text || e.clueText || e.description || '');
-      const cat = e.evidenceCategory ? `<span class="journal-badge ${e.evidenceCategory}">${e.evidenceCategory}</span> ` : '';
+      const cat = e.evidenceCategory ? `<span class="journal-badge ${safeCssClass(e.evidenceCategory)}">${escapeHTML(e.evidenceCategory)}</span> ` : '';
       const shown = alreadyShown ? '<div class="evidence-item-shown">already shown</div>' : '';
       return `<div class="${cls}" onclick="toggleEvidenceItem('${e.id}')">
         <div class="evidence-item-check"></div>
@@ -1282,13 +1298,15 @@ function clearEvidenceSelection() {
 }
 
 // ─── EVENT FEED ───
+const FEED_CLASSES = new Set(['crime', 'conversation', 'movement', 'thought', 'mood']);
 function addEvent(cls, text) {
-  state.events.unshift({ cls, text, time: state.time });
+  const safeCls = FEED_CLASSES.has(cls) ? cls : '';
+  state.events.unshift({ cls: safeCls, text, time: state.time });
   if (state.events.length > 50) state.events.pop();
   // Incremental DOM — prepend new element, trim overflow
   const feed = document.getElementById('event-feed');
   const el = document.createElement('div');
-  el.className = `feed-item ${cls}`;
+  el.className = `feed-item ${safeCls}`;
   el.innerHTML = `<span class="time">${escapeHTML(state.time)}</span> ${escapeHTML(text)}`;
   feed.prepend(el);
   while (feed.children.length > 50) feed.lastChild.remove();
@@ -1779,6 +1797,10 @@ function escapeAttr(str) {
   return String(str).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function safeCssClass(str) {
+  return /^[a-z_-]+$/.test(str) ? str : '';
+}
+
 function createMsgEl(name, text, cls) {
   const el = document.createElement('div');
   el.className = `msg msg-${cls}`;
@@ -2034,7 +2056,11 @@ const _minimap = { canvas: null, ctx: null, scale: 0, ox: 0, oy: 0 };
 function initMinimap() {
   _minimap.canvas = document.getElementById('minimap');
   if (!_minimap.canvas) return;
+  // HiDPI scaling
+  _minimap.canvas.width = 200 * dpr;
+  _minimap.canvas.height = 150 * dpr;
   _minimap.ctx = _minimap.canvas.getContext('2d');
+  _minimap.ctx.scale(dpr, dpr);
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
   for (const loc of Object.values(LOCATIONS)) {
     if (loc.px < minX) minX = loc.px; if (loc.px > maxX) maxX = loc.px;
