@@ -44,6 +44,56 @@ export function registerCrimeEventHandlers(): void {
     ctx.addMoodModifier(event.subject, { source: 'murder_committed', category: 'event', magnitude: -0.3, remaining: 1440, duration: 1440, decay: 'exponential' });
   });
 
+  // NPC_KILLED: friends of victim get REVENGE_DESIRE toward killer (emergent motive)
+  registerEventHandler('NPC_KILLED', (event: WorldEvent, ctx: EventHandlerContext) => {
+    const victimId = event.object;
+    const killerId = event.subject;
+    if (!victimId || !killerId) return;
+    const currentDay = ctx.getCurrentDay();
+    for (const [npcId, agent] of ctx.agents) {
+      if (npcId === killerId || npcId === victimId || !agent.state.alive) continue;
+      if (agent.profile.isPlayer) continue;
+      const rel = agent.state.relationships?.getRelationship(victimId);
+      if (!rel || rel.sentiment <= 0.3) continue; // only friends
+      if (!agent.state.beliefs) continue;
+      agent.state.beliefs.addBelief({
+        id: crypto.randomUUID(),
+        eventType: 'REVENGE_DESIRE',
+        subject: null,
+        object: killerId,
+        location: agent.state.location,
+        confidence: Math.min(1.0, rel.sentiment * 0.8),
+        source: 'personal_motive',
+        sourceNpcId: null,
+        gameDay: currentDay,
+        lastUpdated: currentDay,
+      });
+    }
+  });
+
+  // THEFT_DISCOVERED: victim gets REVENGE_DESIRE toward thief (emergent motive)
+  // THEFT_DISCOVERED event: subject = owner/victim who discovered, object = thief
+  registerEventHandler('THEFT_DISCOVERED', (event: WorldEvent, ctx: EventHandlerContext) => {
+    const victimId = event.subject; // owner who discovered theft
+    const thiefId = event.object;   // the thief
+    if (!victimId || !thiefId) return;
+    const victim = ctx.agents.get(victimId);
+    if (!victim || !victim.state.alive || !victim.state.beliefs) return;
+    if (victim.profile.isPlayer) return;
+    victim.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: 'REVENGE_DESIRE',
+      subject: null,
+      object: thiefId,
+      location: victim.state.location,
+      confidence: 0.8,
+      source: 'personal_motive',
+      sourceNpcId: null,
+      gameDay: ctx.getCurrentDay(),
+      lastUpdated: ctx.getCurrentDay(),
+    });
+  });
+
   // WANTED_STATUS: investigator sentiment + criminal awareness
   registerEventHandler('WANTED_STATUS', async (event: WorldEvent, ctx: EventHandlerContext) => {
     const criminalName = (event.payload?.suspectName as string);

@@ -164,6 +164,10 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 75. **Personality-shifted moodCurve**: `moodCurve(mood, H)`. slidingEntry = -0.30 + (1-H)×0.20. Low H NPCs enter crime zone at higher (less negative) mood.
 76. **addMoodModifier callback**: CG and IL access mood modifiers via callback on WorldContext/ILEffectContext. Engine provides mechanism, callsite provides modifier data.
 77. **Dev tools**: `GET /api/debug/snapshot` (all NPCs: mood, baseMood, modifiers, personality, relationships, top affordance). `GET /api/debug/mood-history/:id?last=N` (time-series sampled every 5 game min, ring buffer 500). Server starts with auto-tick ON.
+78. **Motives = beliefs (SPEC-motive-pool)**: motives are beliefs with category 'motive' (PERSONAL_GRUDGE, REVENGE_DESIRE, THREAT_PERCEIVED). Object field = target NPC ID (dedup key). Source 'personal_motive' with transfer weight 0 — grudges don't gossip. `profile.motive` deprecated; pool entries in `motives.json` override.
+79. **EventTypeFlags.decayRate**: multiplier for belief decay. `effectiveRate = sourceRate × getEventTypeDecayRate(eventType)`. Default 1.0. Motive types: REVENGE_DESIRE 0.05 (semi-permanent), PERSONAL_GRUDGE 0.1, THREAT_PERCEIVED 0.2. Universal engine mechanism — not motive-specific.
+80. **Motive target finder**: kill affordance uses `targetFinder: 'motive_target'` — finds NPC with highest-confidence motive-category belief (conf ≥ 0.3). No motive belief = no premeditated murder. Vigilante keeps `targetFinder: 'crime_belief'` (reactive). beliefModifiers on kill/steal/blackmail boost utility from motive beliefs.
+81. **Emergent motives**: THEFT_DISCOVERED → victim gets REVENGE_DESIRE (conf 0.8). NPC_KILLED → friends (sentiment > 0.3) get REVENGE_DESIRE (conf = sentiment × 0.8). Sentiment < -0.5 without existing motive → PERSONAL_GRUDGE via tick phase handler (every 30 game min).
 
 ## Clock-Driven Architecture
 
@@ -183,4 +187,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.11.0-dev. Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) backend complete — accusation, evidence presentation, crime prevention, journal v2. Mood modifier system (SPEC-mood-modifiers) implemented — calibration WIP. Web UI pending. 14 engine subsystems, 30+ registries, 20+ affordances, 14 specs. See docs/ROADMAP.md for details.
+v0.11.0-dev. Milestone 1 (Replayable Crime) complete — trait/mood/relationship randomization, scenario manager, motive pool (motives as beliefs). Milestone 2 (Detective Toolkit) backend complete — accusation, evidence presentation, crime prevention, journal v2. Mood modifier system (SPEC-mood-modifiers) implemented. Motive pool (SPEC-motive-pool) implemented — 9 conditional motives, emergent motives, belief-based targeting. Web UI pending. 14 engine subsystems, 30+ registries, 20+ affordances, 15 specs. See docs/ROADMAP.md for details.

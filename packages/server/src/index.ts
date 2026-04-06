@@ -13,7 +13,7 @@ import { broadcast } from './ws';
 import { startServer } from './server';
 import { loadWorld } from './world-loader';
 import { PositionManager } from './position-manager';
-import { randomizeTraits, logRandomization, randomizeMoods, logMoodRandomization, randomizeRelationships, logRelationshipRandomization } from './trait-randomizer';
+import { randomizeTraits, logRandomization, randomizeMoods, logMoodRandomization, randomizeRelationships, logRelationshipRandomization, assignMotives } from './trait-randomizer';
 import type { GameContext } from './game-context';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
@@ -254,6 +254,11 @@ async function createGameContext(
   }
   if (worldData.secrets.length > 0) {
     console.log(`  [+] Secret knowledge seeded for ${worldData.secrets.length} NPCs`);
+  }
+
+  // ─── Starting motives (SPEC-motive-pool) ───
+  if (worldData.motives.length > 0) {
+    await assignMotives(agents, worldData.motives, seed);
   }
 
   // ─── Player Agent ───

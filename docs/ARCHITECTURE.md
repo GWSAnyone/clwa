@@ -77,9 +77,11 @@ Player speech → `extractDialogueMeaning()` (LLM, dynamic JSON schema) → `app
 
 ### Beliefs (v1)
 
-Structured facts with confidence and source. Dedup key: (eventType, object, source). Different sources coexist. Decay per source type. `getMaxConfidenceFor()` aggregates.
+Structured facts with confidence and source. Dedup key: (eventType, object, source). Different sources coexist. Decay per source type × eventType decayRate. `getMaxConfidenceFor()` aggregates.
 
-Sources: witness (0.95), body_discovery (0.7), testimony (trust-scaled), rumor (0.4), observation (0.8), deduction (0.3-0.5), evidence (weight-based).
+Sources: witness (0.95), body_discovery (0.7), testimony (trust-scaled), rumor (0.4), observation (0.8), deduction (0.3-0.5), evidence (weight-based), personal_motive (pool-assigned, weight 0 — no gossip).
+
+**Motive beliefs (SPEC-motive-pool):** category 'motive' with types PERSONAL_GRUDGE, REVENGE_DESIRE, THREAT_PERCEIVED. Object = target NPC ID. Assigned from pool at game start (conditional on traits + sentiment) or emergent during gameplay (victimization, deep hatred). EventTypeFlags.decayRate (0.05–0.2) makes motives decay 5–20x slower than facts.
 
 ### Goals (v1)
 
@@ -162,16 +164,18 @@ Module-registered builders inject behavioral prompts into NPC system prompt. Che
 
 ### Secrets & Motives
 
-| NPC | Secret | Motive |
-|-----|--------|--------|
-| Ted | Waters down ale (debts) | — |
-| Hilda | Father died in Ted's tavern | vs Ted |
-| Elara | Spying for noble house | — |
-| Garrett | Took a bribe once | — |
-| Aldric | Lost his faith | — |
-| Mark | Sells common spices as exotic | vs Bess (she knows) |
-| Bess | Foresaw a murder, didn't warn | — |
+| NPC | Secret | Possible Motives (from pool) |
+|-----|--------|------------------------------|
+| Ted | Waters down ale (debts) | gambling_debt → Mark, political_threat → Bess |
+| Hilda | Father died in Ted's tavern | fathers_death → Ted (REVENGE_DESIRE) |
+| Elara | Spying for noble house | too_many_questions → Garrett (THREAT_PERCEIVED) |
+| Garrett | Took a bribe once | corrupt_suspicion → Elara (PERSONAL_GRUDGE) |
+| Aldric | Lost his faith | moral_disgust → Ted (PERSONAL_GRUDGE) |
+| Mark | Sells common spices as exotic | secret_exposed → Bess, trade_rivalry → Hilda |
+| Bess | Foresaw a murder, didn't warn | herbal_knowledge → Mark (PERSONAL_GRUDGE) |
 | Theron | Convicted an innocent once | — |
+
+*Motives assigned from `motives.json` pool at game start, conditional on randomized traits + sentiment. Not all motives activate every run. See SPEC-motive-pool.*
 
 ### Locations (8)
 

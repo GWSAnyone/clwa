@@ -1,4 +1,4 @@
-import { getBeliefSourceLabel, getSourceTransferWeight, getSourceDecayRate, getEventLabel } from './event-registry';
+import { getBeliefSourceLabel, getSourceTransferWeight, getSourceDecayRate, getEventTypeDecayRate, getEventLabel } from './event-registry';
 
 // BeliefSource is a string — modules can add new sources via registry
 export type BeliefSource = string;
@@ -103,9 +103,10 @@ export class BeliefManager {
     for (const b of this.beliefs.values()) {
       const daysSince = currentDay - b.lastUpdated;
       if (daysSince > 0) {
-        const rate = getSourceDecayRate(b.source);
-        if (rate === 0) continue; // source never decays (e.g. secret knowledge)
-        b.confidence = Math.max(0.1, b.confidence - rate * daysSince);
+        const sourceRate = getSourceDecayRate(b.source);
+        if (sourceRate === 0) continue; // source never decays (e.g. secret knowledge)
+        const effectiveRate = sourceRate * getEventTypeDecayRate(b.eventType);
+        b.confidence = Math.max(0.1, b.confidence - effectiveRate * daysSince);
       }
     }
   }

@@ -235,6 +235,9 @@ When the scenario resolves (or player decides to leave), show:
 - [x] Criminal behavior: flee, destroy evidence, intimidate witnesses, blackmail
 - [x] Secret directives (criminal denial, cover-up, witness eagerness)
 - [x] Perception system (canSee, canHear, co-location)
+- [x] Motive pool: 9 conditional motives assigned as beliefs at game start (SPEC-motive-pool)
+- [x] Emergent motives: victimization/hatred → new motive beliefs during gameplay
+- [x] Mood modifier system with structured modifiers, social stress drift, personality-shifted zones
 
 ### Must Build (Game Layer)
 
@@ -265,15 +268,15 @@ When the scenario resolves (or player decides to leave), show:
 - ~~Trait randomization (OCEAN+H ranges per NPC archetype)~~ ✅
 - ~~Mood randomization (starting mood ranges)~~ ✅
 - ~~Relationship randomization (sentiment/trust variance)~~ ✅
-- Motive network expansion (more NPC motive pairs)
-- Conditional motives (motives activate/deactivate per seed based on traits + sentiment)
+- ~~Motive network expansion (more NPC motive pairs)~~ ✅ (9 motives in pool, SPEC-motive-pool)
+- ~~Conditional motives (motives activate/deactivate per seed based on traits + sentiment)~~ ✅
 - ~~Crime severity tiers~~ → moved to Milestone 3 (needs more crime types first)
 
 **Result:** Start game → NPCs have different personalities AND different motives → different crime emerges → different investigation. Core replayability works.
 
 **Test:** 5 restarts produce at least 3 distinct scenarios (different criminal, different crime type, different victim).
 
-**Specs:** `SPEC-trait-randomization` ✅ | `SPEC-mood-relationship-randomization` ✅ | `SPEC-scenario-manager` ✅ | `SPEC-scenario-variety` (in progress)
+**Specs:** `SPEC-trait-randomization` ✅ | `SPEC-mood-relationship-randomization` ✅ | `SPEC-scenario-manager` ✅ | `SPEC-motive-pool` ✅ | `SPEC-scenario-variety` (in progress)
 
 ---
 

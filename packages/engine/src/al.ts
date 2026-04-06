@@ -17,8 +17,6 @@ export interface AffordanceRequirement {
   maxWitnesses?: number;
   /** Target must have a shop */
   targetHasShop?: boolean;
-  /** NPC must have a motive (profile.motive) */
-  hasMotive?: boolean;
   /** NPC must have a crime belief about someone (confidence >= threshold) */
   hasCrimeBelief?: boolean;
   /** Minimum confidence for crime belief */

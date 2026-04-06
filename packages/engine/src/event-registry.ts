@@ -27,6 +27,8 @@ export interface EventTypeFlags {
   informationOnly?: boolean;
   /** Subject of this event should be included as reactor in reactive volition (e.g., criminal reacts to WANTED_STATUS by fleeing) */
   subjectReacts?: boolean;
+  /** Multiplier for belief decay rate. Default 1.0. Lower = slower decay (e.g. 0.1 = 10x slower). */
+  decayRate?: number;
 }
 
 const EVENT_TYPE_FLAGS: Map<string, EventTypeFlags> = new Map();
@@ -55,6 +57,11 @@ export function isInformationOnly(eventType: string): boolean {
 /** Check if the subject of this event should react (e.g., criminal flees on WANTED_STATUS) */
 export function subjectReacts(eventType: string): boolean {
   return EVENT_TYPE_FLAGS.get(eventType)?.subjectReacts === true;
+}
+
+/** Get decay rate multiplier for event type. Default 1.0. Motives use 0.05–0.2 for slow decay. */
+export function getEventTypeDecayRate(eventType: string): number {
+  return EVENT_TYPE_FLAGS.get(eventType)?.decayRate ?? 1.0;
 }
 
 // ─── Source Flags ───

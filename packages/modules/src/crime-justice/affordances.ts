@@ -30,6 +30,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     beliefModifiers: [
       { eventType: 'DEBT_PRESSURE', weight: 0.3 },
       { eventType: 'GOODS_STOLEN', weight: 0.2 },
+      { eventType: 'PERSONAL_GRUDGE', weight: 0.15 },
     ],
     goalType: 'steal',
     goalPriority: 5,
@@ -46,6 +47,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     actionDescription: 'eliminate someone permanently',
     label: 'Silence the threat permanently — they know too much and must be stopped',
     instinctContext: '{targetName} {reason:is a threat that must be eliminated}. Tonight, this ends.',
+    targetFinder: 'motive_target',
     category: 'crime',
     suppressNearPlayer: true,
     severity: 10,
@@ -65,6 +67,11 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     moodWeight: 0.4,
     relationshipWeight: 0.3,
     baseProbability: 0.25,
+    beliefModifiers: [
+      { eventType: 'REVENGE_DESIRE', weight: 0.5 },
+      { eventType: 'PERSONAL_GRUDGE', weight: 0.4 },
+      { eventType: 'THREAT_PERCEIVED', weight: 0.3 },
+    ],
     goalType: 'murder',
     goalPriority: 8,
     stepTemplates: [
@@ -131,6 +138,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     baseProbability: 0.15,
     beliefModifiers: [
       { eventType: 'PERSONAL_SECRET', weight: 0.3 },
+      { eventType: 'THREAT_PERCEIVED', weight: 0.2 },
     ],
     goalType: 'blackmail',
     goalPriority: 5,

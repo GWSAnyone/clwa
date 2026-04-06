@@ -119,6 +119,23 @@ export interface LoadedWorld {
   traitRanges: Map<string, TraitRange>;
   /** Per-NPC mood randomization ranges (from NPC JSON moodRange field) */
   moodRanges: Map<string, [number, number]>;
+  /** Motive pool for randomized assignment at game start */
+  motives: MotivePoolEntry[];
+}
+
+export interface MotivePoolEntry {
+  id: string;
+  from: string;
+  to: string;
+  type: string;
+  reason: string;
+  confidence: number;
+  probability: number;
+  requires: {
+    fromHBelow?: number;
+    fromNAbove?: number;
+    sentimentBelow?: number;
+  };
 }
 
 // ─── Loader ────────────────────────────────────────────────────
@@ -266,6 +283,13 @@ export function loadWorld(worldDir: string): LoadedWorld {
     console.log(`  [+] ${secrets.length} starting secrets`);
   }
 
+  // ─── motives.json ───
+  const motivesPath = join(worldDir, 'motives.json');
+  const motives = existsSync(motivesPath) ? readJson<MotivePoolEntry[]>(motivesPath) : [];
+  if (motives.length > 0) {
+    console.log(`  [+] ${motives.length} motive pool entries`);
+  }
+
   console.log(`[WorldLoader] "${worldJson.name}" loaded successfully`);
 
   return {
@@ -282,6 +306,7 @@ export function loadWorld(worldDir: string): LoadedWorld {
     lore: worldJson.lore,
     relationships,
     secrets,
+    motives,
     config: worldJson.config,
     locationNameToId: nameToId,
     traitRanges,

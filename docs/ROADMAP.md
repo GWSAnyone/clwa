@@ -59,7 +59,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 | # | Milestone | Версия | Описание | Статус |
 |---|-----------|--------|----------|--------|
-| 1 | Replayable Crime | v0.11 | Randomization → каждый рестарт = другой сценарий | Done |
+| 1 | Replayable Crime | v0.11 | Randomization + motive pool → каждый рестарт = другой сценарий | Done |
 | 2 | Detective Toolkit | v0.12 | Accusation, evidence, prevention, journal | Backend done |
 | 3 | Living Opposition | v0.13 | Garrett variability, escalation, heat, NPC resistance, dual-layer mood, criminal confidence | Spec: CG v2, Design: Mood Review |
 | 4 | Complete Session | v0.14 | Arrival event, win/lose, end-of-run summary | — |

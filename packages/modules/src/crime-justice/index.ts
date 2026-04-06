@@ -1,6 +1,6 @@
 import {
   AFFORDANCE_REGISTRY, EVIDENCE_RULES, REQUIREMENT_CHECKERS, TOPIC_SOURCE_REGISTRY,
-  registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerEventTypeFlagsBatch, registerSourceFlags,
+  registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerEventTypeFlags, registerEventTypeFlagsBatch, registerSourceFlags,
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
   registerAbsentStatuses, registerStepHandler, registerInteractPostHook, registerTopicGroupMapping,
   registerWitnessEventType, registerEventMoodShifts, registerGoalMoodBoost,
@@ -184,6 +184,27 @@ export function registerCrimeJusticeModule(): void {
 
   // Additional source labels for prompts
   registerBeliefSourceLabels({ secret: 'personal knowledge', scene_notice: 'noticed at crime scene' });
+
+  // ─── Motive system (SPEC-motive-pool) ───
+
+  // Motive event types — beliefs with category 'motive'
+  registerEventCategory('motive', ['PERSONAL_GRUDGE', 'REVENGE_DESIRE', 'THREAT_PERCEIVED']);
+  registerEventLabels({
+    PERSONAL_GRUDGE: 'personal grudge',
+    REVENGE_DESIRE: 'desire for revenge',
+    THREAT_PERCEIVED: 'perceived threat',
+  });
+
+  // Per-type decay rates: grudges persist, threats fade faster
+  registerEventTypeFlags('REVENGE_DESIRE', { decayRate: 0.05 });  // semi-permanent trauma
+  registerEventTypeFlags('PERSONAL_GRUDGE', { decayRate: 0.1 });  // slow fade without reinforcement
+  registerEventTypeFlags('THREAT_PERCEIVED', { decayRate: 0.2 }); // situational, fades faster
+
+  // Source 'personal_motive': not transferable (grudges don't gossip), not firsthand
+  registerSourceFlags('personal_motive', {});
+  registerSourceTransferWeights({ personal_motive: 0 });
+  registerSourceDecayRates({ personal_motive: 0.02 }); // source rate × eventType rate = effective
+  registerBeliefSourceLabels({ personal_motive: 'personal motivation' });
 
   // Crime scene templates — examination points, passive notice text, profession clues
   const PROFESSION_CLUES: Record<string, { description: string; clueText: string }> = {
@@ -709,6 +730,38 @@ export function registerCrimeJusticeModule(): void {
         }
       }
       // Low N + Low C: brave/careless — no defensive action (by design)
+    }
+  });
+
+  // Relationship-driven emergent motives: deep hatred → PERSONAL_GRUDGE (checked once per day advance)
+  registerTickPhaseHandler(async (ctx) => {
+    // Only check every ~30 game minutes (avoid spamming)
+    if (ctx.gameMinute % 30 !== 0) return;
+    for (const [npcId, agent] of ctx.agents) {
+      if (!agent.state.alive || agent.profile.isPlayer) continue;
+      if (!agent.state.beliefs || !agent.state.relationships) continue;
+      for (const [otherId, other] of ctx.agents) {
+        if (otherId === npcId || !other.state.alive || other.profile.isPlayer) continue;
+        const rel = agent.state.relationships.getRelationship(otherId);
+        if (!rel || rel.sentiment >= -0.5) continue;
+        // Guard: don't create if already has motive belief against this target
+        const existing = agent.state.beliefs.getAllBeliefs().find(
+          (b) => isEventCategory(b.eventType, 'motive') && b.object === otherId,
+        );
+        if (existing) continue;
+        agent.state.beliefs.addBelief({
+          id: crypto.randomUUID(),
+          eventType: 'PERSONAL_GRUDGE',
+          subject: null,
+          object: otherId,
+          location: agent.state.location,
+          confidence: Math.min(1.0, Math.abs(rel.sentiment) * 0.7),
+          source: 'personal_motive',
+          sourceNpcId: null,
+          gameDay: ctx.currentDay,
+          lastUpdated: ctx.currentDay,
+        });
+      }
     }
   });
 

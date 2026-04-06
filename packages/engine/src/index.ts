@@ -188,7 +188,7 @@ export {
   registerRelationshipLabels, getRelationshipLabel,
   registerBeliefSourceLabels, getBeliefSourceLabel,
   registerSourceTransferWeights, getSourceTransferWeight,
-  registerSourceDecayRates, getSourceDecayRate,
+  registerSourceDecayRates, getSourceDecayRate, getEventTypeDecayRate,
   registerStepHandler, getStepHandler,
   registerActiveStatuses, registerAbsentStatuses, isStatusActive, isStatusAbsent,
   registerInteractPostHook, runInteractPostHooks,

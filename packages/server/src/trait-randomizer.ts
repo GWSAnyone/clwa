@@ -9,7 +9,8 @@
  * Lives in server/ (not engine/) — engine doesn't know about randomization.
  */
 
-import type { AgentProfile, BigFive } from '@clwa/engine';
+import type { AgentProfile, BigFive, Agent } from '@clwa/engine';
+import type { MotivePoolEntry } from './world-loader';
 
 // ─── Types ───
 
@@ -279,5 +280,100 @@ export function logRelationshipRandomization(
     const s = rel.sentiment !== undefined ? `s=${rel.sentiment.toFixed(2)}` : '';
     const t = rel.trust !== undefined ? `t=${rel.trust.toFixed(2)}` : '';
     console.log(`  [Randomization] ${rel.from}→${rel.to}: ${s} ${t}`.trim());
+  }
+}
+
+// ─── Motive Assignment (SPEC-motive-pool) ───
+
+/**
+ * Assign motives from pool as beliefs + memories at game start.
+ * Checks trait/relationship conditions, rolls seeded dice per motive.
+ * Falls back to profile.motive if no pool entry matches.
+ * Pushes sentiment floor if motive assigned but sentiment too weak.
+ */
+export async function assignMotives(
+  agents: Map<string, Agent>,
+  motives: MotivePoolEntry[],
+  seed: number,
+): Promise<void> {
+  const assigned = new Set<string>(); // track which NPC IDs got at least one pool motive
+
+  for (const motive of motives) {
+    if (motive.from === motive.to) continue; // no self-motives
+
+    const fromAgent = agents.get(motive.from);
+    const toAgent = agents.get(motive.to);
+    if (!fromAgent || !toAgent || !toAgent.state.alive) continue;
+
+    const bf = fromAgent.profile.bigFive;
+
+    // Check trait conditions
+    if (motive.requires.fromHBelow != null && bf.honesty >= motive.requires.fromHBelow) continue;
+    if (motive.requires.fromNAbove != null && bf.neuroticism < motive.requires.fromNAbove) continue;
+
+    // Check sentiment condition
+    if (motive.requires.sentimentBelow != null) {
+      const rel = fromAgent.state.relationships?.getRelationship(motive.to);
+      if (!rel || rel.sentiment >= motive.requires.sentimentBelow) continue;
+    }
+
+    // Seeded roll per motive
+    const motiveSeed = (seed + hashString('motive_' + motive.id)) | 0;
+    const rng = mulberry32(motiveSeed);
+    if (rng() > motive.probability) continue;
+
+    // All checks passed — assign motive belief
+    if (!fromAgent.state.beliefs) continue;
+
+    fromAgent.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: motive.type,
+      subject: null,
+      object: motive.to,
+      location: fromAgent.state.location,
+      confidence: motive.confidence,
+      source: 'personal_motive',
+      sourceNpcId: null,
+      gameDay: 1,
+      lastUpdated: 1,
+    });
+
+    // Narrative reason in memory (observation)
+    await fromAgent.observe(motive.reason, 8);
+
+    // Push sentiment floor if motive assigned but sentiment too weak for social stress
+    const rel = fromAgent.state.relationships?.getRelationship(motive.to);
+    if (rel && rel.sentiment > -0.35) {
+      fromAgent.state.relationships!.adjustSentiment(motive.to, -0.35 - rel.sentiment);
+    }
+
+    assigned.add(motive.from);
+    console.log(`  [Motive] ${fromAgent.profile.name} → ${toAgent.profile.name}: ${motive.type} (${motive.id}, conf=${motive.confidence})`);
+  }
+
+  // Fallback: convert profile.motive to belief for NPCs without pool assignments
+  for (const [npcId, agent] of agents) {
+    if (agent.profile.isPlayer || !agent.state.alive) continue;
+    if (assigned.has(npcId)) continue;
+    const profileMotive = agent.profile.motive;
+    if (!profileMotive || !agent.state.beliefs) continue;
+
+    const target = agents.get(profileMotive.targetId);
+    if (!target || !target.state.alive) continue;
+
+    agent.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: 'THREAT_PERCEIVED', // conservative default for legacy motives
+      subject: null,
+      object: profileMotive.targetId,
+      location: agent.state.location,
+      confidence: 0.8,
+      source: 'personal_motive',
+      sourceNpcId: null,
+      gameDay: 1,
+      lastUpdated: 1,
+    });
+    await agent.observe(profileMotive.reason, 8);
+    console.log(`  [Motive] ${agent.profile.name} → ${target.profile.name}: THREAT_PERCEIVED (legacy profile.motive fallback)`);
   }
 }

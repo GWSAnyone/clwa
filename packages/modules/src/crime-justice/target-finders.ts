@@ -28,16 +28,26 @@ function findStealTarget(npcId: string, agent: Agent, ctx: AffordanceContext): A
   return best;
 }
 
+/** Belief-based motive targeting: find NPC with highest confidence motive-category belief. */
 function findMotiveTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
-  const motive = agent.profile.motive;
-  if (!motive) return null;
-  const target = ctx.agents.get(motive.targetId);
-  if (!target || !target.state.alive) return null;
-  return { targetId: motive.targetId, targetName: target.profile.name, targetLocation: target.state.location, extra: { reason: motive.reason } };
+  if (!agent.state.beliefs) return null;
+  let best: { id: string; name: string; location: string; conf: number } | null = null;
+  for (const b of agent.state.beliefs.getAllBeliefs()) {
+    if (!isEventCategory(b.eventType, 'motive')) continue;
+    if (b.confidence < 0.3) continue;
+    if (!b.object) continue; // object = target NPC ID
+    const target = ctx.agents.get(b.object);
+    if (!target || b.object === npcId || !target.state.alive) continue;
+    if (target.profile.isPlayer) continue;
+    if (!best || b.confidence > best.conf) {
+      best = { id: b.object, name: target.profile.name, location: target.state.location, conf: b.confidence };
+    }
+  }
+  if (!best) return null;
+  return { targetId: best.id, targetName: best.name, targetLocation: best.location, extra: {} };
 }
 
-/** Sentiment-based targeting: find the NPC this agent hates most.
- *  Uses motive.reason as enrichment if target matches motive.targetId. */
+/** Sentiment-based targeting: find the NPC this agent hates most. */
 function findMostHatedTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
   const rels = agent.state.relationships;
   if (!rels) return null;
@@ -50,7 +60,7 @@ function findMostHatedTarget(npcId: string, agent: Agent, ctx: AffordanceContext
   for (const [otherId, other] of ctx.agents) {
     if (otherId === npcId || !other.state.alive) continue;
     if (other.profile.isPlayer) continue;
-    if (!isStatusAbsent(other.state.status)) continue;
+    if (isStatusAbsent(other.state.status)) continue;
 
     const rel = rels.getRelationship(otherId);
     if (!rel) continue;
@@ -64,14 +74,11 @@ function findMostHatedTarget(npcId: string, agent: Agent, ctx: AffordanceContext
 
   if (!bestId) return null;
 
-  const motive = agent.profile.motive;
-  const reason = (motive && motive.targetId === bestId) ? motive.reason : undefined;
-
   return {
     targetId: bestId,
     targetName: bestName,
     targetLocation: bestLocation,
-    extra: reason ? { reason } : {},
+    extra: {},
   };
 }
 
@@ -413,7 +420,7 @@ export function registerCrimeTargetFinders(): void {
   TARGET_FINDERS.set('surveillance', findSurveillanceTarget);
   TARGET_FINDERS.set('steal', findStealTarget);
   TARGET_FINDERS.set('kill', findMostHatedTarget);
-  TARGET_FINDERS.set('motive', findMotiveTarget); // kept for other affordances if needed
+  TARGET_FINDERS.set('motive_target', findMotiveTarget);
   TARGET_FINDERS.set('crime_belief', (npcId, agent, ctx, aff) => findCrimeBeliefTarget(npcId, agent, ctx, aff.requires.beliefConfidence ?? 0.5));
   TARGET_FINDERS.set('blackmail', findBlackmailTarget);
   TARGET_FINDERS.set('interrogation', (npcId, agent, ctx) => findInterrogationTarget(npcId, agent, ctx));
