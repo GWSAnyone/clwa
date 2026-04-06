@@ -781,6 +781,13 @@ function updateActionEffects(dt) {
     state.actionEffects[i].timer -= dt;
     if (state.actionEffects[i].timer <= 0) state.actionEffects.splice(i, 1);
   }
+  // Mood pulse decay
+  for (const a of Object.values(state.agents)) {
+    if (a._moodPulse) {
+      a._moodPulse.timer -= dt;
+      if (a._moodPulse.timer <= 0) a._moodPulse = null;
+    }
+  }
 }
 
 function drawActionEffects() {
@@ -926,7 +933,7 @@ function renderExaminePanel(data) {
       const verb = EXAMINE_VERBS[pt.type] || 'Inspect';
       html += `<div class="examine-point" id="ep-${pt.id}">
         <div class="examine-point-desc">\uD83D\uDD0D ${escapeHTML(pt.description)}</div>
-        <button class="examine-btn" onclick="examinePoint('${escapeHTML(data.locationId)}','${escapeHTML(pt.id)}')">${escapeHTML(verb)}</button>
+        <button class="examine-btn" onclick="examinePoint('${escapeAttr(data.locationId)}','${escapeAttr(pt.id)}')">${escapeHTML(verb)}</button>
       </div>`;
     }
   }
@@ -1021,7 +1028,7 @@ function renderJournalAll(body) {
     filterHtml = '<div class="journal-filter-bar">';
     filterHtml += `<button class="journal-filter-btn${!_journalCategoryFilter ? ' active' : ''}" onclick="setJournalCategoryFilter(null)">All</button>`;
     for (const cat of cats) {
-      filterHtml += `<button class="journal-filter-btn${_journalCategoryFilter === cat ? ' active' : ''}" onclick="setJournalCategoryFilter('${escapeHTML(cat)}')">${escapeHTML(cat)}</button>`;
+      filterHtml += `<button class="journal-filter-btn${_journalCategoryFilter === cat ? ' active' : ''}" onclick="setJournalCategoryFilter('${escapeAttr(cat)}')">${escapeHTML(cat)}</button>`;
     }
     filterHtml += '</div>';
   }
@@ -1051,7 +1058,7 @@ function renderJournalEntry(e) {
   }
   if (e.suspectId) {
     const suspectName = state.agents[e.suspectId]?.name || e.suspectId;
-    meta += `<span class="journal-suspect-link" onclick="toggleSuspect('${e.suspectId}')">${escapeHTML(suspectName)}</span>`;
+    meta += `<span class="journal-suspect-link" onclick="toggleSuspect('${escapeAttr(e.suspectId)}')">${escapeHTML(suspectName)}</span>`;
   }
   if (e.presentedTo && e.presentedTo.length > 0) {
     const names = e.presentedTo.map(id => state.agents[id]?.name || id).join(', ');
@@ -1119,9 +1126,9 @@ function renderJournalSuspects(body) {
         <span class="journal-case-quality ${quality}">${quality}</span>
         <span class="journal-case-score">${totalScore.toFixed(2)}</span>
         <button class="journal-case-btn"
-          onclick="event.stopPropagation(); openCaseReview('${npcId}')">Case File</button>
+          onclick="event.stopPropagation(); openCaseReview('${escapeAttr(npcId)}')">Case File</button>
         <button class="journal-suspect-toggle ${isSuspect ? 'active' : ''}"
-          onclick="event.stopPropagation(); toggleSuspect('${npcId}')">
+          onclick="event.stopPropagation(); toggleSuspect('${escapeAttr(npcId)}')">
           ${isSuspect ? 'Suspect' : 'Mark'}
         </button>
       </div>
@@ -1285,13 +1292,6 @@ function addEvent(cls, text) {
   el.innerHTML = `<span class="time">${escapeHTML(state.time)}</span> ${escapeHTML(text)}`;
   feed.prepend(el);
   while (feed.children.length > 50) feed.lastChild.remove();
-}
-
-function renderEventFeed() {
-  const feed = document.getElementById('event-feed');
-  feed.innerHTML = state.events.map(e =>
-    `<div class="feed-item ${e.cls}"><span class="time">${escapeHTML(e.time)}</span> ${escapeHTML(e.text)}</div>`
-  ).join('');
 }
 
 // ─── CHAT ───
@@ -1773,6 +1773,10 @@ function escapeHTML(str) {
   const el = document.createElement('span');
   el.textContent = str;
   return el.innerHTML;
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function createMsgEl(name, text, cls) {
@@ -2404,7 +2408,6 @@ function drawNPCs() {
         ctx.strokeStyle = p.positive ? `rgba(100,200,100,${alpha})` : `rgba(200,80,80,${alpha})`;
         ctx.lineWidth = 2;
         ctx.stroke();
-        p.timer -= 0.016; // ~60fps
       }
     }
 
