@@ -628,7 +628,7 @@ export function buildAccusationContext(
   let npcHasOwnEvidence = false;
   if (npc.state.beliefs) {
     for (const b of npc.state.beliefs.getAllBeliefs()) {
-      if (b.subject === suspectName && isTransferable(b.eventType)) {
+      if (b.subject === suspectId && isTransferable(b.eventType)) {
         if (b.confidence > npcMaxConfidence) npcMaxConfidence = b.confidence;
         if (b.source !== BELIEF_SOURCE.TESTIMONY) npcHasOwnEvidence = true;
       }

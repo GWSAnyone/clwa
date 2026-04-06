@@ -55,7 +55,9 @@ function gatherEvidenceGrouped(suspect: any, agents: Map<string, any>): { strong
       const sourceLabel = getBeliefSourceLabel(b.source);
       const eventLabel = getEventLabel(b.eventType);
       if (!eventLabel) continue;
-      const line = `${agent.profile.name} (${sourceLabel}, ${Math.round(b.confidence * 100)}%): ${b.subject ?? 'unknown'} committed ${eventLabel} against ${b.object ?? 'unknown'}`;
+      const subjectDisplay = b.subject ? (agents.get(b.subject)?.profile.name ?? b.subject) : 'unknown';
+      const objectDisplay = b.object ? (agents.get(b.object)?.profile.name ?? b.object) : 'unknown';
+      const line = `${agent.profile.name} (${sourceLabel}, ${Math.round(b.confidence * 100)}%): ${subjectDisplay} committed ${eventLabel} against ${objectDisplay}`;
 
       if (b.eventType) crimeTypes.add(b.eventType);
 
@@ -79,7 +81,7 @@ function buildSuspectDefense(suspect: any): string {
 
   // Check if suspect actually has perpetrator belief (they KNOW they did it)
   const hasPerpBelief = suspect.state.beliefs?.getAllBeliefs().some(
-    (b: any) => b.source === 'perpetrator' && b.subject === name,
+    (b: any) => b.source === 'perpetrator' && b.subject === suspect.profile.id,
   ) ?? false;
 
   if (!hasPerpBelief) {
@@ -156,7 +158,7 @@ function checkGuilt(suspectId: string, crimeScenes?: Map<string, any[]>): boolea
 function evaluateInterrogationOutcome(owner: any, target: any, currentDay: number, crimeScenes: Map<string, any[]>): void {
   if (!owner.state.beliefs) return;
   const deductionBelief = owner.state.beliefs.getAllBeliefs().find(
-    (b: any) => b.source === 'deduction' && b.subject === target.profile.name,
+    (b: any) => b.source === 'deduction' && b.subject === target.profile.id,
   );
   if (!deductionBelief) return;
 

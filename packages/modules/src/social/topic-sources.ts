@@ -523,7 +523,7 @@ const opinionTopics: TopicSource = (init, resp) => {
     const name = initRel.targetName;
 
     // Skip dead NPCs for "how are they doing" topics (grief handled separately)
-    if (knownDead.has(name)) continue;
+    if (knownDead.has(initRel.targetId)) continue;
 
     const initSent = initRel.sentiment;
     const respSent = respRel.sentiment;

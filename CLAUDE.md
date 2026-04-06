@@ -13,11 +13,11 @@
 
 | Document | Purpose |
 |----------|---------|
-| @docs/GDD_DETECTIVE.md | **Game design** — core loop, milestones, what to build next |
-| @docs/VISION.md | **Long-term vision** — Shangri-La world, multiplayer roadmap |
-| @docs/ARCHITECTURE.md | **Engine spec** — subsystems, data models |
-| @docs/ROADMAP.md | **Development roadmap** — phases, subsystems, milestones |
-| @docs/MOOD_REVIEW.md | **Mood system analysis** — industry/academic research, deferred features |
+| `docs/GDD_DETECTIVE.md` | **Game design** — core loop, milestones, what to build next |
+| `docs/VISION.md` | **Long-term vision** — Shangri-La world, multiplayer roadmap |
+| `docs/ARCHITECTURE.md` | **Engine spec** — subsystems, data models |
+| `docs/ROADMAP.md` | **Development roadmap** — phases, subsystems, milestones |
+| `docs/MOOD_REVIEW.md` | **Mood system analysis** — industry/academic research, deferred features |
 | `docs/specs/` | **Task specs** — detailed design for each feature (14 specs) |
 | `docs/` (Obsidian vault) | **World design** — NPC profiles, locations, tensions, lore |
 

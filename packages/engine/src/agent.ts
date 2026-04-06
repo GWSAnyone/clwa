@@ -357,7 +357,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
 
       // Wanted NPC self-awareness
       const wantedBelief = beliefs.getAllBeliefs().find(
-        (b) => isPursuitEvent(b.eventType) && b.subject === this.profile.name,
+        (b) => isPursuitEvent(b.eventType) && b.subject === this.profile.id,
       );
       if (wantedBelief) {
         const n = this.profile.bigFive?.neuroticism ?? 0.5;

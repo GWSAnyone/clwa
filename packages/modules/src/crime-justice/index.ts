@@ -60,7 +60,7 @@ export function registerCrimeJusticeModule(): void {
     if (!agent.state.beliefs) return false;
     const minConf = (params?.minConfidence as number) ?? 0.3;
     return agent.state.beliefs.getAllBeliefs().some(
-      (b: any) => isTransferable(b.eventType) && b.confidence >= minConf && b.subject !== agent.profile.name,
+      (b: any) => isTransferable(b.eventType) && b.confidence >= minConf && b.subject !== agent.profile.id,
     );
   });
 
@@ -370,7 +370,7 @@ export function registerCrimeJusticeModule(): void {
     if (!step.evaluateSuspect || !owner.state.beliefs || !crimeScenes) return;
     // Evaluate suspect: check guilt + honesty trait → update deduction belief confidence
     const deductionBelief = owner.state.beliefs.getAllBeliefs().find(
-      (b: any) => b.source === 'deduction' && b.subject === target.profile.name,
+      (b: any) => b.source === 'deduction' && b.subject === target.profile.id,
     );
     if (!deductionBelief) return;
 
@@ -608,7 +608,7 @@ export function registerCrimeJusticeModule(): void {
 
       // Check: NPC suspects the player (has transferable belief with subject = player name)
       const suspicionBeliefs = npc.state.beliefs?.getAllBeliefs().filter(
-        (b) => isTransferable(b.eventType) && b.subject === playerAgent!.profile.name && b.confidence >= 0.4,
+        (b) => isTransferable(b.eventType) && b.subject === playerAgent!.profile.id && b.confidence >= 0.4,
       ) ?? [];
 
       if (suspicionBeliefs.length > 0 && npc.profile.investigator) {

@@ -177,12 +177,12 @@
       "daily-notes:Сегодняшняя заметка": false,
       "templates:Вставить шаблон": false,
       "command-palette:Открыть палитру команд": false,
-      "bases:Создать новую базу": false,
-      "markdown-importer:Импорт Markdown-файлов": false
+      "bases:Создать новую базу": false
     }
   },
   "active": "a08e613a95efb6cc",
   "lastOpenFiles": [
+    "specs/SPEC-dev-tools.md",
     "specs/SPEC-scenario-manager.md",
     "specs/SPEC-trait-randomization.md",
     "specs/SPEC-mood-relationship-randomization.md",
@@ -213,7 +213,6 @@
     "Tensions/Bess's Vision.md",
     "Tensions/Hilda-Ted Father's Death.md",
     "Tensions/Aldric's Lost Faith.md",
-    "NPC/Bess.md",
     "Locations/Temple of Dawn.md.tmp.14172.1774788915263",
     "Canvas",
     "Design",

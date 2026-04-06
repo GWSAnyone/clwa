@@ -93,7 +93,7 @@ function findCrimeBeliefTarget(npcId: string, agent: Agent, ctx: AffordanceConte
   const crimeBeliefs = agent.state.beliefs.getAllBeliefs().filter(
     (b: Belief) =>
       isEventCategory(b.eventType, 'crime') &&
-      b.confidence >= minConfidence && b.subject !== agent.profile.name,
+      b.confidence >= minConfidence && b.subject !== agent.profile.id,
   );
   for (const belief of crimeBeliefs) {
     for (const [otherId, other] of ctx.agents) {
@@ -113,7 +113,7 @@ function findBlackmailTarget(npcId: string, agent: Agent, ctx: AffordanceContext
   if (!agent.state.beliefs) return null;
   // Find secret knowledge beliefs (source: 'secret') — things NPC knows about others
   const secretBeliefs = agent.state.beliefs.getAllBeliefs().filter(
-    (b: Belief) => b.source === 'secret' && b.confidence >= 0.4 && b.subject !== agent.profile.name,
+    (b: Belief) => b.source === 'secret' && b.confidence >= 0.4 && b.subject !== agent.profile.id,
   );
   for (const belief of secretBeliefs) {
     for (const [otherId, other] of ctx.agents) {

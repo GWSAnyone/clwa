@@ -3,10 +3,10 @@ import type { EventHandlerContext } from '@clwa/engine';
 import type { WorldEvent, Belief, Agent } from '@clwa/engine';
 
 /** Find beliefs in an NPC that originated from the player about a specific suspect */
-function findPlayerClaimsAbout(agent: Agent, playerId: string, suspectName: string): Belief[] {
+function findPlayerClaimsAbout(agent: Agent, playerId: string, suspectId: string): Belief[] {
   if (!agent.state.beliefs) return [];
   return agent.state.beliefs.getAllBeliefs().filter(
-    (b) => b.sourceNpcId === playerId && b.subject === suspectName && isTransferable(b.eventType),
+    (b) => b.sourceNpcId === playerId && b.subject === suspectId && isTransferable(b.eventType),
   );
 }
 
@@ -206,13 +206,14 @@ export function registerCrimeEventHandlers(): void {
     }
 
     // Trust evolution: if player told NPCs about this suspect → arrest confirms the claim
-    if (!suspectName) return;
+    const suspectId = event.object;
+    if (!suspectId) return;
     const player = findPlayerAgent(ctx.agents);
     if (!player) return;
     const [playerId] = player;
     for (const [, agent] of ctx.agents) {
       if (agent.profile.isPlayer) continue;
-      const claims = findPlayerClaimsAbout(agent, playerId, suspectName);
+      const claims = findPlayerClaimsAbout(agent, playerId, suspectId);
       if (claims.length > 0) {
         agent.state.relationships?.adjustTrust(playerId, 0.08);
         console.log(`  [Trust] ${agent.profile.name} trust in player +0.08 (arrest confirmed claim about ${suspectName})`);
@@ -303,13 +304,13 @@ export function registerCrimeEventHandlers(): void {
     }
 
     // 3. Trust evolution: verdict confirms or refutes player claims
-    if (!suspectName) return;
+    if (!suspectId) return;
     const player = findPlayerAgent(ctx.agents);
     if (!player) return;
     const [playerId] = player;
     for (const [, agent] of ctx.agents) {
       if (agent.profile.isPlayer) continue;
-      const claims = findPlayerClaimsAbout(agent, playerId, suspectName);
+      const claims = findPlayerClaimsAbout(agent, playerId, suspectId);
       if (claims.length === 0) continue;
 
       if (verdict === 'exile' || verdict === 'imprisonment') {

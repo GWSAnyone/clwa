@@ -210,7 +210,8 @@ export const playerRumorTopics: TopicSource = (init, resp, ctx) => {
     const daysAgo = ctx.gameDay - (belief.gameDay ?? 0);
     const recencyBonus = daysAgo <= 0 ? 2 : daysAgo <= 1 ? 1 : 0;
 
-    const topic = belief.subject ? `what ${playerName} said about ${belief.subject}` : `what ${playerName} told me`;
+    const suspectDisplay = belief.subject ? (ctx.agents?.get(belief.subject)?.profile.name ?? belief.subject) : null;
+    const topic = suspectDisplay ? `what ${playerName} said about ${suspectDisplay}` : `what ${playerName} told me`;
     proposals.push({
       topicKey: `player_claim:${subjectKey}`,
       subject: topic,
@@ -219,7 +220,7 @@ export const playerRumorTopics: TopicSource = (init, resp, ctx) => {
       mentionedNpcId: playerId,
       sentimentValence: (initRel?.trust ?? 0.3) >= 0.5 ? 0.02 : -0.02,
       weight: 4 + recencyBonus,
-      initiatorHook: `${playerName} told you something about ${belief.subject ?? 'recent events'}. Share what you heard and whether you believe it.`,
+      initiatorHook: `${playerName} told you something about ${suspectDisplay ?? 'recent events'}. Share what you heard and whether you believe it.`,
       responderHook: `React to what ${init.profile.name} is saying. Do you trust ${playerName}?`,
       category: `player_rumor:${subjectKey}`,
       minImportance: 4,
@@ -245,7 +246,7 @@ export const playerRumorTopics: TopicSource = (init, resp, ctx) => {
       sentimentValence: (respRel?.trust ?? 0.3) >= 0.5 ? 0.02 : -0.02,
       weight: 4 + recencyBonus,
       initiatorHook: `Ask ${resp.profile.name} — has ${playerName} told them anything interesting?`,
-      responderHook: `${playerName} told you about ${belief.subject ?? 'something'}. Share it.`,
+      responderHook: `${playerName} told you about ${belief.subject ? (ctx.agents?.get(belief.subject)?.profile.name ?? belief.subject) : 'something'}. Share it.`,
       category: `player_rumor:${subjectKey}`,
       minImportance: 4,
     });
