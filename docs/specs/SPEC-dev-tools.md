@@ -1,6 +1,6 @@
 # SPEC-dev-tools: Universal Developer Tools
 
-> **Status:** Draft
+> **Status:** Implemented & Verified (2026-04-06)
 > **Depends on:** All existing engine subsystems (save/load, CG, goals, mood modifiers, AL)
 > **Principle:** State manipulation, not scenario scripts. Engine-level operations, not module-specific.
 
