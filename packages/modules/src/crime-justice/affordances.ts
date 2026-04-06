@@ -58,7 +58,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     weights: [
       { trait: 'A', direction: 'low', multiplier: 0.25 },
-      { trait: 'H', direction: 'high', multiplier: -0.3 },
+      { trait: 'H', direction: 'low', multiplier: 0.3 },  // low honesty = more willing to kill (was penalty, now boost like steal)
       { trait: 'C', direction: 'low', multiplier: 0.15 },
       { trait: 'N', direction: 'high', multiplier: 0.1 },
     ],
