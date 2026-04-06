@@ -239,7 +239,11 @@ export class Agent {
         model: this.model,
         jsonSchema: options?.jsonSchema,
       });
-      return result ?? '...';
+      if (!result) {
+        console.error(`  [LLM:FAIL] ${this.profile.name}: null response — model may have crashed or timed out`);
+        return '';
+      }
+      return result;
     } finally {
       llmSemaphore.release();
     }

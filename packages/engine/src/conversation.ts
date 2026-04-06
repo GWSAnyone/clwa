@@ -26,7 +26,7 @@ const DIALOGUE_SCHEMA: LlmJsonSchema = {
   schema: {
     type: 'object',
     properties: {
-      speech: { type: 'string', minLength: 20, description: 'ONLY spoken words. No actions, no narration, no parentheses. 5 to 12 words.' },
+      speech: { type: 'string', minLength: 5, maxLength: 120, description: 'ONLY spoken words. No actions, no narration, no parentheses. 5 to 12 words.' },
       gesture: { type: 'string', description: 'One word: nods, shrugs, smiles, frowns, laughs, sighs. Empty if none.' },
     },
     required: ['speech', 'gesture'],
@@ -36,6 +36,8 @@ const DIALOGUE_SCHEMA: LlmJsonSchema = {
 
 /** Parse structured dialogue JSON → clean speech only. Gesture is metadata, not display text. */
 function parseDialogue(raw: string): string {
+  if (!raw) return ''; // LLM returned null/empty — logged upstream, don't mask with fallback
+
   // Truncate to first JSON object (handles multi-object LLM output)
   const cleaned = truncateToFirstJsonObject(raw);
 
@@ -128,6 +130,10 @@ export async function runConversation(
       jsonSchema: DIALOGUE_SCHEMA,
     });
     const initiatorLine = parseDialogue(initiatorRaw);
+    if (!initiatorLine) {
+      console.warn(`  [Conv:SKIP] ${initiator.profile.name} produced empty speech (LLM error)`);
+      continue; // skip this exchange — don't broadcast empty line
+    }
     const iLine: ConversationLine = {
       speaker: initiator.profile.id,
       speakerName: initiator.profile.name,
@@ -143,7 +149,15 @@ export async function runConversation(
       additionalContext: respContext,
       jsonSchema: DIALOGUE_SCHEMA,
     });
-    const responderLine = parseDialogue(responderRaw);
+    let responderLine = parseDialogue(responderRaw);
+    if (!responderLine) {
+      console.warn(`  [Conv:SKIP] ${responder.profile.name} produced empty speech (LLM error)`);
+      continue;
+    }
+    // Echo detection: if responder copies initiator verbatim, flag it
+    if (responderLine === initiatorLine) {
+      console.warn(`  [Conv:ECHO] ${responder.profile.name} echoed ${initiator.profile.name}: "${responderLine.slice(0, 40)}"`);
+    }
     const rLine: ConversationLine = {
       speaker: responder.profile.id,
       speakerName: responder.profile.name,
