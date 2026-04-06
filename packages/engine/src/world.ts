@@ -606,6 +606,62 @@ export class World {
   }
 
   /**
+   * Advance mood math only — modifier decay + social stress drift. NO LLM, NO conversations.
+   * For calibration, not behavior testing. Returns per-NPC mood curves.
+   */
+  advanceMoodMath(minutes: number, npcIdFilter?: string): { id: string; name: string; before: number; after: number; curve: number[] }[] {
+    const ticks = Math.floor(minutes / 5);
+    const results: { id: string; name: string; before: number; after: number; curve: number[] }[] = [];
+    const agents = npcIdFilter
+      ? [[npcIdFilter, this.agents.get(npcIdFilter)] as const].filter(([, a]) => a)
+      : Array.from(this.agents.entries());
+
+    for (const [id, agent] of agents) {
+      if (!agent || !agent.state.alive || agent.profile.isPlayer) continue;
+      const before = agent.state.mood;
+      const curve: number[] = [before];
+
+      for (let t = 0; t < ticks; t++) {
+        // Reuse _tickMoodSystem logic inline — tick modifiers + social stress + compute mood
+        const mods = agent.state.moodModifiers ?? [];
+        for (let i = mods.length - 1; i >= 0; i--) {
+          const m = mods[i];
+          if (!Number.isFinite(m.magnitude) || !Number.isFinite(m.remaining)) { mods.splice(i, 1); continue; }
+          if (m.duration > 0) { m.remaining -= 5; if (m.remaining <= 0) mods.splice(i, 1); }
+        }
+        // Social stress drift
+        const ms = this.config.moodSystem ?? {};
+        const rels = agent.state.relationships;
+        if (rels) {
+          let neg = 0, pos = 0;
+          for (const r of rels.getAllRelationships()) {
+            if (r.sentiment < 0) neg += -r.sentiment; else if (r.sentiment > 0) pos += r.sentiment;
+          }
+          const stress = Math.max(0, neg - pos * (ms.socialStressBuffer ?? 0.5));
+          let target = 0;
+          if (stress > 0) {
+            const bf = agent.profile.bigFive;
+            const ps = bf.neuroticism * 1.5 + (1 - bf.agreeableness) * 0.5 + (1 - bf.honesty) * 0.3;
+            target = Math.max(-1, -(stress * ps * (ms.socialStressRate ?? 0.5)));
+          }
+          const existing = mods.find(m => m.category === 'social_stress');
+          if (existing) existing.magnitude += (target - existing.magnitude) * (ms.socialStressDrift ?? 0.02);
+          else if (target !== 0) mods.push({ id: 'social_stress', source: 'social_stress', category: 'social_stress',
+            magnitude: target * (ms.socialStressDrift ?? 0.02), remaining: 0, duration: 0, decay: 'none' });
+        }
+        // Compute effectiveMood
+        let sum = 0;
+        for (const m of mods) sum += modifierEffective(m);
+        agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
+        curve.push(agent.state.mood);
+      }
+
+      results.push({ id: id as string, name: agent.profile.name, before, after: agent.state.mood, curve });
+    }
+    return results;
+  }
+
+  /**
    * Enqueue async work into ProcessingQueue. Called every game minute.
    * Instant checks (schedule, night walks, random movement) run inline.
    * LLM-bound work (volition, goals, conversations) goes through queue.
@@ -1575,7 +1631,22 @@ export class World {
     return results;
   }
 
-  private getCurrentDay(): number {
+  /**
+   * Inject a world event through CG cascade + reactive goals (SPEC-dev-tools).
+   * Returns cascade results for transparency.
+   */
+  async injectEvent(event: import('./cg-types').WorldEvent): Promise<{ event: import('./cg-types').WorldEvent; cascadeResults: { rule: string; targets: string[]; type: string }[] }> {
+    this.eventStore.append(event);
+    const results = await this.processCascade(event);
+    await this.handleEventForGoals(event);
+    for (const r of results) await this.handleEventForGoals(r.event);
+    return {
+      event,
+      cascadeResults: results.map(r => ({ rule: r.rule.id, targets: r.targets, type: r.event.type })),
+    };
+  }
+
+  getCurrentDay(): number {
     for (const [, agent] of this.agents) {
       return agent.state.currentDay;
     }

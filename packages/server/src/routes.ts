@@ -765,6 +765,148 @@ export async function handleRequest(
     }, { headers: cors });
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // ─── Dev Tools (SPEC-dev-tools) ───
+  // ═══════════════════════════════════════════════════════════════
+
+  // ─── POST /api/debug/save/:name ───
+  const saveMatch = path.match(/^\/api\/debug\/save\/([a-zA-Z0-9_-]+)$/);
+  if (method === 'POST' && saveMatch) {
+    const name = saveMatch[1];
+    const { mkdirSync, writeFileSync } = await import('fs');
+    const savePath = `data/saves/${name}.json`;
+    mkdirSync('data/saves', { recursive: true });
+    const json = JSON.stringify(world.toJSON(), null, 2);
+    writeFileSync(savePath, json);
+    return Response.json({ ok: true, action: 'save', name, gameMinute: world.gameMinute,
+      day: world.getCurrentDay(), agents: agents.size, size: `${(json.length / 1024).toFixed(0)}KB` }, { headers: cors });
+  }
+
+  // ─── POST /api/debug/load/:name ───
+  const loadMatch = path.match(/^\/api\/debug\/load\/([a-zA-Z0-9_-]+)$/);
+  if (method === 'POST' && loadMatch) {
+    const name = loadMatch[1];
+    const { readFileSync, existsSync } = await import('fs');
+    const savePath = `data/saves/${name}.json`;
+    if (!existsSync(savePath)) return Response.json({ error: `Save '${name}' not found` }, { status: 404, headers: cors });
+    try {
+      world.stopMasterClock();
+      const data = JSON.parse(readFileSync(savePath, 'utf-8'));
+      world.loadState(data);
+      // Reset transient state
+      for (const [, agent] of agents) {
+        agent.state.processingState = 'idle';
+        agent.state.inTransit = false;
+        agent.state.inPlayerChat = false;
+      }
+      world.startMasterClock();
+      return Response.json({ ok: true, action: 'load', name, gameMinute: world.gameMinute }, { headers: cors });
+    } catch (err) {
+      world.startMasterClock();
+      return Response.json({ error: `Load failed: ${err instanceof Error ? err.message : err}` }, { status: 500, headers: cors });
+    }
+  }
+
+  // ─── GET /api/debug/saves ───
+  if (method === 'GET' && path === '/api/debug/saves') {
+    const { readdirSync, statSync, readFileSync } = await import('fs');
+    const { existsSync } = await import('fs');
+    const dir = 'data/saves';
+    if (!existsSync(dir)) return Response.json({ saves: [] }, { headers: cors });
+    const files = readdirSync(dir).filter(f => f.endsWith('.json'));
+    const saves = files.map(f => {
+      const st = statSync(`${dir}/${f}`);
+      let gameMinute = 0, day = 1;
+      try { const d = JSON.parse(readFileSync(`${dir}/${f}`, 'utf-8')); gameMinute = d.gameMinute ?? 0; day = d.currentDay ?? 1; } catch {}
+      return { name: f.replace('.json', ''), gameMinute, day, size: `${(st.size / 1024).toFixed(0)}KB`, created: st.mtime.toISOString() };
+    });
+    return Response.json({ saves }, { headers: cors });
+  }
+
+  // ─── DELETE /api/debug/save/:name ───
+  const delSaveMatch = path.match(/^\/api\/debug\/save\/([a-zA-Z0-9_-]+)$/);
+  if (method === 'DELETE' && delSaveMatch) {
+    const { unlinkSync, existsSync } = await import('fs');
+    const savePath = `data/saves/${delSaveMatch[1]}.json`;
+    if (!existsSync(savePath)) return Response.json({ error: 'Save not found' }, { status: 404, headers: cors });
+    unlinkSync(savePath);
+    return Response.json({ ok: true, action: 'delete', name: delSaveMatch[1] }, { headers: cors });
+  }
+
+  // ─── POST /api/debug/event ───
+  if (method === 'POST' && path === '/api/debug/event') {
+    const body = await req.json() as { type: string; subject: string; object?: string; location: string; importance?: number; payload?: Record<string, unknown> };
+    if (!body.type || !body.subject || !body.location) {
+      return Response.json({ error: 'Required: type, subject, location' }, { status: 400, headers: cors });
+    }
+    const event = {
+      id: crypto.randomUUID(),
+      type: body.type as any,
+      subject: body.subject,
+      object: body.object,
+      location: body.location,
+      gameDay: world.getCurrentDay(),
+      importance: body.importance ?? 6,
+      payload: body.payload ?? {},
+    };
+    const result = await world.injectEvent(event);
+    return Response.json({ ok: true, action: 'event', ...result }, { headers: cors });
+  }
+
+  // ─── POST /api/debug/status/:id ───
+  const statusMatch = path.match(/^\/api\/debug\/status\/([^/]+)$/);
+  if (method === 'POST' && statusMatch) {
+    const agent = agents.get(statusMatch[1]);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    const body = await req.json() as { status: string | null; releaseDays?: number };
+    const oldStatus = agent.state.status;
+    agent.state.status = (body.status === 'free' || body.status === null) ? undefined : (body.status as any);
+    // Note: imprisonment timer not set here — use force-affordance with sentence_npc for full flow
+    return Response.json({ ok: true, action: 'status', npcId: statusMatch[1], oldStatus: oldStatus ?? 'free', newStatus: body.status ?? 'free' }, { headers: cors });
+  }
+
+  // ─── POST /api/debug/force-affordance/:npcId ───
+  const forceMatch = path.match(/^\/api\/debug\/force-affordance\/([^/]+)$/);
+  if (method === 'POST' && forceMatch) {
+    const npcId = forceMatch[1];
+    if (!agents.has(npcId)) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    const body = await req.json() as { affordanceId: string; targetId: string; priority?: number };
+    if (!body.affordanceId || !body.targetId) return Response.json({ error: 'Required: affordanceId, targetId' }, { status: 400, headers: cors });
+
+    const { forceGoalFromAffordance } = await import('@clwa/engine');
+    const goal = forceGoalFromAffordance(npcId, body.affordanceId, body.targetId, world.buildAffordanceContext(), body.priority ?? 10);
+    if (!goal) return Response.json({ error: `Affordance '${body.affordanceId}' not found or invalid` }, { status: 404, headers: cors });
+    world.goalManager.addGoal(goal);
+    return Response.json({ ok: true, action: 'force-affordance', npcId, affordanceId: body.affordanceId,
+      targetId: body.targetId, goal: { type: goal.type, steps: goal.steps.map((s: any) => s.action + (s.targetId ? ':' + s.targetId : s.location ? ':' + s.location : '')), priority: goal.priority }
+    }, { headers: cors });
+  }
+
+  // ─── POST /api/debug/advance-mood ───
+  if (method === 'POST' && path === '/api/debug/advance-mood') {
+    const body = await req.json() as { minutes: number; npcId?: string };
+    if (!body.minutes || body.minutes < 5) return Response.json({ error: 'Required: minutes >= 5' }, { status: 400, headers: cors });
+    const results = world.advanceMoodMath(body.minutes, body.npcId);
+    return Response.json({ ok: true, action: 'advance-mood',
+      warning: 'Mood math only. No LLM, conversations, or events processed. Use for calibration, not behavior testing.',
+      minutes: body.minutes, ticks: Math.floor(body.minutes / 5), results,
+    }, { headers: cors });
+  }
+
+  // ─── POST /api/debug/tick ───
+  if (method === 'POST' && path === '/api/debug/tick') {
+    const body = await req.json().catch(() => ({})) as { count?: number };
+    const count = body.count ?? 1;
+    const wasRunning = world.isAutoTicking;
+    if (wasRunning) world.stopMasterClock();
+    const startTick = world.gameMinute;
+    for (let i = 0; i < count; i++) {
+      await world.tick();
+    }
+    if (wasRunning) world.startMasterClock();
+    return Response.json({ ok: true, action: 'tick', count, from: startTick, to: world.gameMinute }, { headers: cors });
+  }
+
   // ─── 404 ───
   return Response.json({ error: 'Not found' }, { status: 404, headers: cors });
 }

@@ -910,6 +910,44 @@ function findNpcByName(name: string, excludeId: string, ctx: AffordanceContext):
   return null;
 }
 
+/**
+ * Force-create a goal from an affordance, BYPASSING requirements (SPEC-dev-tools).
+ * For debug/testing only — allows creating goals that wouldn't pass normal checks.
+ */
+export function forceGoalFromAffordance(
+  npcId: string, affordanceId: string, targetId: string,
+  ctx: AffordanceContext, priority: number = 10,
+): NpcGoal | null {
+  const agent = ctx.agents.get(npcId);
+  if (!agent) return null;
+  const aff = AFFORDANCE_REGISTRY.find((a) => a.id === affordanceId);
+  if (!aff) return null;
+
+  const targetAgent = ctx.agents.get(targetId);
+  const target: AffordanceTarget = {
+    targetId,
+    targetName: targetAgent?.profile.name ?? targetId,
+    targetLocation: targetAgent?.state.location ?? agent.state.location,
+    extra: {},
+  };
+
+  const steps = buildSteps(aff, npcId, agent, target, ctx);
+  const home = ctx.npcHomes.get(npcId) ?? agent.state.location;
+
+  return {
+    id: crypto.randomUUID(),
+    type: aff.goalType,
+    ownerId: npcId,
+    priority,
+    state: 'pending',
+    steps,
+    currentStep: 0,
+    data: { affordanceId: aff.id, targetId, targetName: target.targetName, forcedByDebug: true, ...target.extra },
+    createdAtMinute: ctx.gameMinute,
+    homeLocation: home,
+  };
+}
+
 // ─── Goal Building (from scored affordance — preserves step logic) ───
 
 function buildGoalFromAffordance(scored: ScoredAffordance, npcId: string, agent: Agent, ctx: AffordanceContext): NpcGoal {
