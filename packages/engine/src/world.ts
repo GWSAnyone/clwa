@@ -1747,6 +1747,7 @@ export class World {
 
   /** Restore world state from a saved snapshot */
   loadState(data: ReturnType<World['toJSON']>): void {
+    this._moodHistory.clear(); // reset mood history — old data from previous run is stale
     this.tickCount = data.tickCount;
     // Backward compat: old saves without gameMinute → derive from tickCount (1 tick = 15 min)
     this._gameMinute = (data as any).gameMinute ?? (data.tickCount * 15);

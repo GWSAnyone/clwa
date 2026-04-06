@@ -185,6 +185,10 @@ for each motive in pool:
     agent.observe(motive.reason, 8)  // narrative in memory, not belief
 ```
 
+**Guards:**
+- `if (motive.from === motive.to) skip` — no self-motives
+- `if (!target.state.alive) skip` — no motives toward dead NPCs
+
 Side effects: if motive assigned but sentiment too weak for social stress, push sentiment floor to -0.35.
 
 ---
@@ -321,3 +325,12 @@ Combines with memory recall (narrative reason stored as observation).
 | **Escalation** | M3 | PERSONAL_GRUDGE + provocative event → auto-upgrade to REVENGE_DESIRE |
 | **Enneagram integration** | M3 | Stress type modulates motive confidence (Type 8 stress → withdrawal → -conf) |
 | **Social awareness** | M4 | "I know X hates Y" — separate from personal motives. Different transfer mechanism |
+
+---
+
+## Known Behaviors (intentional, not bugs)
+
+- **Absent NPC modifiers frozen**: imprisoned/exiled NPCs don't tick mood modifiers. On release, modifiers resume with original remaining. Arrest shock persists through imprisonment — intentional.
+- **Circular motives**: Mark→Bess + Bess→Mark both possible. Race condition in ProcessingQueue = whoever processes first wins. This IS gameplay — emergent competition.
+- **Blackmail no outcome**: M3 scope. Currently = conversation with loaded topic, zero mechanical effect. Mark may waste 2-3 volition cycles on blackmail before choosing steal/kill.
+- **Event injection needs NPC at location**: dev tool limitation, not bug. CG cascade checks NPCs at event location. Set up NPC positions before injecting events.

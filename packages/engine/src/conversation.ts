@@ -173,10 +173,16 @@ export async function runConversation(
   // NOTE: Memory storage (observe) moved to world.ts — importance is adjusted
   // after analyzeConversationImpact determines emotional significance.
 
-  // Casual conversation slightly improves mutual sentiment (configurable via WorldConfig.conversationBehavior)
-  const sentBoost = config.conversationBehavior?.sentimentBoost ?? 0.05;
-  initiator.state.relationships?.adjustSentiment(responder.profile.id, sentBoost);
-  responder.state.relationships?.adjustSentiment(initiator.profile.id, sentBoost);
+  // Sentiment shift from conversation: friends bond, enemies reinforce hostility
+  const baseSentBoost = config.conversationBehavior?.sentimentBoost ?? 0.05;
+  for (const [a, b] of [[initiator, responder], [responder, initiator]] as const) {
+    const rel = a.state.relationships?.getRelationship(b.profile.id);
+    const sent = rel?.sentiment ?? 0;
+    // Enemies: talking reinforces hatred (negative boost). Friends: talking bonds (+boost).
+    // Neutral: small positive drift toward friendship.
+    const boost = sent < -0.2 ? Math.min(0, sent * 0.02) : baseSentBoost;
+    a.state.relationships?.adjustSentiment(b.profile.id, boost);
+  }
 
   // Record event in Event Store
   const event: WorldEvent = {
