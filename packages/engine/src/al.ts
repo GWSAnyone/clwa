@@ -16,7 +16,6 @@ export interface AffordanceRequirement {
   /** Maximum number of other NPCs at location (undefined = no limit) */
   maxWitnesses?: number;
   /** Target must have a shop */
-  targetHasShop?: boolean;
   /** NPC must have a crime belief about someone (confidence >= threshold) */
   hasCrimeBelief?: boolean;
   /** Minimum confidence for crime belief */
@@ -43,6 +42,12 @@ export interface AffordanceRequirement {
   hasWitnessBelief?: boolean;
   /** NPC must NOT be a perpetrator of any crime (has no guilt-source beliefs) */
   notPerpetrator?: boolean;
+  /** NPC must have canSentence capability (judges, magistrates) */
+  canSentence?: boolean;
+  /** NPC must have suspicion belief (for surveillance) */
+  hasSuspicionBelief?: boolean;
+  /** NPC deduction confidence must be below threshold (for investigate vs arrest) */
+  deductionBelowThreshold?: boolean;
 }
 
 export type OceanHTrait = 'O' | 'C' | 'E' | 'A' | 'N' | 'H';
@@ -118,7 +123,6 @@ export interface AffordanceDefinition {
   /** How much negative sentiment toward target contributes (0-1) */
   relationshipWeight: number;
   /** Base probability roll — prevents every-tick firing (proactive only) */
-  baseProbability: number;
   /** Goal type string for NpcGoal */
   goalType: string;
   /** Goal priority for NpcGoal */
@@ -265,6 +269,43 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
 
 // ─── Requirement Checking ───
 
+/** Generic iteration over all REQUIREMENT_CHECKERS registry entries */
+function checkRegistryRequirements(req: AffordanceRequirement, agent: Agent, ctx: AffordanceContext): boolean {
+  const reqRecord = req as Record<string, unknown>;
+  for (const [key, checker] of REQUIREMENT_CHECKERS) {
+    if (!reqRecord[key]) continue;
+    // Pass affordance-level params (e.g. beliefConfidence for hasCrimeBelief)
+    const params: Record<string, unknown> = {};
+    if (req.beliefConfidence !== undefined) params.minConfidence = req.beliefConfidence;
+    if (!checker(agent, ctx, params)) return false;
+  }
+  return true;
+}
+
+/** Post-target checks: noGuardNearby, maxWitnesses, sentimentBelow */
+function checkPostTargetRequirements(req: AffordanceRequirement, npcId: string, target: AffordanceTarget, ctx: AffordanceContext): boolean {
+  if (req.noGuardNearby) {
+    for (const [, other] of ctx.agents) {
+      if (!other.state.alive) continue;
+      if (other.profile.detersCrime && other.state.location === target.targetLocation) return false;
+    }
+  }
+  if (req.maxWitnesses !== undefined) {
+    let witnessCount = 0;
+    for (const [otherId, other] of ctx.agents) {
+      if (otherId === npcId || otherId === target.targetId) continue;
+      if (!other.state.alive) continue;
+      if (other.state.location === target.targetLocation) witnessCount++;
+    }
+    if (witnessCount > req.maxWitnesses) return false;
+  }
+  if (req.sentimentBelow !== undefined) {
+    const rel = ctx.agents.get(npcId)?.state.relationships?.getRelationship(target.targetId);
+    if (!rel || rel.sentiment >= req.sentimentBelow) return false;
+  }
+  return true;
+}
+
 export function checkRequirements(
   aff: AffordanceDefinition,
   npcId: string,
@@ -276,61 +317,19 @@ export function checkRequirements(
   if (req.notGuard && agent.profile.investigator) return null;
   if (req.isGuard && !agent.profile.investigator) return null;
   if (req.isInvestigator && !agent.profile.investigator) return null;
+  if (req.canSentence && !agent.profile.canSentence) return null;
   if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
   if (req.moodBelow !== undefined && agent.state.mood >= req.moodBelow) return null;
   if (aff.suppressNearPlayer && ctx.playerLocation === agent.state.location) return null;
 
-  // Module-provided requirement checks
-  if (req.isCriminal) {
-    const checker = REQUIREMENT_CHECKERS.get('isCriminal');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.isWanted) {
-    const checker = REQUIREMENT_CHECKERS.get('isWanted');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.hasDetainedNpc) {
-    const checker = REQUIREMENT_CHECKERS.get('hasDetainedNpc');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.hasWitnessBelief) {
-    const checker = REQUIREMENT_CHECKERS.get('hasWitnessBelief');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.notPerpetrator) {
-    const checker = REQUIREMENT_CHECKERS.get('notPerpetrator');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.hasCrimeBelief) {
-    const checker = REQUIREMENT_CHECKERS.get('hasCrimeBelief');
-    if (!checker || !checker(agent, ctx, { minConfidence: req.beliefConfidence ?? 0.3 })) return null;
-  }
+  // Module-provided requirement checks — generic iteration over registry
+  if (!checkRegistryRequirements(req, agent, ctx)) return null;
 
   const target = findTarget(aff, npcId, agent, ctx);
   if (!target) return null;
 
-  if (req.noGuardNearby) {
-    for (const [, other] of ctx.agents) {
-      if (!other.state.alive) continue;
-      if (other.profile.detersCrime && other.state.location === target.targetLocation) return null;
-    }
-  }
-
-  if (req.maxWitnesses !== undefined) {
-    let witnessCount = 0;
-    for (const [otherId, other] of ctx.agents) {
-      if (otherId === npcId || otherId === target.targetId) continue;
-      if (!other.state.alive) continue;
-      if (other.state.location === target.targetLocation) witnessCount++;
-    }
-    if (witnessCount > req.maxWitnesses) return null;
-  }
-
-  if (req.sentimentBelow !== undefined) {
-    const rel = agent.state.relationships?.getRelationship(target.targetId);
-    if (!rel || rel.sentiment >= req.sentimentBelow) return null;
-  }
+  if (!checkPostTargetRequirements(req, npcId, target, ctx)) return null;
 
   return target;
 }
@@ -350,61 +349,21 @@ export function checkRequirementsReactive(
   const req = aff.requires;
 
   if (req.notGuard && agent.profile.investigator) return null;
-  if (req.isGuard && !agent.profile.investigator) return null; // deprecated: use isInvestigator
+  if (req.isGuard && !agent.profile.investigator) return null;
   if (req.isInvestigator && !agent.profile.investigator) return null;
+  if (req.canSentence && !agent.profile.canSentence) return null;
   if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
   // mood intentionally skipped for reactive (event urgency overrides mood gate)
   if (aff.suppressNearPlayer && ctx.playerLocation === agent.state.location) return null;
 
-  // Module-provided requirement checks
-  if (req.isCriminal) {
-    const checker = REQUIREMENT_CHECKERS.get('isCriminal');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.isWanted) {
-    const checker = REQUIREMENT_CHECKERS.get('isWanted');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.hasDetainedNpc) {
-    const checker = REQUIREMENT_CHECKERS.get('hasDetainedNpc');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.hasWitnessBelief) {
-    const checker = REQUIREMENT_CHECKERS.get('hasWitnessBelief');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.notPerpetrator) {
-    const checker = REQUIREMENT_CHECKERS.get('notPerpetrator');
-    if (!checker || !checker(agent, ctx)) return null;
-  }
-  if (req.hasCrimeBelief) {
-    const checker = REQUIREMENT_CHECKERS.get('hasCrimeBelief');
-    if (!checker || !checker(agent, ctx, { minConfidence: req.beliefConfidence ?? 0.3 })) return null;
-  }
+  // Module-provided requirement checks — generic iteration over registry
+  if (!checkRegistryRequirements(req, agent, ctx)) return null;
 
   const target = findReactiveTarget(aff, npcId, agent, ctx, event);
   if (!target) return null;
 
-  if (req.noGuardNearby) {
-    for (const [, other] of ctx.agents) {
-      if (!other.state.alive) continue;
-      if (other.profile.detersCrime && other.state.location === target.targetLocation) return null;
-    }
-  }
-  if (req.maxWitnesses !== undefined) {
-    let witnessCount = 0;
-    for (const [otherId, other] of ctx.agents) {
-      if (otherId === npcId || otherId === target.targetId) continue;
-      if (!other.state.alive) continue;
-      if (other.state.location === target.targetLocation) witnessCount++;
-    }
-    if (witnessCount > req.maxWitnesses) return null;
-  }
-  if (req.sentimentBelow !== undefined) {
-    const rel = agent.state.relationships?.getRelationship(target.targetId);
-    if (!rel || rel.sentiment >= req.sentimentBelow) return null;
-  }
+  if (!checkPostTargetRequirements(req, npcId, target, ctx)) return null;
 
   return target;
 }

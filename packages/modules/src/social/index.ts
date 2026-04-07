@@ -67,7 +67,6 @@ export function registerSocialModule(): void {
     ],
     moodWeight: 0,                // personality-driven, not mood-driven
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     goalType: 'visit',
     goalPriority: 2,              // below schedule(3), doesn't interfere with routine
     socialOnly: true,             // engine uses this flag for social-only detection (no hardcoded IDs)

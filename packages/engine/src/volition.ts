@@ -676,75 +676,6 @@ async function callLlm(agent: Agent, system: string, user: string): Promise<stri
   }
 }
 
-// ─── DO/WHY Parser ───
-
-export function parseDoWhy(
-  response: string,
-  validLocations: string[],
-  validNpcs: string[],
-  availableCrimeActions: Set<string>,
-): ParsedIntention | null {
-  const lines = response.split('\n').map((l) => l.trim()).filter(Boolean);
-
-  // Find DO: and WHY: lines
-  const doLine = lines.find((l) => l.startsWith('DO:'));
-  const whyLine = lines.find((l) => l.startsWith('WHY:'));
-
-  if (!doLine) return null;
-
-  const doContent = doLine.slice(3).trim();
-  const why = whyLine ? whyLine.slice(4).trim() : 'no reason given';
-
-  if (!doContent) return null;
-
-  // Parse action
-  const parts = doContent.split(/\s+/);
-  const action = parts[0].toLowerCase();
-
-  switch (action) {
-    case 'go': {
-      // Remaining parts form the location name
-      const locationInput = parts.slice(1).join(' ');
-      const location = matchName(locationInput, validLocations);
-      if (!location) return null;
-      return { action: 'go', target: location, why };
-    }
-
-    case 'talk': {
-      // talk NPC_NAME topic...
-      // NPC name could be 1-2 words, try to match against known NPCs
-      const rest = parts.slice(1).join(' ');
-      const { matched, remainder } = matchNameWithRemainder(rest, validNpcs);
-      if (!matched) return null;
-      return { action: 'talk', target: matched, detail: remainder || why || 'catch up', why };
-    }
-
-    case 'wait': {
-      return { action: 'wait', why };
-    }
-
-    case 'announce': {
-      const message = parts.slice(1).join(' ');
-      if (!message) return null;
-      return { action: 'announce', detail: message, why };
-    }
-
-    default: {
-      // Module-registered action verbs — try to parse as verb [NPC_NAME]
-      const verbIds = getAffordanceIdsForVerb(action);
-      if (verbIds.length === 0) return null;
-      // If verb has remaining parts, try to match NPC name
-      const npcInput = parts.slice(1).join(' ');
-      if (npcInput) {
-        const npc = matchName(npcInput, validNpcs);
-        if (npc) return { action, target: npc, why };
-      }
-      // No target or no match — verb-only action
-      return { action, why };
-    }
-  }
-}
-
 /** Exact case-insensitive match against a list of valid names */
 function matchName(input: string, validNames: string[]): string | null {
   if (!input) return null;
@@ -761,22 +692,6 @@ function matchName(input: string, validNames: string[]): string | null {
 }
 
 /** Match NPC name at the start of input, return matched name and remaining text */
-function matchNameWithRemainder(input: string, validNames: string[]): { matched: string | null; remainder: string } {
-  if (!input) return { matched: null, remainder: '' };
-
-  // Sort by name length descending (try longer names first: "Old Bess" before "Bess")
-  const sorted = [...validNames].sort((a, b) => b.length - a.length);
-
-  for (const name of sorted) {
-    if (input.toLowerCase().startsWith(name.toLowerCase())) {
-      const rest = input.slice(name.length).trim();
-      return { matched: name, remainder: rest };
-    }
-  }
-
-  return { matched: null, remainder: input };
-}
-
 // ─── Intention → Goal Mapping ───
 
 function intentionToGoal(

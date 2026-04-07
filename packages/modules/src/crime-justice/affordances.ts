@@ -13,7 +13,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     severity: 4,
     resistTraits: [{ trait: 'honesty', direction: 'high' }, { trait: 'conscientiousness', direction: 'high' }],
     requires: {
-      targetHasShop: true,
       moodBelow: -0.35,
       period: ['night', 'evening'],
       notGuard: true,
@@ -25,7 +24,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.35,
     relationshipWeight: 0.05,
-    baseProbability: 0.3,
     trustWeight: -0.1,
     beliefModifiers: [
       { eventType: 'DEBT_PRESSURE', weight: 0.3 },
@@ -66,7 +64,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.4,
     relationshipWeight: 0.3,
-    baseProbability: 0.25,
     beliefModifiers: [
       { eventType: 'REVENGE_DESIRE', weight: 0.5 },
       { eventType: 'PERSONAL_GRUDGE', weight: 0.4 },
@@ -105,7 +102,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.3,
     relationshipWeight: 0.25,
-    baseProbability: 0.2,
     goalType: 'vigilante_justice',
     goalPriority: 7,
     stepTemplates: [
@@ -117,7 +113,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
   },
   {
     id: 'blackmail',
-    isDuty: true,
     actionVerb: 'leverage',
     actionDescription: 'use a secret you know to pressure someone',
     label: 'Blackmail someone — you know what they hide',
@@ -135,7 +130,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.2,
     relationshipWeight: 0.1,
-    baseProbability: 0.15,
     beliefModifiers: [
       { eventType: 'PERSONAL_SECRET', weight: 0.3 },
       { eventType: 'THREAT_PERCEIVED', weight: 0.2 },
@@ -168,7 +162,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.15,
     relationshipWeight: 0.15,
-    baseProbability: 0.25,
     goalType: 'confront',
     goalPriority: 4,
     stepTemplates: [
@@ -198,7 +191,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.1,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     beliefModifiers: [
       { eventType: 'NPC_KILLED', weight: 0.5 },
       { eventType: 'GOODS_STOLEN', weight: 0.4 },
@@ -232,7 +224,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.0,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     beliefModifiers: [
       { eventType: 'NPC_KILLED', weight: 0.4 },
       { eventType: 'GOODS_STOLEN', weight: 0.3 },
@@ -263,7 +254,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.05,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     beliefModifiers: [
       { eventType: 'NPC_KILLED', weight: 0.15 },
       { eventType: 'GOODS_STOLEN', weight: 0.1 },
@@ -293,7 +283,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.2,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     beliefModifiers: [
       { eventType: 'NPC_KILLED', weight: 0.3 },
     ],
@@ -325,7 +314,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.3,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     goalType: 'lay_low',
     goalPriority: 6,
     eventBoost: {
@@ -353,7 +341,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.2,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     goalType: 'seek_forgiveness',
     goalPriority: 6,
     eventBoost: {
@@ -387,7 +374,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.0,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     beliefModifiers: [
       { eventType: 'NPC_KILLED', weight: 0.3 },
       { eventType: 'GOODS_STOLEN', weight: 0.2 },
@@ -422,7 +408,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.0,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     beliefModifiers: [
       { eventType: 'NPC_KILLED', weight: 0.3 },
       { eventType: 'GOODS_STOLEN', weight: 0.2 },
@@ -459,7 +444,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.1,
     relationshipWeight: 0.0,
-    baseProbability: 0.4,
     beliefModifiers: [
       { eventType: 'NPC_KILLED', weight: 0.5 },
       { eventType: 'GOODS_STOLEN', weight: 0.4 },
@@ -493,7 +477,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.25,
     relationshipWeight: 0.0,
-    baseProbability: 0.3,
     goalType: 'demand_justice',
     goalPriority: 5,
     eventBoost: {
@@ -527,7 +510,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.3,
     relationshipWeight: 0.0,
-    baseProbability: 0.3,
     goalType: 'destroy_evidence',
     goalPriority: 7,
     eventBoost: {
@@ -563,7 +545,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.2,
     relationshipWeight: 0.0,
-    baseProbability: 0.25,
     goalType: 'intimidate_witness',
     goalPriority: 8,
     eventBoost: {
@@ -596,7 +577,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.35,
     relationshipWeight: 0.0,
-    baseProbability: 0.2,
     goalType: 'flee_town',
     goalPriority: 8,
     eventBoost: {
@@ -627,7 +607,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.0,
     relationshipWeight: 0.0,
-    baseProbability: 1.0,
     beliefModifiers: [
       { eventType: 'NPC_KILLED', weight: 0.3 },
       { eventType: 'GOODS_STOLEN', weight: 0.2 },
@@ -664,7 +643,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     ],
     moodWeight: 0.0,
     relationshipWeight: 0.0,
-    baseProbability: 0.2,
     goalType: 'surveillance',
     goalPriority: 5,
     cooldownOverride: 120, // 2h game time between surveillance rounds
