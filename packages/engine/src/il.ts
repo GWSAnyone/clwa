@@ -20,7 +20,6 @@ import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAff
 import type { ILConfig } from './world-types';
 import type { PlayerJournal, CaseSummary } from './journal';
 import { DEFAULT_IL_CONFIG } from './world-types';
-import { TIME_PERIODS } from './schedule';
 import { llmCall } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 
@@ -116,8 +115,6 @@ export interface Claim {
   object?: string;
   /** WHERE (location name) */
   location?: string;
-  /** WHEN (time period: dawn, morning, afternoon, evening, night) */
-  timePeriod?: string;
   /** How player knows this */
   source: 'witnessed' | 'heard' | 'suspects' | 'deduced';
   /** How certain the claim is (0-1) */
@@ -213,7 +210,6 @@ export async function extractDialogueMeaning(
     `   - subject: WHO did it (must be a known NPC name, or null)`,
     `   - object: WHO was affected (NPC name, or null)`,
     `   - location: WHERE (must be a known location, or null)`,
-    `   - timePeriod: WHEN (${TIME_PERIODS.join('/')}, or null)`,
     `   - source: how the player knows (${Array.from(VALID_CLAIM_SOURCES).join(', ')})`,
     `   - confidence: 0-1 how certain the claim sounds`,
     ``,
@@ -416,7 +412,6 @@ function resolveClaim(raw: Record<string, unknown>, ctx: ILContext): Claim | nul
     subject,
     object,
     location,
-    timePeriod: raw.timePeriod ? String(raw.timePeriod) : undefined,
     source,
     confidence: clamp(Number(raw.confidence) || 0.5),
   };
@@ -491,7 +486,7 @@ export interface ConversationSession {
     lastJournalHash: number;
   }>;
   /** Log of formal accusations made in this chat — detects scatter-accusing */
-  formalAccusations: Array<{ suspectId: string; suspectName: string; tick: number }>;
+  formalAccusations: Array<{ suspectId: string; suspectName: string; gameDay: number }>;
 }
 
 export interface ILEffectContext {
@@ -550,7 +545,7 @@ export function processEvidencePresentation(ctx: ILEffectContext): string {
     npc.state.beliefs?.addBelief({
       id: crypto.randomUUID(),
       eventType: ev.eventType,
-      subject: ev.suspectName ?? null,
+      subject: ev.suspectId ?? null,
       object: null,
       location: null,
       confidence,
@@ -758,8 +753,8 @@ export async function applyDialogueMeaning(
         npc.state.beliefs?.addBelief({
           id: crypto.randomUUID(),
           eventType: claim.eventType,
-          subject: subjectAgent?.profile.name ?? claim.subject ?? null,
-          object: objectAgent?.profile.name ?? claim.object ?? null,
+          subject: subjectAgent?.profile.id ?? claim.subject ?? null,
+          object: objectAgent?.profile.id ?? claim.object ?? null,
           location: claim.location ?? null,
           confidence: effectiveConfidence,
           source: BELIEF_SOURCE.TESTIMONY,
@@ -773,7 +768,7 @@ export async function applyDialogueMeaning(
         const eventLabel = getEventLabelSafe(claim.eventType);
         sections.push(`${playerName} claims: ${claim.subject ?? 'someone'} was involved in ${eventLabel.toLowerCase()}${claim.object ? ` against ${claim.object}` : ''}. You ${playerTrust >= cfg.trustThresholdForGoals ? 'find this somewhat credible' : 'are skeptical about this claim'}.`);
       } else if (claim.subject || claim.location) {
-        const details = [claim.subject, claim.location, claim.timePeriod].filter(Boolean);
+        const details = [claim.subject, claim.location].filter(Boolean);
         sections.push(`${playerName} mentions: ${details.join(', ')}. Consider this in your response.`);
       }
     }
@@ -797,6 +792,7 @@ export async function applyDialogueMeaning(
             npc.state.relationships?.adjustSentiment(playerId, -0.2);
             npc.state.relationships?.adjustTrust(playerId, -0.15);
             ctx.effects.push({ type: 'relationship_change', field: 'sentiment', delta: -0.2 });
+            ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.15 });
           } else {
           const playerTrust = npc.state.relationships?.getRelationship(playerId)?.trust ?? 0;
           const acc = buildAccusationContext(
@@ -850,7 +846,7 @@ export async function applyDialogueMeaning(
               ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.05 });
             }
             if (!session.formalAccusations.some(a => a.suspectId === suspId)) {
-              session.formalAccusations.push({ suspectId: suspId, suspectName: suspName, tick: ctx.gameDay });
+              session.formalAccusations.push({ suspectId: suspId, suspectName: suspName, gameDay: ctx.gameDay });
             }
           }
 
@@ -1049,12 +1045,23 @@ export async function applyDialogueMeaning(
 
 function findAgentByName(name: string, agents: Map<string, Agent>): Agent | undefined {
   const lower = name.toLowerCase();
+  // Exact match first
   for (const agent of agents.values()) {
     if (agent.profile.name.toLowerCase() === lower) return agent;
-    // Partial match: "Bess" matches "Old Bess"
-    if (agent.profile.name.toLowerCase().includes(lower) || lower.includes(agent.profile.name.toLowerCase())) return agent;
   }
-  return undefined;
+  // Partial match — collect all candidates, prefer shortest name (most specific)
+  let best: Agent | undefined;
+  let bestLen = Infinity;
+  for (const agent of agents.values()) {
+    const aName = agent.profile.name.toLowerCase();
+    if (aName.includes(lower) || lower.includes(aName)) {
+      if (agent.profile.name.length < bestLen) {
+        best = agent;
+        bestLen = agent.profile.name.length;
+      }
+    }
+  }
+  return best;
 }
 
 /**
@@ -1066,4 +1073,5 @@ function adjustBilateral(player: Agent, npc: Agent, sentimentDelta: number, trus
   npc.state.relationships?.adjustSentiment(player.profile.id, sentimentDelta);
   npc.state.relationships?.adjustTrust(player.profile.id, trustDelta);
   player.state.relationships?.adjustSentiment(npc.profile.id, sentimentDelta * bilateralFactor);
+  player.state.relationships?.adjustTrust(npc.profile.id, trustDelta * bilateralFactor);
 }
