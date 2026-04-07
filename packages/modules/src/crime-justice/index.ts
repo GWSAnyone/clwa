@@ -24,6 +24,9 @@ import {
   getPassiveNoticeText,
   getAffordanceIdsForVerb,
   registerSecretEventType,
+  registerAccusationResponseHandler,
+  registerBlockingGoalTypes,
+  registerRelationshipLabels,
 } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief, hasSuspicionBelief } from './target-finders';
@@ -72,6 +75,20 @@ export function registerCrimeJusticeModule(): void {
     );
     return deductions.length === 0; // true = can investigate (no high-conf deduction yet)
   });
+
+  // Accusation response — crime-justice policy: strong=arrest, moderate=investigate
+  registerAccusationResponseHandler((quality, npc, _suspectId) => {
+    if (quality === 'strong' && (npc.profile.investigator || npc.profile.canSentence)) {
+      return { goalType: 'arrest', affordanceId: 'arrest', trustDelta: 0.05 };
+    }
+    if (quality === 'moderate' && npc.profile.investigator) {
+      return { goalType: 'investigate', affordanceId: 'investigate' };
+    }
+    return null;
+  });
+
+  // Goal types that block volition re-evaluation of target NPC
+  registerBlockingGoalTypes(['arrest']);
 
   // Event registries — declare module-specific event metadata for engine
   registerEventCategory('crime', ['NPC_KILLED', 'GOODS_STOLEN', 'SELF_JUSTICE']);
@@ -179,11 +196,31 @@ export function registerCrimeJusticeModule(): void {
     secret: 0,         // secret knowledge never decays
   });
 
-  // Secret source: doesn't transfer through gossip (you don't casually share blackmail material)
-  registerSourceTransferWeights({ secret: 0 });
+  // Module-specific source transfer weights (moved from engine defaults)
+  registerSourceTransferWeights({
+    witness: 0.85,
+    rumor: 0.5,
+    perpetrator: 0.0,
+    cover_up: 0.0,
+    secret: 0,
+  });
 
-  // Additional source labels for prompts
-  registerBeliefSourceLabels({ secret: 'personal knowledge', scene_notice: 'noticed at crime scene' });
+  // Module-specific source labels (moved from engine defaults)
+  registerBeliefSourceLabels({
+    witness: 'saw it happen',
+    interrogation: 'testimony under questioning',
+    rumor: 'hearsay',
+    perpetrator: 'committed the act',
+    cover_up: 'covering up',
+    secret: 'personal knowledge',
+    scene_notice: 'noticed at crime scene',
+  });
+
+  // Relationship labels (moved from engine defaults)
+  registerRelationshipLabels({
+    friend: 'your friend', colleague: 'your colleague', family: 'your family member',
+    rival: 'your rival', mentor: 'your mentor', romantic: 'a loved one', acquaintance: 'an acquaintance',
+  });
 
   // ─── Motive system (SPEC-motive-pool) ───
 

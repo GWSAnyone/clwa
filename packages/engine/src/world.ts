@@ -28,7 +28,7 @@ import type { ScheduleEntry } from './schedule';
 import { createCrimeScene } from './crime-scene';
 import { PlayerJournal } from './journal';
 import { evaluateAllVolition, evaluateReactiveVolition } from './volition';
-import { AFFORDANCE_REGISTRY, checkRequirements, computeUtility } from './al';
+import { AFFORDANCE_REGISTRY, checkRequirements, computeUtility, getBlockingGoalTypes } from './al';
 import type { AffordanceContext } from './al';
 import { TopicEngine, getTopicGroup } from './topic-engine';
 import { ProcessingQueue } from './processing-queue';
@@ -1595,7 +1595,12 @@ export class World {
       decisionCooldowns: this.decisionCooldowns,
       affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
       decisionCooldownMinutes: this.config.decisionCooldownMinutes,
-      isArrestTarget: (npcId) => this.goalManager.isTargetOfGoalType(npcId, 'arrest'),
+      isArrestTarget: (npcId) => {
+        for (const goalType of getBlockingGoalTypes()) {
+          if (this.goalManager.isTargetOfGoalType(npcId, goalType)) return true;
+        }
+        return false;
+      },
       isPairOnCooldown: (a, b) => this.scheduler.isOnCooldown(a, b, this._gameMinute),
     };
   }
@@ -1800,7 +1805,7 @@ export class World {
       const agent = this.agents.get(id);
       if (!agent) continue;
       agent.state.alive = saved.alive;
-      agent.state.status = (saved as any).status === 'free' ? undefined : ((saved as any).status ?? undefined);
+      agent.state.status = (saved as any).status ?? undefined;
       agent.state.location = saved.location;
       agent.state.mood = saved.mood;
       agent.state.baseMood = (saved as any).baseMood ?? (0.3 - agent.profile.bigFive.neuroticism * 0.4 + agent.profile.bigFive.extraversion * 0.2);

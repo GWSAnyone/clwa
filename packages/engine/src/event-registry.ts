@@ -288,15 +288,7 @@ export function getCrimeSceneTemplate(sceneType: string): CrimeSceneTemplate | n
 }
 
 // ─── Relationship Display Labels ───
-const RELATIONSHIP_LABELS: Map<string, string> = new Map([
-  ['friend', 'your friend'],
-  ['colleague', 'your colleague'],
-  ['family', 'your family member'],
-  ['rival', 'your rival'],
-  ['mentor', 'your mentor'],
-  ['romantic', 'a loved one'],
-  ['acquaintance', 'an acquaintance'],
-]);
+const RELATIONSHIP_LABELS: Map<string, string> = new Map();
 
 export function registerRelationshipLabels(labels: Record<string, string>): void {
   for (const [type, label] of Object.entries(labels)) {
@@ -310,16 +302,11 @@ export function getRelationshipLabel(type: string): string {
 
 // ─── Belief Source Display Labels ───
 const BELIEF_SOURCE_LABELS: Map<string, string> = new Map([
-  ['witness', 'saw it happen'],
   ['body_discovery', 'found the body'],
   ['testimony', 'was told directly'],
-  ['interrogation', 'testimony under questioning'],
-  ['rumor', 'hearsay'],
   ['observation', 'observed directly'],
   ['evidence', 'physical evidence'],
   ['deduction', 'deduced from clues'],
-  ['perpetrator', 'committed the act'],
-  ['cover_up', 'covering up'],
 ]);
 
 export function registerBeliefSourceLabels(labels: Record<string, string>): void {
@@ -350,15 +337,11 @@ export const ENGINE_EVENT = {
 // ─── Belief Source Transfer Weights ───
 // When beliefs transfer between NPCs, confidence is multiplied by source weight
 const SOURCE_TRANSFER_WEIGHTS: Map<string, number> = new Map([
-  ['witness', 0.85],
   ['observation', 0.85],
   ['body_discovery', 0.7],
   ['testimony', 0.7],
   ['evidence', 0.8],
   ['deduction', 0.6],
-  ['rumor', 0.5],
-  ['perpetrator', 0.0],  // perpetrator knowledge should not transfer
-  ['cover_up', 0.0],
 ]);
 
 export function registerSourceTransferWeights(weights: Record<string, number>): void {

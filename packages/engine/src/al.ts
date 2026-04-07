@@ -226,6 +226,19 @@ export const REACTIVE_TARGET_FINDERS: Map<string, ReactiveTargetFinderFn> = new 
 /** Module-provided requirement checkers. Key = requirement field name */
 export const REQUIREMENT_CHECKERS: Map<string, (agent: Agent, ctx: AffordanceContext, params?: Record<string, unknown>) => boolean> = new Map();
 
+// ─── Blocking Goal Types (populated by modules) ───
+
+/** Goal types that prevent volition re-evaluation of the target NPC */
+const BLOCKING_GOAL_TYPES: Set<string> = new Set();
+
+export function registerBlockingGoalTypes(types: string[]): void {
+  for (const t of types) BLOCKING_GOAL_TYPES.add(t);
+}
+
+export function getBlockingGoalTypes(): ReadonlySet<string> {
+  return BLOCKING_GOAL_TYPES;
+}
+
 // ─── Universal Role-Based Finder (proximity-aware, enriches with crime beliefs) ───
 
 export function findByRole(role: string, npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {

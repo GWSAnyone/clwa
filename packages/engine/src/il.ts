@@ -91,6 +91,33 @@ export const PLAYER_ACTIONS = {
   BRIBE: 'bribe',
 } as const;
 
+// ─── Accusation Response Registry (modules fill) ───
+
+export interface AccusationResponse {
+  goalType: string;
+  affordanceId: string;
+  trustDelta?: number;
+}
+
+/** Module registers how authority NPCs respond to accusations based on evidence quality + capabilities */
+const ACCUSATION_RESPONSE_HANDLERS: Array<(
+  quality: string, npc: Agent, suspectId: string
+) => AccusationResponse | null> = [];
+
+export function registerAccusationResponseHandler(
+  handler: (quality: string, npc: Agent, suspectId: string) => AccusationResponse | null,
+): void {
+  ACCUSATION_RESPONSE_HANDLERS.push(handler);
+}
+
+export function getAccusationResponse(quality: string, npc: Agent, suspectId: string): AccusationResponse | null {
+  for (const handler of ACCUSATION_RESPONSE_HANDLERS) {
+    const result = handler(quality, npc, suspectId);
+    if (result) return result;
+  }
+  return null;
+}
+
 // ─── IL Output Types ───
 
 export type SpeechAct =
@@ -850,18 +877,16 @@ export async function applyDialogueMeaning(
             }
           }
 
-          // Mechanical effects based on evidence quality
-          if (acc.combinedQuality === 'strong' && (npc.profile.investigator || npc.profile.canSentence) && ctx.goalCreator) {
-            const created = ctx.goalCreator(npc.profile.id, 'arrest', suspectAgent.profile.name);
+          // Mechanical effects based on evidence quality — via registry
+          const response = getAccusationResponse(acc.combinedQuality, npc, suspectAgent.profile.id);
+          if (response && ctx.goalCreator) {
+            const created = ctx.goalCreator(npc.profile.id, response.goalType, suspectAgent.profile.name);
             if (created) {
-              ctx.effects.push({ type: 'goal_created', action: 'arrest', affordanceId: 'arrest', target: suspectAgent.profile.name });
+              ctx.effects.push({ type: 'goal_created', action: response.goalType, affordanceId: response.affordanceId, target: suspectAgent.profile.name });
             }
-            npc.state.relationships?.adjustTrust(playerId, 0.05);
-            ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: 0.05 });
-          } else if (acc.combinedQuality === 'moderate' && npc.profile.investigator && ctx.goalCreator) {
-            const created = ctx.goalCreator(npc.profile.id, 'investigate', suspectAgent.profile.name);
-            if (created) {
-              ctx.effects.push({ type: 'goal_created', action: 'investigate', affordanceId: 'investigate', target: suspectAgent.profile.name });
+            if (response.trustDelta) {
+              npc.state.relationships?.adjustTrust(playerId, response.trustDelta);
+              ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: response.trustDelta });
             }
           } else if (acc.combinedQuality === 'weak') {
             npc.state.relationships?.adjustTrust(playerId, -0.03);

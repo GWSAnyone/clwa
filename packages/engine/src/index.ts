@@ -47,6 +47,7 @@ export {
   checkRequirementsReactive,
   findByRole,
   validatePlayerAction,
+  registerBlockingGoalTypes,
 } from './al';
 export type {
   AffordanceContext,
@@ -143,7 +144,7 @@ export type { TopicContext, TopicProposal } from './topic-engine';
 
 
 // ─── IL (Intent Layer) — Dialogue Meaning Extraction ───
-export { extractDialogueMeaning, applyDialogueMeaning, processEvidencePresentation, buildAccusationContext, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from './il';
+export { extractDialogueMeaning, applyDialogueMeaning, processEvidencePresentation, buildAccusationContext, PLAYER_ACTION_EVENT, PLAYER_ACTIONS, registerAccusationResponseHandler } from './il';
 export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect, PresentedEvidence, AccusationContext, ConversationSession } from './il';
 
 // ─── Interaction ───
