@@ -144,7 +144,7 @@ export type { TopicContext, TopicProposal } from './topic-engine';
 
 
 // ─── IL (Intent Layer) — Dialogue Meaning Extraction ───
-export { extractDialogueMeaning, applyDialogueMeaning, processEvidencePresentation, buildAccusationContext, PLAYER_ACTION_EVENT, PLAYER_ACTIONS, registerAccusationResponseHandler } from './il';
+export { extractDialogueMeaning, applyDialogueMeaning, processEvidencePresentation, buildAccusationContext, registerAccusationResponseHandler } from './il';
 export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect, PresentedEvidence, AccusationContext, ConversationSession } from './il';
 
 // ─── Interaction ───
@@ -210,7 +210,13 @@ export {
   registerSecretDirectiveBuilder, getSecretDirectiveBuilders,
   getAllRegisteredVerbs,
   registerSecretEventType, getSecretEventType,
+  registerPressureTypes, getRegisteredPressureTypes,
+  registerPressureHandler, getPressureHandler,
+  registerSpeechActs, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct,
+  registerClaimSources, getRegisteredClaimSources,
+  registerILTradeVerbs, getILTradeVerbs,
 } from './event-registry';
 export type { TickPhaseContext, TickPhaseHandlerFn } from './event-registry';
 export type { StepExecutionContext, StepHandlerFn, InteractionRunner as StepInteractionRunner } from './event-registry';
+export type { PressureHandlerContext, PressureHandlerFn } from './event-registry';
 export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate, BeliefCreatorFn, MemoryTextBuilderFn, DayAdvanceHandlerFn, DayAdvanceContext, DiscoveryContext, DiscoveryHandlerFn, MoodModifierCallback } from './event-registry';

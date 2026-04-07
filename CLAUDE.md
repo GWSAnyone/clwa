@@ -37,9 +37,9 @@ Every piece of state is a typed field: `null`, enum literal, number, boolean.
 - Classifying a violation as "acceptable" or "borderline" because it's a union type or "engine-level concept". **Default is VIOLATION** — only goal state machine, LLM API protocol, and template DSL ($target, $home) are truly engine-level string checks.
 
 ### 2. Engine = Universal Laws, Modules = Worlds Built on Those Laws
-Engine contains **empty registries** (30+ in event-registry.ts). Modules fill them at startup. Engine never imports from modules.
+Engine contains **empty registries** (40+ in event-registry.ts). Modules fill them at startup. Engine never imports from modules.
 - New behavior = data record in a module. Zero code changes in engine.
-- Engine doesn't know specific roles, crimes, event types, verdict strings, status values, or scene types. All via registries.
+- Engine doesn't know specific roles, crimes, event types, verdict strings, status values, scene types, speech acts, claim sources, pressure types, or trade verbs. All via registries.
 - **Test**: "If I add an Economy module with FRAUD/SMUGGLING events — does engine handle them without any engine code changes?" If no → violation.
 
 ### 3. PM = Instinct, LLM = Consciousness
@@ -89,9 +89,9 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 1. **LLM semaphore**: acquire() → call → release() in **finally**. Concurrency = 1. Tick mutex.
 2. **Null semantics**: null = unknown. addBelief() merges null → concrete. Never strings as null-substitutes.
-3. **Registry pattern**: engine has empty registries. Modules fill them. Engine never references module-specific IDs, event types, status strings, or verdict values.
+3. **Registry pattern**: engine has empty registries. Modules fill them. Engine never references module-specific IDs, event types, status strings, verdict values, speech acts, claim sources, pressure types, or trade verbs.
 4. **Capability flags**: investigator/detersCrime/canSentence on profile. Never role strings for logic.
-5. **All types = string**: EventType, NpcStatus, BeliefSource — no unions. Modules define values via registries.
+5. **All types = string**: EventType, NpcStatus, BeliefSource, SpeechAct, Claim.source, lastInteractionOutcome.type — no unions. Modules define values via registries.
 6. **Step handlers**: engine handles move_to/interact/announce/wait. All other step types via STEP_HANDLERS registry.
 7. **handleEventForGoals**: async. All callers must await.
 8. **No fallback strings**: if registry returns null/undefined — skip, throw, or use generic behavior. Never `?? 'HARDCODED_STRING'`.
@@ -136,7 +136,7 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 47. **inTransit flag**: boolean on AgentState (like inPlayerChat). Set by movement.ts and goals.ts on move_to. Cleared for ALL agents at start of each `_tick()`. Scheduler skips inTransit NPCs from conversation pairing. Transient — not persisted.
 48. **WS overlay types**: 5 callbacks on WorldCallbacks (onDecision, onMoodChange, onGoalChange, onCascade, onRelationshipChange). Mood via Object.defineProperty interceptor (zero callsite changes). Relationship via RelationshipGraph.onChange. CG cascade via processCascade() helper.
 49. **IL bilateral parity**: Player claims go through same `isTransferable()` filter as NPC-NPC beliefTransfer (goals.ts). Confidence = claim.confidence × trust, with configurable floor (`ILConfig.beliefConfidenceFloor`). Relationship changes via `adjustSentiment()`/`adjustTrust()` (not direct mutation) — triggers onChange → WS broadcast.
-50. **IL dynamic schema**: `buildILSchema(ctx)` generates JSON schema with enum constraints from registries (speechActs, eventTypes, locations, actionVerbs, pressureTypes, claimSources). Constrained decoding on 9B model guarantees valid output. Schema rebuilt per-call (ctx is dynamic — NPCs die, locations change).
+50. **IL dynamic schema**: `buildILSchema(ctx)` generates JSON schema with enum constraints from registries (`getRegisteredSpeechActs()`, `getRegisteredClaimSources()`, `getRegisteredPressureTypes()`, `getILTradeVerbs()`, eventTypes, locations, actionVerbs). All sets dynamic — zero hardcoded enums. Speech acts have flags (`isBenign`, `isTrade`, `isAccusation`) via `registerSpeechActs()`. Constrained decoding on 9B model guarantees valid output. Schema rebuilt per-call.
 51. **ILConfig + ConversationConfig**: all IL behavioral constants (trust threshold, confidence floor, pressure multipliers, speechAct effects, bilateral factor) and conversation constants (sentiment boost, mood/valence clamps, secret confidence) in WorldConfig. Resolved once at World construction via `resolveILConfig()`/`resolveConversationConfig()`.
 52. **ILEffect tracking**: `ILEffectContext.effects: ILEffect[]` — mutable array populated by `applyDialogueMeaning`. Discriminated union with 8 types (belief_created, belief_rejected, mood_change, relationship_change, goal_created, goal_rejected, event_stored, memory_stored). Broadcast via WS `il_result` for client rendering.
 53. **Secret event type registry**: `registerSecretEventType()`/`getSecretEventType()` — module defines what event type represents discovered secrets. Engine uses registered type in conversation impact analysis. No hardcoded `'PERSONAL_SECRET'` in engine.
@@ -187,4 +187,4 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.11.0-dev. Milestone 1 (Replayable Crime) complete — trait/mood/relationship randomization, scenario manager, motive pool (motives as beliefs). Milestone 2 (Detective Toolkit) backend complete — accusation, evidence presentation, crime prevention, journal v2. Mood modifier system (SPEC-mood-modifiers) implemented. Motive pool (SPEC-motive-pool) implemented — 9 conditional motives, emergent motives, belief-based targeting. Web UI pending. 14 engine subsystems, 30+ registries, 20+ affordances, 15 specs. See docs/ROADMAP.md for details.
+v0.11.0-dev. Milestone 1 (Replayable Crime) complete — trait/mood/relationship randomization, scenario manager, motive pool (motives as beliefs). Milestone 2 (Detective Toolkit) backend complete — accusation, evidence presentation, crime prevention, journal v2. Mood modifier system (SPEC-mood-modifiers) implemented. Motive pool (SPEC-motive-pool) implemented — 9 conditional motives, emergent motives, belief-based targeting. Web UI pending. 14 engine subsystems, 40+ registries, 20+ affordances, 15 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. See docs/ROADMAP.md for details.

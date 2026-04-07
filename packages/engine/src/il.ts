@@ -16,7 +16,8 @@
 import { llmSemaphore } from './agent';
 import type { Agent } from './agent';
 import type { IEventStore } from './event-store';
-import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb } from './event-registry';
+import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs } from './event-registry';
+import type { PressureHandlerContext } from './event-registry';
 import type { ILConfig } from './world-types';
 import type { PlayerJournal, CaseSummary } from './journal';
 import { DEFAULT_IL_CONFIG } from './world-types';
@@ -30,17 +31,15 @@ const VALID_QUESTION_TOPICS = ['whereabouts', 'opinion', 'knowledge', 'relations
  * Pattern: identical to getVolitionSchema() — constrained decoding forces valid output.
  * Not cached: ctx is per-call (NPC can die → knownEventTypes/locations change).
  */
-// Trade-related verbs added to action enum so the model doesn't hallucinate 'steal' for buy/sell intent.
-// These are NOT affordances — they're IL-only signals resolved to speechAct='trade' in validation.
-const IL_TRADE_VERBS = ['buy', 'sell', 'browse', 'trade'];
+// IL trade verbs registered dynamically via registerILTradeVerbs() — no hardcoded array
 
 function buildILSchema(ctx: ILContext): LlmJsonSchema {
-  const speechActs = Array.from(VALID_SPEECH_ACTS);
-  const claimSources = Array.from(VALID_CLAIM_SOURCES);
-  const pressureTypes = Array.from(VALID_PRESSURE_TYPES);
+  const speechActs = getRegisteredSpeechActs();
+  const claimSources = Array.from(getRegisteredClaimSources());
+  const pressureTypes = Array.from(getRegisteredPressureTypes());
   // Trade verbs FIRST — 9B constrained decoding biased toward early enum values.
   // With steal before buy, "show me your wares" → steal. With buy first → buy.
-  const actionVerbs = [...new Set([...IL_TRADE_VERBS, ...ctx.availableActions])];
+  const actionVerbs = [...new Set([...getILTradeVerbs(), ...ctx.availableActions])];
 
   return {
     name: 'dialogue_meaning',
@@ -82,21 +81,13 @@ function buildILSchema(ctx: ILContext): LlmJsonSchema {
   };
 }
 
-/** Event type for player actions — must be registered by server/module at startup */
-export const PLAYER_ACTION_EVENT = 'PLAYER_ACTION';
-
-/** Player action subtypes — used in event payload.action and matched in secret directive builders */
-export const PLAYER_ACTIONS = {
-  THREATEN: 'threaten',
-  BRIBE: 'bribe',
-} as const;
-
 // ─── Accusation Response Registry (modules fill) ───
 
 export interface AccusationResponse {
-  goalType: string;
-  affordanceId: string;
+  goalType?: string;
+  affordanceId?: string;
   trustDelta?: number;
+  rejectReason?: string;
 }
 
 /** Module registers how authority NPCs respond to accusations based on evidence quality + capabilities */
@@ -120,18 +111,8 @@ export function getAccusationResponse(quality: string, npc: Agent, suspectId: st
 
 // ─── IL Output Types ───
 
-export type SpeechAct =
-  | 'inform'      // sharing information about the world
-  | 'question'    // asking for information
-  | 'request'     // asking NPC to do something
-  | 'accuse'      // directly accusing someone
-  | 'threaten'    // threatening NPC
-  | 'compliment'  // praising NPC
-  | 'insult'      // verbal attack
-  | 'bribe'       // offering something for a favor
-  | 'confide'     // sharing personal/secret information
-  | 'trade'       // buying/selling intent
-  | 'smalltalk';  // casual conversation
+/** Speech act type — registered dynamically via registerSpeechActs(), not a union */
+export type SpeechAct = string;  // casual conversation
 
 export interface Claim {
   /** Event type from registry (e.g. NPC_KILLED, GOODS_STOLEN) — null if no specific event */
@@ -142,8 +123,8 @@ export interface Claim {
   object?: string;
   /** WHERE (location name) */
   location?: string;
-  /** How player knows this */
-  source: 'witnessed' | 'heard' | 'suspects' | 'deduced';
+  /** How player knows this — registered dynamically via registerClaimSources() */
+  source: string;
   /** How certain the claim is (0-1) */
   confidence: number;
 }
@@ -229,7 +210,7 @@ export async function extractDialogueMeaning(
     ``,
     `Extract ALL of the following that apply:`,
     ``,
-    `1. speechAct: one of: ${Array.from(VALID_SPEECH_ACTS).join(', ')}`,
+    `1. speechAct: one of: ${getRegisteredSpeechActs().join(', ')}`,
     `   IMPORTANT: "trade" = player wants to buy, sell, browse goods, or ask about prices. Use speechAct "trade" + tradeIntent, NOT requestedAction.`,
     ``,
     `2. claims: array of factual claims the player is making (if any). Each claim:`,
@@ -237,7 +218,7 @@ export async function extractDialogueMeaning(
     `   - subject: WHO did it (must be a known NPC name, or null)`,
     `   - object: WHO was affected (NPC name, or null)`,
     `   - location: WHERE (must be a known location, or null)`,
-    `   - source: how the player knows (${Array.from(VALID_CLAIM_SOURCES).join(', ')})`,
+    `   - source: how the player knows (${Array.from(getRegisteredClaimSources()).join(', ')})`,
     `   - confidence: 0-1 how certain the claim sounds`,
     ``,
     `3. questions: array of questions being asked (if any). Each:`,
@@ -245,12 +226,12 @@ export async function extractDialogueMeaning(
     `   - topic: ${VALID_QUESTION_TOPICS.join(', ')} (or null)`,
     ``,
     `4. requestedAction: if player is asking the NPC to DO a specific action (NOT buying/selling — that is trade):`,
-    `   - action: use one of these verbs: ${[...IL_TRADE_VERBS, ...ctx.availableActions].join(', ')}`,
+    `   - action: use one of these verbs: ${[...getILTradeVerbs(), ...ctx.availableActions].join(', ')}`,
     `   - target: target NPC or location (or null)`,
     `   - urgency: 0-1`,
     ``,
     `5. emotionalPressure: if player is pressuring the NPC:`,
-    `   - type: ${Array.from(VALID_PRESSURE_TYPES).join(', ')}`,
+    `   - type: ${Array.from(getRegisteredPressureTypes()).join(', ')}`,
     `   - intensity: 0-1`,
     ``,
     `6. tradeIntent: if player wants to buy/sell:`,
@@ -292,48 +273,40 @@ export async function extractDialogueMeaning(
 
 // ─── Validation & Entity Resolution ───
 
-const VALID_SPEECH_ACTS = new Set<SpeechAct>([
-  'inform', 'question', 'request', 'accuse', 'threaten', 'compliment',
-  'insult', 'bribe', 'confide', 'trade', 'smalltalk',
-]);
-
-const VALID_CLAIM_SOURCES = new Set(['witnessed', 'heard', 'suspects', 'deduced']);
-const VALID_PRESSURE_TYPES = new Set(['threat', 'bribe', 'flattery', 'guilt', 'intimidation']);
+// Speech acts, claim sources, pressure types — all registered dynamically via registries
 
 function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): DialogueMeaning {
-  if (!VALID_SPEECH_ACTS.has(raw.speechAct as SpeechAct)) {
+  if (!isValidSpeechAct(raw.speechAct as string)) {
     console.warn(`  [IL] Invalid speechAct '${raw.speechAct}' — falling back to 'smalltalk'`);
   }
   if (raw.extractionConfidence == null || isNaN(Number(raw.extractionConfidence))) {
     console.warn(`  [IL] Missing/invalid extractionConfidence '${raw.extractionConfidence}' — defaulting to 0.5`);
   }
 
-  // Semantic correction: tradeIntent presence overrides speechAct to 'trade'.
+  // Semantic correction: tradeIntent presence overrides speechAct to trade.
   // Root cause: constrained decoding forces requestedAction.action into affordance verbs,
-  // so "show me your wares" → model picks 'steal' (nearest verb). Before enum constraints,
-  // free-text action would fail gracefully. With enums, we need explicit signal priority:
-  // tradeIntent > requestedAction when both present.
-  let speechAct: SpeechAct = VALID_SPEECH_ACTS.has(raw.speechAct as SpeechAct)
-    ? raw.speechAct as SpeechAct
+  // so "show me your wares" → model picks 'steal' (nearest verb). With enums, we need
+  // explicit signal priority: tradeIntent > requestedAction when both present.
+  let speechAct: SpeechAct = isValidSpeechAct(raw.speechAct as string)
+    ? raw.speechAct as string
     : 'smalltalk';
-  // Semantic correction: detect trade intent from multiple signals.
-  // Root cause: constrained decoding forces action into enum. Before enums, model could
-  // return free-text "browse" → graceful skip. With enums, we add buy/sell/browse/trade
-  // as IL-only verbs so the model has a correct option. If model picks them → trade.
+  // Detect trade intent from multiple signals — IL trade verbs registered dynamically.
   const tradeIntentObj = raw.tradeIntent && typeof raw.tradeIntent === 'object' ? raw.tradeIntent as Record<string, unknown> : null;
   const hasTradeContent = tradeIntentObj && (tradeIntentObj.category || tradeIntentObj.itemName);
   const raObj = raw.requestedAction && typeof raw.requestedAction === 'object' ? raw.requestedAction as Record<string, unknown> : null;
-  const actionIsTrade = raObj && IL_TRADE_VERBS.includes(String(raObj.action));
+  const actionIsTrade = raObj && getILTradeVerbs().has(String(raObj.action));
 
-  if ((hasTradeContent || actionIsTrade) && speechAct !== 'trade') {
-    console.warn(`  [IL] Trade signals detected (tradeIntent: ${!!hasTradeContent}, action: ${raObj?.action}) but speechAct='${speechAct}' — correcting to 'trade'`);
-    speechAct = 'trade';
+  if ((hasTradeContent || actionIsTrade) && !isTradeSpeechAct(speechAct)) {
+    console.warn(`  [IL] Trade signals detected (tradeIntent: ${!!hasTradeContent}, action: ${raObj?.action}) but speechAct='${speechAct}' — correcting to trade`);
+    // Find the first registered trade speech act
+    const tradeAct = getRegisteredSpeechActs().find(a => isTradeSpeechAct(a));
+    if (tradeAct) speechAct = tradeAct;
   }
 
   // When trade detected, requestedAction and emotionalPressure are noise
-  const isTrade = speechAct === 'trade';
-  if (isTrade && raw.requestedAction) console.warn(`  [IL] Discarding requestedAction (trade context)`);
-  if (isTrade && raw.emotionalPressure) console.warn(`  [IL] Discarding emotionalPressure (trade context)`);
+  const isTradeCtx = isTradeSpeechAct(speechAct);
+  if (isTradeCtx && raw.requestedAction) console.warn(`  [IL] Discarding requestedAction (trade context)`);
+  if (isTradeCtx && raw.emotionalPressure) console.warn(`  [IL] Discarding emotionalPressure (trade context)`);
 
   const result: DialogueMeaning = {
     speechAct,
@@ -360,7 +333,7 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
   }
 
   // Resolve requested action (skip if trade — enum-forced hallucination)
-  if (!isTrade && raw.requestedAction && typeof raw.requestedAction === 'object') {
+  if (!isTradeCtx && raw.requestedAction && typeof raw.requestedAction === 'object') {
     const ra = raw.requestedAction as Record<string, unknown>;
     if (ra.action) {
       let resolvedTarget: string | undefined;
@@ -381,16 +354,13 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
   }
 
   // Resolve emotional pressure
-  // Skip if trade (hallucinated). For other benign speechActs (question, smalltalk, inform, compliment),
-  // require high intensity (>0.5) — 9B model hallucinates low-intensity threat/intimidation on innocent phrases.
-  // Real threats have speechAct='threaten' or high intensity.
-  const BENIGN_SPEECH_ACTS = new Set<string>(['smalltalk', 'question', 'inform', 'compliment', 'trade', 'confide']);
-  if (!isTrade && raw.emotionalPressure && typeof raw.emotionalPressure === 'object') {
+  // Skip if trade (hallucinated). For benign speechActs, require high intensity (>0.5) —
+  // 9B model hallucinates low-intensity threat/intimidation on innocent phrases.
+  if (!isTradeCtx && raw.emotionalPressure && typeof raw.emotionalPressure === 'object') {
     const ep = raw.emotionalPressure as Record<string, unknown>;
     const epIntensity = clamp(Number(ep.intensity) || 0.5);
-    const isBenign = BENIGN_SPEECH_ACTS.has(speechAct);
-    if (VALID_PRESSURE_TYPES.has(String(ep.type))) {
-      if (isBenign && epIntensity <= 0.5) {
+    if (getRegisteredPressureTypes().has(String(ep.type))) {
+      if (isBenignSpeechAct(speechAct) && epIntensity <= 0.5) {
         console.warn(`  [IL] Discarding low-intensity pressure '${ep.type}' (${epIntensity}) on benign speechAct '${speechAct}' — likely hallucination`);
       } else {
         result.emotionalPressure = {
@@ -416,11 +386,11 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
 }
 
 function resolveClaim(raw: Record<string, unknown>, ctx: ILContext): Claim | null {
-  const rawSource = String(raw.source);
-  if (raw.source && !VALID_CLAIM_SOURCES.has(rawSource)) {
-    console.warn(`  [IL] Invalid claim source '${rawSource}' — falling back to 'heard'`);
+  const rawSource = String(raw.source ?? '');
+  if (rawSource && !getRegisteredClaimSources().has(rawSource)) {
+    console.warn(`  [IL] Unknown claim source '${rawSource}' — keeping raw value`);
   }
-  const source = VALID_CLAIM_SOURCES.has(rawSource) ? rawSource as Claim['source'] : 'heard';
+  const source = rawSource;
   const subject = raw.subject ? resolveNpcName(String(raw.subject), ctx.npcNames) : undefined;
   if (raw.subject && !subject) console.warn(`  [IL] Could not resolve claim subject '${raw.subject}' to known NPC`);
   const object = raw.object ? resolveNpcName(String(raw.object), ctx.npcNames) : undefined;
@@ -802,7 +772,7 @@ export async function applyDialogueMeaning(
   }
 
   // 1b. Accusation evaluation — only for authority NPCs (investigator/canSentence)
-  if (meaning.speechAct === 'accuse' && meaning.claims && meaning.claims.length > 0) {
+  if (isAccusationSpeechAct(meaning.speechAct) && meaning.claims && meaning.claims.length > 0) {
     const isAuthority = npc.profile.investigator || npc.profile.canSentence;
     if (isAuthority && ctx.playerJournal) {
       const suspectClaim = meaning.claims.find((c) => c.subject);
@@ -879,22 +849,20 @@ export async function applyDialogueMeaning(
 
           // Mechanical effects based on evidence quality — via registry
           const response = getAccusationResponse(acc.combinedQuality, npc, suspectAgent.profile.id);
-          if (response && ctx.goalCreator) {
-            const created = ctx.goalCreator(npc.profile.id, response.goalType, suspectAgent.profile.name);
-            if (created) {
-              ctx.effects.push({ type: 'goal_created', action: response.goalType, affordanceId: response.affordanceId, target: suspectAgent.profile.name });
+          if (response) {
+            if (response.goalType && response.affordanceId && ctx.goalCreator) {
+              const created = ctx.goalCreator(npc.profile.id, response.goalType, suspectAgent.profile.name);
+              if (created) {
+                ctx.effects.push({ type: 'goal_created', action: response.goalType, affordanceId: response.affordanceId, target: suspectAgent.profile.name });
+              }
+            }
+            if (response.rejectReason) {
+              ctx.effects.push({ type: 'goal_rejected', action: 'accuse', reason: response.rejectReason });
             }
             if (response.trustDelta) {
               npc.state.relationships?.adjustTrust(playerId, response.trustDelta);
               ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: response.trustDelta });
             }
-          } else if (acc.combinedQuality === 'weak') {
-            npc.state.relationships?.adjustTrust(playerId, -0.03);
-            ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.03 });
-          } else if (acc.combinedQuality === 'insufficient') {
-            npc.state.relationships?.adjustTrust(playerId, -0.08);
-            ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.08 });
-            ctx.effects.push({ type: 'goal_rejected', action: 'accuse', reason: 'insufficient_evidence' });
           }
 
           // Accused NPC reacts to accusation — hostile consequences (Trigger 3)
@@ -961,43 +929,21 @@ export async function applyDialogueMeaning(
       }
     }
 
-    // Event store + memory for threat/bribe (player actions with mechanical consequences)
-    if (ep.type === 'threat') {
-      const iv = cfg.importanceValues.threat ?? { base: 3, intensityMultiplier: 4 };
-      const threatImp = Math.round(iv.base + ep.intensity * (iv.intensityMultiplier ?? 0));
-      ctx.effects.push({ type: 'event_stored', eventType: PLAYER_ACTION_EVENT, action: 'threaten' });
-      ctx.eventStore.append({
-        id: crypto.randomUUID(), type: PLAYER_ACTION_EVENT,
-        subject: playerId, object: npc.profile.id,
-        location: npc.state.location, gameDay: ctx.gameDay,
-        importance: threatImp,
-        payload: { action: PLAYER_ACTIONS.THREATEN, intensity: ep.intensity },
-      });
-      const threatText = `${playerName} threatened me. ${ep.intensity > 0.5 ? 'It was frightening.' : 'It was unsettling.'}`;
-      await npc.observe(threatText, threatImp);
-      ctx.effects.push({ type: 'memory_stored', text: threatText, importance: threatImp });
-      sections.push(`You feel ${ep.intensity > 0.7 ? 'genuinely afraid' : ep.intensity > 0.4 ? 'uneasy and defensive' : 'slightly annoyed by the posturing'}.`);
-    } else if (ep.type === 'bribe') {
-      const bribeImpEvent = cfg.importanceValues.bribe?.base ?? 5;
-      ctx.effects.push({ type: 'event_stored', eventType: PLAYER_ACTION_EVENT, action: 'bribe' });
-      ctx.eventStore.append({
-        id: crypto.randomUUID(), type: PLAYER_ACTION_EVENT,
-        subject: playerId, object: npc.profile.id,
-        location: npc.state.location, gameDay: ctx.gameDay,
-        importance: bribeImpEvent,
-        payload: { action: PLAYER_ACTIONS.BRIBE, intensity: ep.intensity },
-      });
-      const bribeText = `${playerName} tried to bribe me.`;
-      const bribeImp = cfg.importanceValues.bribe?.base ?? 5;
-      await npc.observe(bribeText, bribeImp);
-      ctx.effects.push({ type: 'memory_stored', text: bribeText, importance: bribeImp });
-      sections.push(`${playerName} is offering you something in exchange for a favor. ${npc.profile.bigFive.honesty >= 0.6 ? 'This offends your sense of integrity.' : 'The offer is... tempting.'}`);
-    } else if (ep.type === 'flattery') {
-      sections.push(`${playerName} is being very complimentary. ${npc.profile.bigFive.agreeableness >= 0.6 ? 'You appreciate the kind words.' : 'You wonder what they want.'}`);
-    } else if (ep.type === 'guilt') {
-      sections.push(`${playerName}'s words hit close to home. You feel a pang of guilt.`);
-    } else if (ep.type === 'intimidation') {
-      sections.push(`You feel pressured by ${playerName}'s demeanor.`);
+    // Module-specific side effects (event storage, memory, prompt sections) via registry
+    const pressureHandler = getPressureHandler(ep.type);
+    if (pressureHandler) {
+      const handlerCtx: PressureHandlerContext = {
+        intensity: ep.intensity, npcId: npc.profile.id, npcName: npc.profile.name,
+        npcLocation: npc.state.location, npcHonesty: npc.profile.bigFive.honesty,
+        npcAgreeableness: npc.profile.bigFive.agreeableness,
+        playerId, playerName, gameDay: ctx.gameDay,
+        observe: (text, imp) => npc.observe(text, imp),
+        storeEvent: (event) => ctx.eventStore.append(event as any),
+        pushEffect: (effect) => ctx.effects.push(effect as any),
+        importanceValues: cfg.importanceValues,
+      };
+      const handlerSections = await pressureHandler(handlerCtx);
+      sections.push(...handlerSections);
     }
   }
 
@@ -1015,15 +961,9 @@ export async function applyDialogueMeaning(
         if (sae.sentiment) ctx.effects.push({ type: 'relationship_change', field: 'sentiment', delta: sae.sentiment });
         if (sae.trust) ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: sae.trust });
       }
-      if (meaning.speechAct === 'compliment') {
-        const t = `${playerName} said something kind to me.`;
-        const imp = cfg.importanceValues.compliment?.base ?? 2;
-        await npc.observe(t, imp);
-        ctx.effects.push({ type: 'memory_stored', text: t, importance: imp });
-      }
-      if (meaning.speechAct === 'insult') {
-        const t = `${playerName} insulted me.`;
-        const imp = cfg.importanceValues.insult?.base ?? 3;
+      if (sae.memoryText) {
+        const t = sae.memoryText.replace('$player', playerName);
+        const imp = sae.memoryImportance ?? 2;
         await npc.observe(t, imp);
         ctx.effects.push({ type: 'memory_stored', text: t, importance: imp });
       }

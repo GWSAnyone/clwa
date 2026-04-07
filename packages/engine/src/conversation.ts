@@ -8,6 +8,7 @@ import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 import { getRelationshipLabel } from './event-registry';
 import { buildSecretDirectives } from './secret-directives';
+import { speechReminder } from './prompt-utils';
 
 /** Resolve location ID to display name. */
 function locName(id: string, locations?: LocationGraph): string {
@@ -206,18 +207,7 @@ export async function runConversation(
 
 // ─── Prompt Builders ────────────────────────────────────────────
 
-/** Extract speech style description (L0 — style guidance without copyable phrases).
- *  Full examples are already in system prompt via ## Speech style section. */
-function speechReminder(agent: Agent): string {
-  const lines = agent.profile.speechStyle.split('\n');
-  const description = lines[0] ?? '';
-  // Include one random example prefixed with "e.g." to prevent verbatim copying
-  const examples = lines.filter(l => l.startsWith('Example:'));
-  if (examples.length === 0) return description;
-  const example = examples[Math.floor(Math.random() * examples.length)];
-  const exampleText = example.replace(/^Example:\s*/, '');
-  return `${description} — e.g. ${exampleText}`;
-}
+
 
 /** Relationship note for conversation prompt */
 function relationshipNote(from: Agent, to: Agent): string {

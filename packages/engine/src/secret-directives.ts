@@ -47,7 +47,7 @@ export function buildSecretDirectives(
       const coveredAgent = agents.get(coveredId);
       const coveredName = coveredAgent?.profile.name ?? 'someone';
       const rel = agent.state.relationships?.getRelationship(coveredId);
-      const relType = rel?.type ?? 'acquaintance';
+      const relType = rel?.type ?? 'someone you know';
 
       const coverCrimeLabel = getEventLabelSafe(belief.eventType, 'something wrong');
       sections.push(

@@ -239,7 +239,12 @@ export interface WorldConfig {
 // ─── IL Config ───
 
 /** Effect multiplier per emotional pressure type (scaled by intensity 0-1) */
-export interface PressureEffect { mood: number; sentiment: number; trust: number; }
+export interface PressureEffect {
+  mood: number; sentiment: number; trust: number;
+  /** Template for NPC memory — $player replaced with player name. If set, engine creates memory. */
+  memoryText?: string;
+  memoryImportance?: number;
+}
 
 /** Importance value for memory storage */
 export interface ImportanceConfig { base: number; intensityMultiplier?: number; }
@@ -272,8 +277,8 @@ export const DEFAULT_IL_CONFIG: ILConfig = {
     intimidation: { mood: -0.15, sentiment: -0.10, trust: -0.10 },
   },
   speechActEffects: {
-    compliment: { mood:  0.08, sentiment:  0.05, trust:  0.03 },
-    insult:     { mood: -0.08, sentiment: -0.08, trust: -0.05 },
+    compliment: { mood:  0.08, sentiment:  0.05, trust:  0.03, memoryText: '$player said something kind to me.', memoryImportance: 2 },
+    insult:     { mood: -0.08, sentiment: -0.08, trust: -0.05, memoryText: '$player insulted me.', memoryImportance: 3 },
   },
   importanceValues: {
     threat:     { base: 3, intensityMultiplier: 4 },

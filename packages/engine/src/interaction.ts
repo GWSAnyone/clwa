@@ -6,6 +6,7 @@ import type { ConversationLine, LocationGraph } from './world-types';
 import { truncateToFirstJsonObject } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 import { getInteractionResultHooks, ENGINE_EVENT } from './event-registry';
+import { speechReminder } from './prompt-utils';
 
 /** Resolve location ID to display name. */
 function locName(id: string, locations?: LocationGraph): string {
@@ -149,16 +150,7 @@ export function createInteractionRunner(
   };
 }
 
-/** Extract speech style description (L0 — style guidance without copyable phrases). */
-function speechReminder(agent: Agent): string {
-  const lines = agent.profile.speechStyle.split('\n');
-  const description = lines[0] ?? '';
-  const examples = lines.filter(l => l.startsWith('Example:'));
-  if (examples.length === 0) return description;
-  const example = examples[Math.floor(Math.random() * examples.length)];
-  const exampleText = example.replace(/^Example:\s*/, '');
-  return `${description} — e.g. ${exampleText}`;
-}
+
 
 function buildPurposePrompt(initiator: Agent, target: Agent, purpose: string, locations?: LocationGraph): string {
   const speech = speechReminder(initiator);

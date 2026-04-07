@@ -76,13 +76,19 @@ export function registerCrimeJusticeModule(): void {
     return deductions.length === 0; // true = can investigate (no high-conf deduction yet)
   });
 
-  // Accusation response — crime-justice policy: strong=arrest, moderate=investigate
+  // Accusation response — crime-justice policy for ALL evidence quality levels
   registerAccusationResponseHandler((quality, npc, _suspectId) => {
     if (quality === 'strong' && (npc.profile.investigator || npc.profile.canSentence)) {
       return { goalType: 'arrest', affordanceId: 'arrest', trustDelta: 0.05 };
     }
     if (quality === 'moderate' && npc.profile.investigator) {
       return { goalType: 'investigate', affordanceId: 'investigate' };
+    }
+    if (quality === 'weak') {
+      return { trustDelta: -0.03 };
+    }
+    if (quality === 'insufficient') {
+      return { trustDelta: -0.08, rejectReason: 'insufficient_evidence' };
     }
     return null;
   });

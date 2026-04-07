@@ -103,7 +103,7 @@ export interface AgentState {
   /** Processing lifecycle state. Transient — not persisted. Default: 'idle'. */
   processingState?: NpcProcessingState;
   /** Structured outcome from last interaction post-hook (transient, cleared after use) */
-  lastInteractionOutcome?: { type: 'confession' | 'denial' | 'alibi' | 'information'; detail?: string };
+  lastInteractionOutcome?: { type: string; detail?: string };
   /** Current emotional motive from AL decision (WHY). Cleared on goal completion */
   currentMotive?: string;
   /** NPC is moving between locations — not yet arrived. Transient, not persisted. */

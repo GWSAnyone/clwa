@@ -707,3 +707,90 @@ export function registerSecretDirectiveBuilder(builder: SecretDirectiveBuilderFn
 export function getSecretDirectiveBuilders(): SecretDirectiveBuilderFn[] {
   return SECRET_DIRECTIVE_BUILDERS;
 }
+
+
+// ─── Pressure Type Registry ───
+// Modules register valid emotional pressure types (for IL JSON schema constrained decoding).
+// Engine uses this instead of hardcoded VALID_PRESSURE_TYPES set.
+const PRESSURE_TYPES = new Set<string>();
+
+export function registerPressureTypes(types: string[]): void {
+  for (const t of types) PRESSURE_TYPES.add(t);
+}
+
+export function getRegisteredPressureTypes(): ReadonlySet<string> {
+  return PRESSURE_TYPES;
+}
+
+// ─── Pressure Handlers ───
+// Modules register handlers for specific pressure types (event storage, memory, prompt sections).
+// Engine applies generic mood/sentiment/trust from config, then delegates to registered handler for side effects.
+export interface PressureHandlerContext {
+  intensity: number;
+  npcId: string;
+  npcName: string;
+  npcLocation: string;
+  npcHonesty: number;
+  npcAgreeableness: number;
+  playerId: string;
+  playerName: string;
+  gameDay: number;
+  observe: (text: string, importance: number) => Promise<void>;
+  storeEvent: (event: object) => void;
+  pushEffect: (effect: object) => void;
+  importanceValues: Record<string, { base: number; intensityMultiplier?: number }>;
+}
+
+export type PressureHandlerFn = (ctx: PressureHandlerContext) => Promise<string[]>;
+
+const PRESSURE_HANDLERS = new Map<string, PressureHandlerFn>();
+
+export function registerPressureHandler(type: string, handler: PressureHandlerFn): void {
+  PRESSURE_HANDLERS.set(type, handler);
+}
+
+export function getPressureHandler(type: string): PressureHandlerFn | undefined {
+  return PRESSURE_HANDLERS.get(type);
+}
+
+// ─── Speech Act Registry ───
+// Modules register valid speech acts with behavioral flags.
+// Engine uses flags instead of hardcoded speech act string comparisons.
+interface SpeechActFlags {
+  benign?: boolean;      // suppress hallucinated pressure at low intensity
+  trade?: boolean;       // suppress requestedAction and emotionalPressure (trade context)
+  accusation?: boolean;  // trigger accusation evaluation for authority NPCs
+}
+
+const SPEECH_ACTS = new Map<string, SpeechActFlags>();
+
+export function registerSpeechActs(defs: Array<{ act: string; benign?: boolean; trade?: boolean; accusation?: boolean }>): void {
+  for (const def of defs) SPEECH_ACTS.set(def.act, { benign: def.benign, trade: def.trade, accusation: def.accusation });
+}
+
+export function getRegisteredSpeechActs(): string[] { return Array.from(SPEECH_ACTS.keys()); }
+export function isValidSpeechAct(act: string): boolean { return SPEECH_ACTS.has(act); }
+export function isBenignSpeechAct(act: string): boolean { return SPEECH_ACTS.get(act)?.benign ?? false; }
+export function isTradeSpeechAct(act: string): boolean { return SPEECH_ACTS.get(act)?.trade ?? false; }
+export function isAccusationSpeechAct(act: string): boolean { return SPEECH_ACTS.get(act)?.accusation ?? false; }
+
+// ─── Claim Source Registry ───
+// Modules register valid claim sources for IL schema constrained decoding.
+const CLAIM_SOURCES = new Set<string>();
+
+export function registerClaimSources(sources: string[]): void {
+  for (const s of sources) CLAIM_SOURCES.add(s);
+}
+
+export function getRegisteredClaimSources(): ReadonlySet<string> { return CLAIM_SOURCES; }
+
+// ─── IL Trade Verbs Registry ───
+// Modules register verbs added to IL action enum to prevent hallucination.
+// These are NOT affordances — they're IL-only signals resolved to trade speechAct in validation.
+const IL_TRADE_VERB_SET = new Set<string>();
+
+export function registerILTradeVerbs(verbs: string[]): void {
+  for (const v of verbs) IL_TRADE_VERB_SET.add(v);
+}
+
+export function getILTradeVerbs(): ReadonlySet<string> { return IL_TRADE_VERB_SET; }

@@ -30,6 +30,7 @@ export function processMovement(
   const results: MovementResult[] = [];
 
   for (const [id, agent] of agents) {
+    if (agent.profile.isPlayer) continue; // Player excluded from random movement (isPlayer guard)
     if (!agent.state.alive) continue;
     if (agent.state.status) continue;
     if (agent.state.inTransit) continue; // already walking

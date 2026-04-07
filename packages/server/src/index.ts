@@ -8,7 +8,11 @@ import { World } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
-import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, PLAYER_ACTION_EVENT, PLAYER_ACTIONS } from '@clwa/engine';
+import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerILTradeVerbs } from '@clwa/engine';
+
+// Player action vocabulary — module-level constants, NOT engine
+const PLAYER_ACTION_EVENT = 'PLAYER_ACTION';
+const PLAYER_ACTIONS = { THREATEN: 'threaten', BRIBE: 'bribe' } as const;
 import { broadcast } from './ws';
 import { startServer, clearChatSessions } from './server';
 import { loadWorld } from './world-loader';
@@ -22,6 +26,70 @@ import { join, dirname } from 'path';
 registerSocialModule();          // universal social topic sources
 registerCrimeJusticeModule();    // crime & justice affordances, CG rules, topic sources
 registerEventCategory('player_action', [PLAYER_ACTION_EVENT]);
+
+// ─── IL Vocabulary — speech acts, claim sources, trade verbs ───
+registerSpeechActs([
+  { act: 'inform',    benign: true },
+  { act: 'question',  benign: true },
+  { act: 'request' },
+  { act: 'accuse',    accusation: true },
+  { act: 'threaten' },
+  { act: 'compliment', benign: true },
+  { act: 'insult' },
+  { act: 'bribe' },
+  { act: 'confide',   benign: true },
+  { act: 'trade',     benign: true, trade: true },
+  { act: 'smalltalk', benign: true },
+]);
+registerClaimSources(['witnessed', 'heard', 'suspects', 'deduced']);
+registerILTradeVerbs(['buy', 'sell', 'browse', 'trade']);
+
+// ─── Pressure Types — emotional pressure vocabulary for IL constrained decoding ───
+registerPressureTypes(['threat', 'bribe', 'flattery', 'guilt', 'intimidation']);
+
+// ─── Pressure Handlers — module-specific side effects per pressure type ───
+registerPressureHandler('threat', async (ctx) => {
+  const iv = ctx.importanceValues.threat ?? { base: 3, intensityMultiplier: 4 };
+  const imp = Math.round(iv.base + ctx.intensity * (iv.intensityMultiplier ?? 0));
+  ctx.pushEffect({ type: 'event_stored', eventType: PLAYER_ACTION_EVENT, action: 'threaten' });
+  ctx.storeEvent({
+    id: crypto.randomUUID(), type: PLAYER_ACTION_EVENT,
+    subject: ctx.playerId, object: ctx.npcId,
+    location: ctx.npcLocation, gameDay: ctx.gameDay,
+    importance: imp, payload: { action: PLAYER_ACTIONS.THREATEN, intensity: ctx.intensity },
+  });
+  const text = `${ctx.playerName} threatened me. ${ctx.intensity > 0.5 ? 'It was frightening.' : 'It was unsettling.'}`;
+  await ctx.observe(text, imp);
+  ctx.pushEffect({ type: 'memory_stored', text, importance: imp });
+  return [`You feel ${ctx.intensity > 0.7 ? 'genuinely afraid' : ctx.intensity > 0.4 ? 'uneasy and defensive' : 'slightly annoyed by the posturing'}.`];
+});
+
+registerPressureHandler('bribe', async (ctx) => {
+  const imp = ctx.importanceValues.bribe?.base ?? 5;
+  ctx.pushEffect({ type: 'event_stored', eventType: PLAYER_ACTION_EVENT, action: 'bribe' });
+  ctx.storeEvent({
+    id: crypto.randomUUID(), type: PLAYER_ACTION_EVENT,
+    subject: ctx.playerId, object: ctx.npcId,
+    location: ctx.npcLocation, gameDay: ctx.gameDay,
+    importance: imp, payload: { action: PLAYER_ACTIONS.BRIBE, intensity: ctx.intensity },
+  });
+  const text = `${ctx.playerName} tried to bribe me.`;
+  await ctx.observe(text, imp);
+  ctx.pushEffect({ type: 'memory_stored', text, importance: imp });
+  return [`${ctx.playerName} is offering you something in exchange for a favor. ${ctx.npcHonesty >= 0.6 ? 'This offends your sense of integrity.' : 'The offer is... tempting.'}`];
+});
+
+registerPressureHandler('flattery', async (ctx) => {
+  return [`${ctx.playerName} is being very complimentary. ${ctx.npcAgreeableness >= 0.6 ? 'You appreciate the kind words.' : 'You wonder what they want.'}`];
+});
+
+registerPressureHandler('guilt', async (_ctx) => {
+  return [`${_ctx.playerName}'s words hit close to home. You feel a pang of guilt.`];
+});
+
+registerPressureHandler('intimidation', async (ctx) => {
+  return [`You feel pressured by ${ctx.playerName}'s demeanor.`];
+});
 
 // ─── Role Topic Pools — now loaded from worlds/*/topics.json by world-loader ───
 
