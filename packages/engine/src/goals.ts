@@ -458,7 +458,7 @@ export class GoalManager {
         runInteractPostHooks(owner, target, step, agents, crimeScenes);
 
         // Unified initiator memory: beliefs + outcome in one entry (no double observe)
-        const purposeShort = (step.purpose ?? '').replace(/\[CRIME[^\]]*\]\s*/g, '');
+        const purposeShort = (step.purpose ?? '').replace(/\[[A-Z_]+[^\]]*\]\s*/g, '');
         const pShort = purposeShort.length > 50 ? purposeShort.slice(0, 50) + '...' : purposeShort;
         const targetBeliefs3p = target.state.beliefs?.summarizeForMemory(target.profile.name, 1, undefined, target.nameResolver) ?? '';
         const outcome = owner.state.lastInteractionOutcome;

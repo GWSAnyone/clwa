@@ -699,7 +699,10 @@ export class World {
     for (const [id, agent] of this.agents) {
       if (agent.profile.isPlayer) continue;
       if (!agent.state.alive || agent.state.inPlayerChat || agent.state.inTransit) continue;
-      if (isStatusAbsent(agent.state.status)) continue;
+      if (isStatusAbsent(agent.state.status)) {
+        this.goalManager.clearGoals(id);
+        continue;
+      }
 
       const ps = agent.state.processingState || 'idle'; // initialized in makeState; || for legacy save compat
 
@@ -828,6 +831,17 @@ export class World {
       if (task.npcId) {
         const agent = this.agents.get(task.npcId);
         if (agent) agent.state.processingState = 'idle' as any;
+        // Fail goal after 3 consecutive errors on the same step
+        if (task.type === 'GOAL_STEP') {
+          const goal = this.goalManager.getActiveGoal(task.npcId);
+          if (goal) {
+            goal.data._retryCount = ((goal.data._retryCount as number) ?? 0) + 1;
+            if ((goal.data._retryCount as number) >= 3) {
+              goal.state = 'failed';
+              console.error(`  [Goal] ${npcName} goal ${goal.type} failed after 3 retries`);
+            }
+          }
+        }
       }
       if (task.targetNpcId) {
         const agent = this.agents.get(task.targetNpcId);

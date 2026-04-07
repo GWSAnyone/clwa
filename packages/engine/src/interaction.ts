@@ -69,7 +69,7 @@ export function createInteractionRunner(
 ): InteractionRunner {
   return async (initiator, target, purpose, importance) => {
     // Strip structured markers before sending to LLM
-    const cleanPurpose = purpose.replace(/\[CRIME[^\]]*\]\s*/g, '');
+    const cleanPurpose = purpose.replace(/\[[A-Z_]+[^\]]*\]\s*/g, '');
 
     // Inject belief context — what each NPC actually KNOWS (prevents hallucination)
     const initiatorBeliefs = initiator.state.beliefs?.summarizeForPrompt(3, initiator.nameResolver) ?? '';
@@ -173,8 +173,8 @@ IMPORTANT: speech must be at most 20 words. Only spoken words — no narration.`
 }
 
 function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: string, purpose: string): string {
-  // Detect if this is a report/urgent situation — use structured [CRIME] marker, not text matching
-  const isUrgentReport = /\[CRIME\s/.test(purpose);
+  // Detect if this is a report/urgent situation — any structured [TAG ...] marker indicates urgency
+  const isUrgentReport = /\[[A-Z_]+\s/.test(purpose);
 
   const contextDirective = isUrgentReport
     ? `IMPORTANT: ${initiator.profile.name} is bringing urgent information. Take it seriously — react to what they say.`

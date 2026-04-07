@@ -32,7 +32,7 @@ export interface ConsequenceRule {
 
 export interface RuleCondition {
   field: string;          // e.g. "location", "importance"
-  op: string; // 'eq', 'gt', 'lt', 'has_witnesses', 'is_public_place', 'has_capability', etc.
+  op: 'eq' | 'gt' | 'lt' | 'has_witnesses' | 'is_public_place' | 'has_capability' | (string & {});
   value?: unknown;
 }
 

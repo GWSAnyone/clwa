@@ -35,6 +35,9 @@ export class ConsequenceEngine {
     ctx: WorldContext,
     depth: number = 0,
   ): Promise<ConsequenceResult[]> {
+    const MAX_GLOBAL_DEPTH = 10;
+    if (depth >= MAX_GLOBAL_DEPTH) return [];
+
     // Track witnesses across the entire chain to avoid duplicates
     if (!ctx.witnessIds) ctx.witnessIds = new Set();
 
@@ -181,9 +184,11 @@ export class ConsequenceEngine {
         });
       }
 
-      if (cond.op === 'eq' && (event as any)[cond.field] !== cond.value) return [];
-      if (cond.op === 'gt' && !((event as any)[cond.field] > (cond.value as number))) return [];
-      if (cond.op === 'lt' && !((event as any)[cond.field] < (cond.value as number))) return [];
+      if (cond.op === 'eq') { if ((event as any)[cond.field] !== cond.value) return []; continue; }
+      if (cond.op === 'gt') { if (!((event as any)[cond.field] > (cond.value as number))) return []; continue; }
+      if (cond.op === 'lt') { if (!((event as any)[cond.field] < (cond.value as number))) return []; continue; }
+      console.warn(`[CG] Unknown condition op '${cond.op}' in rule ${rule.id}`);
+      return [];
     }
 
     return [];

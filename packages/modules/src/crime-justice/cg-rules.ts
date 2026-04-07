@@ -152,35 +152,7 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     maxChainDepth: 3,
   },
 
-  // Rule 9: Sentence → rumor spreads (100% — everyone hears)
-  {
-    id: 'sentence-rumor',
-    trigger: 'NPC_SENTENCED',
-    conditions: [],
-    consequence: {
-      type: 'RUMOR_SPREAD',
-      importance: 8,
-      delayDays: 0,
-      probability: 1.0,
-    },
-    maxChainDepth: 2,
-  },
-
-  // Rule 10: Criminal fled → rumor spreads (100%)
-  {
-    id: 'fled-rumor',
-    trigger: 'NPC_FLED',
-    conditions: [],
-    consequence: {
-      type: 'RUMOR_SPREAD',
-      importance: 6,
-      delayDays: 0,
-      probability: 1.0,
-    },
-    maxChainDepth: 2,
-  },
-
-  // Rule 11: Evidence destroyed + witnesses → witness memory (destroying evidence is a crime!)
+  // Rule 9: Evidence destroyed + witnesses → witness memory (destroying evidence is a crime!)
   {
     id: 'witness-evidence-destruction',
     trigger: 'EVIDENCE_DESTROYED',
@@ -214,17 +186,4 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     tracksWitness: true,
   },
 
-  // Rule 13: Trial requested → rumor spreads (public interest)
-  {
-    id: 'trial-rumor',
-    trigger: 'TRIAL_REQUESTED',
-    conditions: [],
-    consequence: {
-      type: 'RUMOR_SPREAD',
-      importance: 7,
-      delayDays: 0,
-      probability: 1.0,
-    },
-    maxChainDepth: 2,
-  },
 ];
