@@ -1,9 +1,9 @@
 # SPEC: Polishing to A+ State
 
-**Status**: PARTIAL (2026-04-08) — 82/109 done, 17 deferred  
+**Status**: PARTIAL (2026-04-09) — 86/109 done, 15 deferred  
 **Created**: 2026-04-07  
 **Scope**: Full codebase quality sweep — dead code, type safety, frontend, LLM prompts, save/load, known debt  
-**Total items**: 162 (109 actionable → 82 done, 17 deferred, 10 false positive/already fixed)  
+**Total items**: 162 (109 actionable → 86 done, 15 deferred, 10 false positive/already fixed)  
 
 ---
 
@@ -218,12 +218,12 @@ Every `as Type` tells TypeScript "trust me" — bypasses compile-time checking.
 | TA-25 | P2 | [ ] | `engine/src/il.ts:360` | `raw.emotionalPressure as Record<string, unknown>` | Same — outer condition, no re-verify. |
 | TA-26 | P2 | [ ] | `engine/src/il.ts:367` | `String(ep.type) as EmotionalPressure['type']` | Registry check on line 362, but cast doesn't re-verify. |
 | TA-27 | P2 | [ ] | `engine/src/il.ts:378` | `raw.tradeIntent as Record<string, unknown>` | Same pattern as TA-24. |
-| TA-28 | P1 | [ ] | `engine/src/interaction.ts:142` | `{} as GoalStep` | Empty object cast to GoalStep. **Dangerous** — no fields guaranteed. |
-| TA-29 | P2 | [ ] | `engine/src/world.ts:1778` | `(data as any).affordanceCooldowns as Record<string, Record<string, number>>` | Nested cast after `as any`. Save data restoration. No validation. |
-| TA-30 | P2 | [ ] | `engine/src/world.ts:1784` | `(data as any).decisionCooldowns as Record<string, number>` | Same as TA-29. |
-| TA-31 | P1 | [ ] | `server/src/index.ts:518` | `{ resetting: false } as GameContext` | Partial object cast. Fields filled later by Object.assign — but TS can't verify. |
-| TA-32 | P1 | [ ] | `server/src/routes.ts:174` | `url.searchParams.get('type') as EventType \| null` | URL string cast to EventType without validation. User input → type bypass. |
-| TA-33 | P1 | [ ] | `server/src/routes.ts:254` | `url.searchParams.get('type') as 'clue'\|'testimony'\|'observation'\|null` | Same — URL input without validation. |
+| TA-28 | P1 | [x] | `engine/src/interaction.ts:142` | Fixed: `step` made optional in `InteractionResultHookFn`, pass `undefined` instead of `{} as GoalStep`. |
+| TA-29 | P2 | [x] | `engine/src/world.ts:1778` | Fixed by SL-01/02: `WorldSaveData` type includes `affordanceCooldowns`, no `as any` needed. |
+| TA-30 | P2 | [x] | `engine/src/world.ts:1784` | Fixed by SL-01/02: `WorldSaveData` type includes `decisionCooldowns`, no `as any` needed. |
+| TA-31 | P1 | [~] | `server/src/index.ts:518` | Deferred — two-phase init pattern, controlled order. Fields filled by Object.assign immediately after. |
+| TA-32 | P1 | [~] | `server/src/routes.ts:174` | No-op: `EventType = string`, cast is identity. No validation needed. |
+| TA-33 | P1 | [x] | `server/src/routes.ts:254` | Fixed: allowlist validation via `Set(['clue','testimony','observation'])`. Invalid → null. |
 
 ---
 

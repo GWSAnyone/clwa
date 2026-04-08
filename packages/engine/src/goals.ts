@@ -409,6 +409,7 @@ export class GoalManager {
           const receiver = direction === 'owner-to-target' ? target : owner;
           const senderId = direction === 'owner-to-target' ? goal.ownerId : step.targetId;
 
+          // sender/receiver are aliases of owner/target, guarded on line 406
           const senderBeliefs = sender.state.beliefs!.getAllBeliefs();
           const crimeBeliefs = senderBeliefs.filter(
             (b) => isTransferable(b.eventType) &&

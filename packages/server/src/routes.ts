@@ -251,7 +251,9 @@ export async function handleRequest(
 
   // ─── GET /api/journal ───
   if (method === 'GET' && path === '/api/journal') {
-    const typeFilter = url.searchParams.get('type') as 'clue' | 'testimony' | 'observation' | null;
+    const rawType = url.searchParams.get('type');
+    const validJournalTypes = new Set(['clue', 'testimony', 'observation']);
+    const typeFilter = rawType && validJournalTypes.has(rawType) ? rawType as 'clue' | 'testimony' | 'observation' : null;
     const groupBy = url.searchParams.get('groupBy');
 
     if (groupBy === 'suspect') {

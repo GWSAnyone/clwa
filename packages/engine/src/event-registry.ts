@@ -443,7 +443,7 @@ export function registerInteractPostHook(hook: InteractPostHookFn): void {
 export type InteractionResultHookFn = (ctx: {
   initiator: Agent;
   target: Agent;
-  step: GoalStep;
+  step?: GoalStep;
   purpose: string;
   eventStore: IEventStore;
   onExtraEvent?: (e: WorldEvent) => Promise<void>;

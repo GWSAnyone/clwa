@@ -139,7 +139,7 @@ export function createInteractionRunner(
       await hook({
         initiator,
         target,
-        step: {} as GoalStep, // step context provided by caller if needed
+        step: undefined, // step context provided by caller if needed
         purpose,
         eventStore,
         onExtraEvent: options?.onExtraEvent,
