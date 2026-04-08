@@ -425,8 +425,16 @@
     if (tickData.conversation) summary.push('conversation');
     if (tickData.idleReason) summary.push('idle');
 
-    sep.innerHTML = '<span class="tick-sep-label">' + parts.join(' | ') + '</span>' +
-      (summary.length > 0 ? '<span class="tick-sep-summary">' + summary.join(', ') + '</span>' : '');
+    const label = document.createElement('span');
+    label.className = 'tick-sep-label';
+    label.textContent = parts.join(' | ');
+    sep.appendChild(label);
+    if (summary.length > 0) {
+      const sumEl = document.createElement('span');
+      sumEl.className = 'tick-sep-summary';
+      sumEl.textContent = summary.join(', ');
+      sep.appendChild(sumEl);
+    }
     dom.chatMessages.appendChild(sep);
     dom.chatMessages.scrollTop = dom.chatMessages.scrollHeight;
   }

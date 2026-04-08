@@ -1,7 +1,7 @@
 # SPEC: Ambient Mood Pressure — Loneliness Decay
 
 > Micro-spec. Mood давление без conversations — personality-driven loneliness.
-> Статус: **implement now**
+> Статус: **реализовано** (loneliness decay, BigFive scaling, 3 callsite-а)
 
 ---
 

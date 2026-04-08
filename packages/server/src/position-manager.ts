@@ -4,7 +4,7 @@
  * Separate from engine to maintain engine purity (engine never knows about pixels).
  */
 
-export interface EntityPosition {
+interface EntityPosition {
   x: number;
   y: number;
   targetX?: number;
@@ -12,7 +12,7 @@ export interface EntityPosition {
   inTransit: boolean;
 }
 
-export interface ZoneData {
+interface ZoneData {
   id: string;         // slug
   center: [number, number];
   polygon: [number, number][];

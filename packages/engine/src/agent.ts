@@ -194,9 +194,13 @@ export class Agent {
       await llmSemaphore.acquire();
       let summary: string;
       try {
+        const bf = this.profile.bigFive;
+        const enn = this.profile.enneagram;
+        const personalityDesc = `Your nature: ${bigFiveToDescription(bf)}. Your deepest fear: ${enn.coreFear}. Your deepest desire: ${enn.coreDesire}.`;
         summary = await this.reflectionTracker.generateReflection(
           this.profile.name,
           this.profile.role,
+          personalityDesc,
         );
       } finally {
         llmSemaphore.release();

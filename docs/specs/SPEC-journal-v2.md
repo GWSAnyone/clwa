@@ -1,7 +1,7 @@
 # SPEC: Journal V2 — Suspect Tracking & Case Summary
 
 > Milestone 2, фундамент. Журнал из плоского списка → инструмент детектива.
-> Статус: **спека**
+> Статус: **реализовано** (structured fields, suspect tracking, case summary, groupBy API, UI)
 
 ---
 

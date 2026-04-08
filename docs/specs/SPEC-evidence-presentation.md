@@ -2,7 +2,7 @@
 
 > Milestone 2, задача 3. Игрок показывает собранные улики NPC → backed beliefs.
 > Зависимость: SPEC-journal-v2 (structured fields на JournalEntry)
-> Статус: **спека**
+> Статус: **реализовано** (EvidenceLayer, structured fields, UI selector, dedup, belief creation)
 
 ---
 

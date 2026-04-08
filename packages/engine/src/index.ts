@@ -95,7 +95,7 @@ export type {
 
 // ─── World ───
 export { World } from './world';
-export type { WorldCallbacks } from './world';
+export type { WorldCallbacks, WorldSaveData, WorldSaveAgentData } from './world';
 export { ProcessingQueue } from './processing-queue';
 export type { ProcessingTask, TaskType, TaskHandler } from './processing-queue';
 

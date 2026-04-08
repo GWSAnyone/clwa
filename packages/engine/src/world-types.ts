@@ -234,6 +234,12 @@ export interface WorldConfig {
     /** Loneliness rate per 5min (default: 0.001), scaled by E (default: 0.001) */
     lonelinessRate?: number;
   };
+  /** LLM temperature for volition decisions (default: 0.35 — deterministic decisions, not creative writing) */
+  volitionTemperature?: number;
+  /** Dialogue word limit instruction injected into conversation prompts (default: "Keep each line under 15 words") */
+  dialogueRule?: string;
+  /** Speech constraint for interaction prompts (default: "Speech must be at most 15 words") */
+  speechConstraint?: string;
 }
 
 // ─── IL Config ───
@@ -269,23 +275,9 @@ export const DEFAULT_IL_CONFIG: ILConfig = {
   trustThresholdForGoals: 0.4,
   beliefConfidenceFloor: 0.1,
   bilateralFactor: 0.5,
-  pressureEffects: {
-    threat:       { mood: -0.20, sentiment: -0.15, trust: -0.10 },
-    bribe:        { mood:  0,    sentiment:  0,    trust:  0    },
-    flattery:     { mood:  0.10, sentiment:  0.05, trust:  0.05 },
-    guilt:        { mood: -0.10, sentiment:  0,    trust:  0    },
-    intimidation: { mood: -0.15, sentiment: -0.10, trust: -0.10 },
-  },
-  speechActEffects: {
-    compliment: { mood:  0.08, sentiment:  0.05, trust:  0.03, memoryText: '$player said something kind to me.', memoryImportance: 2 },
-    insult:     { mood: -0.08, sentiment: -0.08, trust: -0.05, memoryText: '$player insulted me.', memoryImportance: 3 },
-  },
-  importanceValues: {
-    threat:     { base: 3, intensityMultiplier: 4 },
-    bribe:      { base: 5 },
-    compliment: { base: 2 },
-    insult:     { base: 3 },
-  },
+  pressureEffects: {},
+  speechActEffects: {},
+  importanceValues: {},
 };
 
 /** Resolve partial IL config with defaults */

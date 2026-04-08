@@ -1,6 +1,6 @@
 import { registerStepHandler, registerTickPhaseHandler, getEventLabel, getBeliefSourceLabel, isFirsthand, nextHop, llmCall, llmSemaphore } from '@clwa/engine';
-import type { StepExecutionContext, LlmJsonSchema } from '@clwa/engine';
-import type { GoalActionResult } from '@clwa/engine';
+import type { Agent, StepExecutionContext, LlmJsonSchema, GoalActionResult, Belief, NpcGoal, GoalManager } from '@clwa/engine';
+import type { CrimeScene } from '@clwa/engine';
 
 // ─── Punishment System v2 — Graduated Verdicts ──────────────────
 
@@ -37,7 +37,7 @@ function getAvailableVerdicts(severity: number): VerdictOption[] {
 export const imprisonmentTimers: Map<string, number> = new Map();
 
 /** Gather evidence grouped by quality tier */
-function gatherEvidenceGrouped(suspect: any, agents: Map<string, any>): { strong: string[]; moderate: string[]; weak: string[]; crimeTypes: Set<string> } {
+function gatherEvidenceGrouped(suspect: Agent, agents: Map<string, Agent>): { strong: string[]; moderate: string[]; weak: string[]; crimeTypes: Set<string> } {
   const strong: string[] = [];
   const moderate: string[] = [];
   const weak: string[] = [];
@@ -75,13 +75,13 @@ function gatherEvidenceGrouped(suspect: any, agents: Map<string, any>): { strong
 }
 
 /** Build suspect defense text from H trait + own beliefs */
-function buildSuspectDefense(suspect: any): string {
+function buildSuspectDefense(suspect: Agent): string {
   const h = suspect.profile.bigFive?.honesty ?? 0.5;
   const name = suspect.profile.name;
 
   // Check if suspect actually has perpetrator belief (they KNOW they did it)
   const hasPerpBelief = suspect.state.beliefs?.getAllBeliefs().some(
-    (b: any) => b.source === 'perpetrator' && b.subject === suspect.profile.id,
+    (b: Belief) => b.source === 'perpetrator' && b.subject === suspect.profile.id,
   ) ?? false;
 
   if (!hasPerpBelief) {
@@ -96,7 +96,7 @@ function buildSuspectDefense(suspect: any): string {
 }
 
 /** Build judge personality context from PM */
-function buildJudgeContext(judge: any): string {
+function buildJudgeContext(judge: Agent): string {
   const pm = judge.profile.bigFive;
   if (!pm) return '';
   const lines: string[] = [];
@@ -109,7 +109,7 @@ function buildJudgeContext(judge: any): string {
 }
 
 /** Build community pressure summary — relationships to suspect AND victim, completed goals */
-function buildCommunityPressure(suspect: any, victimId: string | null, agents: Map<string, any>, goalManager: any): string {
+function buildCommunityPressure(suspect: Agent, victimId: string | null, agents: Map<string, Agent>, goalManager: GoalManager): string {
   const lines: string[] = [];
   const suspectId = suspect.profile.id;
 
@@ -118,8 +118,8 @@ function buildCommunityPressure(suspect: any, victimId: string | null, agents: M
 
     // Check completed goals related to this case
     const goals = goalManager?.getGoals(id) ?? [];
-    const demandedJustice = goals.some((g: any) => g.type === 'demand_justice' && g.state === 'completed');
-    const testified = goals.some((g: any) => g.type === 'testify' && g.state === 'completed');
+    const demandedJustice = goals.some((g: NpcGoal) => g.type === 'demand_justice' && g.state === 'completed');
+    const testified = goals.some((g: NpcGoal) => g.type === 'testify' && g.state === 'completed');
 
     // Relationship to victim (friend of victim → wants punishment)
     const relToVictim = victimId ? agent.state.relationships?.getRelationship(victimId) : null;
@@ -144,7 +144,7 @@ function buildCommunityPressure(suspect: any, victimId: string | null, agents: M
 }
 
 /** Check if suspect is guilty (perpetrator of an active crime scene) */
-function checkGuilt(suspectId: string, crimeScenes?: Map<string, any[]>): boolean {
+function checkGuilt(suspectId: string, crimeScenes?: Map<string, CrimeScene[]>): boolean {
   if (!crimeScenes) return false;
   for (const scenes of crimeScenes.values()) {
     for (const scene of scenes) {
@@ -155,10 +155,10 @@ function checkGuilt(suspectId: string, crimeScenes?: Map<string, any[]>): boolea
 }
 
 /** Evaluate interrogation outcome based on guilt + honesty trait */
-function evaluateInterrogationOutcome(owner: any, target: any, currentDay: number, crimeScenes: Map<string, any[]>): void {
+function evaluateInterrogationOutcome(owner: Agent, target: Agent, currentDay: number, crimeScenes: Map<string, CrimeScene[]>): void {
   if (!owner.state.beliefs) return;
   const deductionBelief = owner.state.beliefs.getAllBeliefs().find(
-    (b: any) => b.source === 'deduction' && b.subject === target.profile.id,
+    (b: Belief) => b.source === 'deduction' && b.subject === target.profile.id,
   );
   if (!deductionBelief) return;
 
@@ -329,7 +329,7 @@ export function registerCrimeStepHandlers(): void {
       suspectCount++;
     }
     const scenes = ctx.crimeScenes?.get(owner.state.location) ?? [];
-    const activeScene = scenes.find((s: any) => s.active);
+    const activeScene = scenes.find((s: CrimeScene) => s.active);
     const victimName = activeScene?.victimId ? agents.get(activeScene.victimId)?.profile.name ?? 'unknown' : 'unknown';
     const crimeLabel = activeScene?.crimeType ? (getEventLabel(activeScene.eventType ?? activeScene.crimeType) ?? 'crime') : 'crime';
     await owner.observe(`I examined the crime scene. ${suspectCount > 0 ? `Found ${suspectCount} suspect(s) in the ${crimeLabel} of ${victimName}.` : `Reinforced suspicions about ${victimName}.`}`, step.importance);
@@ -435,23 +435,30 @@ export function registerCrimeStepHandlers(): void {
       },
     };
 
-    // 8. LLM call with structured output
-    await llmSemaphore.acquire();
+    // 8. LLM call with structured output (retry once on failure)
     let chosenVerdict = 'release';
     let reasoning = '';
-    try {
-      const content = await llmCall({ system, user, temperature: 0.4, maxTokens: 200, jsonSchema: verdictSchema });
-      if (content) {
-        try {
-          const parsed = JSON.parse(content);
-          if (verdictIds.includes(parsed.verdict)) {
-            chosenVerdict = parsed.verdict;
-            reasoning = parsed.reasoning ?? '';
-          }
-        } catch { /* fallback to release */ }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await llmSemaphore.acquire();
+      try {
+        const content = await llmCall({ system, user, temperature: 0.4, maxTokens: attempt === 0 ? 200 : 300, jsonSchema: verdictSchema });
+        if (content) {
+          try {
+            const parsed = JSON.parse(content);
+            if (verdictIds.includes(parsed.verdict)) {
+              chosenVerdict = parsed.verdict;
+              reasoning = parsed.reasoning ?? '';
+              break;
+            }
+          } catch { /* retry */ }
+        }
+      } finally {
+        llmSemaphore.release();
       }
-    } finally {
-      llmSemaphore.release();
+      if (attempt === 0) console.warn(`[Verdict] Attempt 1 failed for ${suspectName}, retrying with higher maxTokens`);
+    }
+    if (chosenVerdict === 'release' && reasoning === '') {
+      console.warn(`[Verdict:ERROR] Both attempts failed for ${suspectName}, fallback=release`);
     }
 
     // 9. Apply verdict effects

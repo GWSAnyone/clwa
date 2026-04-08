@@ -185,6 +185,14 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 - **Interact pursuit**: target not at location → chase to current location (up to 3 attempts for priority ≥ 7). Not passive timeout.
 - **Belief-gated affordances**: investigate blocked by `deductionBelowThreshold` (conf ≥ 0.7 → arrest only). Structured check, not cooldown.
 
+## Tests
+
+- **Run all**: `bun run test` (or individually: `bun run test:arch`, `bun run test:smoke`, `bun run test:save`)
+- **architecture.test.ts** — static lint: engine boundary, hardcoded module strings, direct mood mutation, text matching
+- **boot-smoke.test.ts** — registry validation: affordance consistency, targetFinder/stepHandler/requirement integrity
+- **save-load.test.ts** — round-trip serialization: beliefs, relationships, mood modifiers, dead agents, edge cases
+- Run `bun run test` before commits.
+
 ## Current Status
 
 v0.11.0-dev. Milestone 1 (Replayable Crime) complete — trait/mood/relationship randomization, scenario manager, motive pool (motives as beliefs). Milestone 2 (Detective Toolkit) backend complete — accusation, evidence presentation, crime prevention, journal v2. Mood modifier system (SPEC-mood-modifiers) implemented. Motive pool (SPEC-motive-pool) implemented — 9 conditional motives, emergent motives, belief-based targeting. Web UI pending. 14 engine subsystems, 40+ registries, 20+ affordances, 15 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. See docs/ROADMAP.md for details.

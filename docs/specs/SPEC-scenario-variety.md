@@ -1,7 +1,7 @@
 # SPEC: Scenario Variety
 
 > Milestone 1, финальная задача. Гарантировать что рандомизация даёт разные истории.
-> Статус: **спека утверждена (v2 — sentiment-based targeting)**
+> Статус: **superseded by SPEC-motive-pool** — variety обеспечена через emergent motives (sentiment < -0.5 → PERSONAL_GRUDGE → motive_target). Отдельный sentiment-based targeting не нужен.
 
 ---
 

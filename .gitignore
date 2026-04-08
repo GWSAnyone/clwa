@@ -10,3 +10,5 @@ unsloth_compiled_cache/
 training/dataset/output/
 training/output/
 test-run.jsonl
+data/
+godot/assets/tinyswords/

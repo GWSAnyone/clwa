@@ -19,7 +19,7 @@ const chatSessions = new Map<string, ConversationSession>();
 /** Clear all chat sessions — call on new-game to prevent stale accusation history */
 export function clearChatSessions() { chatSessions.clear(); }
 
-export interface ServerConfig {
+interface ServerConfig {
   port: number;
   hostname?: string;
 }
@@ -41,7 +41,7 @@ export function startServer(
         if (!upgraded) {
           return new Response('WebSocket upgrade failed', { status: 400 });
         }
-        return undefined as any;
+        return undefined as unknown as Response;
       }
 
       if (url.pathname.startsWith('/api/')) {
@@ -170,7 +170,7 @@ export function startServer(
 
             broadcast({ type: 'debug:llm', data: { reason: 'IL extract', target: agent.profile.name } });
             const meaning = await extractDialogueMeaning(msg.message, ilContext);
-            const ilFallback = (meaning as any)._fallback as string | undefined;
+            const ilFallback = meaning._fallback;
             if (ilFallback) {
               console.warn(`  [IL] FALLBACK: ${ilFallback} — player message not processed`);
             }
@@ -267,7 +267,7 @@ export function startServer(
             // (system prompt "lost middle" causes 9B to ignore shop context there)
             let effectiveMessage = msg.message;
             if (meaning.speechAct === 'trade' && agent.profile.shop?.length) {
-              const items = agent.profile.shop.map((i: any) => `- ${i.name}: ${i.price} gold. ${i.description}`).join('\n');
+              const items = agent.profile.shop.map((i: { name: string; price: number; description: string }) => `- ${i.name}: ${i.price} gold. ${i.description}`).join('\n');
               effectiveMessage = `${msg.message}\n\n[SHOP INVENTORY — mention these items by name and price, do NOT invent others:\n${items}]`;
               console.log(`  [Shop] Injecting ${agent.profile.shop.length} items into user message for ${agent.profile.name}`);
             }

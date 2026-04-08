@@ -381,7 +381,28 @@ async function createGameContext(
 
   const world = new World(
     agents, eventStore, cgEngine,
-    { minConversationScore: 1, publicPlaces, pairCooldownMinutes: 240, affordanceCooldownMinutes: 180, decisionCooldownMinutes: 60, startMinute: worldData.config.startMinute ?? 420 },
+    {
+      minConversationScore: 1, publicPlaces, pairCooldownMinutes: 240, affordanceCooldownMinutes: 180, decisionCooldownMinutes: 60, startMinute: worldData.config.startMinute ?? 420,
+      il: {
+        pressureEffects: {
+          threat:       { mood: -0.20, sentiment: -0.15, trust: -0.10 },
+          bribe:        { mood:  0,    sentiment:  0,    trust:  0    },
+          flattery:     { mood:  0.10, sentiment:  0.05, trust:  0.05 },
+          guilt:        { mood: -0.10, sentiment:  0,    trust:  0    },
+          intimidation: { mood: -0.15, sentiment: -0.10, trust: -0.10 },
+        },
+        speechActEffects: {
+          compliment: { mood: 0.08, sentiment: 0.05, trust: 0.03, memoryText: '$player said something kind to me.', memoryImportance: 2 },
+          insult:     { mood: -0.08, sentiment: -0.08, trust: -0.05, memoryText: '$player insulted me.', memoryImportance: 3 },
+        },
+        importanceValues: {
+          threat:     { base: 3, intensityMultiplier: 4 },
+          bribe:      { base: 5 },
+          compliment: { base: 2 },
+          insult:     { base: 3 },
+        },
+      },
+    },
     {
       onLine: (line) => {
         console.log(`    ${line.speakerName}: "${line.text}"`);

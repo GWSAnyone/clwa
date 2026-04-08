@@ -55,12 +55,13 @@ export class ReflectionTracker {
   }
 
   /** Generate reflection via LLM. Returns the summary text. */
-  async generateReflection(agentName: string, agentRole: string): Promise<string> {
+  async generateReflection(agentName: string, agentRole: string, personalityDesc?: string): Promise<string> {
     const memoriesList = this.unreflectedMemories
       .map((m) => `- [importance: ${m.importance}] ${m.text}`)
       .join('\n');
 
-    const systemPrompt = `You are the inner mind of ${agentName}, a ${agentRole}.
+    const personalityNote = personalityDesc ? `\n${personalityDesc}` : '';
+    const systemPrompt = `You are the inner mind of ${agentName}, a ${agentRole}.${personalityNote}
 Below are your recent experiences. Generate a single concise insight or realization (1-2 sentences) that captures the most important pattern, conclusion, or emotional shift you've experienced.
 This should feel like an epiphany — a deeper understanding that emerges from reflecting on these events together.
 Respond with ONLY the insight, nothing else. No quotes, no prefixes.`;

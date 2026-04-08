@@ -184,9 +184,10 @@ export class ConsequenceEngine {
         });
       }
 
-      if (cond.op === 'eq') { if ((event as any)[cond.field] !== cond.value) return []; continue; }
-      if (cond.op === 'gt') { if (!((event as any)[cond.field] > (cond.value as number))) return []; continue; }
-      if (cond.op === 'lt') { if (!((event as any)[cond.field] < (cond.value as number))) return []; continue; }
+      const fieldValue = (event as Record<string, unknown>)[cond.field];
+      if (cond.op === 'eq') { if (fieldValue !== cond.value) return []; continue; }
+      if (cond.op === 'gt') { if (!((fieldValue as number) > (cond.value as number))) return []; continue; }
+      if (cond.op === 'lt') { if (!((fieldValue as number) < (cond.value as number))) return []; continue; }
       console.warn(`[CG] Unknown condition op '${cond.op}' in rule ${rule.id}`);
       return [];
     }
@@ -239,7 +240,8 @@ export class ConsequenceEngine {
     const builder = getMemoryTextBuilder(rule.consequence.type);
     if (builder) return builder(event, suspect, victimName);
 
-    return `Something happened: ${event.type} involving ${suspect}.`;
+    console.warn(`[CG] No memory text builder for consequence type: ${rule.consequence.type}`);
+    return `Something significant happened involving ${suspect}.`;
   }
 
   /**

@@ -2,7 +2,7 @@
 
 > Milestone 2, задача 1. Игрок обвиняет NPC через диалог → оценка доказательств → NPC реагирует.
 > Зависимости: SPEC-journal-v2, SPEC-evidence-presentation
-> Статус: **спека**
+> Статус: **реализовано** (accusation detection, evidence scoring, repetition tracking, authority filtering)
 
 ---
 

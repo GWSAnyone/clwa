@@ -161,7 +161,7 @@ function buildPurposePrompt(initiator: Agent, target: Agent, purpose: string, lo
 YOUR GOAL: ${purpose}
 
 (Your voice: ${speech})
-IMPORTANT: speech must be at most 20 words. Only spoken words — no narration.`;
+IMPORTANT: speech must be at most 15 words. Only spoken words — no narration.`;
 }
 
 function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: string, purpose: string): string {
@@ -181,5 +181,5 @@ function buildResponsePrompt(target: Agent, initiator: Agent, initiatorLine: str
 ${contextDirective}${beliefLine}
 
 (Your voice: ${speech})
-IMPORTANT: speech must be at most 20 words. React with YOUR OWN words — do NOT repeat what they said. No narration.`;
+IMPORTANT: speech must be at most 15 words. React with YOUR OWN words — do NOT repeat what they said. No narration.`;
 }

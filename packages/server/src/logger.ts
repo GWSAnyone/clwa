@@ -53,6 +53,6 @@ export function initFileLogger(): string {
   return logFile;
 }
 
-export function getLogFilePath(): string | null {
+function getLogFilePath(): string | null {
   return logFile;
 }

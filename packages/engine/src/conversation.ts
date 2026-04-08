@@ -27,7 +27,7 @@ const DIALOGUE_SCHEMA: LlmJsonSchema = {
   schema: {
     type: 'object',
     properties: {
-      speech: { type: 'string', minLength: 5, maxLength: 120, description: 'ONLY spoken words. No actions, no narration, no parentheses. 5 to 12 words.' },
+      speech: { type: 'string', minLength: 5, maxLength: 80, description: 'ONLY spoken words. No actions, no narration, no parentheses. Under 15 words.' },
       gesture: { type: 'string', description: 'One word: nods, shrugs, smiles, frowns, laughs, sighs. Empty if none.' },
     },
     required: ['speech', 'gesture'],
@@ -115,7 +115,7 @@ export async function runConversation(
 
   // Dialogue rule lives in system prompt (additionalContext) so it gets equal attention weight
   // with personality — prevents long system prompts from drowning out speech constraints
-  const DIALOGUE_RULE = '\nDIALOGUE: Every speech line must be a complete thought of 5–12 words. Never just a name or one-word answer.';
+  const DIALOGUE_RULE = `\nDIALOGUE: ${config.dialogueRule ?? 'Keep each line under 15 words. Every speech line must be a complete thought. Never just a name or one-word answer.'}`;
   const initContext = (initSecrets || '') + DIALOGUE_RULE;
   const respContext = (respSecrets || '') + DIALOGUE_RULE;
 
@@ -226,14 +226,25 @@ function relationshipNote(from: Agent, to: Agent): string {
   return parts.length > 0 ? parts.join('. ') + '.' : '';
 }
 
+function moodLine(agent: Agent): string {
+  const m = agent.state.mood;
+  if (m > 0.5) return 'You feel good — relaxed, at ease.';
+  if (m > 0) return 'You feel calm and steady.';
+  if (m > -0.3) return 'You feel slightly on edge, less patient.';
+  if (m > -0.5) return 'You are tense — jaw tight, irritable.';
+  return 'You are deeply shaken — everything feels heavy and bleak.';
+}
+
 function buildInitiatorPrompt(initiator: Agent, responder: Agent, topic: TopicProposal, locations?: LocationGraph): string {
   const relNote = relationshipNote(initiator, responder);
   const speech = speechReminder(initiator);
+  const mood = moodLine(initiator);
 
   return `YOUR TOPIC: ${topic.initiatorHook}
 You are at ${locName(initiator.state.location, locations)}. ${responder.profile.name} the ${responder.profile.role} is here with you.
+${mood}
 ${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
-Say 5–12 words out loud to them — a complete thought, never just a name or greeting. Only dialogue, no narration or descriptions.`;
+Say your complete thought out loud — under 15 words. Only dialogue, no narration or descriptions.`;
 }
 
 function buildResponderPrompt(
@@ -243,12 +254,15 @@ function buildResponderPrompt(
   const relNote = relationshipNote(responder, initiator);
   const speech = speechReminder(responder);
 
+  const mood = moodLine(responder);
+
   return `React from YOUR OWN perspective. NEVER repeat, echo, or paraphrase their words — use completely different vocabulary.
 ${initiator.profile.name} the ${initiator.profile.role} says to you:
 "${initiatorLine}"
 YOUR TOPIC: ${topic.subject}. ${topic.responderHook ?? ''}
+${mood}
 ${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
-Say 5–12 words out loud — a complete thought, never just a name or greeting. Only dialogue, no narration or descriptions.`;
+Say your complete thought out loud — under 15 words. Only dialogue, no narration or descriptions.`;
 }
 
 function buildFollowUpPrompt(

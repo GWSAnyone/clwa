@@ -79,6 +79,37 @@ function isPresent(agent: Agent): boolean {
   return agent.state.alive && !isStatusAbsent(agent.state.status);
 }
 
+// ─── Save Data Type ───
+
+export interface WorldSaveAgentData {
+  alive: boolean;
+  status: import('./agent-types').NpcStatus;
+  location: string;
+  mood: number;
+  baseMood: number;
+  moodModifiers: import('./world-types').MoodModifier[];
+  currentDay: number;
+  knownFacts: string[];
+  beliefs: import('./beliefs').Belief[];
+  relationships: import('./relationships').Relationship[];
+  currentMotive?: string;
+}
+
+export interface WorldSaveData {
+  tickCount: number;
+  gameMinute: number;
+  gameSpeed: number;
+  affordanceCooldowns: Record<string, Record<string, number>>;
+  decisionCooldowns: Record<string, number>;
+  bodyDiscoveries: string[];
+  crimeScenes: Record<string, import('./world-types').CrimeSceneJSON[]>;
+  journal: import('./journal').JournalEntry[] | { entries: import('./journal').JournalEntry[]; suspects: string[] };
+  goals: Record<string, import('./goals').NpcGoal[]>;
+  topicEngine: ReturnType<import('./topic-engine').TopicEngine['toJSON']>;
+  evidence?: ReturnType<import('./evidence').EvidenceLayer['toJSON']>;
+  agents: Record<string, WorldSaveAgentData>;
+}
+
 // ─── LLM JSON Schemas ───
 
 export class World {
@@ -108,7 +139,7 @@ export class World {
   /** Active crime scenes at locations */
   readonly crimeScenes: Map<string, CrimeScene[]> = new Map();
   /** Player's investigation journal */
-  readonly journal: PlayerJournal = new PlayerJournal();
+  journal: PlayerJournal = new PlayerJournal();
   /** Cached reference to the player Agent (resolved once, updated if agents change) */
   private _playerAgent: Agent | null = null;
   /** Topic engine for NPC-NPC conversations */
@@ -118,7 +149,7 @@ export class World {
   /** Decision cooldowns: npcId → expiresAtMinute (limits LLM decision frequency) */
   private decisionCooldowns: Map<string, number> = new Map();
   /** Evidence Layer: structured discoverable facts at locations */
-  readonly evidence: EvidenceLayer = new EvidenceLayer();
+  evidence: EvidenceLayer = new EvidenceLayer();
   /** Resolved IL config (merged from WorldConfig.il + defaults) */
   readonly resolvedILConfig: ILConfig;
   /** Resolved conversation config (merged from WorldConfig.conversationBehavior + defaults) */
@@ -461,11 +492,57 @@ export class World {
    * 4. Compute effectiveMood = baseMood + Σ decayed magnitudes
    * 5. Record mood snapshot for history
    */
+  /** Shared mood computation: tick modifiers, social stress drift, compute effectiveMood.
+   *  Used by _tickMoodSystem (full tick with loneliness + history) and advanceMoodMath (calibration). */
+  private _computeMoodTick(agent: Agent, moodSystemConfig: NonNullable<typeof this.config.moodSystem>): void {
+    const mods = agent.state.moodModifiers;
+    const SS_RATE = moodSystemConfig.socialStressRate ?? 0.5;
+    const SS_BUFFER = moodSystemConfig.socialStressBuffer ?? 0.5;
+    const SS_DRIFT = moodSystemConfig.socialStressDrift ?? 0.02;
+
+    // 1. Tick modifiers: decrement remaining, remove expired/invalid
+    for (let i = mods.length - 1; i >= 0; i--) {
+      const m = mods[i];
+      if (!Number.isFinite(m.magnitude) || !Number.isFinite(m.remaining)) {
+        console.warn(`  [Mood] Removing NaN modifier for ${agent.profile.name}: ${m.source}`);
+        mods.splice(i, 1);
+        continue;
+      }
+      if (m.duration > 0) { m.remaining -= 5; if (m.remaining <= 0) mods.splice(i, 1); }
+    }
+
+    // 2. Social stress drift
+    const rels = agent.state.relationships;
+    if (rels) {
+      let negPressure = 0, posBuf = 0;
+      for (const rel of rels.getAllRelationships()) {
+        if (rel.sentiment < 0) negPressure += -rel.sentiment;
+        else if (rel.sentiment > 0) posBuf += rel.sentiment;
+      }
+      const stress = Math.max(0, negPressure - posBuf * SS_BUFFER);
+      let target = 0;
+      if (stress > 0) {
+        const bf = agent.profile.bigFive;
+        const ps = bf.neuroticism * 1.5 + (1 - bf.agreeableness) * 0.5 + (1 - bf.honesty) * 0.3;
+        target = Math.max(-1, -(stress * ps * SS_RATE));
+      }
+      const existing = mods.find(m => m.category === 'social_stress');
+      if (existing) {
+        existing.magnitude += (target - existing.magnitude) * SS_DRIFT;
+      } else if (target !== 0) {
+        mods.push({ id: 'social_stress', source: 'social_stress', category: 'social_stress',
+          magnitude: target * SS_DRIFT, remaining: 0, duration: 0, decay: 'none' });
+      }
+    }
+
+    // 3. Compute effectiveMood = baseMood + Σ decayed magnitudes
+    let sum = 0;
+    for (const m of mods) sum += modifierEffective(m);
+    agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
+  }
+
   private _tickMoodSystem(): void {
     const ms = this.config.moodSystem ?? {};
-    const SS_RATE = ms.socialStressRate ?? 0.5;   // target weight: stress × personality × this = target magnitude
-    const SS_BUFFER = ms.socialStressBuffer ?? 0.5;
-    const SS_DRIFT = ms.socialStressDrift ?? 0.02; // drift rate per 5min toward target (0.02 = 63% in 4h)
     const LONE_THRESHOLD = ms.lonelinessThreshold ?? 30;
     const LONE_RATE = ms.lonelinessRate ?? 0.001;
 
@@ -475,50 +552,11 @@ export class World {
       if (!agent.state.moodModifiers) agent.state.moodModifiers = [];
 
       const oldMood = agent.state.mood;
-      const mods = agent.state.moodModifiers;
 
-      // 1. Tick modifiers: decrement remaining, remove expired/invalid
-      for (let i = mods.length - 1; i >= 0; i--) {
-        const m = mods[i];
-        // NaN guard: corrupted modifiers poison effectiveMood forever if not removed
-        if (!Number.isFinite(m.magnitude) || !Number.isFinite(m.remaining)) {
-          console.warn(`  [Mood] Removing NaN modifier for ${agent.profile.name}: ${m.source}`);
-          mods.splice(i, 1);
-          continue;
-        }
-        if (m.duration > 0) { // non-permanent
-          m.remaining -= 5;
-          if (m.remaining <= 0) { mods.splice(i, 1); }
-        }
-      }
+      // Core mood computation (shared with advanceMoodMath)
+      this._computeMoodTick(agent, ms);
 
-      // 2. Social stress — permanent modifier, DRIFTS toward target (exponential approach)
-      //    Target = -stress × personalityScale × weight. Modifier drifts, never overshoots.
-      //    If relationships improve → target rises → modifier drifts back up.
-      const rels = agent.state.relationships;
-      if (rels) {
-        let negPressure = 0, posBuf = 0;
-        for (const rel of rels.getAllRelationships()) {
-          if (rel.sentiment < 0) negPressure += -rel.sentiment;
-          else if (rel.sentiment > 0) posBuf += rel.sentiment;
-        }
-        const stress = Math.max(0, negPressure - posBuf * SS_BUFFER);
-        let target = 0;
-        if (stress > 0) {
-          const bf = agent.profile.bigFive;
-          const ps = bf.neuroticism * 1.5 + (1 - bf.agreeableness) * 0.5 + (1 - bf.honesty) * 0.3;
-          target = Math.max(-1, -(stress * ps * SS_RATE));
-        }
-        const existing = mods.find(m => m.category === 'social_stress');
-        if (existing) {
-          existing.magnitude += (target - existing.magnitude) * SS_DRIFT; // drift toward target
-        } else if (target !== 0) {
-          mods.push({ id: 'social_stress', source: 'social_stress', category: 'social_stress',
-            magnitude: target * SS_DRIFT, remaining: 0, duration: 0, decay: 'none' });
-        }
-      }
-
-      // 3. Loneliness — permanent modifier
+      // Loneliness — only in real ticks, not calibration
       let lastInteraction = agent.state.lastInteractionMinute;
       if (lastInteraction === undefined) {
         lastInteraction = this._gameMinute;
@@ -527,29 +565,27 @@ export class World {
       const loneMag = (this._gameMinute - lastInteraction >= LONE_THRESHOLD)
         ? -(LONE_RATE * (agent.profile.bigFive.extraversion * 1.5 + 0.5))
         : 0;
-      const loneExisting = mods.find(m => m.category === 'loneliness');
+      const loneExisting = agent.state.moodModifiers.find(m => m.category === 'loneliness');
       if (loneExisting) { loneExisting.magnitude = loneMag; }
       else if (loneMag !== 0) {
-        mods.push({ id: 'loneliness', source: 'loneliness', category: 'loneliness',
+        agent.state.moodModifiers.push({ id: 'loneliness', source: 'loneliness', category: 'loneliness',
           magnitude: loneMag, remaining: 0, duration: 0, decay: 'none' });
       }
 
-      // 4. Compute effectiveMood = baseMood + Σ decayed magnitudes
-      let sum = 0;
-      for (const m of mods) {
-        sum += modifierEffective(m);
-      }
-      const baseMood = agent.state.baseMood ?? 0.2;
-      const newMood = Math.max(-1, Math.min(1, baseMood + sum));
-      agent.state.mood = newMood;
-
-      if (Math.abs(newMood - oldMood) > 0.0005) {
-        this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, newMood);
+      // Recompute with loneliness included
+      if (loneMag !== 0) {
+        let sum = 0;
+        for (const m of agent.state.moodModifiers) sum += modifierEffective(m);
+        agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
       }
 
-      // 5. Mood snapshot for history
+      if (Math.abs(agent.state.mood - oldMood) > 0.0005) {
+        this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, agent.state.mood);
+      }
+
+      // Mood snapshot for history
       const hist = this._moodHistory.get(agent.profile.id) ?? [];
-      hist.push({ minute: this._gameMinute, mood: newMood });
+      hist.push({ minute: this._gameMinute, mood: agent.state.mood });
       if (hist.length > this.MOOD_HISTORY_MAX) hist.shift();
       this._moodHistory.set(agent.profile.id, hist);
     }
@@ -621,38 +657,9 @@ export class World {
       const before = agent.state.mood;
       const curve: number[] = [before];
 
+      const ms = this.config.moodSystem ?? {};
       for (let t = 0; t < ticks; t++) {
-        // Reuse _tickMoodSystem logic inline — tick modifiers + social stress + compute mood
-        const mods = agent.state.moodModifiers ?? [];
-        for (let i = mods.length - 1; i >= 0; i--) {
-          const m = mods[i];
-          if (!Number.isFinite(m.magnitude) || !Number.isFinite(m.remaining)) { mods.splice(i, 1); continue; }
-          if (m.duration > 0) { m.remaining -= 5; if (m.remaining <= 0) mods.splice(i, 1); }
-        }
-        // Social stress drift
-        const ms = this.config.moodSystem ?? {};
-        const rels = agent.state.relationships;
-        if (rels) {
-          let neg = 0, pos = 0;
-          for (const r of rels.getAllRelationships()) {
-            if (r.sentiment < 0) neg += -r.sentiment; else if (r.sentiment > 0) pos += r.sentiment;
-          }
-          const stress = Math.max(0, neg - pos * (ms.socialStressBuffer ?? 0.5));
-          let target = 0;
-          if (stress > 0) {
-            const bf = agent.profile.bigFive;
-            const ps = bf.neuroticism * 1.5 + (1 - bf.agreeableness) * 0.5 + (1 - bf.honesty) * 0.3;
-            target = Math.max(-1, -(stress * ps * (ms.socialStressRate ?? 0.5)));
-          }
-          const existing = mods.find(m => m.category === 'social_stress');
-          if (existing) existing.magnitude += (target - existing.magnitude) * (ms.socialStressDrift ?? 0.02);
-          else if (target !== 0) mods.push({ id: 'social_stress', source: 'social_stress', category: 'social_stress',
-            magnitude: target * (ms.socialStressDrift ?? 0.02), remaining: 0, duration: 0, decay: 'none' });
-        }
-        // Compute effectiveMood
-        let sum = 0;
-        for (const m of mods) sum += modifierEffective(m);
-        agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
+        this._computeMoodTick(agent, ms);
         curve.push(agent.state.mood);
       }
 
@@ -830,7 +837,7 @@ export class World {
       // Reset processingState to prevent permanent freeze
       if (task.npcId) {
         const agent = this.agents.get(task.npcId);
-        if (agent) agent.state.processingState = 'idle' as any;
+        if (agent) agent.state.processingState = 'idle';
         // Fail goal after 3 consecutive errors on the same step
         if (task.type === 'GOAL_STEP') {
           const goal = this.goalManager.getActiveGoal(task.npcId);
@@ -845,7 +852,7 @@ export class World {
       }
       if (task.targetNpcId) {
         const agent = this.agents.get(task.targetNpcId);
-        if (agent) agent.state.processingState = 'idle' as any;
+        if (agent) agent.state.processingState = 'idle';
       }
     }
   }
@@ -1171,7 +1178,7 @@ export class World {
       // Unique composite npcId prevents dedup collision when same NPC has multiple conversations
       this.processingQueue.enqueue({
         id: `impact-${pair.a}-${pair.b}-${this._gameMinute}`,
-        type: 'CONVERSATION_IMPACT' as any,
+        type: 'CONVERSATION_IMPACT',
         priority: 3,
         npcId: `${pair.a}:impact:${this._gameMinute}`,
         enqueuedAt: this._gameMinute,
@@ -1201,7 +1208,7 @@ export class World {
       discoveries: this.bodyDiscoveries, approaches: approachEvents,
       crimeScenes: this.crimeScenes, locations: this.locations,
       goalManager: this.goalManager, npcHomes: this.npcHomes,
-      addMoodModifier: (npcId: string, mod: any) => this.addModifier(npcId, mod),
+      addMoodModifier: (npcId: string, mod: Omit<import('./world-types').MoodModifier, 'id'>) => this.addModifier(npcId, mod),
     };
     for (const handler of getTickPhaseHandlers()) await handler(tickCtx);
     if (approachEvents.length > 1) {
@@ -1421,7 +1428,7 @@ export class World {
   }
 
   /** Advance one game day for all agents + spread rumors */
-  async advanceDay(): Promise<{ newDay: number; rumorResults: any[] }> {
+  async advanceDay(): Promise<{ newDay: number; rumorResults: unknown[] }> {
     let newDay = 0;
     for (const [, agent] of this.agents) {
       newDay = agent.advanceDay();
@@ -1442,7 +1449,7 @@ export class World {
         this.eventStore.append(e);
       } : undefined,
       publicPlaces: this.config.publicPlaces || new Set<string>(),
-      addMoodModifier: (npcId: string, mod: any) => this.addModifier(npcId, mod),
+      addMoodModifier: (npcId: string, mod: Omit<import('./world-types').MoodModifier, 'id'>) => this.addModifier(npcId, mod),
     };
     for (const handler of getDayAdvanceHandlers()) {
       await handler(dayCtx);
@@ -1496,7 +1503,7 @@ export class World {
   /** Process a kill event through the consequence engine.
    *  killerId is optional — defaults to 'player'. Pass NPC id for NPC-on-NPC kills.
    *  eventType is the event type string registered by modules (e.g. 'NPC_KILLED'). */
-  async processKill(victimId: string, killerId?: string, eventType?: string): Promise<{ killEvent: WorldEvent; results: any[] }> {
+  async processKill(victimId: string, killerId?: string, eventType?: string): Promise<{ killEvent: WorldEvent; results: unknown[] }> {
     const victim = this.agents.get(victimId);
     if (!victim || !victim.state.alive) {
       throw new Error(`Cannot kill ${victimId}: not found or already dead`);
@@ -1609,6 +1616,7 @@ export class World {
       decisionCooldowns: this.decisionCooldowns,
       affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
       decisionCooldownMinutes: this.config.decisionCooldownMinutes,
+      volitionTemperature: this.config.volitionTemperature,
       isArrestTarget: (npcId) => {
         for (const goalType of getBlockingGoalTypes()) {
           if (this.goalManager.isTargetOfGoalType(npcId, goalType)) return true;
@@ -1697,29 +1705,8 @@ export class World {
     return results;
   }
 
-  toJSON(): {
-    tickCount: number;
-    gameMinute: number;
-    gameSpeed: number;
-    affordanceCooldowns: Record<string, Record<string, number>>;
-    decisionCooldowns: Record<string, number>;
-    bodyDiscoveries: string[];
-    crimeScenes: Record<string, import('./world-types').CrimeSceneJSON[]>;
-    journal: import('./journal').JournalEntry[] | { entries: import('./journal').JournalEntry[]; suspects: string[] };
-    goals: Record<string, import('./goals').NpcGoal[]>;
-    topicEngine: object;
-    agents: Record<string, {
-      alive: boolean;
-      status: import('./agent-types').NpcStatus;
-      location: string;
-      mood: number;
-      currentDay: number;
-      knownFacts: string[];
-      beliefs: import('./beliefs').Belief[];
-      relationships: import('./relationships').Relationship[];
-    }>;
-  } {
-    const agents: Record<string, any> = {};
+  toJSON(): WorldSaveData {
+    const agents: Record<string, WorldSaveAgentData> = {};
     for (const [id, agent] of this.agents) {
       agents[id] = {
         alive: agent.state.alive,
@@ -1765,23 +1752,23 @@ export class World {
   }
 
   /** Restore world state from a saved snapshot */
-  loadState(data: ReturnType<World['toJSON']>): void {
-    this._moodHistory.clear(); // reset mood history — old data from previous run is stale
+  loadState(data: WorldSaveData): void {
+    this._moodHistory.clear();
     this.tickCount = data.tickCount;
-    // Backward compat: old saves without gameMinute → derive from tickCount (1 tick = 15 min)
-    this._gameMinute = (data as any).gameMinute ?? (data.tickCount * 15);
-    this._gameSpeed = (data as any).gameSpeed ?? 1;
+    this._gameMinute = data.gameMinute ?? (data.tickCount * 15);
+    this._gameSpeed = data.gameSpeed ?? 1;
     this._lastKnownDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
+
     // Restore cooldowns
     this.affordanceCooldowns.clear();
-    if ((data as any).affordanceCooldowns) {
-      for (const [npcId, map] of Object.entries((data as any).affordanceCooldowns as Record<string, Record<string, number>>)) {
+    if (data.affordanceCooldowns) {
+      for (const [npcId, map] of Object.entries(data.affordanceCooldowns)) {
         this.affordanceCooldowns.set(npcId, new Map(Object.entries(map)));
       }
     }
     this.decisionCooldowns.clear();
-    if ((data as any).decisionCooldowns) {
-      for (const [npcId, expiresAt] of Object.entries((data as any).decisionCooldowns as Record<string, number>)) {
+    if (data.decisionCooldowns) {
+      for (const [npcId, expiresAt] of Object.entries(data.decisionCooldowns)) {
         this.decisionCooldowns.set(npcId, expiresAt);
       }
     }
@@ -1800,37 +1787,37 @@ export class World {
     }
 
     // Restore evidence layer
-    if ((data as any).evidence) {
-      (this as any).evidence = EvidenceLayer.fromJSON((data as any).evidence);
+    if (data.evidence) {
+      this.evidence = EvidenceLayer.fromJSON(data.evidence);
     }
 
     // Restore topic engine state
-    if ((data as any).topicEngine) {
-      this.topicEngine.loadState((data as any).topicEngine);
+    if (data.topicEngine) {
+      this.topicEngine.loadState(data.topicEngine);
     }
 
     // Restore player journal
     if (data.journal) {
-      const restored = PlayerJournal.fromJSON(data.journal);
-      (this as any).journal = restored;
+      this.journal = PlayerJournal.fromJSON(data.journal);
     }
 
     for (const [id, saved] of Object.entries(data.agents)) {
       const agent = this.agents.get(id);
       if (!agent) continue;
       agent.state.alive = saved.alive;
-      agent.state.status = (saved as any).status ?? undefined;
+      agent.state.status = saved.status ?? undefined;
       agent.state.location = saved.location;
-      agent.state.mood = saved.mood;
-      agent.state.baseMood = (saved as any).baseMood ?? (0.3 - agent.profile.bigFive.neuroticism * 0.4 + agent.profile.bigFive.extraversion * 0.2);
-      agent.state.moodModifiers = ((saved as any).moodModifiers ?? [])
-        .filter((m: any) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
+      // Validate numeric ranges on load (SL-07)
+      agent.state.mood = Math.max(-1, Math.min(1, saved.mood));
+      agent.state.baseMood = saved.baseMood ?? (0.3 - agent.profile.bigFive.neuroticism * 0.4 + agent.profile.bigFive.extraversion * 0.2);
+      agent.state.moodModifiers = (saved.moodModifiers ?? [])
+        .filter((m) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
       agent.state.currentDay = saved.currentDay;
       agent.state.knownFacts = saved.knownFacts;
 
       agent.state.beliefs = BeliefManager.fromJSON(saved.beliefs);
       agent.state.relationships = RelationshipGraph.fromJSON(saved.relationships);
-      agent.state.currentMotive = (saved as any).currentMotive;
+      agent.state.currentMotive = saved.currentMotive;
     }
   }
 }

@@ -306,7 +306,7 @@ async function llmDecideAndBuild(
   onLlmCall?.('Volition decision', `${agent.profile.name}: ${scored.map((s) => s.definition.id).join(', ')}`);
   console.log(`  [AL:llm] ${agent.profile.name} — deciding (${scored.map((s) => `${s.definition.id}:${s.score.toFixed(2)}`).join(', ')})`);
 
-  const response = await callLlm(agent, system, user);
+  const response = await callLlm(agent, system, user, ctx.volitionTemperature);
   if (!response) return null;
 
   console.log(`  [AL:llm] ${agent.profile.name} response: ${response.replace(/\n/g, ' ')}`);
@@ -655,8 +655,8 @@ function resolveDecision(
 
 // ─── LLM Call ───
 
-async function callLlm(agent: Agent, system: string, user: string): Promise<string | null> {
-  const temperature = agent.profile.llm?.temperature ?? 0.7;
+async function callLlm(agent: Agent, system: string, user: string, volitionTemp?: number): Promise<string | null> {
+  const temperature = volitionTemp ?? 0.35;
 
   await llmSemaphore.acquire();
   try {

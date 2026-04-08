@@ -680,7 +680,7 @@ export async function handleRequest(
     const source = new URL(req.url).searchParams.get('source') ?? 'rumor';
     agent.state.beliefs?.addBelief({
       eventType, subject, object: objectName, confidence,
-      source: source as any, sourceNpcId: null, location: agent.state.location, gameDay: world.gameDay,
+      source, sourceNpcId: null, location: agent.state.location, gameDay: world.gameDay,
     });
     return Response.json({ id: beliefMatch[1], eventType, subject, object: objectName, confidence, source }, { headers: cors });
   }
@@ -843,7 +843,7 @@ export async function handleRequest(
     }
     const event = {
       id: crypto.randomUUID(),
-      type: body.type as any,
+      type: body.type,
       subject: body.subject,
       object: body.object,
       location: body.location,
@@ -862,7 +862,7 @@ export async function handleRequest(
     if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
     const body = await req.json() as { status: string | null; releaseDays?: number };
     const oldStatus = agent.state.status;
-    agent.state.status = (body.status === 'free' || body.status === null) ? undefined : (body.status as any);
+    agent.state.status = (body.status === 'free' || body.status === null) ? undefined : body.status;
     // Note: imprisonment timer not set here — use force-affordance with sentence_npc for full flow
     return Response.json({ ok: true, action: 'status', npcId: statusMatch[1], oldStatus: oldStatus ?? 'free', newStatus: body.status ?? 'free' }, { headers: cors });
   }
@@ -880,7 +880,7 @@ export async function handleRequest(
     if (!goal) return Response.json({ error: `Affordance '${body.affordanceId}' not found or invalid` }, { status: 404, headers: cors });
     world.goalManager.addGoal(goal);
     return Response.json({ ok: true, action: 'force-affordance', npcId, affordanceId: body.affordanceId,
-      targetId: body.targetId, goal: { type: goal.type, steps: goal.steps.map((s: any) => s.action + (s.targetId ? ':' + s.targetId : s.location ? ':' + s.location : '')), priority: goal.priority }
+      targetId: body.targetId, goal: { type: goal.type, steps: goal.steps.map((s: Record<string, string>) => s.action + (s.targetId ? ':' + s.targetId : s.location ? ':' + s.location : '')), priority: goal.priority }
     }, { headers: cors });
   }
 

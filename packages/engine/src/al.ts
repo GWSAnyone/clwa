@@ -192,6 +192,8 @@ export interface AffordanceContext {
   isArrestTarget?: (npcId: string) => boolean;
   /** Check if conversation pair is on cooldown (scheduler-managed) */
   isPairOnCooldown?: (a: string, b: string) => boolean;
+  /** LLM temperature for volition decisions (default: 0.35) */
+  volitionTemperature?: number;
 }
 
 /** Target found for an affordance */

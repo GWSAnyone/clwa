@@ -372,7 +372,7 @@ export class GoalManager {
 
           // Chase: pursue target to their CURRENT location
           const maxChase = goal.priority >= 7 ? 3 : goal.priority >= 4 ? 2 : 1;
-          goal.waitTicks!++;
+          goal.waitTicks = (goal.waitTicks ?? 0) + 1;
           if (goal.waitTicks >= maxChase) {
             goal.currentStep++;
             goal.waitTicks = 0;

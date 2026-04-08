@@ -34,12 +34,11 @@ const VALID_QUESTION_TOPICS = ['whereabouts', 'opinion', 'knowledge', 'relations
 // IL trade verbs registered dynamically via registerILTradeVerbs() — no hardcoded array
 
 function buildILSchema(ctx: ILContext): LlmJsonSchema {
-  const speechActs = getRegisteredSpeechActs();
-  const claimSources = Array.from(getRegisteredClaimSources());
-  const pressureTypes = Array.from(getRegisteredPressureTypes());
-  // Trade verbs FIRST — 9B constrained decoding biased toward early enum values.
-  // With steal before buy, "show me your wares" → steal. With buy first → buy.
-  const actionVerbs = [...new Set([...getILTradeVerbs(), ...ctx.availableActions])];
+  // All enums sorted alphabetically — eliminates positional bias in constrained decoding (9B quirk)
+  const speechActs = getRegisteredSpeechActs().sort();
+  const claimSources = Array.from(getRegisteredClaimSources()).sort();
+  const pressureTypes = Array.from(getRegisteredPressureTypes()).sort();
+  const actionVerbs = [...new Set([...getILTradeVerbs(), ...ctx.availableActions])].sort();
 
   return {
     name: 'dialogue_meaning',
@@ -166,6 +165,8 @@ export interface DialogueMeaning {
   tradeIntent?: TradeIntent;
   /** LLM self-assessed confidence in the extraction (0-1) */
   extractionConfidence: number;
+  /** Internal: reason for fallback extraction (empty_response, extraction_error) */
+  _fallback?: string;
 }
 
 // ─── IL Context (what IL needs to resolve entities) ───
@@ -257,7 +258,7 @@ export async function extractDialogueMeaning(
 
     if (!content) {
       console.warn(`  [IL] LLM returned empty content — falling back to smalltalk`);
-      return { speechAct: 'smalltalk', extractionConfidence: 0, _fallback: 'empty_response' as any };
+      return { speechAct: 'smalltalk', extractionConfidence: 0, _fallback: 'empty_response' };
     }
 
     const raw = JSON.parse(content) as Record<string, unknown>;
@@ -265,7 +266,7 @@ export async function extractDialogueMeaning(
     return validateAndResolve(raw, ctx);
   } catch (err) {
     console.error(`  [IL] Extraction failed:`, err);
-    return { speechAct: 'smalltalk', extractionConfidence: 0, _fallback: 'extraction_error' as any };
+    return { speechAct: 'smalltalk', extractionConfidence: 0, _fallback: 'extraction_error' };
   } finally {
     llmSemaphore.release();
   }
@@ -938,8 +939,8 @@ export async function applyDialogueMeaning(
         npcAgreeableness: npc.profile.bigFive.agreeableness,
         playerId, playerName, gameDay: ctx.gameDay,
         observe: (text, imp) => npc.observe(text, imp),
-        storeEvent: (event) => ctx.eventStore.append(event as any),
-        pushEffect: (effect) => ctx.effects.push(effect as any),
+        storeEvent: (event) => ctx.eventStore.append(event),
+        pushEffect: (effect) => ctx.effects.push(effect),
         importanceValues: cfg.importanceValues,
       };
       const handlerSections = await pressureHandler(handlerCtx);

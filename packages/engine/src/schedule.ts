@@ -7,7 +7,7 @@ export const MINUTES_PER_DAY = 1440;
 /** @deprecated Use MINUTES_PER_DAY. Kept for backward compat with old save format. */
 export const TICKS_PER_DAY = 96;
 
-export const TIME_PERIODS = ['dawn', 'morning', 'afternoon', 'evening', 'night'] as const;
+const TIME_PERIODS = ['dawn', 'morning', 'afternoon', 'evening', 'night'] as const;
 export type TimePeriod = (typeof TIME_PERIODS)[number];
 
 /** Map minute-of-day (0-1439) to a named period */

@@ -53,40 +53,6 @@ function findMotiveTarget(npcId: string, agent: Agent, ctx: AffordanceContext): 
   return { targetId: best.id, targetName: best.name, targetLocation: best.location, extra: {} };
 }
 
-/** Sentiment-based targeting: find the NPC this agent hates most. */
-function findMostHatedTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
-  const rels = agent.state.relationships;
-  if (!rels) return null;
-
-  let bestId: string | null = null;
-  let bestSentiment = 0;
-  let bestName = '';
-  let bestLocation = '';
-
-  for (const [otherId, other] of ctx.agents) {
-    if (otherId === npcId || !other.state.alive) continue;
-    if (other.profile.isPlayer) continue;
-    if (isStatusAbsent(other.state.status)) continue;
-
-    const rel = rels.getRelationship(otherId);
-    if (!rel) continue;
-    if (rel.sentiment < bestSentiment) {
-      bestSentiment = rel.sentiment;
-      bestId = otherId;
-      bestName = other.profile.name;
-      bestLocation = other.state.location;
-    }
-  }
-
-  if (!bestId) return null;
-
-  return {
-    targetId: bestId,
-    targetName: bestName,
-    targetLocation: bestLocation,
-    extra: {},
-  };
-}
 
 function findCrimeBeliefTarget(npcId: string, agent: Agent, ctx: AffordanceContext, minConfidence: number): AffordanceTarget | null {
   if (!agent.state.beliefs) return null;
@@ -425,7 +391,6 @@ export function registerCrimeTargetFinders(): void {
   // Proactive finders (used when NPC evaluates affordances each tick)
   TARGET_FINDERS.set('surveillance', findSurveillanceTarget);
   TARGET_FINDERS.set('steal', findStealTarget);
-  TARGET_FINDERS.set('kill', findMostHatedTarget);
   TARGET_FINDERS.set('motive_target', findMotiveTarget);
   TARGET_FINDERS.set('crime_belief', (npcId, agent, ctx, aff) => findCrimeBeliefTarget(npcId, agent, ctx, aff.requires.beliefConfidence ?? 0.5));
   TARGET_FINDERS.set('blackmail', findBlackmailTarget);
@@ -437,6 +402,10 @@ export function registerCrimeTargetFinders(): void {
   TARGET_FINDERS.set('witness_target', findWitnessTarget);
   TARGET_FINDERS.set('self_gate', (npcId, agent) => ({ targetId: npcId, targetName: agent.profile.name, targetLocation: 'town-gate' }));
   TARGET_FINDERS.set('detained', (_npcId, _agent, ctx) => findDetainedTarget(ctx));
+  TARGET_FINDERS.set('lay_low', (npcId, agent, ctx) => {
+    const home = ctx.npcHomes.get(npcId) ?? agent.state.location;
+    return { targetId: npcId, targetName: agent.profile.name, targetLocation: home, extra: {} };
+  });
 
   // Reactive finders (used when events trigger affordance evaluation)
   REACTIVE_TARGET_FINDERS.set('report_crime', (npcId, agent, ctx, event) => {

@@ -181,7 +181,7 @@ export function parseTraitRanges(
     if (val && Array.isArray(val) && val.length === 2) {
       const [min, max] = val;
       if (min >= 0 && max <= 1 && min <= max) {
-        (range as any)[key] = [min, max];
+        (range as Record<string, [number, number]>)[key] = [min, max];
       }
     }
   }
@@ -230,7 +230,7 @@ export function parseMoodRange(raw?: [number, number]): [number, number] | null 
 
 // ─── Relationship Randomization ───
 
-export interface RelationshipRanges {
+interface RelationshipRanges {
   sentimentRange?: [number, number];
   trustRange?: [number, number];
 }

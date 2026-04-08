@@ -28,6 +28,7 @@ import {
   registerBlockingGoalTypes,
   registerRelationshipLabels,
 } from '@clwa/engine';
+import type { Belief, WorldEvent } from '@clwa/engine';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief, hasSuspicionBelief } from './target-finders';
 import { CRIME_EVIDENCE_RULES } from './evidence-rules';
@@ -56,14 +57,14 @@ export function registerCrimeJusticeModule(): void {
   REQUIREMENT_CHECKERS.set('notPerpetrator', (agent, _ctx) => {
     if (!agent.state.beliefs) return true;
     return !agent.state.beliefs.getAllBeliefs().some(
-      (b: any) => isSourceCategory(b.source, 'guilt'),
+      (b: Belief) => isSourceCategory(b.source, 'guilt'),
     );
   });
   REQUIREMENT_CHECKERS.set('hasCrimeBelief', (agent, _ctx, params) => {
     if (!agent.state.beliefs) return false;
     const minConf = (params?.minConfidence as number) ?? 0.3;
     return agent.state.beliefs.getAllBeliefs().some(
-      (b: any) => isTransferable(b.eventType) && b.confidence >= minConf && b.subject !== agent.profile.id,
+      (b: Belief) => isTransferable(b.eventType) && b.confidence >= minConf && b.subject !== agent.profile.id,
     );
   });
 
@@ -71,7 +72,7 @@ export function registerCrimeJusticeModule(): void {
     // Block investigate if guard already has high-confidence deduction (investigation complete → arrest instead)
     if (!agent.state.beliefs) return true;
     const deductions = agent.state.beliefs.getAllBeliefs().filter(
-      (b: any) => b.source === 'deduction' && b.confidence >= 0.7,
+      (b: Belief) => b.source === 'deduction' && b.confidence >= 0.7,
     );
     return deductions.length === 0; // true = can investigate (no high-conf deduction yet)
   });
@@ -132,6 +133,11 @@ export function registerCrimeJusticeModule(): void {
     NPC_FLED: 'escape',
     EVIDENCE_DESTROYED: 'evidence tampering',
     NPC_RELEASED: 'release from prison',
+    DEBT_PRESSURE: 'debt pressure',
+    BODY_DISCOVERED: 'body discovery',
+    WITNESS_MEMORY: 'witness account',
+    RUMOR_SPREAD: 'rumor',
+    THEFT_DISCOVERED: 'discovered theft',
   });
 
   registerEventGoalCleanup({
@@ -413,7 +419,7 @@ export function registerCrimeJusticeModule(): void {
     if (!step.evaluateSuspect || !owner.state.beliefs || !crimeScenes) return;
     // Evaluate suspect: check guilt + honesty trait → update deduction belief confidence
     const deductionBelief = owner.state.beliefs.getAllBeliefs().find(
-      (b: any) => b.source === 'deduction' && b.subject === target.profile.id,
+      (b: Belief) => b.source === 'deduction' && b.subject === target.profile.id,
     );
     if (!deductionBelief) return;
 
@@ -501,7 +507,7 @@ export function registerCrimeJusticeModule(): void {
   // Tick phase handler: shop owners discover they've been robbed
   registerTickPhaseHandler(async (ctx) => {
     const theftEvents = ctx.eventStore.getAll()
-      .filter((e: any) => isEventCategory(e.type, 'theft'));
+      .filter((e: WorldEvent) => isEventCategory(e.type, 'theft'));
 
     for (const theft of theftEvents) {
       const discoveryKey = `theft_discovered:${theft.id}`;
@@ -676,7 +682,7 @@ export function registerCrimeJusticeModule(): void {
       for (const [npcId, agent] of ctx.agents) {
         if (agent.state.status === 'imprisoned') {
           const sentenceEvent = ctx.eventStore.getAll().reverse().find(
-            (e: any) => e.type === 'NPC_SENTENCED' && e.object === npcId && e.payload?.verdict === 'imprisonment',
+            (e: WorldEvent) => e.type === 'NPC_SENTENCED' && e.object === npcId && e.payload?.verdict === 'imprisonment',
           );
           const releaseDay = (sentenceEvent?.payload?.releaseDay as number) ?? ctx.currentDay + 1;
           imprisonmentTimers.set(npcId, releaseDay);
@@ -813,7 +819,7 @@ export function registerCrimeJusticeModule(): void {
     const alreadySpreadTo = new Set<string>();
 
     const existingWanted = new Set(
-      ctx.eventStore.query({ type: 'WANTED_STATUS' }).map((e: any) => e.object).filter(Boolean),
+      ctx.eventStore.query({ type: 'WANTED_STATUS' }).map((e: WorldEvent) => e.object).filter(Boolean),
     );
 
     if (!ctx.publicPlaces || ctx.publicPlaces.size === 0) return;
@@ -824,11 +830,11 @@ export function registerCrimeJusticeModule(): void {
       if (!witness.state.beliefs) continue;
 
       const crimeBeliefs = witness.state.beliefs.getAllBeliefs().filter(
-        (b: any) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
+        (b: Belief) => isEventCategory(b.eventType, 'crime') && b.confidence >= 0.3,
       );
       if (crimeBeliefs.length === 0) continue;
 
-      const belief = crimeBeliefs.sort((a: any, b: any) => b.confidence - a.confidence)[0];
+      const belief = crimeBeliefs.sort((a: Belief, b: Belief) => b.confidence - a.confidence)[0];
       const criminalId = belief.subject;
       const victimId = belief.object;
       const criminalName = criminalId ? (ctx.agents.get(criminalId)?.profile.name ?? criminalId) : 'someone';
@@ -844,7 +850,7 @@ export function registerCrimeJusticeModule(): void {
 
         if (target.state.beliefs) {
           const alreadyKnows = target.state.beliefs.getAllBeliefs().some(
-            (b: any) => isEventCategory(b.eventType, 'crime') && b.object === victimId,
+            (b: Belief) => isEventCategory(b.eventType, 'crime') && b.object === victimId,
           );
           if (alreadyKnows) continue;
         }

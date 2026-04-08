@@ -422,7 +422,7 @@ async function init() {
     const el = document.getElementById('hud-seed');
     el.textContent = `#${d.seed}`;
     el.dataset.seed = d.seed;
-  }).catch(() => {});
+  }).catch(err => console.warn('[Fetch]', err));
 
   // Buttons
   document.getElementById('btn-tick').onclick = () => fetch('/api/tick', {method:'POST'});
@@ -447,7 +447,7 @@ async function init() {
       document.getElementById('btn-auto').textContent = 'Auto: ON';
       document.getElementById('btn-auto').classList.add('active');
     }
-  }).catch(() => {});
+  }).catch(err => console.warn('[Fetch]', err));
   document.getElementById('chat-close').onclick = closeChat;
   document.getElementById('chat-form').onsubmit = sendChat;
 
@@ -459,13 +459,24 @@ async function init() {
 }
 
 // ─── WEBSOCKET ───
+function sendWS(msg) {
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify(msg));
+  }
+}
+
 function connectWS() {
   state.ws = new WebSocket(`ws://${location.host}/ws`);
   state.ws.onopen = () => { state.connected = true; document.getElementById('ws-status').className = 'connected'; };
-  state.ws.onclose = () => { state.connected = false; document.getElementById('ws-status').className = ''; setTimeout(connectWS, 2000); };
+  state.ws.onclose = () => { state.connected = false; document.getElementById('ws-status').className = ''; if (!state._wsReconnectTimer) state._wsReconnectTimer = setTimeout(() => { state._wsReconnectTimer = null; connectWS(); }, 2000); };
+  state.ws.onerror = () => { console.error('[WS Error]'); };
   state.ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data);
-    handleWS(msg.type, msg.data);
+    try {
+      const msg = JSON.parse(e.data);
+      handleWS(msg.type, msg.data);
+    } catch (err) {
+      console.error('[WS Parse Error]', err);
+    }
   };
 }
 
@@ -653,7 +664,7 @@ function handleWS(type, data) {
           if (state.chatNpcId !== data.fromId) return;
           const playerRel = rels.find(r => r.targetId === 'player');
           if (playerRel) updateChatTrustBar(playerRel.trust, playerRel.sentiment);
-        }).catch(() => {});
+        }).catch(err => console.warn('[Fetch]', err));
       }
       break;
     }
@@ -1304,7 +1315,7 @@ function addEvent(cls, text) {
   state.events.unshift({ cls: safeCls, text, time: state.time });
   if (state.events.length > 50) state.events.pop();
   // Incremental DOM — prepend new element, trim overflow
-  const feed = document.getElementById('event-feed');
+  const feed = state._feedEl || (state._feedEl = document.getElementById('event-feed'));
   const el = document.createElement('div');
   el.className = `feed-item ${safeCls}`;
   el.innerHTML = `<span class="time">${escapeHTML(state.time)}</span> ${escapeHTML(text)}`;
@@ -1343,7 +1354,7 @@ function openChat(npcId) {
   const badge = document.getElementById('chat-status-badge');
   if (a.status && a.status !== 'free' && a.status !== '') {
     badge.textContent = a.status.toUpperCase();
-    badge.className = 'chat-status-badge ' + a.status;
+    badge.className = 'chat-status-badge ' + (a.status || '').replace(/[^a-z_-]/gi, '');
     badge.style.display = 'inline-block';
   } else {
     badge.style.display = 'none';
@@ -1360,7 +1371,7 @@ function openChat(npcId) {
     if (playerRel) {
       updateChatTrustBar(playerRel.trust, playerRel.sentiment);
     }
-  }).catch(() => {});
+  }).catch(err => console.warn('[Fetch]', err));
 
   // Restore or reset messages — single source of truth: chatHistory
   const msgDiv = document.getElementById('chat-messages');
@@ -1396,7 +1407,7 @@ function openChat(npcId) {
     // Pre-load shop data from agent profile
     fetch(`/api/agent/${npcId}`).then(r => r.json()).then(d => {
       if (d.shop) state._shopData = { agentId: npcId, npcName: d.name, items: d.shop };
-    }).catch(() => {});
+    }).catch(err => console.warn('[Fetch]', err));
   } else {
     shopBtn.style.display = 'none';
     state._shopData = null;
@@ -1421,7 +1432,7 @@ function openChat(npcId) {
     }
     const belEl = document.getElementById('chat-player-beliefs');
     if (belEl) belEl.textContent = `${pd.beliefs ?? 0} beliefs`;
-  }).catch(() => {});
+  }).catch(err => console.warn('[Fetch]', err));
 
   // Show panel
   document.getElementById('chat-panel').classList.add('open');
@@ -1479,7 +1490,13 @@ function updateDetectiveHint(npcId) {
   }
 
   hintEl.style.display = 'block';
-  hintEl.innerHTML = `<span class="hint-close" onclick="dismissHint()">&times;</span>${escapeHTML(hint)}`;
+  hintEl.textContent = '';
+  const closeBtn = document.createElement('span');
+  closeBtn.className = 'hint-close';
+  closeBtn.textContent = '\u00d7';
+  closeBtn.addEventListener('click', dismissHint);
+  hintEl.appendChild(closeBtn);
+  hintEl.appendChild(document.createTextNode(hint));
 }
 
 function dismissHint() {
@@ -1488,7 +1505,10 @@ function dismissHint() {
   hintEl._dismissed = state.chatNpcId;
 }
 
+let _lastRenderedMood = null;
 function updateChatMoodBar(mood) {
+  if (_lastRenderedMood !== null && Math.abs(mood - _lastRenderedMood) < 0.01) return;
+  _lastRenderedMood = mood;
   const pct = (mood + 1) / 2 * 100;
   const bar = document.getElementById('chat-mood-bar');
   bar.style.width = pct + '%';
@@ -1872,8 +1892,8 @@ function closeChat() {
   closeShop();
   clearEvidenceSelection();
   // Notify server to destroy conversation session
-  if (state.chatNpcId && state.ws && state.connected) {
-    state.ws.send(JSON.stringify({ type: 'chat_close', agentId: state.chatNpcId }));
+  if (state.chatNpcId) {
+    sendWS({ type: 'chat_close', agentId: state.chatNpcId });
   }
   state.chatOpen = false; state.chatNpcId = null;
   document.getElementById('chat-panel').classList.remove('open');
@@ -1903,7 +1923,7 @@ function sendChat(e) {
     clearEvidenceSelection();
     renderJournal();
   }
-  state.ws.send(JSON.stringify(msg));
+  sendWS(msg);
   addChatMessage('You', text, 'player');
   input.value = '';
 }
@@ -2204,7 +2224,7 @@ function update(dt) {
   if (state.player._syncTimer >= 0.2 && state.ws && state.connected) {
     const px = Math.round(state.player.x), py = Math.round(state.player.y);
     if (px !== state.player._lastSyncX || py !== state.player._lastSyncY) {
-      state.ws.send(JSON.stringify({ type: 'player_move', x: px, y: py }));
+      sendWS({ type: 'player_move', x: px, y: py });
       state.player._lastSyncX = px; state.player._lastSyncY = py;
     }
     state.player._syncTimer = 0;

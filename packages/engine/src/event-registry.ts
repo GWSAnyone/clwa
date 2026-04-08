@@ -205,7 +205,8 @@ export function isPursuitEvent(eventType: string): boolean {
 // Modules register handlers that execute when specific events fire in handleEventForGoals.
 // Each handler receives the event and a context with agents, goalManager, etc.
 import type { Agent } from './agent';
-import type { WorldEvent } from './cg-types';
+import type { WorldEvent, ConsequenceRule } from './cg-types';
+import type { ILEffect } from './il';
 import type { GoalManager } from './goals';
 import type { NpcGoal, GoalStep, GoalActionResult } from './goals';
 import type { CrimeScene, LocationGraph } from './world-types';
@@ -586,7 +587,7 @@ export function getRumorEventType(): string | null {
 
 // ─── CG Belief Creators ───
 // Modules register how beliefs are created from CG consequence types
-export type BeliefCreatorFn = (agent: Agent, event: WorldEvent, rule: any, crimeEventType: string, killer: string | null, victimName: string | null) => void;
+export type BeliefCreatorFn = (agent: Agent, event: WorldEvent, rule: ConsequenceRule, crimeEventType: string, killer: string | null, victimName: string | null) => void;
 
 const BELIEF_CREATORS: Map<string, BeliefCreatorFn> = new Map();
 
@@ -736,8 +737,8 @@ export interface PressureHandlerContext {
   playerName: string;
   gameDay: number;
   observe: (text: string, importance: number) => Promise<void>;
-  storeEvent: (event: object) => void;
-  pushEffect: (effect: object) => void;
+  storeEvent: (event: WorldEvent) => void;
+  pushEffect: (effect: ILEffect) => void;
   importanceValues: Record<string, { base: number; intensityMultiplier?: number }>;
 }
 
