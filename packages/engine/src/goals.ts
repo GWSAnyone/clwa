@@ -125,6 +125,57 @@ export interface GoalActionResult {
 
 // ─── Goal Trigger ───
 
+// ─── Belief Transfer Helper ───
+
+interface BeliefTransferResult {
+  transferred: { eventType: string; subject: string; object?: string }[];
+}
+
+/**
+ * Transfer transferable beliefs from sender to receiver.
+ * Dedup by (eventType, object) per Invariant 14.
+ */
+function transferBeliefs(
+  sender: Agent,
+  receiver: Agent,
+  senderId: string,
+  gameDay: number,
+): BeliefTransferResult {
+  const transferred: BeliefTransferResult['transferred'] = [];
+  if (!sender.state.beliefs || !receiver.state.beliefs) return { transferred };
+
+  const senderBeliefs = sender.state.beliefs.getAllBeliefs();
+  const crimeBeliefs = senderBeliefs.filter(
+    (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
+  );
+
+  for (const b of crimeBeliefs) {
+    const transferConfidence = b.confidence * getSourceTransferWeight(b.source);
+
+    // Dedup by (eventType, object) — Invariant 14
+    const existing = receiver.state.beliefs.getAllBeliefs().find(
+      (eb) => eb.eventType === b.eventType && eb.object === b.object,
+    );
+    if (existing && existing.confidence >= transferConfidence) continue;
+
+    receiver.state.beliefs.addBelief({
+      id: crypto.randomUUID(),
+      eventType: b.eventType,
+      subject: b.subject,
+      object: b.object,
+      location: b.location,
+      confidence: transferConfidence,
+      source: BELIEF_SOURCE.TESTIMONY,
+      sourceNpcId: senderId,
+      gameDay,
+      lastUpdated: gameDay,
+    });
+    transferred.push({ eventType: b.eventType, subject: b.subject, object: b.object });
+  }
+
+  return { transferred };
+}
+
 // ─── Goal Manager ───
 
 /** Gather evidence about a detained NPC from all agents' beliefs */
@@ -409,36 +460,10 @@ export class GoalManager {
           const receiver = direction === 'owner-to-target' ? target : owner;
           const senderId = direction === 'owner-to-target' ? goal.ownerId : step.targetId;
 
-          // sender/receiver are aliases of owner/target, guarded on line 406
-          const senderBeliefs = sender.state.beliefs!.getAllBeliefs();
-          const crimeBeliefs = senderBeliefs.filter(
-            (b) => isTransferable(b.eventType) &&
-              b.confidence >= 0.3,
-          );
-          for (const b of crimeBeliefs) {
-            const transferConfidence = b.confidence * getSourceTransferWeight(b.source);
-
-            const existing = receiver.state.beliefs!.getAllBeliefs().find(
-              (eb) => eb.eventType === b.eventType && eb.subject === b.subject && eb.object === b.object,
-            );
-            if (existing && existing.confidence >= transferConfidence) continue;
-
-            receiver.state.beliefs!.addBelief({
-              id: crypto.randomUUID(),
-              eventType: b.eventType,
-              subject: b.subject,
-              object: b.object,
-              location: b.location,
-              confidence: transferConfidence,
-              source: BELIEF_SOURCE.TESTIMONY,
-              sourceNpcId: senderId,
-              gameDay: owner.state.currentDay,
-              lastUpdated: owner.state.currentDay,
-            });
-          }
+          const { transferred } = transferBeliefs(sender, receiver, senderId, owner.state.currentDay);
 
           // Emit event if step declares an event type (module-registered via emitEventType)
-          if (onCrimeEvent && step.emitEventType && crimeBeliefs.length > 0) {
+          if (onCrimeEvent && step.emitEventType && transferred.length > 0) {
             await onCrimeEvent({
               type: step.emitEventType,
               subject: goal.ownerId,
@@ -448,7 +473,7 @@ export class GoalManager {
               payload: {
                 guardName: owner.profile.name,
                 witnessName: target.profile.name,
-                beliefsTransferred: crimeBeliefs.length,
+                beliefsTransferred: transferred.length,
                 affectedTargets: [goal.ownerId],
               },
             });
@@ -506,30 +531,8 @@ export class GoalManager {
         const result = await runInteraction(owner, target, step.purpose, step.importance);
 
         // Belief transfer: reporter's transferable beliefs → target (e.g. witness reports to guard)
-        if (step.beliefTransfer && owner.state.beliefs && target.state.beliefs) {
-          const ownerCrimeBeliefs = owner.state.beliefs.getAllBeliefs().filter(
-            (b) => isTransferable(b.eventType) &&
-              b.confidence >= 0.3,
-          );
-          for (const b of ownerCrimeBeliefs) {
-            const transferConf = b.confidence * getSourceTransferWeight(b.source);
-            const existing = target.state.beliefs.getAllBeliefs().find(
-              (eb) => eb.eventType === b.eventType && eb.object === b.object,
-            );
-            if (existing && existing.confidence >= transferConf) continue;
-            target.state.beliefs.addBelief({
-              id: crypto.randomUUID(),
-              eventType: b.eventType,
-              subject: b.subject,
-              object: b.object,
-              location: b.location,
-              confidence: transferConf,
-              source: BELIEF_SOURCE.TESTIMONY,
-              sourceNpcId: goal.ownerId,
-              gameDay: owner.state.currentDay,
-              lastUpdated: owner.state.currentDay,
-            });
-          }
+        if (step.beliefTransfer) {
+          transferBeliefs(owner, target, goal.ownerId, owner.state.currentDay);
         }
 
         interacted.push(targetId);
