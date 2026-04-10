@@ -112,6 +112,7 @@ export function registerCrimeJusticeModule(): void {
   registerEventTypeFlagsBatch(['WANTED_STATUS'], { subjectReacts: true }); // criminal reacts to being wanted (flee, lay_low)
 
   // Secret event type — used by engine conversation impact for secret discovery beliefs
+  registerEventCategory('secret', ['PERSONAL_SECRET']);
   registerSecretEventType('PERSONAL_SECRET');
 
   // Source flags — engine checks boolean properties, not category names
@@ -123,6 +124,7 @@ export function registerCrimeJusticeModule(): void {
   registerSourceFlags('evidence', { firsthand: true });
   registerSourceFlags('destroy_evidence', { concealment: true });
   registerSourceFlags('cover_up', { concealment: true });
+  registerSourceFlags('secret', { firsthand: true }); // NPC's own prior knowledge (world JSON secrets)
 
   registerEventLabels({
     NPC_KILLED: 'murder',

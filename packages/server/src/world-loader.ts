@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, existsSync } from 'fs';
 import { join } from 'path';
 import type { AgentProfile, LocationDef, ScheduleEntry, NpcHome } from '@clwa/engine';
-import { registerRoleTopicPool, registerLocationHook } from '@clwa/engine';
+import { registerRoleTopicPool, registerLocationHook, getAllRegisteredEventTypes } from '@clwa/engine';
 import { type TraitRange, parseTraitRanges, parseMoodRange } from './trait-randomizer';
 
 // ─── JSON Schemas ──────────────────────────────────────────────
@@ -288,6 +288,32 @@ export function loadWorld(worldDir: string): LoadedWorld {
   const motives = existsSync(motivesPath) ? readJson<MotivePoolEntry[]>(motivesPath) : [];
   if (motives.length > 0) {
     console.log(`  [+] ${motives.length} motive pool entries`);
+  }
+
+  // ─── Validation: world data against engine registries ───
+  const npcIds = new Set(profiles.map(p => p.id));
+  const registeredEventTypes = new Set(getAllRegisteredEventTypes());
+  const warnings: string[] = [];
+
+  for (const s of secrets) {
+    if (!npcIds.has(s.npcId)) warnings.push(`[Secret] Unknown npcId '${s.npcId}'`);
+    if (s.subject && !npcIds.has(s.subject)) warnings.push(`[Secret] Unknown subject '${s.subject}' in secret for ${s.npcId} — use NPC ID not display name`);
+    if (!registeredEventTypes.has(s.eventType)) warnings.push(`[Secret] Unregistered eventType '${s.eventType}' for ${s.npcId}`);
+  }
+
+  for (const m of motives) {
+    if (!npcIds.has(m.from)) warnings.push(`[Motive] Unknown 'from' NPC '${m.from}'`);
+    if (!npcIds.has(m.to)) warnings.push(`[Motive] Unknown 'to' NPC '${m.to}'`);
+  }
+
+  for (const r of relationships) {
+    if (!npcIds.has(r.from)) warnings.push(`[Relationship] Unknown 'from' NPC '${r.from}'`);
+    if (!npcIds.has(r.to)) warnings.push(`[Relationship] Unknown 'to' NPC '${r.to}'`);
+  }
+
+  if (warnings.length > 0) {
+    console.warn(`[WorldLoader] ⚠ ${warnings.length} validation warning(s):`);
+    for (const w of warnings) console.warn(`  ${w}`);
   }
 
   console.log(`[WorldLoader] "${worldJson.name}" loaded successfully`);
