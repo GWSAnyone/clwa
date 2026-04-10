@@ -429,17 +429,6 @@ async function init() {
   document.getElementById('btn-day').onclick = () => fetch('/api/day', {method:'POST'});
   document.getElementById('btn-auto').onclick = toggleAuto;
   document.getElementById('btn-new-game').onclick = newGame;
-  // Speed buttons
-  for (const btn of document.querySelectorAll('.speed-btn')) {
-    btn.onclick = () => {
-      const speed = parseInt(btn.dataset.speed);
-      fetch('/api/speed', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ speed }) })
-        .then(r => r.json()).then(d => {
-          state.gameSpeed = d.gameSpeed ?? speed;
-          syncSpeedButtons(state.gameSpeed);
-        });
-    };
-  }
   // Check server auto-tick state
   fetch('/api/auto-state').then(r => r.json()).then(d => {
     state.autoTick = d.running;
@@ -904,9 +893,12 @@ function closeShop() {
 const EXAMINE_VERBS = { body: 'Look closer', trail: 'Follow it', object: 'Pick it up', weapon: 'Pick it up', bloodstain: 'Inspect' };
 
 function updateExaminePanel() {
-  const panel = document.getElementById('examine-panel');
+  // Show/hide the "Investigate" button when near a crime scene
+  const btn = document.getElementById('btn-examine');
+  if (!btn) return;
   if (!state.crimeScenes || state.crimeScenes.length === 0 || state.chatOpen) {
-    panel.style.display = 'none'; return;
+    btn.style.display = 'none';
+    return;
   }
   const nearby = state.crimeScenes.find(cs => {
     const loc = LOCATIONS[cs.locationId];
@@ -914,19 +906,31 @@ function updateExaminePanel() {
     const dx = state.player.x - loc.px, dy = state.player.y - loc.py;
     return Math.sqrt(dx*dx + dy*dy) < 200;
   });
-  if (!nearby) {
-    panel.style.display = 'none';
+  if (nearby) {
+    btn.style.display = 'inline-block';
+    btn.dataset.locationId = nearby.locationId;
+  } else {
+    btn.style.display = 'none';
     state._examineLocationId = null;
     state._examineSceneData = null;
-    return;
   }
-  // Only fetch when entering a new crime scene zone
-  if (state._examineLocationId !== nearby.locationId) {
-    state._examineLocationId = nearby.locationId;
+}
+
+function openExaminePanel() {
+  const btn = document.getElementById('btn-examine');
+  const locationId = btn?.dataset?.locationId;
+  if (!locationId) return;
+  const panel = document.getElementById('examine-panel');
+  if (state._examineLocationId !== locationId) {
+    state._examineLocationId = locationId;
     state._examineSceneData = null;
-    fetchExamineScene(nearby.locationId);
+    fetchExamineScene(locationId);
   }
   if (state._examineSceneData) panel.style.display = 'block';
+}
+
+function closeExaminePanel() {
+  document.getElementById('examine-panel').style.display = 'none';
 }
 
 async function fetchExamineScene(locationId) {
@@ -947,7 +951,7 @@ async function fetchExamineScene(locationId) {
 function renderExaminePanel(data) {
   const panel = document.getElementById('examine-panel');
   const allExamined = data.points.every(p => p.examined);
-  let html = `<div class="examine-title">Crime Scene</div>`;
+  let html = `<div class="examine-title">Crime Scene <span style="float:right;cursor:pointer;opacity:0.5" onclick="closeExaminePanel()">&times;</span></div>`;
   html += `<div class="examine-intro">You survey the scene and notice several things worth investigating:</div>`;
 
   for (const pt of data.points) {
@@ -1326,6 +1330,7 @@ function addEvent(cls, text) {
 // ─── CHAT ───
 function openChat(npcId) {
   state.chatOpen = true; state.chatNpcId = npcId;
+  sendWS({ type: 'chat_open', agentId: npcId });
   document.getElementById('examine-panel').style.display = 'none';
   clearEvidenceSelection();
   const a = state.agents[npcId];
@@ -1966,9 +1971,7 @@ function appendChatToken(token) {
 }
 
 function syncSpeedButtons(speed) {
-  document.querySelectorAll('.speed-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.speed) === speed);
-  });
+  // Speed controls removed — always 1x
 }
 
 // ─── AUTO TICK (server-authoritative) ───

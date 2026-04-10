@@ -374,15 +374,6 @@ export class World {
     }
   }
 
-  /** Set game speed and restart Master Clock if running */
-  setGameSpeed(speed: number): void {
-    const wasRunning = this._gameClockTimer !== null;
-    this.stopMasterClock();
-    this._gameSpeed = Math.max(0, Math.min(10, speed));
-    if (wasRunning && this._gameSpeed > 0) {
-      this.startMasterClock();
-    }
-  }
 
   /**
    * Master Clock heartbeat — called every game minute.

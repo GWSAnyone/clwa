@@ -18,7 +18,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
-## Текущее состояние: v0.11.0-dev
+## Текущее состояние: v0.11.1
 
 ### Завершено
 
@@ -32,7 +32,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 | Milestone | Описание | Версия | Статус |
 |-----------|---------|--------|--------|
-| **Milestone 2** | Detective Toolkit — accusation, evidence presentation, prevention, journal v2 | v0.12 | Backend done, UI pending |
+| **Milestone 2** | Detective Toolkit — accusation, evidence presentation, prevention, journal v2 | v0.12 | Done (backend + Web UI) |
 
 ### Engine подсистемы (14 реализовано)
 
@@ -60,7 +60,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | # | Milestone | Версия | Описание | Статус |
 |---|-----------|--------|----------|--------|
 | 1 | Replayable Crime | v0.11 | Randomization + motive pool → каждый рестарт = другой сценарий | Done |
-| 2 | Detective Toolkit | v0.12 | Accusation, evidence, prevention, journal | Backend done |
+| 2 | Detective Toolkit | v0.12 | Accusation, evidence, prevention, journal | Done |
 | 3 | Living Opposition | v0.13 | Garrett variability, escalation, heat, NPC resistance, dual-layer mood, criminal confidence | Spec: CG v2, Design: Mood Review |
 | 4 | Complete Session | v0.14 | Arrival event, win/lose, end-of-run summary | — |
 | 5 | Polish & Demo | v0.15 | Case journal UI, day/night, sound, tutorial, balance, arousal dimension, emotional tagging | Design: Mood Review |

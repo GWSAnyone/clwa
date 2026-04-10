@@ -571,15 +571,6 @@ export async function handleRequest(
     return Response.json({ running: true, gameSpeed: world.gameSpeed }, { headers: cors });
   }
 
-  // ─── POST /api/speed ───
-  if (method === 'POST' && path === '/api/speed') {
-    return req.json().then((body: { speed?: number }) => {
-      const speed = body.speed ?? 1;
-      world.setGameSpeed(speed);
-      return Response.json({ gameSpeed: world.gameSpeed }, { headers: cors });
-    });
-  }
-
   // ─── POST /api/player/location ───
   if (method === 'POST' && path === '/api/player/location') {
     return req.json().then((body: { location?: string | null }) => {

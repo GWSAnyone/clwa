@@ -34,9 +34,6 @@
     }
     .hud-btn:hover { background: rgba(255,255,255,0.2); }
     .hud-btn.active { background: rgba(100,200,100,0.3); border-color: #6c6; }
-    .speed-group { display: inline-flex; gap: 2px; margin-left: 8px; }
-    .speed-btn { padding: 4px 8px; min-width: 28px; }
-    .speed-btn.active { background: rgba(100,180,255,0.3); border-color: #6af; }
     #ws-status { width: 8px; height: 8px; border-radius: 50%; background: #f44; display: inline-block; margin-left: 8px; }
     #ws-status.connected { background: #4f4; }
 
@@ -708,12 +705,7 @@
     <button class="hud-btn" id="btn-tick">Tick</button>
     <button class="hud-btn" id="btn-auto">Auto</button>
     <button class="hud-btn" id="btn-day">Day</button>
-    <span class="speed-group">
-      <button class="hud-btn speed-btn" data-speed="0">||</button>
-      <button class="hud-btn speed-btn active" data-speed="1">1x</button>
-      <button class="hud-btn speed-btn" data-speed="2">2x</button>
-      <button class="hud-btn speed-btn" data-speed="3">3x</button>
-    </span>
+    <button class="hud-btn" id="btn-examine" style="display:none;color:#f44;border-color:rgba(255,80,80,0.3)" onclick="openExaminePanel()">Investigate</button>
     <button class="btn-journal" id="btn-journal" onclick="toggleJournal()">Journal</button>
     <button class="hud-btn" id="btn-new-game" style="color:#f88;border-color:rgba(220,80,80,0.3)">New Game</button>
   </div>

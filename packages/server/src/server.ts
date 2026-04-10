@@ -48,7 +48,7 @@ export function startServer(
         return handleRequest(req, ctx);
       }
 
-      const filePath = url.pathname === '/' ? '/index.html' : url.pathname;
+      const filePath = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname);
       const fullPath = resolve(PUBLIC_DIR, '.' + filePath);
       const file = Bun.file(fullPath);
       if (await file.exists()) {
@@ -106,7 +106,17 @@ export function startServer(
             return;
           }
 
+          if (msg.type === 'chat_open') {
+            const agent = agents.get(msg.agentId);
+            if (agent && agent.state.alive) {
+              agent.state.inPlayerChat = true;
+            }
+            return;
+          }
+
           if (msg.type === 'chat_close') {
+            const agent = agents.get(msg.agentId);
+            if (agent) agent.state.inPlayerChat = false;
             // Keep accusation history across chat sessions (persistent within game run).
             // Only reset messageCount — accusationHistory and formalAccusations survive.
             const session = chatSessions.get(msg.agentId);
