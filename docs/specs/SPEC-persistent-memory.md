@@ -1,5 +1,9 @@
 # SPEC: Persistent NPC Memory (v2 — post-audit)
 
+> **Milestone**: M2.5 (Memory & Infrastructure)
+> **Статус**: Ready for implementation
+> **Связанные спеки**: [SPEC-multiplayer-memory](SPEC-multiplayer-memory.md) (deferred, builds on this)
+>
 > NPC помнят не только ЧТО произошло (beliefs), но и КАК проходили разговоры.
 > Память переживает рестарт сервера.
 
