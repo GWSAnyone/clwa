@@ -12,6 +12,12 @@
 
 import { resolve, join, basename } from "path";
 import { readdir } from "fs/promises";
+import { getAllRegisteredEventTypes, getEventTypesByCategory, getAllRegisteredSources, BELIEF_SOURCE } from "@clwa/engine";
+import { registerCrimeJusticeModule, registerSocialModule } from "@clwa/modules";
+
+// Populate engine registries so we can serve valid options to the editor UI
+registerSocialModule();
+registerCrimeJusticeModule();
 
 // ─── Configuration ───
 
@@ -43,6 +49,19 @@ async function handleAPI(req: Request, pathname: string): Promise<Response> {
   // GET /api/meta — world metadata for UI
   if (pathname === "/api/meta" && method === "GET") {
     return Response.json({ worldName: WORLD_NAME, worldDir: WORLD_DIR }, { headers: cors });
+  }
+
+  // GET /api/registry — registered engine types for typed dropdowns
+  if (pathname === "/api/registry" && method === "GET") {
+    const npcsDir = join(WORLD_DIR, "npcs");
+    const files = await readdir(npcsDir);
+    const npcIds = files.filter(f => f.endsWith(".json")).map(f => f.replace(".json", ""));
+    return Response.json({
+      eventTypes: getAllRegisteredEventTypes(),
+      motiveTypes: getEventTypesByCategory('motive'),
+      sources: [...getAllRegisteredSources(), ...Object.values(BELIEF_SOURCE)].filter((v, i, a) => a.indexOf(v) === i),
+      npcIds,
+    }, { headers: cors });
   }
 
   // --- NPCs ---

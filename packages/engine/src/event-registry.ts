@@ -83,6 +83,8 @@ export function registerSourceFlags(source: string, flags: SourceFlags): void {
   SOURCE_FLAGS.set(source, { ...existing, ...flags });
 }
 
+export function getAllRegisteredSources(): string[] { return Array.from(SOURCE_FLAGS.keys()); }
+
 export function isPerpetrator(source: string | null | undefined): boolean {
   return source != null && (SOURCE_FLAGS.get(source)?.perpetrator === true);
 }
@@ -106,6 +108,10 @@ export function registerEventCategory(category: string, eventTypes: string[]): v
 
 export function isEventCategory(eventType: string, category: string): boolean {
   return EVENT_CATEGORIES.get(category)?.has(eventType) ?? false;
+}
+
+export function getEventTypesByCategory(category: string): string[] {
+  return Array.from(EVENT_CATEGORIES.get(category) ?? []);
 }
 
 /** Get all registered event types across all categories (for IL context, prompts, etc.) */

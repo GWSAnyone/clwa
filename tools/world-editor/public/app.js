@@ -42,7 +42,6 @@ const TRAIT_NAMES = {
   A: 'Agreeableness', N: 'Neuroticism', H: 'Honesty',
 };
 const PERIOD_LABELS = { dawn: 'Dawn', morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
-const MOTIVE_TYPES = ['THREAT_PERCEIVED', 'REVENGE_DESIRE', 'PERSONAL_GRUDGE'];
 const MOTIVE_LABELS = { THREAT_PERCEIVED: 'Threat', REVENGE_DESIRE: 'Revenge', PERSONAL_GRUDGE: 'Grudge' };
 const REL_TYPES = ['friend', 'colleague', 'acquaintance', 'rival', 'enemy'];
 
@@ -174,6 +173,7 @@ function backBtn(text, onClick) {
 
 // Refs cache
 let npcIds = [], npcNames = {}, locationNames = [];
+let registeredEventTypes = [], registeredSources = [], registeredMotiveTypes = [];
 
 async function loadRefs() {
   if (!npcIds.length) {
@@ -184,6 +184,12 @@ async function loadRefs() {
   if (!locationNames.length) {
     const world = await api('world');
     locationNames = world.locations.map(l => l.name);
+  }
+  if (!registeredEventTypes.length) {
+    const reg = await api('registry');
+    registeredEventTypes = reg.eventTypes;
+    registeredMotiveTypes = reg.motiveTypes;
+    registeredSources = reg.sources;
   }
 }
 
@@ -566,7 +572,7 @@ async function renderMotives() {
         ]),
         h('div', { class: 'grid-2' }, [
           fieldGroup('ID', textInput(m.id, v => data[i].id = v)),
-          fieldGroup('Type', selectInput(m.type, MOTIVE_TYPES, v => data[i].type = v)),
+          fieldGroup('Type', selectInput(m.type, registeredMotiveTypes, v => data[i].type = v)),
         ]),
         h('div', { class: 'grid-2' }, [
           fieldGroup('From', selectInput(m.from, npcIds, v => data[i].from = v)),
@@ -610,11 +616,11 @@ async function renderSecrets() {
     data.forEach((s, i) => {
       tbody.append(h('tr', {}, [
         h('td', {}, [selectInput(s.npcId, npcIds, v => data[i].npcId = v)]),
-        h('td', {}, [textInput(s.eventType, v => data[i].eventType = v)]),
-        h('td', {}, [textInput(s.subject, v => data[i].subject = v)]),
+        h('td', {}, [selectInput(s.eventType, registeredEventTypes, v => data[i].eventType = v)]),
+        h('td', {}, [selectInput(s.subject || '', ['', ...npcIds], v => data[i].subject = v || null)]),
         h('td', {}, [textInput(s.object || '', v => data[i].object = v || null)]),
         h('td', { style: { minWidth: '120px' } }, [slider(s.confidence ?? 0.5, 0, 1, 0.1, v => data[i].confidence = v)]),
-        h('td', {}, [textInput(s.source, v => data[i].source = v)]),
+        h('td', {}, [selectInput(s.source, registeredSources, v => data[i].source = v)]),
         h('td', {}, [h('button', { class: 'btn btn-danger', text: 'X', onclick: () => { data.splice(i, 1); render(); } })]),
       ]));
     });
