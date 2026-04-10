@@ -599,7 +599,7 @@ async function main() {
     } catch (err) {
       console.error('  [NewGame] Failed:', err);
       // Restart old world if new one failed
-      if (!ctx.world.isAutoTicking()) {
+      if (!ctx.world.isAutoTicking) {
         ctx.world.startMasterClock();
       }
     } finally {

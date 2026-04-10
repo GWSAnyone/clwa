@@ -226,7 +226,7 @@ describe('Affordance Consistency', () => {
     const builtIn = new Set(['move_to', 'interact', 'interact_present', 'announce', 'wait']);
     const invalid: string[] = [];
     for (const aff of AFFORDANCE_REGISTRY) {
-      for (const step of aff.stepTemplates) {
+      for (const step of aff.stepTemplates ?? []) {
         if (!builtIn.has(step.action) && !getStepHandler(step.action)) {
           invalid.push(`${aff.id} step '${step.action}' not in builtIn or STEP_HANDLERS`);
         }

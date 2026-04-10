@@ -180,11 +180,11 @@ export class ConsequenceEngine {
         const affected = (event.payload?.affectedTargets as string[]) ?? [];
         return affected.filter((id) => {
           const agent = ctx.agents.get(id);
-          return agent && agent.state.alive && !!(agent.profile as Record<string, unknown>)[capFlag];
+          return agent && agent.state.alive && !!(agent.profile as unknown as Record<string, unknown>)[capFlag];
         });
       }
 
-      const fieldValue = (event as Record<string, unknown>)[cond.field];
+      const fieldValue = (event as unknown as Record<string, unknown>)[cond.field];
       if (cond.op === 'eq') { if (fieldValue !== cond.value) return []; continue; }
       if (cond.op === 'gt') { if (!((fieldValue as number) > (cond.value as number))) return []; continue; }
       if (cond.op === 'lt') { if (!((fieldValue as number) < (cond.value as number))) return []; continue; }

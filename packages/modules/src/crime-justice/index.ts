@@ -416,7 +416,7 @@ export function registerCrimeJusticeModule(): void {
 
   // Interact post-hooks (suspect evaluation after interrogation)
   registerInteractPostHook((owner, target, step, _agents, crimeScenes) => {
-    if (!step.evaluateSuspect || !owner.state.beliefs || !crimeScenes) return;
+    if (!(step as import('@clwa/engine').InteractStep).evaluateSuspect || !owner.state.beliefs || !crimeScenes) return;
     // Evaluate suspect: check guilt + honesty trait → update deduction belief confidence
     const deductionBelief = owner.state.beliefs.getAllBeliefs().find(
       (b: Belief) => b.source === 'deduction' && b.subject === target.profile.id,
@@ -681,7 +681,7 @@ export function registerCrimeJusticeModule(): void {
     if (imprisonmentTimers.size === 0) {
       for (const [npcId, agent] of ctx.agents) {
         if (agent.state.status === 'imprisoned') {
-          const sentenceEvent = ctx.eventStore.getAll().reverse().find(
+          const sentenceEvent = [...ctx.eventStore.getAll()].reverse().find(
             (e: WorldEvent) => e.type === 'NPC_SENTENCED' && e.object === npcId && e.payload?.verdict === 'imprisonment',
           );
           const releaseDay = (sentenceEvent?.payload?.releaseDay as number) ?? ctx.currentDay + 1;
@@ -750,9 +750,10 @@ export function registerCrimeJusticeModule(): void {
         // Fearful → go home and hide (lay_low)
         const home = ctx.npcHomes.get(npcId) ?? agent.state.location;
         ctx.goalManager.addGoal({
-          npcId, type: 'lay_low', priority: 6, state: 'pending', currentStep: 0,
+          id: crypto.randomUUID(), ownerId: npcId, type: 'lay_low', priority: 6, state: 'pending', currentStep: 0,
+          createdAtMinute: ctx.gameMinute,
           steps: [
-            { action: 'move_to', location: home, skipIfAt: true },
+            { action: 'move_to', location: home },
             { action: 'wait', ticks: 16 },
           ],
           data: {},
@@ -767,9 +768,10 @@ export function registerCrimeJusticeModule(): void {
         if (guardId) {
           const guard = ctx.agents.get(guardId)!;
           ctx.goalManager.addGoal({
-            npcId, type: 'defensive', priority: 6, state: 'pending', currentStep: 0,
+            id: crypto.randomUUID(), ownerId: npcId, type: 'defensive', priority: 6, state: 'pending', currentStep: 0,
+            createdAtMinute: ctx.gameMinute,
             steps: [
-              { action: 'move_to', location: guard.state.location, skipIfAt: true },
+              { action: 'move_to', location: guard.state.location },
               { action: 'interact', targetId: guardId, purpose: `report a threat: someone warned you that you are in danger. Tell ${guard.profile.name} about the threat and ask for protection`, importance: 6, beliefTransfer: true, beliefTransferDirection: 'owner-to-target' },
             ],
             data: {},

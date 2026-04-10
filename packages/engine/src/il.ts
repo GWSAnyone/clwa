@@ -15,7 +15,7 @@
 
 import { llmSemaphore } from './agent';
 import type { Agent } from './agent';
-import type { IEventStore } from './event-store';
+import type { IEventStore } from './event-types';
 import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs } from './event-registry';
 import type { PressureHandlerContext } from './event-registry';
 import type { ILConfig } from './world-types';

@@ -1,0 +1,656 @@
+/* ============================================================
+   CLWA WORLD EDITOR — стиль основной игры
+   ============================================================ */
+
+/* --- CSS переменные (тёмная тема = как в игре) --- */
+:root {
+  --bg-base:     #0d1117;
+  --bg-surface:  #161b22;
+  --bg-elevated: #1c2129;
+  --bg-hover:    #252c35;
+  --border:      #30363d;
+  --border-muted:#21262d;
+  --text:        #e6edf3;
+  --text-sec:    #8b949e;
+  --text-muted:  #6e7681;
+  --accent:      #58a6ff;
+  --accent-hover:#79b8ff;
+  --danger:      #f85149;
+  --danger-hover:#ff6e67;
+  --success:     #3fb950;
+  --warning:     #d29922;
+  --mono:        #9abaca;
+  --font:        'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono:   'Cascadia Code', 'Fira Code', Consolas, monospace;
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --sp-xs: 4px; --sp-sm: 8px; --sp-md: 12px; --sp-lg: 16px; --sp-xl: 24px;
+  /* Trait colors */
+  --trait-O: #a080d0;
+  --trait-C: #60a0d0;
+  --trait-E: #d0a040;
+  --trait-A: #60c080;
+  --trait-N: #d06060;
+  --trait-H: #40a0a0;
+  /* Role colors */
+  --role-bartender:  #e8993a;
+  --role-merchant:   #d4a843;
+  --role-bard:       #a371d6;
+  --role-guard:      #6498c8;
+  --role-priest:     #e0c97f;
+  --role-blacksmith: #c47a5a;
+  --role-herbalist:  #6abf8a;
+  --role-judge:      #8b949e;
+}
+
+/* --- Светлая тема --- */
+[data-theme="light"] {
+  --bg-base:     #f0f2f5;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #f6f8fa;
+  --bg-hover:    #e8ecf0;
+  --border:      #d0d7de;
+  --border-muted:#e1e4e8;
+  --text:        #1f2328;
+  --text-sec:    #656d76;
+  --text-muted:  #8b949e;
+  --accent:      #0969da;
+  --accent-hover:#0550ae;
+  --danger:      #cf222e;
+  --danger-hover:#a40e26;
+  --success:     #1a7f37;
+  --warning:     #9a6700;
+  --mono:        #0550ae;
+}
+
+/* === Base === */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-base);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* === Layout === */
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* === Sidebar === */
+.sidebar {
+  width: 220px;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.sidebar-brand {
+  padding: var(--sp-lg);
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-brand h1 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+.sidebar-brand p {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+.sidebar nav {
+  flex: 1;
+  padding: var(--sp-sm);
+  overflow-y: auto;
+}
+
+/* Nav buttons */
+.nav-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-sm) var(--sp-md);
+  border-radius: var(--radius-sm);
+  color: var(--text-sec);
+  font-size: 0.82rem;
+  font-weight: 500;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.nav-btn.active {
+  background: rgba(88, 166, 255, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+}
+.nav-icon { font-size: 1rem; width: 20px; text-align: center; }
+
+/* === Main content === */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-xl);
+  padding-top: var(--sp-lg);
+}
+
+/* === Theme toggle === */
+.theme-toggle {
+  position: fixed;
+  top: var(--sp-md);
+  right: var(--sp-lg);
+  z-index: 50;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-sec);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.theme-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* === Section header === */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-xl);
+}
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+.section-subtitle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* === Cards === */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-lg);
+  transition: border-color 0.15s ease;
+}
+.card:hover {
+  border-color: var(--border);
+}
+.card-clickable:hover {
+  border-color: rgba(88, 166, 255, 0.3);
+  cursor: pointer;
+}
+.card-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-sec);
+  margin-bottom: var(--sp-md);
+  padding-bottom: var(--sp-sm);
+  border-bottom: 1px solid var(--border-muted);
+}
+
+/* === NPC cards grid === */
+.npc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-md);
+}
+.npc-card {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  padding: var(--sp-md);
+}
+.npc-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.npc-info { flex: 1; min-width: 0; }
+.npc-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+.npc-role {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+.npc-mood-bar {
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  margin-top: var(--sp-sm);
+  overflow: hidden;
+}
+.npc-mood-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* === Form elements === */
+.field-group { margin-bottom: var(--sp-md); }
+
+label, .label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-sec);
+  margin-bottom: var(--sp-xs);
+}
+
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-xs) var(--sp-sm);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.82rem;
+  width: 100%;
+  transition: border-color 0.15s ease;
+}
+input:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+textarea { resize: vertical; min-height: 3rem; }
+
+/* Slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+/* Checkbox */
+input[type="checkbox"] {
+  width: 14px !important;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* === Buttons === */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  padding: var(--sp-xs) var(--sp-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn:hover {
+  background: var(--bg-hover);
+}
+.btn-primary {
+  background: rgba(88, 166, 255, 0.12);
+  border-color: rgba(88, 166, 255, 0.3);
+  color: var(--accent);
+}
+.btn-primary:hover {
+  background: rgba(88, 166, 255, 0.22);
+}
+.btn-danger {
+  background: rgba(248, 81, 73, 0.1);
+  border-color: rgba(248, 81, 73, 0.25);
+  color: var(--danger);
+}
+.btn-danger:hover {
+  background: rgba(248, 81, 73, 0.2);
+}
+.btn-success {
+  background: rgba(63, 185, 80, 0.12);
+  border-color: rgba(63, 185, 80, 0.3);
+  color: var(--success);
+}
+.btn-success:hover {
+  background: rgba(63, 185, 80, 0.22);
+}
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-sec);
+}
+.btn-ghost:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* === Tables === */
+table { width: 100%; border-collapse: collapse; }
+th {
+  text-align: left;
+  padding: var(--sp-sm);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-sec);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+}
+td {
+  padding: var(--sp-sm);
+  border-bottom: 1px solid var(--border-muted);
+  font-size: 0.82rem;
+  vertical-align: top;
+}
+
+/* === Relationship matrix === */
+.rel-matrix td, .rel-matrix th {
+  text-align: center;
+  padding: 3px;
+  min-width: 70px;
+}
+.rel-matrix th {
+  font-size: 0.65rem;
+  padding: var(--sp-xs) 2px;
+}
+.rel-cell {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 4px 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rel-cell:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.2);
+}
+
+/* === Modal overlay === */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.15s ease;
+}
+.modal-box {
+  background: linear-gradient(135deg, rgba(20,28,38,0.95), rgba(30,40,55,0.95));
+  border: 1px solid rgba(100,140,180,0.3);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-xl);
+  min-width: 380px;
+  max-width: 480px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(60,120,180,0.08);
+  animation: modalSlideIn 0.2s ease-out;
+}
+.modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #e8dcc8;
+  margin-bottom: var(--sp-lg);
+}
+
+/* === Trait bar (personality sliders) === */
+.trait-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-sm);
+  margin-bottom: var(--sp-sm);
+}
+.trait-label {
+  width: 24px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  flex-shrink: 0;
+}
+.trait-name {
+  width: 140px;
+  font-size: 0.7rem;
+  color: var(--text-sec);
+  flex-shrink: 0;
+}
+.trait-slider { flex: 1; }
+.trait-value {
+  width: 36px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--mono);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* === Status badges === */
+.badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+.badge-role {
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(88, 166, 255, 0.2);
+}
+.badge-motive {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--danger);
+  border: 1px solid rgba(248, 81, 73, 0.2);
+}
+.badge-type {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--warning);
+  border: 1px solid rgba(210, 153, 34, 0.2);
+}
+
+/* === Toast === */
+.toast {
+  position: fixed;
+  bottom: var(--sp-lg);
+  right: var(--sp-lg);
+  padding: var(--sp-sm) var(--sp-lg);
+  border-radius: var(--radius-lg);
+  font-size: 0.82rem;
+  font-weight: 500;
+  z-index: 200;
+  backdrop-filter: blur(8px);
+  animation: toastIn 0.3s ease-out;
+  pointer-events: none;
+}
+.toast-success {
+  background: rgba(40, 140, 80, 0.85);
+  border-left: 3px solid var(--success);
+  color: #cfc;
+}
+
+/* === Back button === */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-xs);
+  color: var(--text-sec);
+  font-size: 0.78rem;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: var(--sp-xs) 0;
+  margin-bottom: var(--sp-md);
+  transition: color 0.15s;
+}
+.back-btn:hover { color: var(--accent); }
+
+/* === Welcome screen === */
+.welcome {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+}
+.welcome-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-sec);
+  letter-spacing: 0.04em;
+}
+.welcome-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: var(--sp-sm);
+}
+
+/* === Section divider (for NPC detail) === */
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-md);
+  margin: var(--sp-xl) 0 var(--sp-lg);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-muted);
+}
+
+/* === Memory item (like game's memory display) === */
+.memory-item {
+  background: var(--bg-elevated);
+  border-left: 3px solid var(--border);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: var(--sp-sm) var(--sp-md);
+  font-size: 0.8rem;
+  color: var(--text-sec);
+  line-height: 1.45;
+  margin-bottom: var(--sp-sm);
+}
+
+/* === Accordion (for topics) === */
+.accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: var(--sp-sm) 0;
+  transition: color 0.15s;
+}
+.accordion-header:hover { color: var(--accent); }
+.accordion-arrow {
+  transition: transform 0.2s ease;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.accordion-arrow.open { transform: rotate(90deg); }
+
+/* === Grid helpers === */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-md); }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--sp-md); }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-md); }
+.flex-row { display: flex; align-items: center; gap: var(--sp-sm); }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.gap-sm { gap: var(--sp-sm); }
+.gap-md { gap: var(--sp-md); }
+.gap-lg { gap: var(--sp-lg); }
+.mt-sm { margin-top: var(--sp-sm); }
+.mt-md { margin-top: var(--sp-md); }
+.mt-lg { margin-top: var(--sp-lg); }
+.mb-sm { margin-bottom: var(--sp-sm); }
+.mb-md { margin-bottom: var(--sp-md); }
+.mb-lg { margin-bottom: var(--sp-lg); }
+.space-y > * + * { margin-top: var(--sp-md); }
+.space-y-lg > * + * { margin-top: var(--sp-lg); }
+
+/* === Animations === */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalSlideIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes toastIn { from { transform: translateX(40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* === Scrollbar (like game) === */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }

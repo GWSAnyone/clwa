@@ -5,7 +5,7 @@ import type { Belief } from './beliefs';
 import type { Relationship } from './relationships';
 import type { IEventStore } from './event-types';
 import { ConsequenceEngine } from './cg-engine';
-import type { WorldEvent } from './cg-types';
+import type { WorldEvent, ConsequenceResult } from './cg-types';
 import { ConversationScheduler } from './scheduler';
 import { runConversation, buildMemoryText } from './conversation';
 import { processMovement } from './movement';
@@ -83,7 +83,7 @@ function isPresent(agent: Agent): boolean {
 
 export interface WorldSaveAgentData {
   alive: boolean;
-  status: import('./agent-types').NpcStatus;
+  status: import('./agent-types').NpcStatus | null;
   location: string;
   mood: number;
   baseMood: number;
@@ -1642,7 +1642,7 @@ export class World {
   }
 
   /** Process CG cascade and emit onCascade callback */
-  private async processCascade(event: WorldEvent): Promise<{ event: WorldEvent; rule: string }[]> {
+  private async processCascade(event: WorldEvent): Promise<ConsequenceResult[]> {
     const results = await this.engine.process(event, this.buildCgContext());
     if (results.length > 0 && this.callbacks.onCascade) {
       this.callbacks.onCascade(event, results.map(r => r.event));

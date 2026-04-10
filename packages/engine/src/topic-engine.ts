@@ -61,6 +61,8 @@ export interface TopicContext {
   location: string;
   /** Player agent reference (if exists) — for topic sources about player interactions */
   playerAgent?: Agent;
+  /** All agents map — for topic sources that need to look up NPCs */
+  agents?: Map<string, Agent>;
 }
 
 export type TopicSource = (
@@ -105,6 +107,7 @@ export function registerTopicGroupMapping(mappings: Record<string, string>): voi
 
 /** Resolve diversity group for a topic proposal. Priority: proposal.group → registry → fallback 'casual'. */
 export function getTopicGroup(proposal: TopicProposal): string;
+export function getTopicGroup(category: string): string;
 export function getTopicGroup(categoryOrProposal: string | TopicProposal): string {
   if (typeof categoryOrProposal !== 'string') {
     // TopicProposal overload — check explicit group first

@@ -1,4 +1,4 @@
-import type { EventType } from '@clwa/engine';
+import type { EventType, ConsequenceResult } from '@clwa/engine';
 import { broadcast } from './ws';
 import type { GameContext } from './game-context';
 
@@ -470,14 +470,14 @@ export async function handleRequest(
       broadcast({ type: 'event', data: killEvent });
       return Response.json({
         killEvent,
-        consequences: results.map((r) => ({
-          ruleId: r.rule.id,
-          targets: r.targets.map((id: string) => ({
+        consequences: results.map((r) => { const cr = r as ConsequenceResult; return {
+          ruleId: cr.rule.id,
+          targets: cr.targets.map((id: string) => ({
             id,
             name: agents.get(id)?.profile.name ?? id,
           })),
-          importance: r.rule.consequence.importance,
-        })),
+          importance: cr.rule.consequence.importance,
+        }; }),
         eventCount: eventStore.count,
       }, { headers: cors });
     }).catch((err: Error) =>
@@ -492,14 +492,14 @@ export async function handleRequest(
       broadcast({ type: 'event', data: killEvent });
       return Response.json({
         killEvent,
-        consequences: results.map((r) => ({
-          ruleId: r.rule.id,
-          targets: r.targets.map((id: string) => ({
+        consequences: results.map((r) => { const cr = r as ConsequenceResult; return {
+          ruleId: cr.rule.id,
+          targets: cr.targets.map((id: string) => ({
             id,
             name: agents.get(id)?.profile.name ?? id,
           })),
-          importance: r.rule.consequence.importance,
-        })),
+          importance: cr.rule.consequence.importance,
+        }; }),
         eventCount: eventStore.count,
       }, { headers: cors });
     }).catch((err: Error) =>
@@ -527,14 +527,14 @@ export async function handleRequest(
     return world.advanceDay().then(({ newDay, rumorResults }) =>
       Response.json({
         newDay,
-        rumors: rumorResults.map((r) => ({
-          ruleId: r.rule.id,
-          targets: r.targets.map((id: string) => ({
+        rumors: rumorResults.map((r) => { const cr = r as ConsequenceResult; return {
+          ruleId: cr.rule.id,
+          targets: cr.targets.map((id: string) => ({
             id,
             name: agents.get(id)?.profile.name ?? id,
           })),
-          location: r.event.location,
-        })),
+          location: cr.event.location,
+        }; }),
         eventCount: eventStore.count,
       }, { headers: cors }),
     );
@@ -669,9 +669,10 @@ export async function handleRequest(
     const confidence = Math.max(0, Math.min(1, parseFloat(beliefMatch[4])));
     const objectName = new URL(req.url).searchParams.get('object') ?? null;
     const source = new URL(req.url).searchParams.get('source') ?? 'rumor';
+    const gameDay = world.getCurrentDay();
     agent.state.beliefs?.addBelief({
-      eventType, subject, object: objectName, confidence,
-      source, sourceNpcId: null, location: agent.state.location, gameDay: world.gameDay,
+      id: crypto.randomUUID(), eventType, subject, object: objectName, confidence,
+      source, sourceNpcId: null, location: agent.state.location, gameDay, lastUpdated: gameDay,
     });
     return Response.json({ id: beliefMatch[1], eventType, subject, object: objectName, confidence, source }, { headers: cors });
   }
@@ -879,7 +880,7 @@ export async function handleRequest(
     if (!goal) return Response.json({ error: `Affordance '${body.affordanceId}' not found or invalid` }, { status: 404, headers: cors });
     world.goalManager.addGoal(goal);
     return Response.json({ ok: true, action: 'force-affordance', npcId, affordanceId: body.affordanceId,
-      targetId: body.targetId, goal: { type: goal.type, steps: goal.steps.map((s: Record<string, string>) => s.action + (s.targetId ? ':' + s.targetId : s.location ? ':' + s.location : '')), priority: goal.priority }
+      targetId: body.targetId, goal: { type: goal.type, steps: goal.steps.map((s) => { const st = s as Record<string, string>; return st.action + (st.targetId ? ':' + st.targetId : st.location ? ':' + st.location : ''); }), priority: goal.priority }
     }, { headers: cors });
   }
 

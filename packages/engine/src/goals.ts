@@ -128,7 +128,7 @@ export interface GoalActionResult {
 // ─── Belief Transfer Helper ───
 
 interface BeliefTransferResult {
-  transferred: { eventType: string; subject: string; object?: string }[];
+  transferred: { eventType: string; subject: string | null; object?: string | null }[];
 }
 
 /**
@@ -375,10 +375,11 @@ export class GoalManager {
 
     switch (step.action) {
       case 'move_to': {
+        const s = step as MoveStep;
         // Already at destination → advance step
-        if (owner.state.location === step.location) {
+        if (owner.state.location === s.location) {
           goal.currentStep++;
-          return { ...baseResult, action: 'move_to', description: `${owner.profile.name} arrived at ${step.location}` };
+          return { ...baseResult, action: 'move_to', description: `${owner.profile.name} arrived at ${s.location}` };
         }
 
         // Already in transit → waiting for Master Clock to advance. Skip.
@@ -387,16 +388,16 @@ export class GoalManager {
         }
 
         // Start transit: compute full path, set duration
-        const path = findPath(locations, owner.state.location, step.location);
+        const path = findPath(locations, owner.state.location, s.location);
         if (!path || path.length === 0) {
           goal.currentStep++;
-          return { ...baseResult, action: 'move_to', description: `${owner.profile.name} cannot reach ${step.location}` };
+          return { ...baseResult, action: 'move_to', description: `${owner.profile.name} cannot reach ${s.location}` };
         }
 
         const from = owner.state.location;
         // Transit state set by World.startTransit() or inline here
         owner.state.inTransit = true;
-        owner.state.transitTo = step.location;
+        owner.state.transitTo = s.location;
         owner.state.transitPath = path;
         owner.state.transitProgress = 0;
         // transitStartMinute and transitDuration set by World (it owns gameMinute)
@@ -405,13 +406,14 @@ export class GoalManager {
         return {
           ...baseResult,
           action: 'move_to',
-          description: `${owner.profile.name} starts walking from ${from} to ${step.location} (${path.length} hops)`,
-          movement: { agentId: goal.ownerId, agentName: owner.profile.name, from, to: step.location },
+          description: `${owner.profile.name} starts walking from ${from} to ${s.location} (${path.length} hops)`,
+          movement: { agentId: goal.ownerId, agentName: owner.profile.name, from, to: s.location },
         };
       }
 
       case 'interact': {
-        const target = agents.get(step.targetId);
+        const s = step as InteractStep;
+        const target = agents.get(s.targetId);
         if (!target || !target.state.alive) {
           goal.currentStep++;
           return { ...baseResult, action: 'interact', description: `${owner.profile.name}: target not available` };
@@ -451,25 +453,25 @@ export class GoalManager {
         }
         goal.waitTicks = 0;
 
-        const result = await runInteraction(owner, target, step.purpose, step.importance);
+        const result = await runInteraction(owner, target, s.purpose, s.importance);
 
         // Belief transfer: copy relevant crime beliefs between participants
-        if (step.beliefTransfer && target.state.beliefs && owner.state.beliefs) {
-          const direction = step.beliefTransferDirection ?? 'target-to-owner';
+        if (s.beliefTransfer && target.state.beliefs && owner.state.beliefs) {
+          const direction = s.beliefTransferDirection ?? 'target-to-owner';
           const sender = direction === 'owner-to-target' ? owner : target;
           const receiver = direction === 'owner-to-target' ? target : owner;
-          const senderId = direction === 'owner-to-target' ? goal.ownerId : step.targetId;
+          const senderId = direction === 'owner-to-target' ? goal.ownerId : s.targetId;
 
           const { transferred } = transferBeliefs(sender, receiver, senderId, owner.state.currentDay);
 
           // Emit event if step declares an event type (module-registered via emitEventType)
-          if (onCrimeEvent && step.emitEventType && transferred.length > 0) {
+          if (onCrimeEvent && s.emitEventType && transferred.length > 0) {
             await onCrimeEvent({
-              type: step.emitEventType,
+              type: s.emitEventType,
               subject: goal.ownerId,
-              object: step.targetId,
+              object: s.targetId,
               location: owner.state.location,
-              importance: step.importance,
+              importance: s.importance,
               payload: {
                 guardName: owner.profile.name,
                 witnessName: target.profile.name,
@@ -484,7 +486,7 @@ export class GoalManager {
         runInteractPostHooks(owner, target, step, agents, crimeScenes);
 
         // Unified initiator memory: beliefs + outcome in one entry (no double observe)
-        const purposeShort = (step.purpose ?? '').replace(/\[[A-Z_]+[^\]]*\]\s*/g, '');
+        const purposeShort = (s.purpose ?? '').replace(/\[[A-Z_]+[^\]]*\]\s*/g, '');
         const pShort = purposeShort.length > 50 ? purposeShort.slice(0, 50) + '...' : purposeShort;
         const targetBeliefs3p = target.state.beliefs?.summarizeForMemory(target.profile.name, 1, undefined, target.nameResolver) ?? '';
         const outcome = owner.state.lastInteractionOutcome;
@@ -492,7 +494,7 @@ export class GoalManager {
         owner.state.lastInteractionOutcome = undefined;
         await owner.observe(
           `Talked to ${target.profile.name} about ${pShort}.${targetBeliefs3p ? ` ${targetBeliefs3p}.` : ''}${outcomePart}`,
-          step.importance,
+          s.importance,
         );
 
         goal.currentStep++;
@@ -500,23 +502,24 @@ export class GoalManager {
         return {
           ...baseResult,
           action: 'interact',
-          description: `${owner.profile.name} talked to ${target.profile.name} (${step.purpose})`,
+          description: `${owner.profile.name} talked to ${target.profile.name} (${s.purpose})`,
           interaction: {
-            targetId: step.targetId,
+            targetId: s.targetId,
             targetName: target.profile.name,
             ownerLine: result.ownerLine,
             targetLine: result.targetLine,
-            purpose: step.purpose,
+            purpose: s.purpose,
           },
         };
       }
 
       case 'interact_present': {
+        const s = step as InteractPresentStep;
         const interacted = (goal.data._interacted as string[]) ?? [];
 
         // Find matching NPCs at current location
         const candidates = this.findInteractCandidates(
-          goal.ownerId, owner, agents, step.filter, interacted,
+          goal.ownerId, owner, agents, s.filter, interacted,
         );
 
         if (candidates.length === 0) {
@@ -528,10 +531,10 @@ export class GoalManager {
 
         // Interact with first candidate
         const [targetId, target] = candidates[0];
-        const result = await runInteraction(owner, target, step.purpose, step.importance);
+        const result = await runInteraction(owner, target, s.purpose, s.importance);
 
         // Belief transfer: reporter's transferable beliefs → target (e.g. witness reports to guard)
-        if (step.beliefTransfer) {
+        if (s.beliefTransfer) {
           transferBeliefs(owner, target, goal.ownerId, owner.state.currentDay);
         }
 
@@ -540,7 +543,7 @@ export class GoalManager {
 
         // Check if there are more candidates remaining — if not, advance now
         const remaining = this.findInteractCandidates(
-          goal.ownerId, owner, agents, step.filter, interacted,
+          goal.ownerId, owner, agents, s.filter, interacted,
         );
         if (remaining.length === 0) {
           goal.currentStep++;
@@ -550,18 +553,19 @@ export class GoalManager {
         return {
           ...baseResult,
           action: 'interact',
-          description: `${owner.profile.name} talked to ${target.profile.name} (${step.purpose})`,
+          description: `${owner.profile.name} talked to ${target.profile.name} (${s.purpose})`,
           interaction: {
             targetId,
             targetName: target.profile.name,
             ownerLine: result.ownerLine,
             targetLine: result.targetLine,
-            purpose: step.purpose,
+            purpose: s.purpose,
           },
         };
       }
 
       case 'announce': {
+        const s = step as AnnounceStep;
         // Share message with all NPCs at current location
         const recipients: string[] = [];
         for (const [id, agent] of agents) {
@@ -569,8 +573,8 @@ export class GoalManager {
           if (!agent.state.alive) continue;
           if (agent.state.location !== owner.state.location) continue;
           await agent.observe(
-            `${owner.profile.name} announced: "${step.message}"`,
-            step.importance,
+            `${owner.profile.name} announced: "${s.message}"`,
+            s.importance,
           );
           recipients.push(id);
         }
@@ -579,14 +583,15 @@ export class GoalManager {
         return {
           ...baseResult,
           action: 'announce',
-          description: `${owner.profile.name} announced: "${step.message}"`,
-          announcement: { message: step.message, recipients },
+          description: `${owner.profile.name} announced: "${s.message}"`,
+          announcement: { message: s.message, recipients },
         };
       }
 
       case 'wait': {
+        const s = step as WaitStep;
         const waited = (goal.data._waited as number) ?? 0;
-        if (waited + 1 >= step.ticks) {
+        if (waited + 1 >= s.ticks) {
           goal.data._waited = 0;
           goal.currentStep++;
           return { ...baseResult, action: 'wait', description: `${owner.profile.name} finished waiting` };

@@ -37,7 +37,7 @@ export function startServer(
       const url = new URL(req.url);
 
       if (url.pathname === '/ws') {
-        const upgraded = server.upgrade(req);
+        const upgraded = server.upgrade(req, { data: {} });
         if (!upgraded) {
           return new Response('WebSocket upgrade failed', { status: 400 });
         }
@@ -335,7 +335,7 @@ export function startServer(
         } finally {
           // Always unfreeze NPC after chat completes (success or error)
           if (chatAgentId) {
-            const chatAgent = agents.get(chatAgentId);
+            const chatAgent = ctx.agents.get(chatAgentId);
             if (chatAgent) chatAgent.state.inPlayerChat = false;
           }
         }

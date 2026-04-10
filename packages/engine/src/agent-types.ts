@@ -69,7 +69,7 @@ export interface ShopItem {
 }
 
 /** NPC status — extensible string. Engine checks isActive()/isPresent() helpers. */
-export type NpcStatus = string;
+export type NpcStatus = string | undefined;
 
 /** NPC processing lifecycle state — prevents double-processing, guides Master Clock enqueue logic */
 export type NpcProcessingState =

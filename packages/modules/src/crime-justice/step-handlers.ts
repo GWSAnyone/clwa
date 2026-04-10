@@ -2,6 +2,15 @@ import { registerStepHandler, registerTickPhaseHandler, getEventLabel, getBelief
 import type { Agent, StepExecutionContext, LlmJsonSchema, GoalActionResult, Belief, NpcGoal, GoalManager } from '@clwa/engine';
 import type { CrimeScene } from '@clwa/engine';
 
+// ─── Module Step Types (typed shapes for engine's generic ModuleStep) ─────
+interface StealFromStep { action: 'steal_from'; targetId: string; importance: number; [k: string]: unknown }
+interface AttackNpcStep { action: 'attack_npc'; targetId: string; importance: number; lethal: boolean; reason: string; [k: string]: unknown }
+interface ArrestNpcStep { action: 'arrest_npc'; targetId: string; importance: number; [k: string]: unknown }
+interface DestroyEvidenceStep { action: 'destroy_evidence'; importance: number; [k: string]: unknown }
+interface FleeStep { action: 'flee'; importance: number; [k: string]: unknown }
+interface ExamineSceneStep { action: 'examine_scene'; importance: number; [k: string]: unknown }
+interface SentenceNpcStep { action: 'sentence_npc'; targetId: string; importance: number; [k: string]: unknown }
+
 // ─── Punishment System v2 — Graduated Verdicts ──────────────────
 
 /** Crime severity by event type (module data, not engine) */
@@ -186,7 +195,8 @@ function evaluateInterrogationOutcome(owner: Agent, target: Agent, currentDay: n
 export function registerCrimeStepHandlers(): void {
 
   registerStepHandler('steal_from', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
-    const { goal, step, owner, agents } = ctx;
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as StealFromStep;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const target = agents.get(step.targetId);
     if (!target || !target.state.alive) {
@@ -209,7 +219,8 @@ export function registerCrimeStepHandlers(): void {
   });
 
   registerStepHandler('attack_npc', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
-    const { goal, step, owner, agents } = ctx;
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as AttackNpcStep;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const target = agents.get(step.targetId);
     if (!target || !target.state.alive) { goal.state = 'failed'; return { ...baseResult, action: 'attack_npc', description: `${owner.profile.name}: target not available — attack failed` }; }
@@ -242,7 +253,8 @@ export function registerCrimeStepHandlers(): void {
   });
 
   registerStepHandler('arrest_npc', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
-    const { goal, step, owner, agents, locations } = ctx;
+    const { goal, owner, agents, locations } = ctx;
+    const step = ctx.step as ArrestNpcStep;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const target = agents.get(step.targetId);
     if (!target || !target.state.alive) { goal.currentStep++; return { ...baseResult, action: 'arrest_npc', description: `${owner.profile.name}: target not available` }; }
@@ -275,7 +287,8 @@ export function registerCrimeStepHandlers(): void {
   });
 
   registerStepHandler('destroy_evidence', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
-    const { goal, step, owner, agents } = ctx;
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as DestroyEvidenceStep;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const destroyed = ctx.evidenceLayer?.destroyAt(owner.state.location, ['trace']) ?? 0;
     await owner.observe(`I destroyed evidence at ${owner.state.location}. ${destroyed > 0 ? `Removed ${destroyed} piece(s).` : 'Nothing to destroy.'} I hope no one saw me.`, step.importance);
@@ -287,7 +300,8 @@ export function registerCrimeStepHandlers(): void {
   });
 
   registerStepHandler('flee', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
-    const { goal, step, owner, agents } = ctx;
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as FleeStep;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     owner.state.status = 'fled';
     await owner.observe(`I fled the town through the gate. I can never return. Everything I had here is gone.`, step.importance);
@@ -302,7 +316,8 @@ export function registerCrimeStepHandlers(): void {
   });
 
   registerStepHandler('examine_scene', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
-    const { goal, step, owner, agents } = ctx;
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as ExamineSceneStep;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const undiscovered = ctx.evidenceLayer?.getUndiscovered(owner.state.location, goal.ownerId) ?? [];
     if (undiscovered.length === 0) { goal.currentStep++; return { ...baseResult, action: 'examine_scene', description: `${owner.profile.name}: no evidence here` }; }
@@ -318,7 +333,7 @@ export function registerCrimeStepHandlers(): void {
         id: crypto.randomUUID(),
         eventType: e.eventType,
         subject: e.subjectName,
-        object: e.objectName ?? null,
+        object: e.objectName ?? '',
         location: owner.state.location,
         confidence: e.weight,
         source: 'evidence',
@@ -338,7 +353,8 @@ export function registerCrimeStepHandlers(): void {
   });
 
   registerStepHandler('sentence_npc', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
-    const { goal, step, owner, agents } = ctx;
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as SentenceNpcStep;
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const target = agents.get(step.targetId as string);
     if (!target || target.state.status !== 'detained') { goal.currentStep++; return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name}: no detained suspect` }; }
@@ -455,10 +471,10 @@ export function registerCrimeStepHandlers(): void {
       } finally {
         llmSemaphore.release();
       }
-      if (attempt === 0) console.warn(`[Verdict] Attempt 1 failed for ${suspectName}, retrying with higher maxTokens`);
+      if (attempt === 0) console.warn(`[Verdict] Attempt 1 failed for ${target.profile.name}, retrying with higher maxTokens`);
     }
     if (chosenVerdict === 'release' && reasoning === '') {
-      console.warn(`[Verdict:ERROR] Both attempts failed for ${suspectName}, fallback=release`);
+      console.warn(`[Verdict:ERROR] Both attempts failed for ${target.profile.name}, fallback=release`);
     }
 
     // 9. Apply verdict effects
@@ -482,13 +498,13 @@ export function registerCrimeStepHandlers(): void {
       await target.observe(`Magistrate ${owner.profile.name} sentenced me to ${durationDays} days of imprisonment. I must serve my time.`, step.importance as number);
       ctx.addMoodModifier(step.targetId as string, { source: 'sentence_imprisonment', category: 'event', magnitude: verdictDef.effects.moodShift, remaining: 720, duration: 720, decay: 'exponential' });
     } else if (chosenVerdict === 'release') {
-      target.state.status = undefined;
+      target.state.status = undefined as unknown as string;
       await owner.observe(`I released ${target.profile.name}. ${reasoning}`, step.importance as number);
       await target.observe(`Magistrate ${owner.profile.name} released me. I am free.`, step.importance as number);
       ctx.addMoodModifier(step.targetId as string, { source: 'sentence_release', category: 'event', magnitude: 0.3, remaining: 720, duration: 720, decay: 'exponential' });
     } else {
       // warning, fine — NPC is freed but punished. Social stigma remains.
-      target.state.status = undefined;
+      target.state.status = undefined as unknown as string;
       await owner.observe(`I gave ${target.profile.name} a ${verdictLabel.toLowerCase()}. ${reasoning}`, step.importance as number);
       await target.observe(`Magistrate ${owner.profile.name} sentenced me: ${verdictLabel.toLowerCase()}. The shame is public. ${reasoning}`, step.importance as number);
       ctx.addMoodModifier(step.targetId as string, { source: 'sentence_reaction', category: 'event', magnitude: verdictDef.effects.moodShift, remaining: 720, duration: 720, decay: 'exponential' });

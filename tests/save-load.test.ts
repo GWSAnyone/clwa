@@ -93,6 +93,9 @@ function createTestWorld(): World {
     location: 'market-square',
     confidence: 0.8,
     source: 'witnessed',
+    sourceNpcId: null,
+    gameDay: 1,
+    lastUpdated: 1,
   });
   alice.state.relationships!.addRelationship({
     targetId: 'bob', targetName: 'Bob', type: 'rival', sentiment: -0.3, trust: 0.3,
@@ -231,6 +234,9 @@ describe('Save/Load Round-Trip', () => {
       location: 'tavern',
       confidence: 0.5,
       source: 'heard',
+      sourceNpcId: null,
+      gameDay: 1,
+      lastUpdated: 1,
     });
 
     const snap = world.toJSON();

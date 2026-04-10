@@ -5,7 +5,7 @@ import type { WorldEvent } from '@clwa/engine';
 /** All WebSocket message types server can send */
 export type WSMessage =
   | { type: 'conversation:line'; data: ConversationLine }
-  | { type: 'conversation:complete'; data: ConversationResult }
+  | { type: 'conversation:complete'; data: ConversationResult & { approachPoints?: unknown } }
   | { type: 'tick'; data: TickResult }
   | { type: 'event'; data: WorldEvent }
   | { type: 'reflection'; data: { agentName: string; text: string } }
@@ -19,11 +19,22 @@ export type WSMessage =
   | { type: 'shop:open'; data: { agentId: string; npcName: string; items: Array<{ id: string; name: string; price: number; description: string }> } }
   | { type: 'crime:scene'; data: { id: string; locationId: string; crimeType: string; pointCount: number } }
   | { type: 'journal:entry'; data: JournalEntry }
-  | { type: 'debug:llm'; data: { reason: string; target?: string } };
+  | { type: 'debug:llm'; data: { reason: string; target?: string } }
+  | { type: 'npc_approach'; data: unknown }
+  | { type: 'npc_thought'; data: unknown }
+  | { type: 'relationship_change'; data: unknown }
+  | { type: 'event_cascade'; data: unknown }
+  | { type: 'goal_update'; data: unknown }
+  | { type: 'mood_update'; data: unknown }
+  | { type: 'time_update'; data: unknown }
+  | { type: 'new_game'; data: unknown }
+  | { type: 'player_position'; data: unknown }
+  | { type: 'il_result'; data: unknown };
 
 /** Client → server messages */
 export type WSClientMessage =
   | { type: 'chat'; agentId: string; message: string; evidenceIds?: string[] }
+  | { type: 'chat_open'; agentId: string }
   | { type: 'chat_close'; agentId: string }
   | { type: 'player_move'; x: number; y: number };
 

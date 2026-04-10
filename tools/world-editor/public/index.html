@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLWA World Editor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <h1>World Editor</h1>
+        <p>Millhaven</p>
+      </div>
+      <nav id="nav">
+        <button data-section="npcs"          class="nav-btn"><span class="nav-icon">&#9823;</span> NPCs</button>
+        <button data-section="relationships"  class="nav-btn"><span class="nav-icon">&#8644;</span> Relationships</button>
+        <button data-section="motives"        class="nav-btn"><span class="nav-icon">&#9760;</span> Motives</button>
+        <button data-section="secrets"        class="nav-btn"><span class="nav-icon">&#128065;</span> Secrets</button>
+        <button data-section="locations"      class="nav-btn"><span class="nav-icon">&#9962;</span> Locations</button>
+        <button data-section="topics"         class="nav-btn"><span class="nav-icon">&#128172;</span> Topics</button>
+        <button data-section="config"         class="nav-btn"><span class="nav-icon">&#9881;</span> Config</button>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <main class="main" id="content">
+      <div class="welcome">
+        <div>
+          <div class="welcome-title">CLWA World Editor</div>
+          <div class="welcome-sub">Select a section from the sidebar</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Theme toggle -->
+  <button id="theme-toggle" class="theme-toggle" title="Toggle theme">
+    <span id="theme-icon">&#9790;</span>
+  </button>
+
+  <!-- Toast -->
+  <div id="toast" class="toast toast-success" style="display:none">Saved!</div>
+
+  <script src="app.js"></script>
+</body>
+</html>

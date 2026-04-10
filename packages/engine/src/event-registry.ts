@@ -204,7 +204,6 @@ export function isPursuitEvent(eventType: string): boolean {
 // ─── Event Handlers ───
 // Modules register handlers that execute when specific events fire in handleEventForGoals.
 // Each handler receives the event and a context with agents, goalManager, etc.
-import type { Agent } from './agent';
 import type { WorldEvent, ConsequenceRule } from './cg-types';
 import type { ILEffect } from './il';
 import type { GoalManager } from './goals';

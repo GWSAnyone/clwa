@@ -68,6 +68,8 @@ export interface EventBoost {
   boost: number;
   /** Only apply if NPC has a close relationship with the victim */
   requiresRelationToVictim?: boolean;
+  /** Only apply if NPC has this role */
+  role?: string;
 }
 
 /**
@@ -102,6 +104,8 @@ export interface StepTemplate {
   beliefTransferDirection?: 'target-to-owner' | 'owner-to-target';
   /** After interaction, evaluate if target is a suspect and update confidence based on guilt + H trait */
   evaluateSuspect?: boolean;
+  /** If set, emit an event with this type after interaction (e.g. module-specific event types) */
+  emitEventType?: string;
 }
 
 export interface BeliefModifier {

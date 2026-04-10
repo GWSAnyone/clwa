@@ -342,7 +342,7 @@ async function llmDecideAndBuild(
   const resolvedLocation = targetRaw ? matchName(targetRaw, locationNames) : undefined;
 
   // Unified resolution: action + resolved target → ParsedIntention
-  const parsed = resolveDecision(action, resolvedNpc, resolvedLocation, targetRaw, reason);
+  const parsed = resolveDecision(action, resolvedNpc ?? undefined, resolvedLocation ?? undefined, targetRaw ?? '', reason);
 
   if (!parsed) {
     console.log(`  [AL:llm] ${agent.profile.name} — unresolved: ${action} ${targetRaw}, waiting`);

@@ -270,8 +270,8 @@ function findCrimeSceneForCriminal(npcId: string, agent: Agent, ctx: AffordanceC
   );
   if (!ownCrime) return null;
   return {
-    targetId: npcId, targetName: agent.profile.name, targetLocation: ownCrime.location,
-    extra: { crimeLocation: ownCrime.location },
+    targetId: npcId, targetName: agent.profile.name, targetLocation: ownCrime.location!,
+    extra: { crimeLocation: ownCrime.location! },
   };
 }
 

@@ -1,4 +1,4 @@
-import type { BigFive, EnneagramProfile } from './agent-types';
+import type { BigFive, Enneagram } from './agent-types';
 
 /** Convert Big Five scores to behavioral personality description */
 export function bigFiveToDescription(bf: BigFive): string {
@@ -43,7 +43,7 @@ const GROWTH_DESC: Record<number, string> = {
 };
 
 /** Get stress/growth directive based on mood and Enneagram */
-export function getStressGrowthDirective(mood: number, enn: EnneagramProfile): string {
+export function getStressGrowthDirective(mood: number, enn: Enneagram): string {
   if (mood < -0.5) return STRESS_DESC[enn.stressType] ?? '';
   if (mood > 0.3) return GROWTH_DESC[enn.growthType] ?? '';
   return '';

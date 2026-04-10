@@ -9,10 +9,10 @@ export interface Belief {
   eventType: string;
   /** Who did it (null if unknown) */
   subject: string | null;
-  /** Who was it done to */
-  object: string;
-  /** Where it happened */
-  location: string;
+  /** Who was it done to (null if unknown) */
+  object: string | null;
+  /** Where it happened (null if unknown) */
+  location: string | null;
   /** 0.0 - 1.0 */
   confidence: number;
   /** How the NPC learned this */

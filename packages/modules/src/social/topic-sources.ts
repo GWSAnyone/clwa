@@ -585,7 +585,7 @@ const opinionTopics: TopicSource = (init, resp) => {
 // NPC asks about things they DON'T know — information seeking.
 // Drives organic information flow: "Have you heard about...?"
 
-const questionTopics: TopicSource = (init, resp) => {
+const questionTopics: TopicSource = (init, resp, ctx) => {
   const proposals: TopicProposal[] = [];
   const initBeliefs = init.state.beliefs?.getAllBeliefs() ?? [];
   const respBeliefs = resp.state.beliefs?.getAllBeliefs() ?? [];
