@@ -79,7 +79,7 @@ Player speech → `extractDialogueMeaning()` (LLM, dynamic JSON schema) → `app
 
 Structured facts with confidence and source. Dedup key: (eventType, object, source). Different sources coexist. Decay per source type × eventType decayRate. `getMaxConfidenceFor()` aggregates.
 
-Sources: witness (0.95), body_discovery (0.7), testimony (trust-scaled), rumor (0.4), observation (0.8), deduction (0.3-0.5), evidence (weight-based), personal_motive (pool-assigned, weight 0 — no gossip).
+Sources: witness (0.95), body_discovery (0.7), testimony (trust-scaled), rumor (0.4), observation (0.8), deduction (0.3-0.5), evidence (weight-based), personal_motive (pool-assigned, weight 0 — no gossip), secret (firsthand, weight 0 — NPC's prior knowledge from world JSON).
 
 **Motive beliefs (SPEC-motive-pool):** category 'motive' with types PERSONAL_GRUDGE, REVENGE_DESIRE, THREAT_PERCEIVED. Object = target NPC ID. Assigned from pool at game start (conditional on traits + sentiment) or emergent during gameplay (victimization, deep hatred). EventTypeFlags.decayRate (0.05–0.2) makes motives decay 5–20x slower than facts.
 
@@ -166,7 +166,7 @@ Module-registered builders inject behavioral prompts into NPC system prompt. Che
 | Hilda | 0.3 | 0.8 | 0.4 | 0.3 | 0.2 | 0.7 | 8w9 Challenger | Blacksmith |
 | Mark | 0.5 | 0.3 | 0.7 | 0.3 | 0.6 | 0.2 | 3w2 Achiever | Merchant |
 | Bess | 0.8 | 0.4 | 0.3 | 0.7 | 0.6 | 0.8 | 5w4 Investigator | Herbalist |
-| Theron | 0.4 | 0.95| 0.3 | 0.5 | 0.3 | 0.9 | 1w9 Perfectionist | Judge (canSentence) |
+| Theron | 0.6 | 0.95| 0.4 | 0.4 | 0.2 | 0.9 | 1w9 Perfectionist | Judge (canSentence) |
 
 *Note: these are BASE values. Each run randomizes within ranges defined per archetype (see GDD_DETECTIVE.md).*
 
@@ -195,14 +195,16 @@ Silver Flagon Tavern, Town Square (hub), Town Gate, Market Square, Blacksmith, T
 
 ```
 packages/
-  engine/src/     — subsystems, 30+ empty registries, ZERO module content
+  engine/src/     — subsystems, 40+ empty registries, ZERO module content
   modules/src/
     social/       — 11 topic sources + socialize affordance
     crime-justice/ — 20+ affordances, CG rules, step handlers, target finders
   server/
-    src/          — HTTP/WS, world-loader, bootstrap, position manager
+    src/          — HTTP/WS, world-loader (with JSON validation), bootstrap, position manager
     public/       — Web UI (Canvas2D game client)
-  worlds/millhaven/ — JSON world data (NPC profiles, locations, relationships)
+worlds/millhaven/ — JSON world data (NPC profiles, locations, relationships, motives, secrets, topics)
+tools/world-editor/ — standalone world JSON editor (port 3001, registry-driven dropdowns)
+tests/            — architecture lint, boot smoke, save-load round-trip (61 tests)
 ```
 
 Dependencies: `modules → engine`, `server → engine + modules`. Engine **never** imports modules.
@@ -213,13 +215,16 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ### LLM Usage
 
-| Call | Reasoning | Why |
-|------|-----------|-----|
-| NPC dialogue | OFF | Latency-critical |
-| IL extraction | OFF | Structured output with json_schema constraints |
-| Reflection | ON (experiment) | Complex, not time-critical |
-| Accusation evaluation | None | Deterministic from structured data |
-| Conversation impact | None | Deterministic from TopicProposal |
+| Call | Uses LLM | Why |
+|------|----------|-----|
+| Volition (DO/WHY) | Yes | NPC decision-making, structured output |
+| NPC-NPC dialogue | Yes | Conversation exchanges, structured JSON (speech + gesture) |
+| Player chat (chatStream) | Yes | Free-form NPC responses |
+| IL extraction | Yes | Player speech → DialogueMeaning, json_schema constrained |
+| Reflection | Yes | LLM insight from accumulated memories |
+| Accusation evaluation | No | Deterministic from structured evidence data |
+| Conversation impact | No | Deterministic from TopicProposal fields |
+| Goal step execution | No | Mechanical state changes (move, announce, wait) |
 
 ### Dialogue Quality
 

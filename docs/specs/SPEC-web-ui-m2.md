@@ -1,6 +1,6 @@
 # SPEC-web-ui-m2: Detective Gameplay UI
 
-> **Status:** Draft v4
+> **Status:** IMPLEMENTED (2026-04-08)
 > **Depends on:** SPEC-player-accusation, SPEC-evidence-presentation, SPEC-crime-prevention, SPEC-journal-v2
 > **Goal:** After implementing this spec, a player can sit down and play a complete detective scenario — from crime discovery through investigation to resolution — entirely through the Web UI, using natural language.
 
