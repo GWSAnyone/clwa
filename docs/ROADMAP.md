@@ -18,7 +18,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
-## Текущее состояние: v0.11.1
+## Текущее состояние: v0.12.6
 
 ### Завершено
 
@@ -45,7 +45,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | IL (Intent Layer) | v2 | Player speech → structured meaning → engine effects. Dynamic JSON schema |
 | Beliefs | v1 | Confidence, source dedup, decay, transfer weights |
 | Goals | v1 | Multi-step plans, priority preemption, pursuit, module step handlers |
-| Memory | v1 | Qdrant vector memory, semantic recall, reflection |
+| Memory | v2 | Persistent dual storage (_memoryLog + Qdrant), 3-level fallback, multiplayer-ready |
 | Relationships | v1 | Bilateral sentiment/trust, typed, grief/testimony weights |
 | Perception | v1 | canSee/canHear/getCoPresent/getWitnesses, location-based |
 | Schedule | v1 | 5 periods, per-NPC entries, priority 3 goals |
@@ -61,29 +61,33 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 |---|-----------|--------|----------|--------|
 | 1 | Replayable Crime | v0.11 | Randomization + motive pool → каждый рестарт = другой сценарий | Done |
 | 2 | Detective Toolkit | v0.12 | Accusation, evidence, prevention, journal | Done |
-| 2.5 | **Memory & Infrastructure** | v0.12.x | Persistent NPC memory, gameplay bugfixes, observer tooling | **In Progress** |
+| 2.5 | **Memory & Infrastructure** | v0.12.x | Persistent NPC memory, TS strict, contract validation, world editor | **Done** |
 | 3 | Living Opposition | v0.13 | Garrett variability, escalation, heat, NPC resistance, dual-layer mood, criminal confidence | Spec: CG v2, Design: Mood Review |
 | 4 | Complete Session | v0.14 | Arrival event, win/lose, end-of-run summary | — |
 | 5 | Polish & Demo | v0.15 | Case journal UI, day/night, sound, tutorial, balance, arousal dimension, emotional tagging | Design: Mood Review |
 
-### M2.5 — Memory & Infrastructure (текущий)
+### M2.5 — Memory & Infrastructure (DONE)
 
-Инфраструктурный этап между M2 и M3. Без persistent memory NPC теряют контекст при рестарте, gameplay тестирование неполноценно.
+Инфраструктурный этап между M2 и M3.
+
+**Выполнено (v0.12.0–v0.12.6):**
+| Что | Версия | Описание |
+|-----|--------|----------|
+| Persistent memory | v0.12.0 | Dual storage _memoryLog + Qdrant, 3-level fallback, multiplayer-ready playerId |
+| TypeScript strict | v0.12.1 | 156 errors → 0. 4 runtime bugs fixed (lay_low goals, questionTopics ctx, server.ts agents scope) |
+| Contract validation | v0.12.2 | Runtime guards (addGoal/addBelief), static lint (as any ban), boot arity checks |
+| World editor | v0.12.3–v0.12.6 | 7-section editor, registry-driven dropdowns, world-loader JSON validation |
 
 **Спеки:**
-| Spec | Описание | Статус | Зависимости |
-|------|----------|--------|-------------|
-| [SPEC-persistent-memory](specs/SPEC-persistent-memory.md) | Dual storage, async boot, graceful degradation | Ready | — |
-| [SPEC-multiplayer-memory](specs/SPEC-multiplayer-memory.md) | Player isolation, per-player files, Qdrant filtering | Deferred (Phase 3) | Depends on persistent-memory |
-
-**Bugfixes:**
-- NPC transit speed (transitDuration=0 → sprint) — game.js
-- Location graph verification (Market Square adjacency)
+| Spec | Описание | Статус |
+|------|----------|--------|
+| [SPEC-persistent-memory](specs/SPEC-persistent-memory.md) | Dual storage, async boot, graceful degradation | **Implemented** |
+| [SPEC-ts-strict](specs/SPEC-ts-strict.md) | 156 TS errors → 0 | **Done** |
+| [SPEC-multiplayer-memory](specs/SPEC-multiplayer-memory.md) | Player isolation, per-player files | Deferred (data model ready) |
 
 **Tooling:**
-- claude-observer (Hu Tao statusline, .observer-rules.md)
-
-**Блокирует M3**: persistent memory нужна для полноценного gameplay testing и дальнейшей разработки.
+- claude-observer (Hu Tao statusline, .observer-rules.md, session reset)
+- World Editor (`bun run editor`, port 3001, registry-driven)
 
 ---
 

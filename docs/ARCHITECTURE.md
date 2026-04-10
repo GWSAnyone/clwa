@@ -89,9 +89,17 @@ Multi-step plans. **5 engine step types:** move_to, interact, interact_present, 
 
 Priority preemption. Interact pursuit (chase target up to maxChase attempts). Belief-gated affordances (deductionBelowThreshold blocks investigate when conf ≥ 0.7 → only arrest remains).
 
-### Memory (v1)
+### Memory (v2 — Persistent, SPEC-persistent-memory)
 
-Qdrant vector memory. `decayed_importance = importance × e^(-days / (importance × 5))`. Composite recall: `relevance 0.4 + decayed_importance 0.4 + freshness 0.2`. ReflectionTracker: cumulative importance threshold 30 → LLM insight.
+Dual storage: `_memoryLog` array (primary) + Qdrant (search index, best-effort). Memories survive server restarts.
+
+**MemoryEntry**: id, text, importance, gameDay, timestamp, vector (768-dim cached), embeddingModel (drift detection), protected? (never evicted), playerId (multiplayer-ready, default `__world__`).
+
+**store()**: embed → push to _memoryLog → upsert to Qdrant (best-effort). **recall()**: 3-level fallback — Qdrant search → cosine brute-force on _memoryLog → keyword match. **getAllMemories()**: sync from _memoryLog. **Eviction**: at capacity (200/NPC), lowest decayedImportance, protected immune.
+
+**Scoring**: `decayed_importance = importance × e^(-days / (importance × 5))`. Composite: `relevance 0.4 + decayed_importance 0.4 + freshness 0.2`. ReflectionTracker: cumulative importance threshold 30 → LLM insight.
+
+**Persistence**: toJSON() → save.json (compact, ~800KB for 9 NPC × 5 memories). loadState() → re-embed if model changed → batch upsert to Qdrant. Boot: conditional init, parallel restore, no double knownFacts seeding.
 
 ### Relationships (v1)
 

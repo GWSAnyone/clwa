@@ -1,7 +1,7 @@
 # SPEC: TypeScript Strict Mode Cleanup
 
 > **Milestone**: Infrastructure
-> **Status**: Ready for implementation
+> **Status**: DONE (v0.12.1, 2026-04-10) — 156 errors → 0, 4 runtime bugs found and fixed
 > **Priority**: Low (Bun runtime doesn't enforce, but IDE and CI benefit)
 
 ## Problem

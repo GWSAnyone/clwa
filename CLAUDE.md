@@ -71,7 +71,8 @@ bun install && bun run packages/server/src/index.ts  # → http://localhost:3000
 - **GGUF Patch**: thinking отключён патчем в GGUF binary. В chat template заменено `enable_thinking is defined and` → `if true` (same-length binary replace). Backup: `.bak`.
 - **Web UI**: `http://localhost:3000/game.html` — Canvas2D, Tiny Swords sprites, A* pathfinding. Primary demo client
 - **Godot**: 4.6.1, deferred. Top-down 2D scenes preserved in `godot/`. Old 3D archived to `_archive/clwa-godot-3d/`
-- **Save**: `packages/server/data/save.json` (includes positions)
+- **Save**: `packages/server/data/save.json` (includes positions + memories, compact JSON)
+- **World Editor**: `bun run editor` → http://localhost:3001 (reads/writes `worlds/` JSON)
 
 ## Architecture
 
@@ -184,15 +185,32 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 - **Conversation flow**: CONVERSATION task → findPair (NPCs in wait steps eligible) → runConversation → beliefTransfer → _pendingImpactQueue.push → CONVERSATION_IMPACT task (deterministic, no LLM) → mood modifiers to participants+bystanders → memories → overhear. try/finally on processingState.
 - **Interact pursuit**: target not at location → chase to current location (up to 3 attempts for priority ≥ 7). Not passive timeout.
 - **Belief-gated affordances**: investigate blocked by `deductionBelowThreshold` (conf ≥ 0.7 → arrest only). Structured check, not cooldown.
+- **Persistent Memory (SPEC-persistent-memory)**: `_memoryLog` on VectorMemory = primary storage. Qdrant = search index (best-effort). `store()` → dual write. `recall()` → 3-level fallback (Qdrant → cosine brute-force → keyword). `getAllMemories()` is sync. `toJSON()`/`loadState()` for save/restore. Eviction at capacity (200/NPC), protected memories immune. `playerId` field on every MemoryEntry (default `WORLD_MEMORY_OWNER = "__world__"`). Compact save.json. Boot: conditional Qdrant init, parallel memory restore, no double seeding of knownFacts.
+- **Contract validation**: Runtime guards at engine entry points — `addGoal()` asserts id/ownerId/createdAtMinute/steps, `addBelief()` asserts id/eventType/source/confidence range, `registerStepHandler`/`registerEventHandler` assert non-empty action + function, `registerTopicSource` asserts arity === 3. Static lint: `as any` banned in modules/server (architecture.test.ts). Boot contracts: topic source arity, step handler registration, stepTemplate action field.
+- **World data validation**: `world-loader.ts` validates all JSON against engine registries at load time — secrets (eventType registered, npcId/subject valid), motives (from/to valid), relationships (from/to valid). Warnings logged.
 
 ## Tests
 
-- **Run all**: `bun run test` (or individually: `bun run test:arch`, `bun run test:smoke`, `bun run test:save`)
-- **architecture.test.ts** — static lint: engine boundary, hardcoded module strings, direct mood mutation, text matching
-- **boot-smoke.test.ts** — registry validation: affordance consistency, targetFinder/stepHandler/requirement integrity
-- **save-load.test.ts** — round-trip serialization: beliefs, relationships, mood modifiers, dead agents, edge cases
+- **Run all**: `bun run test` (61 tests, or individually: `bun run test:arch`, `bun run test:smoke`, `bun run test:save`)
+- **architecture.test.ts** — static lint: engine boundary, hardcoded module strings, direct mood mutation, text matching, `as any` ban
+- **boot-smoke.test.ts** — registry validation: affordance consistency, targetFinder/stepHandler/requirement integrity, topic source arity, step handler registration
+- **save-load.test.ts** — round-trip serialization: beliefs, relationships, mood modifiers, dead agents, memories, edge cases
+- **TypeScript strict**: `bun x tsc --noEmit` — target 0 errors. All 156 historical errors resolved.
 - Run `bun run test` before commits.
+
+## World Editor
+
+- **Run**: `bun run editor` (port 3001). `--world=path` for custom world directory.
+- 7 sections: NPCs, Relationships, Motives, Secrets, Locations, Topics, Config
+- All typed fields (eventType, source, subject, motive type, relationship type) use dropdowns from engine registries via `/api/registry`
+- Reads/writes JSON files in `worlds/` directly. Standalone — no dependency on running CLWA server.
 
 ## Current Status
 
-v0.11.1. Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) complete — backend + Web UI (accusation, evidence presentation, crime prevention, journal v2). Mood modifier system (SPEC-mood-modifiers) implemented. Motive pool (SPEC-motive-pool) implemented — 9 conditional motives, emergent motives, belief-based targeting. 14 engine subsystems, 40+ registries, 20+ affordances, 18 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. Next: M3 (Living Opposition) — Garrett variability, escalation, heat, CG v2. See docs/ROADMAP.md for details.
+v0.12.6. Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) complete — backend + Web UI. Milestone 2.5 (Memory & Infrastructure) complete — persistent memory, TS strict, contract validation.
+
+Key systems: persistent NPC memory (dual storage _memoryLog + Qdrant, 3-level fallback, multiplayer-ready playerId), contract validation (runtime guards on addGoal/addBelief/registerStepHandler/registerTopicSource + `as any` lint + boot arity checks), world-loader JSON validation against engine registries.
+
+14 engine subsystems, 40+ registries, 20+ affordances, 22 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. 61 tests, 0 TS errors.
+
+Next: M3 (Living Opposition) — Garrett variability, escalation, heat, CG v2. See docs/ROADMAP.md for details.
