@@ -6,6 +6,7 @@
     "test": "bun test tests/boot-smoke.test.ts tests/save-load.test.ts && bun test tests/architecture.test.ts",
     "test:arch": "bun test tests/architecture.test.ts",
     "test:smoke": "bun test tests/boot-smoke.test.ts",
-    "test:save": "bun test tests/save-load.test.ts"
+    "test:save": "bun test tests/save-load.test.ts",
+    "editor": "bun run tools/world-editor/server.ts"
   }
 }

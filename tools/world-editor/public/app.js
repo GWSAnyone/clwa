@@ -48,6 +48,13 @@ const REL_TYPES = ['friend', 'colleague', 'acquaintance', 'rival', 'enemy'];
 
 async function api(path) { return (await fetch('/api/' + path)).json(); }
 
+// Load world name dynamically
+api('meta').then(meta => {
+  const brand = document.querySelector('.sidebar-brand p');
+  if (brand) brand.textContent = meta.worldName.toUpperCase();
+  document.title = `CLWA World Editor — ${meta.worldName}`;
+});
+
 async function apiPut(path, data) {
   await fetch('/api/' + path, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' },
