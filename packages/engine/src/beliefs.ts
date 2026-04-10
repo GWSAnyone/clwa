@@ -43,6 +43,13 @@ export class BeliefManager {
   private beliefs: Map<string, Belief> = new Map();
 
   addBelief(belief: Belief): void {
+    // Contract guard
+    if (!belief.id) throw new Error(`[Belief] Missing id for ${belief.eventType}`);
+    if (!belief.eventType) throw new Error(`[Belief] Missing eventType`);
+    if (!belief.source) throw new Error(`[Belief] Missing source for ${belief.eventType}`);
+    if (typeof belief.confidence !== 'number' || belief.confidence < 0 || belief.confidence > 1) {
+      throw new Error(`[Belief] Invalid confidence ${belief.confidence} for ${belief.eventType}`);
+    }
     // Check for existing belief about same event+object+source — reinforce instead of duplicate.
     // Different sources create separate beliefs (observation vs evidence vs testimony = coexist).
     // Same source about same event+object = merge (two testimonies about same crime reinforce).

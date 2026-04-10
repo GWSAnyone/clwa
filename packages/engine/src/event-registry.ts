@@ -231,6 +231,8 @@ export type EventHandlerFn = (event: WorldEvent, ctx: EventHandlerContext) => vo
 const EVENT_HANDLERS: Map<string, EventHandlerFn[]> = new Map();
 
 export function registerEventHandler(eventType: string, handler: EventHandlerFn): void {
+  if (!eventType) throw new Error(`[EventHandler] Empty event type`);
+  if (typeof handler !== 'function') throw new Error(`[EventHandler] Handler for '${eventType}' is not a function`);
   const handlers = EVENT_HANDLERS.get(eventType) ?? [];
   handlers.push(handler);
   EVENT_HANDLERS.set(eventType, handlers);
@@ -396,6 +398,8 @@ export type StepHandlerFn = (ctx: StepExecutionContext) => Promise<GoalActionRes
 const STEP_HANDLERS: Map<string, StepHandlerFn> = new Map();
 
 export function registerStepHandler(action: string, handler: StepHandlerFn): void {
+  if (!action) throw new Error(`[StepHandler] Empty action name`);
+  if (typeof handler !== 'function') throw new Error(`[StepHandler] Handler for '${action}' is not a function`);
   STEP_HANDLERS.set(action, handler);
 }
 

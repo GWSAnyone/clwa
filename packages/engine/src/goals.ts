@@ -185,6 +185,11 @@ export class GoalManager {
 
   /** Add a goal for an NPC */
   addGoal(goal: NpcGoal): void {
+    // Contract guard: catch missing/wrong fields from module callers
+    if (!goal.id) throw new Error(`[Goal] Missing id in goal type '${goal.type}'`);
+    if (!goal.ownerId) throw new Error(`[Goal] Missing ownerId in goal type '${goal.type}'`);
+    if (typeof goal.createdAtMinute !== 'number') throw new Error(`[Goal] Missing createdAtMinute in goal type '${goal.type}' for ${goal.ownerId}`);
+    if (!goal.steps?.length) throw new Error(`[Goal] Empty steps in goal type '${goal.type}' for ${goal.ownerId}`);
     if (goal.waitTicks === undefined) goal.waitTicks = 0;
     const list = this.goals.get(goal.ownerId) ?? [];
     list.push(goal);

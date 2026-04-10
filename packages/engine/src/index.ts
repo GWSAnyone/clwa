@@ -138,7 +138,7 @@ export { ConversationScheduler } from './scheduler';
 export type { ScoredPair } from './scheduler';
 
 // ─── Topic Engine ───
-export { TopicEngine, TOPIC_SOURCE_REGISTRY, getTopicGroup, registerTopicGroupMapping } from './topic-engine';
+export { TopicEngine, TOPIC_SOURCE_REGISTRY, registerTopicSource, getTopicGroup, registerTopicGroupMapping } from './topic-engine';
 export type { TopicSource } from './topic-engine';
 export type { TopicContext, TopicProposal } from './topic-engine';
 

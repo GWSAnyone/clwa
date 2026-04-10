@@ -60,8 +60,10 @@ function codeLines(filePath: string): Array<{ lineNum: number; code: string; raw
   return result;
 }
 
+const SERVER_DIR = join(ROOT, 'packages/server/src');
 const engineFiles = collectTsFiles(ENGINE_DIR);
 const moduleFiles = collectTsFiles(MODULES_DIR);
+const serverFiles = collectTsFiles(SERVER_DIR);
 
 // Allowed files for mood assignment (effectiveMood computation only)
 const MOOD_ASSIGN_ALLOWED = new Set(['world.ts']);
@@ -248,6 +250,20 @@ describe('LLM Safety', () => {
       for (const { lineNum, code } of codeLines(f)) {
         if (/handleEventForGoals\s*\(/.test(code) && !/await\s+.*handleEventForGoals/.test(code) && !/async|function|export/.test(code)) {
           violations.push(`${relative(ROOT, f)}:${lineNum}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // ─── 6. No `as any` in module/server code (masks contract violations) ───
+
+  test('no `as any` casts in modules or server code', () => {
+    const violations: string[] = [];
+    for (const f of [...moduleFiles, ...serverFiles]) {
+      for (const { lineNum, code } of codeLines(f)) {
+        if (/\bas\s+any\b/.test(code)) {
+          violations.push(`${relative(ROOT, f)}:${lineNum} — ${code.trim().slice(0, 80)}`);
         }
       }
     }

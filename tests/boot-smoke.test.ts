@@ -379,3 +379,45 @@ describe('Design Invariants', () => {
     }
   });
 });
+
+// ─── Contract Tests — callback signatures ──────────────────────────
+
+describe('Module contract validation', () => {
+  test('all topic sources accept 3 parameters (init, resp, ctx)', () => {
+    const bad: string[] = [];
+    for (let i = 0; i < TOPIC_SOURCE_REGISTRY.length; i++) {
+      const fn = TOPIC_SOURCE_REGISTRY[i];
+      if (fn.length < 3) {
+        bad.push(`TOPIC_SOURCE_REGISTRY[${i}] (${fn.name || 'anonymous'}): has ${fn.length} params, expected 3`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('all registered step handlers are functions', () => {
+    const bad: string[] = [];
+    for (const aff of AFFORDANCE_REGISTRY) {
+      for (const tpl of aff.stepTemplates ?? []) {
+        if (!['move_to', 'interact', 'interact_present', 'announce', 'wait'].includes(tpl.action)) {
+          const handler = getStepHandler(tpl.action);
+          if (!handler) {
+            bad.push(`${aff.id} step '${tpl.action}': no handler registered`);
+          }
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('all affordance stepTemplates have action field', () => {
+    const bad: string[] = [];
+    for (const aff of AFFORDANCE_REGISTRY) {
+      for (const tpl of aff.stepTemplates ?? []) {
+        if (!tpl.action) {
+          bad.push(`${aff.id}: stepTemplate missing action`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});

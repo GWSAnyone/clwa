@@ -127,7 +127,7 @@ const beliefTopics: TopicSource = (init, resp, ctx) => {
 // ─── Relationship Topics ───────────────────────────────────────
 // Topics driven by the relationship between the two speakers.
 
-const relationshipTopics: TopicSource = (init, resp) => {
+const relationshipTopics: TopicSource = (init, resp, _ctx) => {
   const rel = init.state.relationships?.getRelationship(resp.profile.id);
   if (!rel) return [];
 
@@ -186,7 +186,7 @@ const relationshipTopics: TopicSource = (init, resp) => {
 // ─── Inner Conflict Topics ─────────────────────────────────────
 // NPC hints at their innerConflict to someone they trust.
 
-const innerConflictTopics: TopicSource = (init, resp) => {
+const innerConflictTopics: TopicSource = (init, resp, _ctx) => {
   if (!init.profile.innerConflict) return [];
 
   const rel = init.state.relationships?.getRelationship(resp.profile.id);
@@ -210,7 +210,7 @@ const innerConflictTopics: TopicSource = (init, resp) => {
 // ─── Mood Topics ───────────────────────────────────────────────
 // Mood-driven conversation starters.
 
-const moodTopics: TopicSource = (init, resp) => {
+const moodTopics: TopicSource = (init, resp, _ctx) => {
   const proposals: TopicProposal[] = [];
   const initMood = init.state.mood;
   const respMood = resp.state.mood;
@@ -498,7 +498,7 @@ const memoryTopics: TopicSource = (init, resp, ctx) => {
 // NPC A and NPC B discuss NPC C — social web dynamics.
 // "What do you think about Mark?" — alliances, rivalries, trust.
 
-const opinionTopics: TopicSource = (init, resp) => {
+const opinionTopics: TopicSource = (init, resp, _ctx) => {
   const proposals: TopicProposal[] = [];
   const initRels = init.state.relationships?.getAllRelationships() ?? [];
   const respRels = resp.state.relationships?.getAllRelationships() ?? [];

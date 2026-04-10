@@ -92,6 +92,13 @@ const FALLBACK_TOPIC: TopicProposal = {
 // ─── Topic Source Registry (modules push here before World init) ───
 export const TOPIC_SOURCE_REGISTRY: TopicSource[] = [];
 
+/** Register a topic source with arity validation */
+export function registerTopicSource(source: TopicSource): void {
+  if (typeof source !== 'function') throw new Error(`[TopicSource] Expected function, got ${typeof source}`);
+  if (source.length < 3) throw new Error(`[TopicSource] Expected 3 params (init, resp, ctx), got ${source.length} — missing ctx?`);
+  TOPIC_SOURCE_REGISTRY.push(source);
+}
+
 
 // ─── Topic Groups (for diversity tracking + PM influence) ────────
 
