@@ -154,6 +154,26 @@ export class PositionManager {
     return false;
   }
 
+  /** Estimate pixel distance along a path of location slugs (sum of zone center distances) */
+  estimatePathDistance(entityId: string, path: string[]): number {
+    if (path.length === 0) return 0;
+    const pos = this.positions.get(entityId);
+    if (!pos) return 0;
+
+    let total = 0;
+    let px = pos.x, py = pos.y;
+
+    for (const slug of path) {
+      const zone = this.zones.get(slug);
+      if (!zone) continue;
+      const dx = zone.center[0] - px, dy = zone.center[1] - py;
+      total += Math.sqrt(dx * dx + dy * dy);
+      px = zone.center[0];
+      py = zone.center[1];
+    }
+    return total;
+  }
+
   /** Serialize positions for save.json */
   toJSON(): Record<string, { x: number; y: number }> {
     const data: Record<string, { x: number; y: number }> = {};

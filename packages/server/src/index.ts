@@ -4,7 +4,7 @@ const _logFile = initFileLogger();
 import { Agent, VectorMemory, BeliefManager, RelationshipGraph, DEFAULT_TRUST, DEFAULT_SENTIMENT } from '@clwa/engine';
 import { ConsequenceEngine } from '@clwa/engine';
 import { InMemoryEventStore } from '@clwa/engine';
-import { World } from '@clwa/engine';
+import { World, findPath } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
@@ -444,15 +444,18 @@ async function createGameContext(
             console.log(`  [Arrived] ${m.agentName} at ${m.to}`);
             return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: pos?.x ?? 0, targetY: pos?.y ?? 0, transitDuration: 0 };
           }
+          // Compute path BEFORE startMovement (which updates position)
+          const path = findPath(locationGraph, m.from, m.to) ?? [m.to];
+          const pathDistance = positionManager.estimatePathDistance(m.agentId, path);
           const target = positionManager.startMovement(m.agentId, m.to);
           const pos = positionManager.getPosition(m.agentId);
-          // Distance-based transit: fixed speed, variable time
+          // Distance-based transit: use path distance through zone centers (not straight line)
           const TRANSIT_PX_PER_MIN = 80;
           const MIN_TRANSIT_MIN = 3;
-          const distanceDuration = Math.max(MIN_TRANSIT_MIN, Math.ceil(target.distance / TRANSIT_PX_PER_MIN));
+          const distanceDuration = Math.max(MIN_TRANSIT_MIN, Math.ceil(pathDistance / TRANSIT_PX_PER_MIN));
           // Override engine's flat hops*minutesPerHop with distance-proportional value
           if (agent) agent.state.transitDuration = distanceDuration;
-          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to} (${Math.round(target.distance)}px, ${distanceDuration}min)`);
+          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to} (${Math.round(pathDistance)}px via ${path.length} hops, ${distanceDuration}min)`);
           return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: target.targetX, targetY: target.targetY, transitDuration: distanceDuration };
         });
         broadcast({ type: 'movement', data: enriched });
