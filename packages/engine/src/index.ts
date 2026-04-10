@@ -1,7 +1,7 @@
 // ─── Agent ───
 export { Agent, llmSemaphore } from './agent';
 export type { AgentOptions } from './agent';
-export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, ScoredMemory, ShopItem, NpcProcessingState } from './agent-types';
+export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, MemoryEntry, ScoredMemory, ShopItem, NpcProcessingState } from './agent-types';
 export { DEFAULT_LLM_PERSONALITY } from './agent-types';
 export type { NpcStatus } from './agent-types';
 
@@ -16,7 +16,7 @@ export type { RelationType } from './relationships';
 export type { Relationship } from './relationships';
 
 // ─── Memory ───
-export { VectorMemory } from './memory';
+export { VectorMemory, WORLD_MEMORY_OWNER } from './memory';
 
 // ─── Reflection ───
 export { ReflectionTracker } from './reflection';

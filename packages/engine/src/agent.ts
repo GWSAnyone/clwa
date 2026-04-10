@@ -179,8 +179,8 @@ export class Agent {
     return fullReply;
   }
 
-  async observe(event: string, importance: number): Promise<void> {
-    await this.memory.store(event, importance, this.state.currentDay);
+  async observe(event: string, importance: number, isProtected?: boolean): Promise<void> {
+    await this.memory.store(event, importance, this.state.currentDay, isProtected);
 
     const shouldReflect = this.reflectionTracker.track(event, importance);
     if (shouldReflect) {
@@ -258,7 +258,7 @@ export class Agent {
     }
   }
 
-  async getMemories(): Promise<ScoredMemory[]> {
+  getMemories(): ScoredMemory[] {
     return this.memory.getAllMemories(this.state.currentDay);
   }
 

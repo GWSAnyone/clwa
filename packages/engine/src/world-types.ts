@@ -240,6 +240,8 @@ export interface WorldConfig {
   dialogueRule?: string;
   /** Speech constraint for interaction prompts (default: "Speech must be at most 15 words") */
   speechConstraint?: string;
+  /** Max memories per NPC before eviction (default: 200) */
+  memoryCapacity?: number;
 }
 
 // ─── IL Config ───

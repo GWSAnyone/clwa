@@ -130,6 +130,19 @@ export interface Memory {
   timestamp: number;         // unix ms
 }
 
+/** Persistent memory entry with cached embedding vector */
+export interface MemoryEntry {
+  id: string;
+  text: string;
+  importance: number;        // 1-10
+  gameDay: number;
+  timestamp: number;         // unix ms
+  vector: number[];          // cached embedding (768-dim nomic-embed-text-v1.5)
+  embeddingModel: string;    // drift detection
+  protected?: boolean;       // true = never evicted (crime evidence, key events)
+  playerId?: string;         // memory owner: "__world__" or player ID (multiplayer-ready)
+}
+
 export interface ScoredMemory extends Memory {
   relevance: number;         // cosine similarity from Qdrant
   decayedImportance: number;

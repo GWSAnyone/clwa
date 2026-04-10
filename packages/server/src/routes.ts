@@ -231,9 +231,7 @@ export async function handleRequest(
     if (!agent) {
       return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
     }
-    return agent.getMemories().then((mems) =>
-      Response.json(mems, { headers: cors }),
-    );
+    return Response.json(agent.getMemories(), { headers: cors });
   }
 
   // ─── GET /api/shop/:id ───
@@ -771,7 +769,7 @@ export async function handleRequest(
     const { mkdirSync, writeFileSync } = await import('fs');
     const savePath = `data/saves/${name}.json`;
     mkdirSync('data/saves', { recursive: true });
-    const json = JSON.stringify(world.toJSON(), null, 2);
+    const json = JSON.stringify(world.toJSON());
     writeFileSync(savePath, json);
     return Response.json({ ok: true, action: 'save', name, gameMinute: world.gameMinute,
       day: world.getCurrentDay(), agents: agents.size, size: `${(json.length / 1024).toFixed(0)}KB` }, { headers: cors });
@@ -794,6 +792,14 @@ export async function handleRequest(
         agent.state.inTransit = false;
         agent.state.inPlayerChat = false;
       }
+      // Restore memories: Qdrant reset (named saves = time travel) + parallel loadState
+      await Promise.all(
+        Array.from(agents.entries()).map(async ([id, agent]) => {
+          await agent.memory.init({ reset: true });
+          const memories = data.agents?.[id]?.memories ?? [];
+          if (memories.length > 0) await agent.memory.loadState(memories);
+        }),
+      );
       world.startMasterClock();
       return Response.json({ ok: true, action: 'load', name, gameMinute: world.gameMinute }, { headers: cors });
     } catch (err) {

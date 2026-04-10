@@ -93,6 +93,7 @@ export interface WorldSaveAgentData {
   beliefs: import('./beliefs').Belief[];
   relationships: import('./relationships').Relationship[];
   currentMotive?: string;
+  memories?: import('./agent-types').MemoryEntry[];
 }
 
 export interface WorldSaveData {
@@ -1711,6 +1712,7 @@ export class World {
         beliefs: agent.state.beliefs?.toJSON() ?? [],
         relationships: agent.state.relationships?.toJSON() ?? [],
         currentMotive: agent.state.currentMotive,
+        memories: agent.memory?.toJSON() ?? [],
       };
     }
 

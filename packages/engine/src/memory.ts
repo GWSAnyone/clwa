@@ -1,11 +1,14 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { decayedImportance, freshness, compositeScore } from './decay';
-import type { Memory, ScoredMemory } from './agent-types';
+import type { MemoryEntry, ScoredMemory } from './agent-types';
 
 const DEFAULT_VECTOR_SIZE = 768; // nomic-embed-text-v1.5 full Matryoshka (raw fetch bypasses SDK truncation)
 const DEFAULT_EMBEDDING_MODEL = 'text-embedding-nomic-embed-text-v1.5@q8_0';
 /** Qdrant payload key storing embedding metadata for drift detection */
 const META_POINT_ID = '00000000-0000-0000-0000-000000000000';
+
+/** Sentinel for world-scope memories (NPC-NPC, events, knownFacts). Multiplayer-ready. */
+export const WORLD_MEMORY_OWNER = '__world__' as const;
 
 export class VectorMemory {
   private qdrant: QdrantClient;
@@ -13,34 +16,56 @@ export class VectorMemory {
   private collection: string;
   private embeddingModel: string;
   private vectorSize: number;
+  private _memoryLog: MemoryEntry[] = [];
+  private _qdrantAvailable: boolean = true;
+  private _maxCapacity: number;
 
   constructor(
     agentId: string,
-    options?: { lmStudioUrl?: string; embeddingModel?: string; vectorSize?: number },
+    options?: { lmStudioUrl?: string; embeddingModel?: string; vectorSize?: number; maxCapacity?: number },
   ) {
     this.qdrant = new QdrantClient({ url: 'http://localhost:6333' });
     this.lmStudioUrl = options?.lmStudioUrl ?? 'http://localhost:1234/v1';
     this.collection = `agent_${agentId}`;
     this.embeddingModel = options?.embeddingModel ?? DEFAULT_EMBEDDING_MODEL;
     this.vectorSize = options?.vectorSize ?? DEFAULT_VECTOR_SIZE;
+    this._maxCapacity = options?.maxCapacity ?? 200;
   }
 
-  /**
-   * @param options.reset — if true, delete and recreate collection (wipe all memories)
-   */
+  // ─── Init: conditional reset, graceful degradation ──────────────
+
   async init(options?: { reset?: boolean }): Promise<void> {
+    if (options?.reset) {
+      this._memoryLog = [];
+      try {
+        await this.qdrant.deleteCollection(this.collection).catch(() => {});
+        await this.ensureCollection();
+        this._qdrantAvailable = true;
+      } catch (e) {
+        console.warn(`[Memory] Qdrant unavailable on reset, running degraded: ${e}`);
+        this._qdrantAvailable = false;
+      }
+      return;
+    }
+
+    // Non-reset: ensure collection exists, check drift
+    try {
+      await this.ensureCollection();
+      this._qdrantAvailable = true;
+    } catch (e) {
+      console.warn(`[Memory] Qdrant unavailable, running in degraded mode: ${e}`);
+      this._qdrantAvailable = false;
+    }
+  }
+
+  private async ensureCollection(): Promise<void> {
     const collections = await this.qdrant.getCollections();
     const exists = collections.collections.some((c) => c.name === this.collection);
 
     if (exists) {
-      if (options?.reset) {
-        await this.qdrant.deleteCollection(this.collection);
-      } else {
-        // Check for embedding drift: if model or dimension changed, recreate
-        const needsRecreate = await this.checkEmbeddingDrift();
-        if (!needsRecreate) return; // collection is compatible, keep data
-        await this.qdrant.deleteCollection(this.collection);
-      }
+      const needsRecreate = await this.checkEmbeddingDrift();
+      if (!needsRecreate) return;
+      await this.qdrant.deleteCollection(this.collection);
     }
 
     await this.qdrant.createCollection(this.collection, {
@@ -76,6 +101,8 @@ export class VectorMemory {
     }
   }
 
+  // ─── Embed ──────────────────────────────────────────────────────
+
   private async embed(text: string): Promise<number[]> {
     // Raw fetch instead of OpenAI SDK — SDK sends extra params that cause LM Studio
     // to truncate Matryoshka embeddings from 768d to 192d
@@ -92,85 +119,228 @@ export class VectorMemory {
     return data.data[0].embedding;
   }
 
-  async store(text: string, importance: number, gameDay: number): Promise<void> {
+  // ─── Store: dual write ──────────────────────────────────────────
+
+  async store(text: string, importance: number, gameDay: number, isProtected?: boolean, playerId?: string): Promise<void> {
     const vector = await this.embed(text);
-    const id = crypto.randomUUID();
-    await this.qdrant.upsert(this.collection, {
-      points: [
-        {
-          id,
-          vector,
-          payload: {
-            text,
-            importance,
-            gameDay,
-            timestamp: Date.now(),
-          },
-        },
-      ],
-    });
+    const entry: MemoryEntry = {
+      id: crypto.randomUUID(),
+      text,
+      importance,
+      gameDay,
+      timestamp: Date.now(),
+      vector,
+      embeddingModel: this.embeddingModel,
+      protected: isProtected || undefined,
+      playerId: playerId ?? WORLD_MEMORY_OWNER,
+    };
+
+    this._memoryLog.push(entry);
+    this.evictIfNeeded();
+
+    // Search index (best-effort)
+    if (this._qdrantAvailable) {
+      try {
+        await this.qdrant.upsert(this.collection, {
+          points: [{ id: entry.id, vector: entry.vector, payload: this.entryPayload(entry) }],
+        });
+      } catch (e) {
+        console.warn(`[Memory] Qdrant upsert failed, search degraded: ${e}`);
+        this._qdrantAvailable = false;
+      }
+    }
   }
 
-  async recall(query: string, currentDay: number, topK: number = 5): Promise<ScoredMemory[]> {
-    const queryVector = await this.embed(query);
-    const results = await this.qdrant.search(this.collection, {
-      vector: queryVector,
-      limit: topK * 3,
-      with_payload: true,
-    });
+  // ─── Recall: composite scoring, 3-level fallback ───────────────
 
-    const scored: ScoredMemory[] = results.filter((r) => r.id !== META_POINT_ID).map((r) => {
-      const p = r.payload as Record<string, unknown>;
-      const imp = p.importance as number;
-      const day = p.gameDay as number;
-      const daysPassed = currentDay - day;
-      const decayed = decayedImportance(imp, daysPassed);
-      const fresh = freshness(daysPassed);
-      const relevance = r.score;
+  async recall(query: string, currentDay: number, topK: number = 5, playerId?: string): Promise<ScoredMemory[]> {
+    let results: ScoredMemory[];
 
-      return {
-        id: String(r.id),
-        text: p.text as string,
-        importance: imp,
-        gameDay: day,
-        timestamp: p.timestamp as number,
-        relevance,
-        decayedImportance: decayed,
-        freshness: fresh,
-        compositeScore: compositeScore(relevance, decayed, fresh),
-      };
-    });
+    if (this._qdrantAvailable) {
+      try {
+        const vector = await this.embed(query);
+        const raw = await this.qdrant.search(this.collection, {
+          vector, limit: topK * 3, with_payload: true,
+        });
+        results = raw
+          .filter((r) => r.id !== META_POINT_ID)
+          .map((r) => {
+            const p = r.payload as Record<string, unknown>;
+            const entryPlayerId = (p.playerId as string) ?? WORLD_MEMORY_OWNER;
+            return { ...this.payloadToScore(p, currentDay), relevance: r.score, entryPlayerId };
+          })
+          .filter((m) => this.matchesPlayerScope(m.entryPlayerId, playerId))
+          .map(({ entryPlayerId: _, ...rest }) => rest);
+      } catch (e) {
+        console.warn(`[Memory] Qdrant search failed, falling back to cosine: ${e}`);
+        this._qdrantAvailable = false;
+        results = await this.fallbackRecall(query, currentDay, topK * 3, playerId);
+      }
+    } else {
+      results = await this.fallbackRecall(query, currentDay, topK * 3, playerId);
+    }
 
-    scored.sort((a, b) => b.compositeScore - a.compositeScore);
-    return scored.slice(0, topK);
+    // Composite scoring: relevance × 0.4 + decayedImportance × 0.4 + freshness × 0.2
+    for (const m of results) {
+      m.compositeScore = m.relevance * 0.4 + m.decayedImportance * 0.4 + m.freshness * 0.2;
+    }
+    results.sort((a, b) => b.compositeScore - a.compositeScore);
+    return results.slice(0, topK);
   }
 
-  async getAllMemories(currentDay: number): Promise<ScoredMemory[]> {
-    const result = await this.qdrant.scroll(this.collection, {
-      limit: 100,
-      with_payload: true,
-      with_vector: false,
-    });
-
-    return result.points.filter((p) => p.id !== META_POINT_ID).map((p) => {
-      const payload = p.payload as Record<string, unknown>;
-      const imp = payload.importance as number;
-      const day = payload.gameDay as number;
-      const daysPassed = currentDay - day;
-      const decayed = decayedImportance(imp, daysPassed);
-      const fresh = freshness(daysPassed);
-
-      return {
-        id: String(p.id),
-        text: payload.text as string,
-        importance: imp,
-        gameDay: day,
-        timestamp: payload.timestamp as number,
-        relevance: 0,
-        decayedImportance: decayed,
-        freshness: fresh,
-        compositeScore: 0,
-      };
-    });
+  /** Fallback: brute-force cosine on _memoryLog */
+  private async fallbackRecall(query: string, currentDay: number, limit: number, playerId?: string): Promise<ScoredMemory[]> {
+    let qVec: number[];
+    try {
+      qVec = await this.embed(query);
+    } catch {
+      // LM Studio also down — keyword fallback
+      return this.keywordRecall(query, currentDay, limit, playerId);
+    }
+    const filtered = this.filterByPlayer(playerId);
+    return filtered.map((e) => ({
+      ...this.baseScore(e, currentDay),
+      relevance: cosineSimilarity(qVec, e.vector),
+    })).sort((a, b) => b.relevance - a.relevance).slice(0, limit);
   }
+
+  /** Last resort: keyword match when both Qdrant and LM Studio down */
+  private keywordRecall(query: string, currentDay: number, limit: number, playerId?: string): ScoredMemory[] {
+    const words = query.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
+    const filtered = this.filterByPlayer(playerId);
+    return filtered
+      .map((e) => {
+        const text = e.text.toLowerCase();
+        const hits = words.filter((w) => text.includes(w)).length;
+        return { ...this.baseScore(e, currentDay), relevance: hits / Math.max(words.length, 1) };
+      })
+      .filter((m) => m.relevance > 0)
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, limit);
+  }
+
+  // ─── getAllMemories: sync, from _memoryLog ──────────────────────
+
+  getAllMemories(currentDay: number, playerId?: string): ScoredMemory[] {
+    const filtered = this.filterByPlayer(playerId);
+    return filtered.map((e) => this.baseScore(e, currentDay));
+  }
+
+  // ─── Persistence ────────────────────────────────────────────────
+
+  toJSON(): MemoryEntry[] {
+    return this._memoryLog;
+  }
+
+  async loadState(entries: MemoryEntry[]): Promise<void> {
+    // Migration: add playerId if missing (v1 → v2)
+    for (const e of entries) {
+      if (!e.playerId) e.playerId = WORLD_MEMORY_OWNER;
+    }
+    this._memoryLog = entries;
+
+    // Re-embed if model changed
+    const needsReembed = entries.length > 0 && entries.some((e) => e.embeddingModel !== this.embeddingModel);
+    if (needsReembed) {
+      console.warn(`[Memory] Embedding model changed, re-embedding ${entries.length} memories...`);
+      let done = 0;
+      for (const e of entries) {
+        if (e.embeddingModel !== this.embeddingModel) {
+          e.vector = await this.embed(e.text);
+          e.embeddingModel = this.embeddingModel;
+        }
+        if (++done % 50 === 0) console.log(`[Memory] Re-embedded ${done}/${entries.length}...`);
+      }
+    }
+
+    // Batch upsert to Qdrant (rebuild search index from _memoryLog)
+    if (entries.length > 0 && this._qdrantAvailable) {
+      try {
+        await this.qdrant.upsert(this.collection, {
+          points: entries.map((e) => ({ id: e.id, vector: e.vector, payload: this.entryPayload(e) })),
+        });
+      } catch (e) {
+        console.warn(`[Memory] Qdrant batch upsert failed: ${e}`);
+        this._qdrantAvailable = false;
+      }
+    }
+  }
+
+  // ─── Eviction: decayedImportance, protected memories immune ─────
+
+  private evictIfNeeded(): void {
+    if (this._memoryLog.length <= this._maxCapacity) return;
+
+    const currentDay = Math.max(...this._memoryLog.map((e) => e.gameDay));
+    let worstIdx = -1;
+    let worstScore = Infinity;
+    for (let i = 0; i < this._memoryLog.length; i++) {
+      const e = this._memoryLog[i];
+      if (e.protected) continue; // protected memories NEVER evicted
+      const score = decayedImportance(e.importance, currentDay - e.gameDay);
+      if (score < worstScore) { worstScore = score; worstIdx = i; }
+    }
+
+    if (worstIdx === -1) return; // all protected — over capacity but can't evict
+    const victim = this._memoryLog[worstIdx];
+    this._memoryLog.splice(worstIdx, 1);
+    if (this._qdrantAvailable) {
+      this.qdrant.delete(this.collection, { points: [victim.id] }).catch(() => {});
+    }
+  }
+
+  // ─── Player scope filtering (multiplayer-ready) ────────────────
+
+  private filterByPlayer(playerId?: string): MemoryEntry[] {
+    if (!playerId) return this._memoryLog.filter((e) => e.playerId === WORLD_MEMORY_OWNER);
+    return this._memoryLog.filter((e) => e.playerId === playerId || e.playerId === WORLD_MEMORY_OWNER);
+  }
+
+  private matchesPlayerScope(entryPlayerId: string, queryPlayerId?: string): boolean {
+    if (!queryPlayerId) return entryPlayerId === WORLD_MEMORY_OWNER;
+    return entryPlayerId === queryPlayerId || entryPlayerId === WORLD_MEMORY_OWNER;
+  }
+
+  // ─── Helpers ────────────────────────────────────────────────────
+
+  private entryPayload(e: MemoryEntry): Record<string, unknown> {
+    return { text: e.text, importance: e.importance, gameDay: e.gameDay, timestamp: e.timestamp, playerId: e.playerId ?? WORLD_MEMORY_OWNER };
+  }
+
+  private baseScore(e: MemoryEntry, currentDay: number): ScoredMemory {
+    const daysPassed = currentDay - e.gameDay;
+    return {
+      id: e.id, text: e.text, importance: e.importance,
+      gameDay: e.gameDay, timestamp: e.timestamp,
+      relevance: 0,
+      decayedImportance: decayedImportance(e.importance, daysPassed),
+      freshness: freshness(daysPassed),
+      compositeScore: 0,
+    };
+  }
+
+  private payloadToScore(p: Record<string, unknown>, currentDay: number): ScoredMemory {
+    const imp = p.importance as number;
+    const day = p.gameDay as number;
+    const daysPassed = currentDay - day;
+    return {
+      id: String(p.id ?? ''),
+      text: p.text as string,
+      importance: imp,
+      gameDay: day,
+      timestamp: p.timestamp as number,
+      relevance: 0,
+      decayedImportance: decayedImportance(imp, daysPassed),
+      freshness: freshness(daysPassed),
+      compositeScore: 0,
+    };
+  }
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0, magA = 0, magB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]; magA += a[i] * a[i]; magB += b[i] * b[i];
+  }
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB) + 1e-8);
 }

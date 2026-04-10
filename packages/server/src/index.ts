@@ -158,7 +158,8 @@ function saveToDisk(ctx: GameContext): void {
     positions: ctx.positionManager?.toJSON(),
   };
   mkdirSync(SAVE_DIR, { recursive: true });
-  writeFileSync(SAVE_PATH, JSON.stringify(data, null, 2));
+  // Compact stringify — vectors in memories make pretty-print ~4x larger
+  writeFileSync(SAVE_PATH, JSON.stringify(data));
   console.log(`  [Save] State saved to ${SAVE_PATH}`);
 }
 
@@ -560,6 +561,18 @@ async function main() {
       ctx.positionManager.loadFromJSON(savedData.positions);
       console.log(`  [+] Positions restored from save`);
     }
+
+    // Async memory restore: init Qdrant without reset, then load memories from save
+    await Promise.all(
+      Array.from(ctx.agents.entries()).map(async ([id, agent]) => {
+        await agent.memory.init({ reset: false });
+        const memories = savedData.world.agents[id]?.memories ?? [];
+        if (memories.length > 0) {
+          await agent.memory.loadState(memories);
+          console.log(`  [Memory] ${agent.profile.name}: ${memories.length} memories restored`);
+        }
+      }),
+    );
   }
 
   // ─── New Game handler (exposed to routes via ctx) ───
