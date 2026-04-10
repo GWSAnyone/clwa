@@ -43,7 +43,7 @@ const TRAIT_NAMES = {
 };
 const PERIOD_LABELS = { dawn: 'Dawn', morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
 const MOTIVE_LABELS = { THREAT_PERCEIVED: 'Threat', REVENGE_DESIRE: 'Revenge', PERSONAL_GRUDGE: 'Grudge' };
-const REL_TYPES = ['friend', 'colleague', 'acquaintance', 'rival', 'enemy'];
+let REL_TYPES = ['friend', 'colleague', 'acquaintance', 'rival', 'enemy']; // overridden by registry
 
 async function api(path) { return (await fetch('/api/' + path)).json(); }
 
@@ -190,6 +190,7 @@ async function loadRefs() {
     registeredEventTypes = reg.eventTypes;
     registeredMotiveTypes = reg.motiveTypes;
     registeredSources = reg.sources;
+    if (reg.relationshipTypes?.length) REL_TYPES = reg.relationshipTypes;
   }
 }
 
@@ -218,7 +219,8 @@ document.getElementById('nav').addEventListener('click', async (e) => {
 async function renderNpcs() {
   const npcs = await api('npcs');
   $content.innerHTML = '';
-  $content.append(sectionHeader('NPCs', `${npcs.length} characters in Millhaven`));
+  const meta = await api('meta');
+  $content.append(sectionHeader('NPCs', `${npcs.length} characters in ${meta.worldName}`));
 
   const grid = h('div', { class: 'npc-grid' });
   for (const npc of npcs) {
@@ -642,7 +644,7 @@ async function renderLocations() {
   const data = JSON.parse(JSON.stringify(world));
 
   $content.innerHTML = '';
-  $content.append(sectionHeader('Locations', `${data.locations.length} locations in Millhaven`, async () => apiPut('world', data)));
+  $content.append(sectionHeader('Locations', `${data.locations.length} locations in ${data.name}`, async () => apiPut('world', data)));
 
   data.locations.forEach((loc, i) => {
     $content.append(h('div', { class: 'card mb-md' }, [
@@ -666,10 +668,8 @@ async function renderTopics() {
   const topics = await api('topics');
   let data = JSON.parse(JSON.stringify(topics));
 
-  const ROLE_LABELS = {
-    bartender: 'Bartender', merchant: 'Merchant', guard: 'Guard', priest: 'Priest',
-    bard: 'Bard', blacksmith: 'Blacksmith', judge: 'Judge', herbalist: 'Herbalist',
-  };
+  // Role labels: capitalize first letter (no hardcoded map)
+  const roleLabel = (r) => r.charAt(0).toUpperCase() + r.slice(1);
 
   function render() {
     $content.innerHTML = '';
@@ -682,7 +682,7 @@ async function renderTopics() {
       const arrow = h('span', { class: 'accordion-arrow', html: '&#9654;' });
       const header = h('div', { class: 'accordion-header' }, [
         h('div', { class: 'flex-row gap-sm' }, [
-          h('span', { style: { color: ROLE_COLORS[role] || 'var(--text)', fontWeight: '600' }, text: ROLE_LABELS[role] || role }),
+          h('span', { style: { color: ROLE_COLORS[role] || 'var(--text)', fontWeight: '600' }, text: roleLabel(role) }),
           h('span', { style: { color: 'var(--text-muted)', fontSize: '0.75rem' }, text: `${data[role].length} topics` }),
         ]),
         arrow,

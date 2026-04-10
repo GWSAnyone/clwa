@@ -56,11 +56,21 @@ async function handleAPI(req: Request, pathname: string): Promise<Response> {
     const npcsDir = join(WORLD_DIR, "npcs");
     const files = await readdir(npcsDir);
     const npcIds = files.filter(f => f.endsWith(".json")).map(f => f.replace(".json", ""));
+    // Collect relationship types from world data
+    const rels = await readJSON(join(WORLD_DIR, "relationships.json")) as Array<{ type?: string }>;
+    const relTypes = [...new Set(rels.map(r => r.type).filter(Boolean))].sort();
+    // Collect roles from NPC data
+    const npcData = await Promise.all(
+      files.filter(f => f.endsWith(".json")).map(f => readJSON(join(npcsDir, f)))
+    ) as Array<{ role?: string }>;
+    const roles = [...new Set(npcData.map(n => n.role).filter(Boolean))].sort();
     return Response.json({
       eventTypes: getAllRegisteredEventTypes(),
       motiveTypes: getEventTypesByCategory('motive'),
       sources: [...getAllRegisteredSources(), ...Object.values(BELIEF_SOURCE)].filter((v, i, a) => a.indexOf(v) === i),
       npcIds,
+      relationshipTypes: [...new Set([...relTypes, 'friend', 'colleague', 'acquaintance', 'rival', 'enemy'])].sort(),
+      roles,
     }, { headers: cors });
   }
 
