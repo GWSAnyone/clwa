@@ -189,28 +189,141 @@ Eviction по `decayedImportance()` в рамках каждого scope отд�
 | **Player file corruption** | `JSON.parse` в try/catch → если fail, пустые memories для этого player. Log warning. |
 | **Migration from v1 (no playerId)** | Все existing memories получают `playerId = "__world__"`. Автоматическая миграция в loadState: `if (!entry.playerId) entry.playerId = "__world__"`. |
 
+## Gaps identified by audit (must close before implementation)
+
+### Gap 1: Player Agent memory scope
+
+Player Agent тоже имеет VectorMemory. В мультиплеере:
+- Player A обнаружил труп → Player A's Agent gets memory. World event? Player-specific?
+- Player B подслушал разговор NPC → memory для Player B's Agent.
+
+**Решение**: Player Agent memories = **всегда private** (playerId = own ID). Мировые события (body discovered, crime scenes) создают memories для ВСЕХ agents, включая players — это world-scope через event system, но каждый Agent получает свою копию в свой VectorMemory. Player Agent's memories не расшариваются.
+
+### Gap 2: fallbackRecall с playerId
+
+v1 добавляет fallbackRecall (brute-force cosine). v2 добавляет playerId filtering. fallbackRecall должен тоже фильтровать:
+
+```typescript
+private async fallbackRecall(query: string, currentDay: number, limit: number, playerId?: string): Promise<ScoredMemory[]> {
+  const filtered = playerId
+    ? this._memoryLog.filter(e => e.playerId === playerId || e.playerId === WORLD_MEMORY_OWNER)
+    : this._memoryLog.filter(e => e.playerId === WORLD_MEMORY_OWNER);
+  // ...cosine similarity on filtered...
+}
+```
+
+### Gap 3: getAllMemories scope filtering
+
+`getAllMemories()` читает из `_memoryLog`. В v2 `_memoryLog` содержит все scopes. API `/api/memories/:id` не должен показывать player-specific memories.
+
+```typescript
+getAllMemories(currentDay: number, playerId?: string): ScoredMemory[]
+  // playerId set → this player + world
+  // playerId not set → world only
+```
+
+### Gap 4: `"__world__"` как engine constant
+
+```typescript
+// В engine/src/memory.ts:
+export const WORLD_MEMORY_OWNER = "__world__" as const;
+```
+
+Не хардкодить строку — engine-level constant, аналогично `BELIEF_SOURCE.TESTIMONY`.
+
+### Gap 5: inPlayerChatWith вместо inPlayerChat boolean
+
+```typescript
+// Сейчас: inPlayerChat: boolean
+// Мультиплеер: inPlayerChatWith: string | null  (playerId или null)
+```
+
+Boolean не показывает КТО занял NPC. Для multiplayer нужен ID чтобы:
+- Показать другим "NPC is talking to someone"
+- Разрешить тому же player пере-подключиться к чату после disconnect
+
+### Gap 6: Player file retention policy
+
+Без TTL файлы копятся вечно. 10,000 игроков × 2.7MB = 27GB.
+
+```
+Retention policy:
+- Files older than 90 days without connection → archive/delete
+- Max 1000 active player files. FIFO eviction on overflow.
+- Configurable in WorldConfig: playerMemoryTTLDays, maxPlayerFiles
+```
+
+### Gap 7: unloadPlayerMemories — explicit strategy
+
+Не "optional". Явное решение:
+
+**На disconnect**: удалить player-specific points из Qdrant. Причины:
+- Без удаления Qdrant растёт с каждым подключением (points never removed)
+- При reconnect — loadPlayerMemories upsert'ит заново из файла
+- Qdrant delete по filter = быстро (~10ms)
+
+```typescript
+async unloadPlayerMemories(playerId: string): MemoryEntry[] {
+  const entries = this._memoryLog.filter(e => e.playerId === playerId);
+  this._memoryLog = this._memoryLog.filter(e => e.playerId !== playerId);
+  // Delete from Qdrant
+  if (this._qdrantAvailable) {
+    const ids = entries.map(e => e.id);
+    await this.qdrant.delete(this.collection, { points: ids }).catch(() => {});
+  }
+  return entries;
+}
+```
+
+### Gap 8: toJSON() breaking change v1→v2
+
+v1: `toJSON()` returns all memories.
+v2: `toJSON()` returns world-only. `toPlayerJSON(playerId)` returns player-specific.
+
+**Migration strategy**: v2 code checks `toJSON()` caller context. Main save → world-only. Player file → player-specific. No breaking change if callers are updated at same time as VectorMemory.
+
+Document in implementation checklist: "Update all toJSON() callers in World.toJSON() and player save logic".
+
+### Gap 9: Integration test v1→v2
+
+```
+Test: v1 save → v2 code load → player connects → memories correct
+1. Create v1 save.json with memories (no playerId field)
+2. Load with v2 code → migration adds "__world__" to all
+3. Player connects → gets world memories in recall
+4. Player stores new memory → gets playerId
+5. Save → world memories in save.json, player memories in player file
+6. Reload → both restored correctly
+```
+
 ## Что НЕ решает эта спека
 
-- **Multiplayer Agent architecture** — сколько player Agent'ов, как они соотносятся с bilateral design, shared world vs instanced zones. Отдельная спека.
-- **Concurrent NPC processing** — сейчас ProcessingQueue serial. С multiplayer нужен параллелизм. Отдельная спека.
-- **Player authentication** — откуда берётся playerId (auth, session cookie, etc.). Отдельная спека.
+- **Multiplayer Agent architecture** — сколько player Agent'ов, shared world vs instanced zones. Отдельная спека.
+- **Concurrent NPC processing** — ProcessingQueue serial → parallel. Отдельная спека.
+- **Player authentication** — откуда playerId (auth, session cookie). Отдельная спека.
 - **Consolidation** — memory summarization при overflow. DEFERRED M3+.
 
 ## Реализация (checklist)
 
 Когда придёт время имплементировать:
 
-1. [ ] Добавить `playerId: string` в `MemoryEntry` (default `"__world__"`)
-2. [ ] Миграция: loadState добавляет `"__world__"` если playerId отсутствует
-3. [ ] `store()` принимает optional playerId
-4. [ ] `recall()` принимает optional playerId, строит Qdrant filter
-5. [ ] `toJSON()` возвращает только world memories
-6. [ ] `toPlayerJSON(playerId)` возвращает player-specific memories
-7. [ ] `loadPlayerMemories()` / `unloadPlayerMemories()` для connect/disconnect
-8. [ ] Server: WS handshake с playerId
-9. [ ] Server: onConnect → load player file → upsert
-10. [ ] Server: onDisconnect → extract player memories → save file
-11. [ ] Server: chat handler передаёт playerId в memory.store()
-12. [ ] Per-scope eviction (200 world, 100 per player)
-13. [ ] `inPlayerChat` блокировка для concurrent chat attempts
-14. [ ] Tests: player isolation, concurrent access, migration, round-trip
+1. [ ] `WORLD_MEMORY_OWNER` constant в engine/src/memory.ts
+2. [ ] Добавить `playerId: string` в `MemoryEntry` (default `WORLD_MEMORY_OWNER`)
+3. [ ] Миграция: loadState добавляет `WORLD_MEMORY_OWNER` если playerId отсутствует
+4. [ ] `store()` принимает optional playerId
+5. [ ] `recall()` принимает optional playerId, строит Qdrant filter
+6. [ ] `fallbackRecall()` фильтрует по playerId
+7. [ ] `keywordRecall()` фильтрует по playerId
+8. [ ] `getAllMemories()` принимает optional playerId
+9. [ ] `toJSON()` возвращает только world memories
+10. [ ] `toPlayerJSON(playerId)` возвращает player-specific memories
+11. [ ] `loadPlayerMemories()` / `unloadPlayerMemories()` (с Qdrant delete)
+12. [ ] `inPlayerChatWith: string | null` вместо `inPlayerChat: boolean`
+13. [ ] Server: WS handshake с playerId
+14. [ ] Server: onConnect → load player file → upsert
+15. [ ] Server: onDisconnect → unload + save player file
+16. [ ] Server: chat handler передаёт playerId в memory.store()
+17. [ ] Per-scope eviction (configurable в WorldConfig)
+18. [ ] Player file retention policy (TTL + max count)
+19. [ ] Tests: player isolation, concurrent access, migration v1→v2, round-trip, fallback with playerId
+20. [ ] Integration test: v1 save → v2 load → player connect → verify

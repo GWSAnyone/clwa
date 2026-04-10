@@ -1,4 +1,4 @@
-# SPEC: Persistent NPC Memory (v2 — post-audit)
+# SPEC: Persistent NPC Memory (v3 — post-audit + manual review)
 
 > **Milestone**: M2.5 (Memory & Infrastructure)
 > **Статус**: Ready for implementation
@@ -9,9 +9,7 @@
 
 ## Проблема
 
-`memory.init({ reset: true })` в `index.ts:270` уничтожает Qdrant коллекции при каждом запуске. NPC теряют episodic memory (текст разговоров, наблюдения). Beliefs (структурированные факты) сохраняются в save.json, но vector memories — нет.
-
-Игрок поговорил с Garrett об убийстве → рестарт → Garrett не помнит разговор (хотя belief "Mark подозреваемый" сохранился).
+`memory.init({ reset: true })` в `index.ts:270` уничтожает Qdrant коллекции при каждом запуске. NPC теряют episodic memory. Beliefs сохраняются в save.json, vector memories — нет.
 
 ## Решение: Dual Storage (Stanford подход)
 
@@ -19,19 +17,15 @@ In-memory массив `_memoryLog` на VectorMemory — **primary storage**. Q
 
 ```
 store(text) → embed → push to _memoryLog (text + vector + meta) → upsert to Qdrant
-save()      → _memoryLog → save.json
+save()      → _memoryLog → save.json (через World.toJSON → WorldSaveAgentData.memories)
 load()      → save.json → _memoryLog → batch upsert to Qdrant (parallel)
-recall()    → search Qdrant (как сейчас)
-getAllMemories() → read from _memoryLog (NOT Qdrant)
+recall()    → Qdrant search → composite scoring (relevance + decayedImportance + freshness)
+getAllMemories() → read from _memoryLog (NOT Qdrant) — sync
 ```
 
-Qdrant — expendable index. Можно удалить, переустановить, сменить версию — данные восстановятся из save.json.
+## Scope: Single-player only
 
-## Scope v1: Single-player only
-
-**playerId / multiplayer isolation — DEFERRED.** По рекомендации аудита: v1 реализует persistence без player isolation. Все memories = world memories. Player-NPC multiplayer filtering — отдельная спецификация когда мультиплеер станет актуален.
-
-Причина: playerId смешивает два концепта (bilateral `isPlayer` flag vs multiplayer session identity), и требует отдельной архитектурной проработки.
+playerId / multiplayer isolation — DEFERRED (see SPEC-multiplayer-memory).
 
 ## MemoryEntry
 
@@ -43,36 +37,46 @@ interface MemoryEntry {
   gameDay: number;         // in-game day
   timestamp: number;       // unix ms
   vector: number[];        // 768-dim nomic-embed-text-v1.5, cached
-  embeddingModel: string;  // "nomic-embed-text-v1.5" — для drift detection
+  embeddingModel: string;  // "nomic-embed-text-v1.5" — drift detection
+  protected?: boolean;     // true = never evicted (crime evidence, key events)
 }
 ```
 
-### Реальные размеры
+### Реальные размеры (с pretty-print)
 
-768-dim float в JSON ≈ 8.4KB per vector + ~200B metadata = **~8.6KB per entry**.
+768-dim float pretty-printed ≈ 15.6KB per entry. Без pretty-print ≈ 8.6KB.
 
-| Сценарий | Memories | Реальный размер |
-|----------|----------|-----------------|
-| Одна сессия, 9 NPC, ~50/NPC | 450 | ~3.9 MB |
-| Длинная сессия, 200/NPC | 1800 | ~15.5 MB |
-| Текущий save.json (без memories) | — | ~50-100 KB |
+| Сценарий | Memories | Pretty-print | Compact |
+|----------|----------|-------------|---------|
+| Одна сессия, 9 NPC, ~50/NPC | 450 | ~7 MB | ~3.9 MB |
+| Длинная сессия, 200/NPC | 1800 | ~28 MB | ~15.5 MB |
 
-Допустимо для v1. `writeFileSync` 15MB на SSD ≈ 10ms.
+**Решение**: save.json для memories использовать compact stringify (без indent). `JSON.stringify(data)` для memories section, pretty для остального. Или: единый compact stringify для всего save.json (машинный формат, не для ручного чтения).
 
-**v1.1 optimization**: base64 Float32 encoding (768 × 4 bytes × 4/3 ≈ 4KB per vector, экономия 50%).
+**v1.1**: base64 Float32 encoding — 768 × 4 bytes × 4/3 ≈ 4KB per vector. Экономия 50-75%.
 
 ## Изменения в коде
 
-### 1. VectorMemory (engine/src/memory.ts)
+### 1. WorldConfig — configurable limits
+
+```typescript
+// В WorldConfig (engine/src/world-types.ts):
+memoryCapacity?: number;  // default 200. Max memories per NPC.
+```
+
+Не magic number, а конфигурируемый параметр (Invariant 16 principle).
+
+### 2. VectorMemory (engine/src/memory.ts)
 
 ```typescript
 class VectorMemory {
   private _memoryLog: MemoryEntry[] = [];
   private _qdrantAvailable: boolean = true;
+  private _maxCapacity: number = 200; // from WorldConfig
 
   // ─── Store: dual write ───────────────────────────────────────────
 
-  async store(text: string, importance: number, gameDay: number): Promise<void> {
+  async store(text: string, importance: number, gameDay: number, isProtected?: boolean): Promise<void> {
     const vector = await this.embed(text);
     const entry: MemoryEntry = {
       id: crypto.randomUUID(),
@@ -80,9 +84,9 @@ class VectorMemory {
       timestamp: Date.now(),
       vector,
       embeddingModel: this.embeddingModel,
+      protected: isProtected || undefined,
     };
 
-    // Primary storage (always succeeds)
     this._memoryLog.push(entry);
     this.evictIfNeeded();
 
@@ -99,39 +103,64 @@ class VectorMemory {
     }
   }
 
-  // ─── Recall: Qdrant search ──────────────────────────────────────
+  // ─── Recall: composite scoring preserved ────────────────────────
 
-  async recall(query: string, limit: number): Promise<ScoredMemory[]> {
-    if (!this._qdrantAvailable) return this.fallbackRecall(query, limit);
-    const vector = await this.embed(query);
-    return this.qdrant.search(this.collection, { vector, limit, with_payload: true });
+  async recall(query: string, currentDay: number, topK: number = 5): Promise<ScoredMemory[]> {
+    let results: ScoredMemory[];
+
+    if (this._qdrantAvailable) {
+      const vector = await this.embed(query);
+      const raw = await this.qdrant.search(this.collection, {
+        vector, limit: topK * 3, with_payload: true,
+      });
+      results = raw.map(p => this.scoreMemory(p, currentDay));
+    } else {
+      results = await this.fallbackRecall(query, currentDay, topK * 3);
+    }
+
+    // Composite scoring: relevance × 0.4 + decayedImportance × 0.4 + freshness × 0.2
+    for (const m of results) {
+      m.compositeScore = m.relevance * 0.4 + m.decayedImportance * 0.4 + m.freshness * 0.2;
+    }
+    results.sort((a, b) => b.compositeScore - a.compositeScore);
+    return results.slice(0, topK);
   }
 
-  // Fallback: brute-force cosine similarity on _memoryLog (when Qdrant down)
-  private async fallbackRecall(query: string, limit: number): Promise<ScoredMemory[]> {
-    const qVec = await this.embed(query);
-    const scored = this._memoryLog.map(e => ({
-      ...e,
+  // Fallback: brute-force cosine on _memoryLog
+  private async fallbackRecall(query: string, currentDay: number, limit: number): Promise<ScoredMemory[]> {
+    let qVec: number[];
+    try {
+      qVec = await this.embed(query);
+    } catch {
+      // LM Studio also down — keyword fallback
+      return this.keywordRecall(query, currentDay, limit);
+    }
+    return this._memoryLog.map(e => ({
+      ...this.baseScore(e, currentDay),
       relevance: cosineSimilarity(qVec, e.vector),
-    }));
-    scored.sort((a, b) => b.relevance - a.relevance);
-    return scored.slice(0, limit);
+    })).sort((a, b) => b.relevance - a.relevance).slice(0, limit);
   }
 
-  // ─── getAllMemories: read from _memoryLog (NOT Qdrant) ──────────
+  // Last resort: keyword match when both Qdrant and LM Studio down
+  private keywordRecall(query: string, currentDay: number, limit: number): ScoredMemory[] {
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    return this._memoryLog
+      .map(e => {
+        const text = e.text.toLowerCase();
+        const hits = words.filter(w => text.includes(w)).length;
+        return { ...this.baseScore(e, currentDay), relevance: hits / Math.max(words.length, 1) };
+      })
+      .filter(m => m.relevance > 0)
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, limit);
+  }
+
+  // ─── getAllMemories: sync, from _memoryLog ──────────────────────
 
   getAllMemories(currentDay: number): ScoredMemory[] {
-    return this._memoryLog.map(e => {
-      const daysPassed = currentDay - e.gameDay;
-      const decayed = decayedImportance(e.importance, daysPassed);
-      const fresh = freshness(daysPassed);
-      return {
-        id: e.id, text: e.text, importance: e.importance,
-        gameDay: e.gameDay, timestamp: e.timestamp,
-        relevance: 0, decayedImportance: decayed,
-        freshness: fresh, compositeScore: 0,
-      };
-    });
+    // BREAKING CHANGE: was async (Qdrant scroll), now sync (_memoryLog).
+    // All callers must remove await. TypeScript will catch.
+    return this._memoryLog.map(e => this.baseScore(e, currentDay));
   }
 
   // ─── Persistence ────────────────────────────────────────────────
@@ -151,18 +180,15 @@ class VectorMemory {
       for (const e of entries) {
         e.vector = await this.embed(e.text);
         e.embeddingModel = this.embeddingModel;
-        done++;
-        if (done % 50 === 0) console.log(`[Memory] Re-embedded ${done}/${entries.length}...`);
+        if (++done % 50 === 0) console.log(`[Memory] Re-embedded ${done}/${entries.length}...`);
       }
     }
 
-    // Batch upsert to Qdrant (single batch, optimal for <1000 points)
+    // Batch upsert to Qdrant
     if (entries.length > 0 && this._qdrantAvailable) {
       try {
         await this.qdrant.upsert(this.collection, {
-          points: entries.map(e => ({
-            id: e.id, vector: e.vector, payload: this.entryPayload(e),
-          })),
+          points: entries.map(e => ({ id: e.id, vector: e.vector, payload: this.entryPayload(e) })),
         });
       } catch (e) {
         console.warn(`[Memory] Qdrant batch upsert failed: ${e}`);
@@ -171,23 +197,22 @@ class VectorMemory {
     }
   }
 
-  // ─── Eviction: decayedImportance scoring ────────────────────────
+  // ─── Eviction: decayedImportance, protected memories immune ─────
 
   private evictIfNeeded(): void {
-    const MAX = 200;
-    if (this._memoryLog.length <= MAX) return;
+    if (this._memoryLog.length <= this._maxCapacity) return;
 
-    // Score by decayed importance (uses existing decayedImportance function)
     const currentDay = Math.max(...this._memoryLog.map(e => e.gameDay));
-    let worstIdx = 0;
+    let worstIdx = -1;
     let worstScore = Infinity;
     for (let i = 0; i < this._memoryLog.length; i++) {
       const e = this._memoryLog[i];
-      const daysPassed = currentDay - e.gameDay;
-      const score = decayedImportance(e.importance, daysPassed);
+      if (e.protected) continue; // protected memories NEVER evicted
+      const score = decayedImportance(e.importance, currentDay - e.gameDay);
       if (score < worstScore) { worstScore = score; worstIdx = i; }
     }
 
+    if (worstIdx === -1) return; // all protected — over capacity but can't evict
     const victim = this._memoryLog[worstIdx];
     this._memoryLog.splice(worstIdx, 1);
     if (this._qdrantAvailable) {
@@ -195,17 +220,18 @@ class VectorMemory {
     }
   }
 
-  // ─── Init: conditional reset ────────────────────────────────────
+  // ─── Init: conditional reset, graceful degradation ──────────────
 
   async init(options: { reset?: boolean } = {}): Promise<void> {
     if (options.reset) {
       await this.qdrant.deleteCollection(this.collection).catch(() => {});
+      this._memoryLog = [];
     }
     try {
       await this.ensureCollection();
       this._qdrantAvailable = true;
       if (await this.checkEmbeddingDrift()) {
-        // Model changed — collection recreated. Memories will be re-embedded on loadState.
+        // Model changed — collection recreated. Re-embed on loadState.
       }
     } catch (e) {
       console.warn(`[Memory] Qdrant unavailable, running in degraded mode: ${e}`);
@@ -218,6 +244,18 @@ class VectorMemory {
   private entryPayload(e: MemoryEntry): Record<string, unknown> {
     return { text: e.text, importance: e.importance, gameDay: e.gameDay, timestamp: e.timestamp };
   }
+
+  private baseScore(e: MemoryEntry, currentDay: number): ScoredMemory {
+    const daysPassed = currentDay - e.gameDay;
+    return {
+      id: e.id, text: e.text, importance: e.importance,
+      gameDay: e.gameDay, timestamp: e.timestamp,
+      relevance: 0,
+      decayedImportance: decayedImportance(e.importance, daysPassed),
+      freshness: freshness(daysPassed),
+      compositeScore: 0,
+    };
+  }
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -229,35 +267,47 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 ```
 
-### 2. Agent (engine/src/agent.ts) — include memories in save/load
+### 3. Serialization: WorldSaveAgentData + World.toJSON()
+
+**Agent.toJSON() НЕ существует.** Сериализация идёт через World.toJSON() → WorldSaveAgentData.
 
 ```typescript
-// toJSON() — добавить:
-memories: this.memory?.toJSON() ?? [],
+// В WorldSaveAgentData (world-types.ts или world.ts):
+interface WorldSaveAgentData {
+  // ...existing fields...
+  memories?: MemoryEntry[];  // NEW
+}
 
-// loadState() — НЕ трогать (остаётся sync).
-// Memory restore вызывается ОТДЕЛЬНО сервером (см. п.3).
+// В World.toJSON():
+for (const [id, agent] of this.agents) {
+  agentData[id] = {
+    ...existingFields,
+    memories: agent.memory?.toJSON() ?? [],  // NEW
+  };
+}
+
+// В World.loadState() — НЕ ТРОГАТЬ (остаётся sync)
+// Memory restore = отдельный async шаг (см. п.4)
 ```
 
-### 3. Server boot sequence (server/src/index.ts)
+### 4. Server boot sequence (server/src/index.ts)
 
-Ключевое: `World.loadState()` остаётся **sync**. Memory restore — **отдельный async шаг** после loadState, до startMasterClock.
+World.loadState() остаётся **sync**. Memory restore — **отдельный async шаг**.
 
 ```typescript
-// ─── Boot with save ───────────────────────────────────────────────
 if (savedData) {
   // Step 1: sync restore (beliefs, relationships, mood, goals)
   world.loadState(savedData.world);
 
-  // Step 2: init Qdrant WITHOUT reset (preserve if available)
+  // Step 2: init Qdrant WITHOUT reset
   for (const [id, agent] of agents) {
     await agent.memory.init({ reset: false });
   }
 
-  // Step 3: async restore memories into Qdrant (PARALLEL for all NPCs)
+  // Step 3: async restore memories (PARALLEL)
   await Promise.all(
     Array.from(agents.entries()).map(async ([id, agent]) => {
-      const agentData = savedData.world.agents?.find(a => a.id === id);
+      const agentData = savedData.world.agents[id]; // Record access, NOT .find()
       const memories = agentData?.memories ?? [];
       if (memories.length > 0) {
         await agent.memory.loadState(memories);
@@ -266,44 +316,42 @@ if (savedData) {
     })
   );
 
-  // Step 4: start simulation
+  // Step 4: start simulation (NO knownFacts seeding — already in saved memories)
   world.startMasterClock();
 
 } else {
-  // ─── Fresh start (new game) ───────────────────────────────────
+  // Fresh start
   for (const [id, agent] of agents) {
-    await agent.memory.init({ reset: true }); // wipe Qdrant
+    await agent.memory.init({ reset: true });
   }
-  // Seed knownFacts (ONLY on fresh start, not on restore)
-  await seedBackgroundMemories(agents, worldData);
+  await seedBackgroundMemories(agents, worldData); // knownFacts ONLY on fresh start
   world.startMasterClock();
 }
 ```
 
-**Критическое**: `seedBackgroundMemories()` (текущие строки 295-303 в index.ts) вызывается **ТОЛЬКО при fresh start**. При restore из save — knownFacts уже в saved memories, повторный seeding создаст дубликаты.
+**Критическое**: `seedBackgroundMemories()` вызывается **ТОЛЬКО при fresh start**. При restore — knownFacts уже в saved memories.
 
-### 4. Named saves (server/src/routes.ts)
+**Qdrant пустой + save.json есть** (crash recovery): flow покрывает — `init({ reset: false })` создаёт пустую collection, `loadState()` делает batch upsert из saved memories. Qdrant заполняется из JSON.
 
-Named save load тоже sync (`world.loadState(data)`). Добавить async memory restore:
+### 5. Named saves (server/src/routes.ts)
 
 ```typescript
 // POST /api/debug/load/:name
+world.stopMasterClock();
 const data = JSON.parse(readFileSync(savePath, 'utf-8'));
 
-// Step 1: stop simulation
-world.stopMasterClock();
-
-// Step 2: sync restore
+// Step 1: sync restore
 world.loadState(data);
 
-// Step 3: async memory restore
+// Step 2: Qdrant reset (clean — named saves = time travel)
 for (const [id, agent] of agents) {
-  await agent.memory.init({ reset: true }); // clean Qdrant for named save
+  await agent.memory.init({ reset: true });
 }
+
+// Step 3: async memory restore (PARALLEL)
 await Promise.all(
   Array.from(agents.entries()).map(async ([id, agent]) => {
-    const agentData = data.agents?.find(a => a.id === id);
-    const memories = agentData?.memories ?? [];
+    const memories = data.agents?.[id]?.memories ?? []; // Record access
     if (memories.length > 0) await agent.memory.loadState(memories);
   })
 );
@@ -312,59 +360,48 @@ await Promise.all(
 world.startMasterClock();
 ```
 
-Named saves используют `reset: true` — чтобы не было "ghost memories from the future" (текущее поведение, SPEC-dev-tools:50).
+### 6. Protected memories — кто ставит флаг
 
-### 5. New Game (server/src/routes.ts)
+Engine предоставляет механизм (`protected: boolean` на MemoryEntry). Модули решают что защищать:
 
-```typescript
-// POST /api/new-game
-for (const [id, agent] of agents) {
-  await agent.memory.init({ reset: true }); // wipe all memories
-}
-await seedBackgroundMemories(agents, worldData); // fresh knownFacts
-```
-
-## Graceful degradation: Qdrant unavailable
-
-Если Qdrant не запущен при старте:
-- `init()` ловит exception, ставит `_qdrantAvailable = false`
-- `store()` пишет в `_memoryLog` (primary storage), skip Qdrant upsert
-- `recall()` использует `fallbackRecall()` — brute-force cosine similarity по `_memoryLog`
-- `loadState()` восстанавливает `_memoryLog` из JSON, skip Qdrant batch upsert
-- Сервер запускается и работает. Memory search медленнее (O(n) vs O(log n)), но функционален
-- Лог: `[Memory] Qdrant unavailable, running in degraded mode`
-
-При 200 memories per NPC, brute-force cosine = ~0.5ms — незаметно.
+- `agent.observe()` получает optional `protected` parameter
+- IL: player показал улику → `store(text, importance, gameDay, true)`
+- CG cascade: NPC стал свидетелем убийства → `store(text, importance, gameDay, true)`
+- Обычные разговоры, рутинные наблюдения → `protected = false` (default)
 
 ## Миграция
 
-Старые save.json без `memories` field → `data.memories ?? []` → пустой массив, нет crash. Обратная совместимость автоматическая.
+Старые save.json без `memories` → `agentData.memories ?? []` → пустой массив. Без crash.
 
 ## Known limitations (v1)
 
-1. **ReflectionTracker state не персистируется** — `accumulatedImportance` и `unreflectedMemories` сбрасываются при рестарте. Minor — reflection threshold начинает с 0.
-2. **Server crash (no SIGINT) = потеря memories** — save только на graceful shutdown. Periodic autosave — deferred to v1.1.
-3. **Player-NPC memory isolation** — отсутствует в v1. Все memories = world. Multiplayer isolation — отдельная спека.
-4. **Save.json size** — ~4-15MB с memories vs ~100KB без. Допустимо для single-player.
+1. **ReflectionTracker state не персистируется** — accumulatedImportance сбрасывается при рестарте
+2. **Server crash = потеря memories** — save только на SIGINT. Periodic autosave — v1.1
+3. **No player isolation** — все memories = world. Multiplayer — SPEC-multiplayer-memory
+4. **getAllMemories() стал sync** — callers должны убрать await (TypeScript поймает)
+5. **_memoryLog = O(n) array** — eviction scan линейный. Для 200 entries = <1ms. При масштабировании: рассмотреть sorted structure.
+6. **Qdrant recovery** — `_qdrantAvailable = false` не recovery'ится до рестарта. v1.1: retry через N минут.
 
 ## Тестирование
 
-1. **Round-trip**: store 5 memories → save → restart → load → recall returns same memories
-2. **No knownFacts duplication**: save → restart → load → count knownFacts memories = same as before save
-3. **Embedding drift**: change model name in config → load → re-embed triggered → recall still works, progress logged
-4. **Eviction**: store 201 memories → oldest/least-important evicted → count = 200
-5. **New game**: new game → all memories wiped, knownFacts re-seeded fresh
-6. **Named save round-trip**: save checkpoint → advance time → load checkpoint → memories restored to checkpoint state
-7. **Backward compat**: load old save without memories field → empty array, no crash
-8. **Qdrant down**: stop Docker Qdrant → start server → store/recall still work (degraded mode)
-9. **getAllMemories reads _memoryLog**: store memory → kill Qdrant → getAllMemories returns it
+1. **Round-trip**: store 5 memories → save → restart → load → recall returns same memories with same composite scores
+2. **No knownFacts duplication**: save → restart → count memories = same as before (no double seeding)
+3. **Embedding drift**: change model name → load → re-embed triggered → recall works, progress logged
+4. **Eviction**: store 201 memories → oldest/least-important unprotected evicted → count = 200
+5. **Protected eviction**: store 200 protected + 1 unprotected → unprotected evicted, all protected stay
+6. **New game**: all memories wiped, knownFacts re-seeded fresh
+7. **Named save round-trip**: save checkpoint → advance → load checkpoint → memories at checkpoint state
+8. **Backward compat**: old save without memories → empty array, no crash
+9. **Qdrant down**: stop Docker → start server → store/recall work (degraded)
+10. **LM Studio down + Qdrant down**: recall falls back to keyword search
+11. **getAllMemories from _memoryLog**: store → kill Qdrant → getAllMemories returns it (sync)
+12. **Qdrant empty + save exists**: restart with empty Qdrant → loadState fills it from save
 
 ## Не делаем (scope out)
 
-- Player-NPC multiplayer isolation — separate spec when multiplayer is active
+- Player isolation — SPEC-multiplayer-memory
 - Consolidation/reflections — M3+
-- Base64 vector encoding — v1.1 optimization
-- Graph memory (Mem0 style) — overkill for 9 NPCs
-- MemGPT self-directed memory management — 9B model won't handle
+- Base64 vector encoding — v1.1
 - Periodic autosave — v1.1
+- Qdrant auto-recovery — v1.1
 - ReflectionTracker persistence — minor, deferred
