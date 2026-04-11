@@ -683,6 +683,7 @@ function handleWS(type, data) {
           'REPORT_IMPULSE': 'eager to report', 'REVENGE_IMPULSE': 'seeks revenge',
           'GUARD_WARNING': 'guard warned', 'CORRUPTION_COVER': 'guard looks away',
           'ARREST_RESENTMENT': 'resents arrest',
+          'MINOR_INCIDENT_MEMORY': 'noticed incident',
         }[c.type] ?? c.type;
         addEvent('crime', `  ↳ ${label}${c.subject ? ': ' + c.subject : ''}`);
       }

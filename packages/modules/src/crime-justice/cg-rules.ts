@@ -102,19 +102,20 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
 
   // ─── Escalation Precursors ─────────────────────────────
 
-  // Argument witnessed → low-importance witness memory (clue for observant player)
+  // Argument witnessed → minor incident memory (NOT WITNESS_MEMORY — doesn't cascade to guard investigation)
+  // Arguments are clues for the observant player but not crimes requiring guard response.
   {
     id: 'witness-argument',
     trigger: 'ARGUMENT_WITNESSED',
     targetMode: 'witnesses',
     conditions: [],
     consequence: {
-      type: 'WITNESS_MEMORY',
+      type: 'MINOR_INCIDENT_MEMORY',
       importance: 3,
       delayDays: 0,
       probability: 0.7,
     },
-    maxChainDepth: 2,
+    maxChainDepth: 1,
   },
 
   // Threat witnessed → medium-importance witness memory + may cascade to guard

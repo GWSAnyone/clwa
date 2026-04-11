@@ -108,6 +108,7 @@ export function registerCrimeJusticeModule(): void {
   registerEventCategory('information_spread', ['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED']);
   registerEventCategory('witness_reaction', ['COVER_UP', 'REPORT_IMPULSE']);
   registerEventCategory('escalation', ['ARGUMENT_WITNESSED', 'THREAT_WITNESSED']);
+  registerEventCategory('minor_incident', ['MINOR_INCIDENT_MEMORY']);
   registerEventCategory('emergent_cascade', ['REVENGE_IMPULSE', 'GUARD_WARNING', 'ARREST_RESENTMENT']);
   registerEventCategory('corruption', ['CORRUPTION_COVER']);
   registerEventCategory('justice_resolution', ['NPC_SENTENCED', 'NPC_FLED']);
@@ -149,6 +150,7 @@ export function registerCrimeJusticeModule(): void {
     COVER_UP: 'cover-up',
     REPORT_IMPULSE: 'report impulse',
     ARGUMENT_WITNESSED: 'argument',
+    MINOR_INCIDENT_MEMORY: 'incident',
     THREAT_WITNESSED: 'threat',
     REVENGE_IMPULSE: 'revenge impulse',
     GUARD_WARNING: 'warning',
@@ -340,6 +342,7 @@ export function registerCrimeJusticeModule(): void {
     COVER_UP: -0.10,          // guilt/anxiety from hiding what you know
     REPORT_IMPULSE: -0.05,    // righteous urgency, mild stress
     ARGUMENT_WITNESSED: -0.04, // mild unease from seeing conflict
+    MINOR_INCIDENT_MEMORY: -0.02, // overheard/saw a minor disturbance
     THREAT_WITNESSED: -0.10,   // anxiety from seeing someone threatened
     REVENGE_IMPULSE: -0.15,    // rage and grief driving toward action
     GUARD_WARNING: 0.02,       // slight relief — authority is aware
@@ -457,6 +460,9 @@ export function registerCrimeJusticeModule(): void {
   });
   registerMemoryTextBuilder('GUARD_WARNING', (_event, killer, _victimName) => {
     return `The guard took note of the disturbance involving ${killer}. At least someone is paying attention.`;
+  });
+  registerMemoryTextBuilder('MINOR_INCIDENT_MEMORY', (event, killer, victimName) => {
+    return `I saw ${killer} and ${victimName} having a heated exchange. Tempers were running high — something to keep an eye on.`;
   });
   registerMemoryTextBuilder('ARREST_RESENTMENT', (event, _killer, _victimName) => {
     const arrestedName = event.object ? 'my friend' : 'someone I care about';
