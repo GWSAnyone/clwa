@@ -1024,7 +1024,7 @@ export function registerCrimeJusticeModule(): void {
         const H = agent.profile.bigFive.honesty;
         const N = agent.profile.bigFive.neuroticism;
         const personalityFactor = (1.0 - H) * 0.6 + N * 0.4;
-        const growth = 0.03 * (0.5 + personalityFactor); // 0.015 to 0.03 per hour
+        const growth = 0.06 * (0.5 + personalityFactor); // 0.03 to 0.06 per hour (tuned for 1.5-2h sessions at 3x)
 
         motive.confidence = Math.min(0.95, motive.confidence + growth);
       }
