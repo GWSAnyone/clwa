@@ -1500,7 +1500,7 @@ function updateDetectiveHint(npcId) {
     }
   }
 
-  // Priority-ordered hint selection
+  // Priority-ordered hint selection — detective guidance
   let hint = null;
   if (isSuspect && hasEvidence) {
     hint = `You have evidence linking ${a.name} to the crime. This might be the time to press them on it.`;
@@ -1508,8 +1508,12 @@ function updateDetectiveHint(npcId) {
     hint = `Something about ${a.name} doesn't sit right. You might try asking about their whereabouts.`;
   } else if (isInvestigator && hasCrimeBeliefs) {
     hint = `The guard could help investigate. You could share what you've learned about the crime.`;
+  } else if (a.mood < -0.4 && !isSuspect) {
+    hint = `${a.name} looks distressed. They might have something to share if you can earn their trust.`;
   } else if (knownSuspectName) {
     hint = `${a.name} might know something about ${knownSuspectName}. They could have information.`;
+  } else if (a.status === 'detained') {
+    hint = `${a.name} is detained. You could try talking to the judge about their case.`;
   }
 
   if (!hint || hintEl._dismissed === npcId) {
