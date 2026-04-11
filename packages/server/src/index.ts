@@ -506,6 +506,9 @@ async function createGameContext(
           }});
         }
       },
+      onJournalEntry: (entry) => {
+        broadcast({ type: 'journal:entry', data: entry });
+      },
       onGoalChange: (data) => {
         const agent = agents.get(data.npcId);
         broadcast({ type: 'goal_update', data: { ...data, npcName: agent?.profile.name ?? data.npcId } });

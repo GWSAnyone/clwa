@@ -67,6 +67,8 @@ export interface WorldCallbacks {
   onRelationshipChange?: (fromId: string, fromName: string, toId: string, toName: string, field: 'trust' | 'sentiment', oldVal: number, newVal: number) => void;
   /** Called every game minute by the Game Clock (for WS time broadcast + HUD) */
   onTimeUpdate?: (minuteOfDay: number, hour: string, period: string, gameDay: number) => void;
+  /** Called when a journal entry is created from engine events (overhear, discovery) */
+  onJournalEntry?: (entry: import('./journal').JournalEntry) => void;
 }
 
 /** Check if NPC can act: alive AND no special status (null = default/free = active) */
@@ -1306,6 +1308,17 @@ export class World {
         `Overheard ${initiatorName} and ${responderName} discussing ${topic.subject}.${overheardClaim}`,
         overheardImportance,
       );
+
+      // Player overhear → auto-journal observation entry (detective clue)
+      if (agent.profile.isPlayer && overheardClaim && this.journal) {
+        const entry = this.journal.addObservation(
+          `Overheard ${initiatorName} and ${responderName} discussing ${topic.subject}.${overheardClaim}`,
+          location,
+          conversation.gameDay,
+          this.gameMinute,
+        );
+        this.callbacks.onJournalEntry?.(entry);
+      }
     }
   }
 
