@@ -495,3 +495,98 @@ describe('CG v2: Trigger Index', () => {
     expect(fired).not.toContain('WRONG_RESULT');
   });
 });
+
+describe('CG v2: Combined Conditions', () => {
+  test('trait filter + relationship filter on same rule narrows targets correctly', async () => {
+    // Rule: only honest NPCs (H > 0.6) who are friends of the victim (sentiment > 0.3)
+    const rule: ConsequenceRule = {
+      id: 'test-combined',
+      trigger: 'TEST_EVENT',
+      targetMode: 'all',
+      conditions: [
+        { op: 'trait', of: 'target', trait: 'honesty', comparator: '>', value: 0.6 },
+        { op: 'relationship', actor: 'target', toward: 'object', field: 'sentiment', comparator: '>', value: 0.3 },
+      ],
+      consequence: { type: 'COMBINED_RESULT', importance: 5, delayDays: 0, probability: 1.0 },
+      maxChainDepth: 1,
+    };
+
+    // honest + friend of victim → should pass both filters
+    const honestFriend = makeAgent('aldric', { honesty: 0.9 });
+    honestFriend.state.relationships!.addRelationship({ targetId: 'bess', targetName: 'Bess', sentiment: 0.5, trust: 0.6, type: 'friend' });
+
+    // honest but NOT friend → fails relationship filter
+    const honestStranger = makeAgent('garrett', { honesty: 0.8 });
+
+    // friend but NOT honest → fails trait filter
+    const dishonestFriend = makeAgent('mark', { honesty: 0.2 });
+    dishonestFriend.state.relationships!.addRelationship({ targetId: 'bess', targetName: 'Bess', sentiment: 0.6, trust: 0.3, type: 'friend' });
+
+    const engine = new ConsequenceEngine([rule]);
+    const victim = makeAgent('bess');
+    const ctx = makeCtx([honestFriend, honestStranger, dishonestFriend, victim]);
+    const event = makeEvent('TEST_EVENT', { subject: 'mark', object: 'bess' });
+
+    const results = await engine.process(event, ctx);
+    expect(results.length).toBe(1);
+    expect(results[0].targets).toContain('aldric');       // both filters pass
+    expect(results[0].targets).not.toContain('garrett');   // no relationship
+    expect(results[0].targets).not.toContain('mark');      // low honesty
+  });
+
+  test('gate condition + filter condition: gate fails → no targets regardless of filter', async () => {
+    const rule: ConsequenceRule = {
+      id: 'test-gate-then-filter',
+      trigger: 'TEST_EVENT',
+      targetMode: 'all',
+      conditions: [
+        // Gate: subject must have low honesty (checking the criminal, not targets)
+        { op: 'trait', of: 'subject', trait: 'honesty', comparator: '<', value: 0.3 },
+        // Filter: target must be investigator
+        { op: 'has_capability', value: 'investigator' },
+      ],
+      consequence: { type: 'GATED_RESULT', importance: 5, delayDays: 0, probability: 1.0 },
+      maxChainDepth: 1,
+    };
+
+    // Subject is HONEST (H=0.8) → gate fails
+    const honestSubject = makeAgent('aldric', { honesty: 0.8 });
+    const guard = makeAgent('garrett', { investigator: true });
+
+    const engine = new ConsequenceEngine([rule]);
+    const ctx = makeCtx([honestSubject, guard]);
+    const event = makeEvent('TEST_EVENT', { subject: 'aldric' });
+
+    const results = await engine.process(event, ctx);
+    expect(results.length).toBe(0); // gate blocked the entire rule
+  });
+
+  test('multiple filters progressively narrow the target list', async () => {
+    const rule: ConsequenceRule = {
+      id: 'test-progressive-filter',
+      trigger: 'TEST_EVENT',
+      targetMode: 'all',
+      conditions: [
+        { op: 'trait', of: 'target', trait: 'honesty', comparator: '>', value: 0.5 },
+        { op: 'trait', of: 'target', trait: 'agreeableness', comparator: '<', value: 0.5 },
+      ],
+      consequence: { type: 'NARROW_RESULT', importance: 5, delayDays: 0, probability: 1.0 },
+      maxChainDepth: 1,
+    };
+
+    // H=0.8, A=0.3 → passes both
+    const passesAll = makeAgent('hilda', { honesty: 0.8, agreeableness: 0.3 });
+    // H=0.8, A=0.7 → passes H, fails A
+    const failsSecond = makeAgent('aldric', { honesty: 0.8, agreeableness: 0.7 });
+    // H=0.3, A=0.3 → fails H
+    const failsFirst = makeAgent('mark', { honesty: 0.3, agreeableness: 0.3 });
+
+    const engine = new ConsequenceEngine([rule]);
+    const ctx = makeCtx([passesAll, failsSecond, failsFirst]);
+    const event = makeEvent('TEST_EVENT');
+
+    const results = await engine.process(event, ctx);
+    expect(results.length).toBe(1);
+    expect(results[0].targets).toEqual(['hilda']);
+  });
+});
