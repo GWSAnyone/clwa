@@ -42,3 +42,32 @@ Note: spec mentions 13 rules but only 11 exist in cg-rules.ts. sentence-rumor an
 - corruption-cover (corrupt guard ignores wanted status)
 
 **Priority 4: Remaining P3 polishing items**
+
+---
+
+## Progress Log
+
+### Commit 1: CG v2 (222e7cf)
+- Rewrote `evaluateConditions()` → target selection pipeline (resolveTargets + gate/filter)
+- Added NPC-state condition ops: trait, relationship, belief
+- Added exclusive groups with priority + trigger index (O(1) lookup)
+- Migrated all 11 existing rules to targetMode
+- 0 TS errors, 61 tests pass
+
+### Commit 2: M3 witness reaction rules (3f42864)
+- First CG v2 exclusive group: `witness_reaction`
+- witness-cover-up (friend covers, priority 2) → COVER_UP event
+- witness-eager-report (honest witness, priority 1) → REPORT_IMPULSE event
+- Full event type registration: categories, labels, mood shifts, belief creators, memory builders
+
+### Commit 3: M3 specs (31695c8)
+- SPEC-heat-system.md: belief-derived criminal danger awareness
+- SPEC-criminal-escalation.md: progressive crime severity via motive confidence tiers
+
+### Commit 4: Heat system phase 1 (97a078f)
+- `heat.ts`: computeHeat(), getHeatLevel(), buildHeatDirective()
+- Registered as secret directive builder in crime-justice module
+- 5 heat levels with escalating LLM prose
+- Zero engine changes
+
+### Next: CG v2 tests, then polishing items
