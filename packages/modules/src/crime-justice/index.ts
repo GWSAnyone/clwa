@@ -27,8 +27,10 @@ import {
   registerAccusationResponseHandler,
   registerBlockingGoalTypes,
   registerRelationshipLabels,
+  registerSecretDirectiveBuilder,
 } from '@clwa/engine';
 import type { Belief, WorldEvent } from '@clwa/engine';
+import { buildHeatDirective } from './heat';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief, hasSuspicionBelief } from './target-finders';
 import { CRIME_EVIDENCE_RULES } from './evidence-rules';
@@ -441,6 +443,12 @@ export function registerCrimeJusticeModule(): void {
 
   // Event handlers for belief creation and state changes
   registerCrimeEventHandlers();
+
+  // Heat-aware secret directive: criminal NPCs get escalating danger prose (SPEC-heat-system)
+  registerSecretDirectiveBuilder(({ agent, agents }) => {
+    const directive = buildHeatDirective(agent, { agents });
+    return directive ? [directive] : [];
+  });
 
   // Step handlers for module-specific goal actions
   registerCrimeStepHandlers();
