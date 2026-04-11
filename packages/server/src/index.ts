@@ -18,7 +18,7 @@ import { startServer, clearChatSessions } from './server';
 import { loadWorld } from './world-loader';
 import { PositionManager } from './position-manager';
 import { randomizeTraits, logRandomization, randomizeMoods, logMoodRandomization, randomizeRelationships, logRelationshipRandomization, assignMotives } from './trait-randomizer';
-import type { GameContext } from './game-context';
+import { type GameContext, LocationHistory } from './game-context';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 
@@ -379,6 +379,7 @@ async function createGameContext(
 
   // ─── World ───
   const approachContexts = new Map<string, string>();
+  const locationHistory = new LocationHistory();
 
   const world = new World(
     agents, eventStore, cgEngine,
@@ -500,6 +501,13 @@ async function createGameContext(
       },
       onTimeUpdate: (minuteOfDay, hour, period, gameDay) => {
         broadcast({ type: 'time_update', data: { minuteOfDay, hour, period, gameDay, gameSpeed: world.gameSpeed } });
+        // Record NPC locations for alibi checking (every game minute via time update)
+        const gameMinute = (gameDay - 1) * 1440 + minuteOfDay;
+        for (const [id, agent] of agents) {
+          if (agent.state.alive && !agent.profile.isPlayer) {
+            locationHistory.record(id, gameMinute, agent.state.location);
+          }
+        }
       },
     },
     locationGraph,
@@ -511,7 +519,7 @@ async function createGameContext(
   console.log(`  [+] NPC schedules: ${worldData.schedules.length} entries for ${new Set(worldData.schedules.map((s) => s.npcId)).size} NPCs`);
   console.log(`  [+] Mobile NPCs: ${Array.from(worldData.mobileNpcs).join(', ')}`);
 
-  return { world, eventStore, agents, positionManager, approachContexts, seed };
+  return { world, eventStore, agents, positionManager, approachContexts, locationHistory, seed };
 }
 
 async function main() {

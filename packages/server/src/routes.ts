@@ -759,6 +759,35 @@ export async function handleRequest(
     }, { headers: cors });
   }
 
+  // ─── GET /api/debug/alibi/:id?minute=N ───
+  // Check where an NPC was at a specific game minute (alibi checking)
+  const alibiMatch = path.match(/^\/api\/debug\/alibi\/([^/]+)$/);
+  if (method === 'GET' && alibiMatch) {
+    const npcId = alibiMatch[1];
+    const agent = agents.get(npcId);
+    if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+
+    const minuteParam = url.searchParams.get('minute');
+    if (minuteParam) {
+      const minute = parseInt(minuteParam);
+      const location = ctx.locationHistory.getLocationAt(npcId, minute);
+      const locDisplay = location ? (world.locations.get(location)?.name ?? location) : 'unknown';
+      return Response.json({
+        npcId, name: agent.profile.name, queriedMinute: minute,
+        location, locationDisplay: locDisplay,
+      }, { headers: cors });
+    }
+
+    // No minute param → return full history
+    const history = ctx.locationHistory.getHistory(npcId);
+    return Response.json({
+      npcId, name: agent.profile.name,
+      currentLocation: agent.state.location,
+      entries: history.length,
+      history: history.slice(-50), // last 50 entries
+    }, { headers: cors });
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // ─── Dev Tools (SPEC-dev-tools) ───
   // ═══════════════════════════════════════════════════════════════
