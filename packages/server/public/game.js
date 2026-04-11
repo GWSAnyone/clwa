@@ -1093,7 +1093,13 @@ function setJournalCategoryFilter(cat) {
 }
 
 function renderJournalEntry(e) {
-  const day = `Day ${e.gameDay || '?'} — ${e.location || e.locationId || ''}`;
+  // Show time for alibi checking: "Day 1, Morning — Market Square"
+  const periodNames = { dawn: 'Dawn', morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
+  const minuteOfDay = (e.tick || 0) % 1440;
+  const period = minuteOfDay < 300 ? 'night' : minuteOfDay < 420 ? 'dawn' : minuteOfDay < 720 ? 'morning'
+    : minuteOfDay < 1020 ? 'afternoon' : minuteOfDay < 1260 ? 'evening' : 'night';
+  const timeStr = periodNames[period] || '';
+  const day = `Day ${e.gameDay || '?'}${timeStr ? ', ' + timeStr : ''} — ${e.location || e.locationId || ''}`;
   const text = escapeHTML(e.text || e.clueText || e.description || '');
   const type = e.type || 'clue';
 
