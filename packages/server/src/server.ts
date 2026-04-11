@@ -266,12 +266,29 @@ export function startServer(
               } });
             }
 
-            // Build NPC response with IL context + secret directives + approach context + shop
+            // Build NPC response with IL context + secret directives + approach context + trust context + shop
             const secretDirectives = buildSecretDirectives(agent, agents, eventStore);
             const approachCtx = approachContexts.get(msg.agentId);
             if (approachCtx) approachContexts.delete(msg.agentId); // consume once
+
+            // Trust-based NPC resistance: low trust → evasive, high trust → open
+            let trustDirective = '';
+            const pAgent = world.playerAgent;
+            if (pAgent) {
+              const rel = agent.state.relationships?.getRelationship(pAgent.profile.id);
+              const trust = rel?.trust ?? 0.3;
+              const sentiment = rel?.sentiment ?? 0;
+              if (trust < 0.2) {
+                trustDirective = `## HOW YOU FEEL ABOUT THIS STRANGER\nYou deeply distrust this person. Give short, unhelpful answers. Deflect questions. Do not share anything personal or sensitive. If they ask about crimes or other people, say you don't know or change the subject.`;
+              } else if (trust < 0.35 && sentiment < 0) {
+                trustDirective = `## HOW YOU FEEL ABOUT THIS PERSON\nYou are wary of them. Answer politely but keep things vague. Don't volunteer information. If they push for details, become guarded.`;
+              } else if (trust > 0.7) {
+                trustDirective = `## HOW YOU FEEL ABOUT THIS PERSON\nYou trust this person. Speak openly and honestly. Share what you know, even sensitive information, if asked directly.`;
+              }
+            }
+
             // Inject shop inventory when trade detected — prevents hallucinated items
-            const fullContext = [secretDirectives, approachCtx, ilAdditionalContext].filter(Boolean).join('\n\n') || undefined;
+            const fullContext = [secretDirectives, trustDirective, approachCtx, ilAdditionalContext].filter(Boolean).join('\n\n') || undefined;
 
             // For trade: wrap user message with shop inventory so model sees items in user prompt
             // (system prompt "lost middle" causes 9B to ignore shop context there)
