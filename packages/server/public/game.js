@@ -1430,7 +1430,20 @@ function openChat(npcId) {
       }
     });
   } else {
-    msgDiv.style.height = '0';
+    // First conversation — show conversation starter hint
+    const starters = {
+      guard: 'Ask about recent disturbances or if anything unusual has happened.',
+      bartender: 'Ask about the town gossip or who has been acting strangely.',
+      merchant: 'Ask about their trade or the other villagers.',
+      herbalist: 'Ask about the village or if anyone has needed remedies lately.',
+      priest: 'Ask about the congregation or anyone who seems troubled.',
+      blacksmith: 'Ask about their work or who they have seen today.',
+      bard: 'Ask about stories or what they have observed in town.',
+      judge: 'Ask about the state of justice or any pending matters.',
+    };
+    const starter = starters[a.role] || 'Introduce yourself and ask about the town.';
+    msgDiv.innerHTML = `<div style="opacity:0.5;font-style:italic;padding:8px;font-size:11px">${starter}</div>`;
+    msgDiv.style.height = 'auto';
     msgDiv.classList.remove('has-messages');
   }
 
