@@ -2501,6 +2501,24 @@ function drawNPCs() {
     ctx.fillText(a.name, a.x, a.y - 45);
     ctx.shadowBlur = 0;
 
+    // Emotional state indicator — subtle visual cue for player observation
+    if (!isDead && !isDetained) {
+      let stateText = '';
+      let stateColor = '';
+      if (a.mood < -0.5) { stateText = 'distressed'; stateColor = '#e55'; }
+      else if (a.mood < -0.3) { stateText = 'tense'; stateColor = '#da6'; }
+      else if (a.mood > 0.3) { stateText = 'at ease'; stateColor = '#7b7'; }
+      // Override with status-based states
+      if (a.status === 'imprisoned') { stateText = 'imprisoned'; stateColor = '#8ac'; }
+      if (stateText) {
+        ctx.font = '8px sans-serif';
+        ctx.fillStyle = stateColor;
+        ctx.globalAlpha = 0.7;
+        ctx.fillText(stateText, a.x, a.y - 36);
+        ctx.globalAlpha = 1.0;
+      }
+    }
+
     // Thought bubble
     if (a._thought) {
       ctx.fillStyle = 'rgba(0,0,0,0.75)';
