@@ -30,7 +30,7 @@ import {
   registerSecretDirectiveBuilder,
 } from '@clwa/engine';
 import type { Belief, WorldEvent } from '@clwa/engine';
-import { buildHeatDirective } from './heat';
+import { buildHeatDirective, computeHeat } from './heat';
 import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief, hasSuspicionBelief } from './target-finders';
 import { CRIME_EVIDENCE_RULES } from './evidence-rules';
@@ -455,6 +455,23 @@ export function registerCrimeJusticeModule(): void {
   registerSecretDirectiveBuilder(({ agent, agents }) => {
     const directive = buildHeatDirective(agent, { agents });
     return directive ? [directive] : [];
+  });
+
+  // Heat Phase 2: anxiety mood modifier — criminal's heat creates persistent mood pressure
+  registerTickPhaseHandler(async (ctx) => {
+    if (ctx.gameMinute % 10 !== 0) return; // every 10 game minutes
+    for (const [npcId, agent] of ctx.agents) {
+      if (!agent.state.alive || agent.profile.isPlayer) continue;
+      const heat = computeHeat(agent, { agents: ctx.agents });
+      if (heat < 0.1) continue;
+      // Anxiety modifier: magnitude proportional to heat, short duration (refreshed each tick)
+      // This creates organic mood depression for criminals under pressure
+      ctx.addMoodModifier?.(npcId, {
+        source: 'heat_anxiety', category: 'event',
+        magnitude: -heat * 0.15, // -0.015 at heat 0.1 to -0.15 at heat 1.0
+        remaining: 15, duration: 15, decay: 'linear',
+      });
+    }
   });
 
   // Step handlers for module-specific goal actions
