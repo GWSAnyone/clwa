@@ -220,20 +220,13 @@ export class World {
     }
 
     // Install mood interceptors — captures all mood changes (engine + modules) via property setter
-    this.installMoodInterceptors();
+    // Mood interceptors removed — effectiveMood computed in _tickMoodSystem (Audit B1 fix)
     // Record starting moods for delta tracking
     for (const [id, agent] of this.agents) {
       this._startingMoods.set(id, agent.state.mood);
     }
     // Install relationship change callbacks on each agent's graph
     this.installRelationshipCallbacks();
-  }
-
-  /** @deprecated — mood interceptor removed. All mood changes go through _tickMoodSystem which
-   *  calls onMoodChange explicitly. No more Object.defineProperty hack. (Audit B1 fix) */
-  private installMoodInterceptors(): void {
-    // No-op. Kept as empty method to avoid breaking constructor call.
-    // TODO: remove method and constructor call in next cleanup pass.
   }
 
   /** Resolve and cache the player Agent (isPlayer flag on profile) */
