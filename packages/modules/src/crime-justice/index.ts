@@ -380,8 +380,25 @@ export function registerCrimeJusticeModule(): void {
 
   // CG memory text builders — prose for NPC memories from consequences
   registerMemoryTextBuilder('WITNESS_MEMORY', (event, killer, victimName) => {
+    const originalType = event.payload?.originalEventType as string | undefined;
     if (event.payload?.sourceRule === 'body-discovery-to-witness' || !killer || killer === 'someone unknown') {
       return `I discovered the body of ${victimName} at ${event.location}! They appear to have been murdered. I don't know who did this.`;
+    }
+    // Context-specific witness memories based on what was actually witnessed
+    if (originalType === 'EVIDENCE_DESTROYED') {
+      return `I saw ${killer} destroying evidence at ${event.location}. They were clearly trying to hide something. Very suspicious.`;
+    }
+    if (originalType === 'WITNESS_INTIMIDATED') {
+      return `I saw ${killer} intimidating someone at ${event.location}. They were threatening them to keep quiet. This is disturbing.`;
+    }
+    if (originalType === 'ARGUMENT_WITNESSED') {
+      return `I saw ${killer} having a heated argument with ${victimName} at ${event.location}. Tempers were running high.`;
+    }
+    if (originalType === 'THREAT_WITNESSED') {
+      return `I saw ${killer} directly threatening ${victimName} at ${event.location}. It looked serious — someone could get hurt.`;
+    }
+    if (originalType === 'GOODS_STOLEN') {
+      return `I saw ${killer} steal from ${victimName} at ${event.location}. They thought no one was watching.`;
     }
     return `I witnessed a horrifying event: ${killer} harmed ${victimName} at ${event.location}. I will never forget this.`;
   });
