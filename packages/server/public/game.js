@@ -704,7 +704,9 @@ function handleWS(type, data) {
 
     case 'npc_approach': {
       state.approachingNpc = data.npcId;
-      showToast(`${data.npcName} wants to talk to you`, 'approach');
+      const approachText = data.displayText || `${data.npcName} wants to talk to you`;
+      showToast(approachText, 'approach');
+      addEvent('approach', approachText);
       break;
     }
 
