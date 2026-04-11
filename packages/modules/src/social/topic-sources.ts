@@ -681,6 +681,41 @@ const secretLeakageTopics: TopicSource = (init, _resp, _ctx) => {
   }];
 };
 
+/**
+ * Sighting topics — NPCs mention who they saw at their current or recent location.
+ * Creates organic alibi information: "I saw Mark at the market this morning."
+ * Only NPCs who are actually co-located or recently were can provide this.
+ */
+const sightingTopics: TopicSource = (init, resp, ctx) => {
+  const proposals: TopicProposal[] = [];
+  if (!ctx.agents) return proposals;
+
+  // Find NPCs that the initiator is currently co-located with (excluding conversation partner)
+  const coLocated: string[] = [];
+  for (const [id, agent] of ctx.agents) {
+    if (id === init.profile.id || id === resp.profile.id) continue;
+    if (!agent.state.alive || agent.profile.isPlayer) continue;
+    if (agent.state.location === init.state.location) {
+      coLocated.push(agent.profile.name);
+    }
+  }
+
+  if (coLocated.length > 0 && Math.random() < 0.3) {
+    const mentioned = coLocated[Math.floor(Math.random() * coLocated.length)];
+    proposals.push({
+      subject: `seeing ${mentioned} around`,
+      tone: 'casual, observational',
+      moodValence: 0,
+      weight: 1,
+      initiatorHook: `You notice ${mentioned} nearby. Mention having seen them — just casual observation, the kind of thing villagers notice.`,
+      responderHook: `React to the observation about ${mentioned}. Add your own if you've noticed something about them lately.`,
+      category: 'casual_village',
+    });
+  }
+
+  return proposals;
+};
+
 // ─── All social topic sources ──────────────────────────────────
 
 export const SOCIAL_TOPIC_SOURCES: TopicSource[] = [
@@ -696,4 +731,5 @@ export const SOCIAL_TOPIC_SOURCES: TopicSource[] = [
   opinionTopics,
   questionTopics,
   secretLeakageTopics,
+  sightingTopics,
 ];
