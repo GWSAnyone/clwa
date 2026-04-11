@@ -399,8 +399,17 @@ async function init() {
       const nearest = findNearestNpc(state.player.x, state.player.y, 100);
       if (nearest) openChat(nearest);
     }
-    // Escape — close chat
+    // Escape — close chat or journal
     if (e.key === 'Escape' && state.chatOpen) closeChat();
+    else if (e.key === 'Escape') {
+      const jp = document.getElementById('journal-panel');
+      if (jp?.classList.contains('open')) jp.classList.remove('open');
+    }
+    // J key — toggle journal (when not in chat)
+    if (e.key.toLowerCase() === 'j' && !state.chatOpen) {
+      e.preventDefault();
+      toggleJournal();
+    }
     // Focus trap in chat panel
     if (e.key === 'Tab' && state.chatOpen) {
       const panel = document.getElementById('chat-panel');
