@@ -477,6 +477,24 @@ export function registerCrimeJusticeModule(): void {
   // Event handlers for belief creation and state changes
   registerCrimeEventHandlers();
 
+  // Intimidated witness directive: witnesses who were threatened stay silent about crimes
+  registerSecretDirectiveBuilder(({ agent, eventStore }) => {
+    const agentId = agent.profile.id;
+    const intimidationEvents = eventStore.getAll()
+      .filter((e: WorldEvent) => e.type === 'WITNESS_INTIMIDATED' && e.object === agentId);
+    if (intimidationEvents.length === 0) return [];
+
+    const intimidator = intimidationEvents[intimidationEvents.length - 1].payload?.suspectName as string ?? 'someone';
+    return [
+      `## HIDDEN: You have been intimidated\n` +
+      `${intimidator} threatened you to keep quiet about what you know. You are afraid.\n` +
+      `- If asked about the crime: be evasive, claim you didn't see much, look away nervously.\n` +
+      `- If pressed hard: you might crack — the truth wants to come out, but fear holds you back.\n` +
+      `- If the person asking seems trustworthy and powerful enough to protect you: you might open up, haltingly.\n` +
+      `- You flinch at the mention of ${intimidator}'s name.`,
+    ];
+  });
+
   // Heat-aware secret directive: criminal NPCs get escalating danger prose (SPEC-heat-system)
   registerSecretDirectiveBuilder(({ agent, agents }) => {
     const directive = buildHeatDirective(agent, { agents });
