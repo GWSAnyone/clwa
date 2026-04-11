@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
-import type { WorldEvent, ConsequenceRule, ConsequenceResult } from './cg-types';
-import { isEventCategory, getEventLabel, getEventMoodShift, getBeliefCreator, getMemoryTextBuilder } from './event-registry';
+import type { WorldEvent, ConsequenceRule, ConsequenceResult, RuleCondition } from './cg-types';
+import { getEventMoodShift, getBeliefCreator, getMemoryTextBuilder } from './event-registry';
 
 export interface WorldContext {
   agents: Map<string, Agent>;
@@ -18,12 +18,21 @@ export interface EngineOptions {
 }
 
 export class ConsequenceEngine {
-  private rules: ConsequenceRule[];
+  /** Trigger index: event type → rules that fire on it. O(1) lookup. */
+  private rulesByTrigger = new Map<string, ConsequenceRule[]>();
   private onEvent?: (event: WorldEvent) => void;
 
   constructor(rules: ConsequenceRule[], options?: EngineOptions) {
-    this.rules = rules;
     this.onEvent = options?.onEvent;
+    // Build trigger index
+    for (const rule of rules) {
+      const existing = this.rulesByTrigger.get(rule.trigger);
+      if (existing) {
+        existing.push(rule);
+      } else {
+        this.rulesByTrigger.set(rule.trigger, [rule]);
+      }
+    }
   }
 
   /**
@@ -41,22 +50,53 @@ export class ConsequenceEngine {
     // Track witnesses across the entire chain to avoid duplicates
     if (!ctx.witnessIds) ctx.witnessIds = new Set();
 
+    const candidates = this.rulesByTrigger.get(event.type) ?? [];
+    const depthFiltered = candidates.filter(r => depth < r.maxChainDepth);
+
+    // ─── Separate exclusive vs independent rules ───
+    const independent: ConsequenceRule[] = [];
+    const exclusiveGroups = new Map<string, ConsequenceRule[]>();
+
+    for (const rule of depthFiltered) {
+      if (rule.exclusive) {
+        const group = exclusiveGroups.get(rule.exclusive);
+        if (group) {
+          group.push(rule);
+        } else {
+          exclusiveGroups.set(rule.exclusive, [rule]);
+        }
+      } else {
+        independent.push(rule);
+      }
+    }
+
+    // ─── Resolve which rules fire ───
+    // Independent rules: all that pass probability + conditions
+    const toFire: Array<{ rule: ConsequenceRule; targets: string[] }> = [];
+
+    for (const rule of independent) {
+      if (rule.consequence.probability < 1.0 && Math.random() > rule.consequence.probability) continue;
+      const targets = this.evaluateConditions(rule, event, ctx);
+      if (targets.length > 0) toFire.push({ rule, targets });
+    }
+
+    // Exclusive groups: sort by priority desc, fire first that passes
+    for (const [, group] of exclusiveGroups) {
+      group.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      for (const rule of group) {
+        if (rule.consequence.probability < 1.0 && Math.random() > rule.consequence.probability) continue;
+        const targets = this.evaluateConditions(rule, event, ctx);
+        if (targets.length > 0) {
+          toFire.push({ rule, targets });
+          break; // only highest-priority match in exclusive group
+        }
+      }
+    }
+
+    // ─── Fire matched rules ───
     const allResults: ConsequenceResult[] = [];
 
-    for (const rule of this.rules) {
-      if (rule.trigger !== event.type) continue;
-      if (depth >= rule.maxChainDepth) continue;
-
-      // Check probability
-      if (rule.consequence.probability < 1.0 && Math.random() > rule.consequence.probability) {
-        continue;
-      }
-
-      // Evaluate conditions and find targets
-      const targets = this.evaluateConditions(rule, event, ctx);
-      if (targets.length === 0) continue;
-
-      // Build consequence event, carrying forward affected targets
+    for (const { rule, targets } of toFire) {
       const consequenceEvent: WorldEvent = {
         id: crypto.randomUUID(),
         type: rule.consequence.type,
@@ -70,15 +110,12 @@ export class ConsequenceEngine {
           sourceRule: rule.id,
           affectedTargets: targets,
           ...event.payload,
-          // Propagate original event type through cascade chain
           originalEventType: (event.payload?.originalEventType as string) ?? event.type,
         },
       };
 
-      // Record event
       this.onEvent?.(consequenceEvent);
 
-      // Inject memory + mood shift into each target agent
       const moodShift = getEventMoodShift(rule.consequence.type);
 
       for (const targetId of targets) {
@@ -87,8 +124,6 @@ export class ConsequenceEngine {
 
         const memoryText = this.buildMemoryText(rule, event, targetId, ctx);
         await agent.observe(memoryText, rule.consequence.importance);
-
-        // Create structured belief alongside memory
         this.createBelief(rule, event, targetId, ctx);
 
         // Grief: extra mood penalty if victim was someone the agent cares about
@@ -101,18 +136,15 @@ export class ConsequenceEngine {
           }
         }
 
-        // Sentiment shift: if NPC learns who killed someone they cared about,
-        // their sentiment toward the killer drops sharply
+        // Sentiment shift: if NPC learns who killed someone they cared about
         const killerId = (event.payload?.suspectName as string) ?? event.subject;
         if (killerId && victimId && agent.state.relationships) {
           const victimRel = agent.state.relationships.getRelationship(victimId);
           if (victimRel && victimRel.sentiment > 0) {
-            // Find suspect agent ID (suspectName might be a name, not an ID)
             const killerAgent = Array.from(ctx.agents.entries())
               .find(([, a]) => a.profile.name === killerId || a.profile.id === killerId);
             if (killerAgent) {
               const [killerAgentId] = killerAgent;
-              // Stronger bond with victim → stronger hatred for killer
               const sentimentDrop = -(0.3 + victimRel.sentiment * 0.5);
               agent.state.relationships.adjustSentiment(killerAgentId, sentimentDrop);
               agent.state.relationships.adjustTrust(killerAgentId, -0.4);
@@ -120,22 +152,20 @@ export class ConsequenceEngine {
           }
         }
 
-        // Mood shift on traumatic events via modifier
         if (moodShift !== 0) {
           ctx.addMoodModifier?.(targetId, { source: `event_${rule.consequence.type}`, category: 'event',
             magnitude: moodShift, remaining: 1440, duration: 1440, decay: 'exponential' });
         }
 
-        // Track witnesses (rules declare tracksWitness: true)
         if (rule.tracksWitness) {
-          ctx.witnessIds.add(targetId);
+          ctx.witnessIds!.add(targetId);
         }
       }
 
       const result: ConsequenceResult = { rule, targets, event: consequenceEvent };
       allResults.push(result);
 
-      // Cascade: the consequence event can trigger further rules
+      // Cascade
       const cascaded = await this.process(consequenceEvent, ctx, depth + 1);
       allResults.push(...cascaded);
     }
@@ -143,14 +173,43 @@ export class ConsequenceEngine {
     return allResults;
   }
 
+  // ─── CG v2: Target Selection Pipeline ───
+
   private evaluateConditions(
     rule: ConsequenceRule,
     event: WorldEvent,
     ctx: WorldContext,
   ): string[] {
+    // Step 1: Resolve initial candidates via targetMode
+    let candidates = this.resolveTargets(rule, event, ctx);
+    if (candidates.length === 0) return [];
+
+    // Step 2: Apply conditions as filters or gates
     for (const cond of rule.conditions) {
-      // Find alive agents at same location, excluding victim AND discoverer/subject
-      if (cond.op === 'has_witnesses') {
+      if (candidates.length === 0) return [];
+
+      if (this.isGateCondition(cond)) {
+        if (!this.evaluateGate(cond, event, ctx)) return [];
+      } else {
+        candidates = candidates.filter(id => this.evaluateFilter(cond, id, event, ctx));
+      }
+    }
+
+    return candidates;
+  }
+
+  /**
+   * Resolve initial target candidates based on rule.targetMode.
+   * - 'witnesses': alive agents at event location, excluding subject/object/known witnesses
+   * - 'location': all alive agents at event location, excluding known witnesses
+   * - 'affected': event.payload.affectedTargets (default, for chain rules)
+   * - 'all': all alive agents
+   */
+  private resolveTargets(rule: ConsequenceRule, event: WorldEvent, ctx: WorldContext): string[] {
+    const mode = rule.targetMode ?? 'affected';
+
+    switch (mode) {
+      case 'witnesses':
         return Array.from(ctx.agents.entries())
           .filter(([id, agent]) =>
             agent.state.alive &&
@@ -160,11 +219,8 @@ export class ConsequenceEngine {
             !ctx.witnessIds?.has(id),
           )
           .map(([id]) => id);
-      }
 
-      // Fix #2: rumor targets exclude direct witnesses
-      if (cond.op === 'is_public_place') {
-        if (!ctx.publicPlaces?.has(event.location)) return [];
+      case 'location':
         return Array.from(ctx.agents.entries())
           .filter(([id, agent]) =>
             agent.state.alive &&
@@ -172,33 +228,150 @@ export class ConsequenceEngine {
             !ctx.witnessIds?.has(id),
           )
           .map(([id]) => id);
-      }
 
-      // Check if any affected targets have a specific capability flag
-      if (cond.op === 'has_capability') {
-        const capFlag = cond.value as string;
-        const affected = (event.payload?.affectedTargets as string[]) ?? [];
-        return affected.filter((id) => {
-          const agent = ctx.agents.get(id);
-          return agent && agent.state.alive && !!(agent.profile as unknown as Record<string, unknown>)[capFlag];
-        });
-      }
+      case 'affected':
+        return (event.payload?.affectedTargets as string[]) ?? [];
 
-      const fieldValue = (event as unknown as Record<string, unknown>)[cond.field];
-      if (cond.op === 'eq') { if (fieldValue !== cond.value) return []; continue; }
-      if (cond.op === 'gt') { if (!((fieldValue as number) > (cond.value as number))) return []; continue; }
-      if (cond.op === 'lt') { if (!((fieldValue as number) < (cond.value as number))) return []; continue; }
-      console.warn(`[CG] Unknown condition op '${cond.op}' in rule ${rule.id}`);
-      return [];
+      case 'all':
+        return Array.from(ctx.agents.entries())
+          .filter(([, agent]) => agent.state.alive)
+          .map(([id]) => id);
     }
-
-    return [];
   }
 
   /**
-   * Create a structured belief from a consequence event.
-   * Beliefs are the NPC's interpretation of events — separate from text memories.
+   * Determine if a condition is a gate (check once, fail entire rule)
+   * or a filter (reduce candidate list per-target).
+   * Gate = condition references event/subject/object, not individual targets.
+   * Filter = condition references 'target' → applied to each candidate.
    */
+  private isGateCondition(cond: RuleCondition): boolean {
+    // Event payload checks are always gates
+    if (cond.op === 'eq' || cond.op === 'gt' || cond.op === 'lt') return true;
+    if (cond.op === 'is_public_place') return true;
+    // NPC-state conditions: gate if checking subject/object, filter if checking target
+    if (cond.op === 'trait') return cond.of !== 'target';
+    if (cond.op === 'relationship') return cond.actor !== 'target';
+    if (cond.op === 'belief') return cond.of !== 'target';
+    // has_capability is always a filter (checks each target)
+    if (cond.op === 'has_capability') return false;
+    return false;
+  }
+
+  private evaluateGate(cond: RuleCondition, event: WorldEvent, ctx: WorldContext): boolean {
+    if (cond.op === 'is_public_place') {
+      return ctx.publicPlaces?.has(event.location) ?? false;
+    }
+
+    // Event payload comparisons
+    if (cond.op === 'eq' || cond.op === 'gt' || cond.op === 'lt') {
+      const fieldValue = (event as unknown as Record<string, unknown>)[cond.field!];
+      if (cond.op === 'eq') return fieldValue === cond.value;
+      if (cond.op === 'gt') return (fieldValue as number) > (cond.value as number);
+      if (cond.op === 'lt') return (fieldValue as number) < (cond.value as number);
+    }
+
+    // NPC-state gates (of !== 'target')
+    if (cond.op === 'trait' && cond.of !== 'target') {
+      const agent = this.resolveActor(cond.of!, event, ctx);
+      return agent ? this.checkTrait(agent, cond) : false;
+    }
+    if (cond.op === 'relationship' && cond.actor !== 'target') {
+      const agent = this.resolveActor(cond.actor!, event, ctx);
+      const towardId = this.resolveToward(cond.toward!, event, ctx);
+      return agent && towardId ? this.checkRelationship(agent, towardId, cond) : false;
+    }
+    if (cond.op === 'belief' && cond.of !== 'target') {
+      const agent = this.resolveActor(cond.of!, event, ctx);
+      return agent ? this.checkBelief(agent, event, cond) : false;
+    }
+
+    console.warn(`[CG] Unknown gate condition op '${cond.op}'`);
+    return true; // unknown op = pass (forward compat)
+  }
+
+  private evaluateFilter(cond: RuleCondition, targetId: string, event: WorldEvent, ctx: WorldContext): boolean {
+    const agent = ctx.agents.get(targetId);
+    if (!agent) return false;
+
+    if (cond.op === 'has_capability') {
+      const capFlag = (cond.value ?? cond.field) as string;
+      return !!(agent.profile as unknown as Record<string, unknown>)[capFlag];
+    }
+    if (cond.op === 'trait') {
+      return this.checkTrait(agent, cond);
+    }
+    if (cond.op === 'relationship') {
+      const towardId = this.resolveToward(cond.toward!, event, ctx, targetId);
+      return towardId ? this.checkRelationship(agent, towardId, cond) : false;
+    }
+    if (cond.op === 'belief') {
+      return this.checkBelief(agent, event, cond);
+    }
+
+    return true; // unknown filter = include (forward compat)
+  }
+
+  // ─── CG v2: Helper functions ───
+
+  private resolveActor(ref: string, event: WorldEvent, ctx: WorldContext): Agent | null {
+    const id = ref === 'subject' ? event.subject
+      : ref === 'object' ? event.object
+      : null;
+    return id ? ctx.agents.get(id) ?? null : null;
+  }
+
+  private resolveToward(ref: string, event: WorldEvent, ctx: WorldContext, targetId?: string): string | null {
+    if (ref === 'subject') return event.subject;
+    if (ref === 'object') return event.object ?? null;
+    if (ref === 'target') return targetId ?? null;
+    // Payload field → may be NPC name, resolve to ID
+    const nameOrId = event.payload?.[ref] as string | undefined;
+    if (!nameOrId) return null;
+    if (ctx.agents.has(nameOrId)) return nameOrId;
+    for (const [id, a] of ctx.agents) {
+      if (a.profile.name === nameOrId) return id;
+    }
+    return null;
+  }
+
+  private checkTrait(agent: Agent, cond: RuleCondition): boolean {
+    const traitName = cond.trait as string;
+    const traitValue = (agent.profile.bigFive as unknown as Record<string, number>)[traitName];
+    if (traitValue == null) return false;
+    return this.compare(traitValue, cond.comparator ?? '>', cond.value as number);
+  }
+
+  private checkRelationship(agent: Agent, towardId: string, cond: RuleCondition): boolean {
+    const rel = agent.state.relationships?.getRelationship(towardId);
+    if (!rel) return false;
+    const field = cond.field === 'trust' ? rel.trust : rel.sentiment;
+    return this.compare(field, cond.comparator ?? '>', cond.value as number);
+  }
+
+  private checkBelief(agent: Agent, event: WorldEvent, cond: RuleCondition): boolean {
+    if (!agent.state.beliefs) return false;
+    const beliefs = agent.state.beliefs.getAllBeliefs();
+    return beliefs.some(b => {
+      if (cond.eventType && b.eventType !== cond.eventType) return false;
+      if (cond.minConfidence && b.confidence < cond.minConfidence) return false;
+      if (cond.aboutSubject && b.subject !== ((event.payload?.suspectName as string) ?? event.subject)) return false;
+      return true;
+    });
+  }
+
+  private compare(a: number, op: string, b: number): boolean {
+    switch (op) {
+      case '>': return a > b;
+      case '<': return a < b;
+      case '>=': return a >= b;
+      case '<=': return a <= b;
+      default: return a === b;
+    }
+  }
+
+  // ─── Belief & Memory (unchanged from v1) ───
+
   private createBelief(
     rule: ConsequenceRule,
     event: WorldEvent,
@@ -213,21 +386,18 @@ export class ConsequenceEngine {
     const victimName = (event.payload?.victimName as string)
       ?? (victim ? `${victim.profile.name} the ${victim.profile.role}` : null)
       ?? event.object ?? null;
-    // Original crime event type propagated through cascade chain
     const crimeEventType = (event.payload?.originalEventType as string) ?? event.type;
 
-    // Module-registered belief creators handle specific consequence types
     const creator = getBeliefCreator(rule.consequence.type);
     if (creator) {
       creator(agent, event, rule, crimeEventType, suspect, victimName);
     }
   }
 
-  // Fix #1: include victim role in memory text for better embedding recall
   private buildMemoryText(
     rule: ConsequenceRule,
     event: WorldEvent,
-    targetId: string,
+    _targetId: string,
     ctx: WorldContext,
   ): string {
     const suspect = (event.payload?.suspectName as string) ?? 'someone unknown';
@@ -236,22 +406,10 @@ export class ConsequenceEngine {
       ?? (victim ? victim.profile.name : null)
       ?? event.object ?? 'someone';
 
-    // Module-registered memory text builders
     const builder = getMemoryTextBuilder(rule.consequence.type);
     if (builder) return builder(event, suspect, victimName);
 
     console.warn(`[CG] No memory text builder for consequence type: ${rule.consequence.type}`);
     return `Something significant happened involving ${suspect}.`;
   }
-
-  /**
-   * Spread rumors across locations when a new day arrives.
-   * Witnesses/rumor-holders in public places spread news to ALL agents
-   * in neighboring locations who haven't heard yet.
-   */
-  /**
-   * Spread rumors across locations when a new day arrives.
-   * Uses STRUCTURED BELIEFS (not text matching) to find crime knowledge.
-   * NPCs with crime beliefs in public places spread to those who don't know yet.
-   */
 }
