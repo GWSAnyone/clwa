@@ -191,7 +191,7 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Tests
 
-- **Run all**: `bun run test` (77 tests, or individually: `bun run test:arch`, `bun run test:smoke`, `bun run test:save`, `bun run test:cg`)
+- **Run all**: `bun run test` (82 tests: boot-smoke 34, save-load 14, architecture 13, cg-v2 16, heat 5)
 - **architecture.test.ts** — static lint: engine boundary, hardcoded module strings, direct mood mutation, text matching, `as any` ban
 - **boot-smoke.test.ts** — registry validation: affordance consistency, targetFinder/stepHandler/requirement integrity, topic source arity, step handler registration
 - **save-load.test.ts** — round-trip serialization: beliefs, relationships, mood modifiers, dead agents, memories, edge cases
@@ -211,6 +211,6 @@ v0.12.10 (M3 in progress). Milestone 1 (Replayable Crime) complete. Milestone 2 
 
 Key systems: persistent NPC memory (dual storage _memoryLog + Qdrant, 3-level fallback, multiplayer-ready playerId), contract validation (runtime guards on addGoal/addBelief/registerStepHandler/registerTopicSource + `as any` lint + boot arity checks), world-loader JSON validation against engine registries.
 
-14 engine subsystems, 40+ registries, 22 affordances, 24 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. 77 tests, 0 TS errors.
+14 engine subsystems, 40+ registries, 22 affordances, 24 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. 82 tests, 0 TS errors.
 
 Next: M3 (Living Opposition) — CG v2 done, heat system done, criminal escalation done. Remaining: Garrett variability, NPC resistance. See docs/ROADMAP.md for details.
