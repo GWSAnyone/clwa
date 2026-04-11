@@ -772,6 +772,12 @@ function updateHUD() {
   document.getElementById('hud-day').textContent = state.day;
   document.getElementById('hud-time').textContent = state.time;
   document.getElementById('hud-period').textContent = state.period;
+  // Speed indicator
+  const speedEl = document.getElementById('hud-speed');
+  if (speedEl) {
+    speedEl.textContent = state.gameSpeed > 0 ? `${state.gameSpeed}x` : 'paused';
+    speedEl.style.color = state.gameSpeed >= 3 ? '#ea5' : state.gameSpeed === 0 ? '#e55' : '#8a8';
+  }
   // Investigation progress — clues + suspects in HUD
   const clueEl = document.getElementById('hud-clues');
   if (clueEl) {
