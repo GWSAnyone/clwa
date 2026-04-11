@@ -575,6 +575,10 @@ function handleWS(type, data) {
       else if (evType === 'GOODS_STOLEN') feedText = `Theft at ${data.location || '?'}`;
       else if (evType === 'NPC_FLED') feedText = `${objectName} fled the town`;
       else if (evType === 'NPC_KILLED') feedText = `${subjectName} killed ${objectName}`;
+      else if (evType === 'ARGUMENT_WITNESSED') feedText = `${subjectName} argued with ${objectName}`;
+      else if (evType === 'THREAT_WITNESSED') feedText = `${subjectName} threatened ${objectName}`;
+      else if (evType === 'WITNESS_INTIMIDATED') feedText = `${subjectName} intimidated ${objectName}`;
+      else if (evType === 'EVIDENCE_DESTROYED') feedText = `${subjectName} destroyed evidence`;
       else feedText = `${evType}: ${subjectName} → ${objectName}`;
       addEvent(isCrime ? 'crime' : evType === 'NPC_ARRESTED' ? 'crime' : 'conversation', feedText);
 
@@ -593,6 +597,10 @@ function handleWS(type, data) {
       } else if (evType === 'NPC_FLED') {
         if (objectAgent) objectAgent.status = 'fled';
         showToast(`${objectName} fled the town!`, 'sentence');
+      } else if (evType === 'ARGUMENT_WITNESSED') {
+        showToast(`${subjectName} is arguing with ${objectName}!`, 'info', 4000);
+      } else if (evType === 'THREAT_WITNESSED') {
+        showToast(`${subjectName} threatened ${objectName}!`, 'crime', 5000);
       }
       break;
     }
