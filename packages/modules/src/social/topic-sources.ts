@@ -651,6 +651,36 @@ const questionTopics: TopicSource = (init, resp, ctx) => {
   return proposals;
 };
 
+/**
+ * Secret leakage — stressed NPCs involuntarily hint at their secrets.
+ * High neuroticism + low mood = poor emotional control = verbal tells.
+ * This creates detective clues through organic NPC conversation.
+ */
+const secretLeakageTopics: TopicSource = (init, _resp, _ctx) => {
+  if (!init.profile.secret) return [];
+
+  // Only leak when emotionally compromised: low mood + high neuroticism
+  const N = init.profile.bigFive.neuroticism;
+  const mood = init.state.mood;
+  if (mood > -0.2 || N < 0.4) return [];
+
+  // Probability scales with emotional distress
+  const leakChance = (0.5 - mood) * N; // 0-1 range roughly
+  if (Math.random() > leakChance) return [];
+
+  return [{
+    subject: 'something unspoken',
+    tone: 'nervous, evasive',
+    moodValence: -0.01,
+    weight: 3,
+    initiatorHook: `You are NOT going to reveal your secret (${init.profile.secret}). But your stress shows through. ` +
+      `Say something vague and anxious — a half-finished thought, a nervous deflection, a sudden topic change. ` +
+      `The listener should sense something is wrong without knowing what.`,
+    category: 'inner',
+    minImportance: 5,
+  }];
+};
+
 // ─── All social topic sources ──────────────────────────────────
 
 export const SOCIAL_TOPIC_SOURCES: TopicSource[] = [
@@ -665,4 +695,5 @@ export const SOCIAL_TOPIC_SOURCES: TopicSource[] = [
   memoryTopics,
   opinionTopics,
   questionTopics,
+  secretLeakageTopics,
 ];

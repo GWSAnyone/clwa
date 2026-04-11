@@ -209,7 +209,7 @@ export async function runConversation(
 
 
 
-/** Relationship note for conversation prompt */
+/** Relationship note for conversation prompt — sentiment + trust shape how NPCs talk */
 function relationshipNote(from: Agent, to: Agent): string {
   const rel = from.state.relationships?.getRelationship(to.profile.id);
   if (!rel) return '';
@@ -222,7 +222,13 @@ function relationshipNote(from: Agent, to: Agent): string {
     : rel.sentiment > 0.3 ? 'You get along with them.'
     : '';
 
-  const parts = [label, feeling].filter(Boolean);
+  // Trust shapes communication style — independent of sentiment
+  const trustNote = rel.trust > 0.7 ? 'You trust them enough to speak openly.'
+    : rel.trust < 0.3 ? 'You guard your words around them — they might use them against you.'
+    : rel.trust < 0.5 ? 'You are cautious about what you reveal to them.'
+    : '';
+
+  const parts = [label, feeling, trustNote].filter(Boolean);
   return parts.length > 0 ? parts.join('. ') + '.' : '';
 }
 
@@ -271,10 +277,13 @@ function buildFollowUpPrompt(
 ): string {
   const lastLine = previousLines[previousLines.length - 1];
   const speech = speechReminder(speaker);
+  const relNote = relationshipNote(speaker, other);
+  const mood = moodLine(speaker);
 
   return `${other.profile.name} just said: "${lastLine.text}"
-Topic: ${topic.subject}. (Your voice: ${speech})
-IMPORTANT: say 5–12 words out loud — a complete thought, never just a name. Only dialogue, no narration.`;
+Topic: ${topic.subject}. ${mood}
+${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
+React naturally — agree, disagree, add your perspective, or change direction. Say 5–12 words out loud. Only dialogue.`;
 }
 
 // ─── Memory & Importance ────────────────────────────────────────
