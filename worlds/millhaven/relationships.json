@@ -207,5 +207,25 @@
     "to": "ted",
     "type": "acquaintance",
     "note": "evening tavern visitor"
+  },
+  {
+    "from": "magistrate",
+    "to": "mark",
+    "type": "acquaintance",
+    "note": "merchant disputes sometimes reach the courthouse",
+    "sentiment": 0.0,
+    "sentimentRange": [-0.2, 0.15]
+  },
+  {
+    "from": "magistrate",
+    "to": "hilda",
+    "type": "acquaintance",
+    "note": "once ruled on a property dispute involving her forge"
+  },
+  {
+    "from": "magistrate",
+    "to": "bess",
+    "type": "acquaintance",
+    "note": "respects her wisdom, buys herbal tea"
   }
 ]
