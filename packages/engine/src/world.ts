@@ -35,7 +35,7 @@ import { ProcessingQueue } from './processing-queue';
 import type { ProcessingTask, TaskType } from './processing-queue';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, getEventLabel, getEventLabelSafe } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, isConcealment, getEventLabel, getEventLabelSafe } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -1139,12 +1139,15 @@ export class World {
       conversation.topicGroup = getTopicGroup(topic.category);
       this.callbacks.onConversation?.(conversation);
 
-      // Belief transfer
+      // Belief transfer — skip if sender has concealment belief (cover-up suppression)
       if (topic.beliefTransfer) {
         const bt = topic.beliefTransfer;
+        // Check if initiator is covering up this crime type (concealment source = won't gossip)
+        const initConcealing = initiator.state.beliefs?.getAllBeliefs().some(
+          b => isConcealment(b.source) && b.eventType === bt.eventType) ?? false;
         const initBelief = initiator.state.beliefs?.getAllBeliefs().find(
           b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object));
-        if (initBelief && responder.state.beliefs) {
+        if (initBelief && responder.state.beliefs && !initConcealing) {
           const conf = Math.max(0.25, initBelief.confidence * bt.confidenceMultiplier);
           responder.state.beliefs.addBelief({
             id: crypto.randomUUID(), eventType: bt.eventType, subject: initBelief.subject,
@@ -1152,9 +1155,12 @@ export class World {
             source: 'rumor', sourceNpcId: initiator.profile.id, gameDay, lastUpdated: gameDay,
           });
         }
+        // Check if responder is covering up
+        const respConcealing = responder.state.beliefs?.getAllBeliefs().some(
+          b => isConcealment(b.source) && b.eventType === bt.eventType) ?? false;
         const respBelief = responder.state.beliefs?.getAllBeliefs().find(
           b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object));
-        if (respBelief && initiator.state.beliefs) {
+        if (respBelief && initiator.state.beliefs && !respConcealing) {
           const conf = Math.max(0.25, respBelief.confidence * bt.confidenceMultiplier);
           initiator.state.beliefs.addBelief({
             id: crypto.randomUUID(), eventType: bt.eventType, subject: respBelief.subject,
