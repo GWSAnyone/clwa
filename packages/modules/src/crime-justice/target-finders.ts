@@ -35,12 +35,12 @@ function findStealTarget(npcId: string, agent: Agent, ctx: AffordanceContext): A
 }
 
 /** Belief-based motive targeting: find NPC with highest confidence motive-category belief. */
-function findMotiveTarget(npcId: string, agent: Agent, ctx: AffordanceContext): AffordanceTarget | null {
+function findMotiveTarget(npcId: string, agent: Agent, ctx: AffordanceContext, minConf = 0.3): AffordanceTarget | null {
   if (!agent.state.beliefs) return null;
   let best: { id: string; name: string; location: string; conf: number } | null = null;
   for (const b of agent.state.beliefs.getAllBeliefs()) {
     if (!isEventCategory(b.eventType, 'motive')) continue;
-    if (b.confidence < 0.3) continue;
+    if (b.confidence < minConf) continue;
     if (!b.object) continue; // object = target NPC ID
     const target = ctx.agents.get(b.object);
     if (!target || b.object === npcId || !target.state.alive) continue;
@@ -392,7 +392,7 @@ export function registerCrimeTargetFinders(): void {
   // Proactive finders (used when NPC evaluates affordances each tick)
   TARGET_FINDERS.set('surveillance', findSurveillanceTarget);
   TARGET_FINDERS.set('steal', findStealTarget);
-  TARGET_FINDERS.set('motive_target', findMotiveTarget);
+  TARGET_FINDERS.set('motive_target', (npcId, agent, ctx, aff) => findMotiveTarget(npcId, agent, ctx, aff.requires.beliefConfidence ?? 0.3));
   TARGET_FINDERS.set('crime_belief', (npcId, agent, ctx, aff) => findCrimeBeliefTarget(npcId, agent, ctx, aff.requires.beliefConfidence ?? 0.5));
   TARGET_FINDERS.set('blackmail', findBlackmailTarget);
   TARGET_FINDERS.set('interrogation', (npcId, agent, ctx) => findInterrogationTarget(npcId, agent, ctx));

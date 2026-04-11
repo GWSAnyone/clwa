@@ -1,6 +1,74 @@
 import type { AffordanceDefinition } from '@clwa/engine';
 
 export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
+  // ─── Escalation Precursors (visible warning signs) ───
+  {
+    id: 'argue',
+    actionVerb: 'argue',
+    actionDescription: 'confront someone verbally',
+    label: 'Confront them about what they did — you cannot stay silent any longer',
+    instinctContext: '{targetName} {reason:has wronged you}. Your frustration is boiling over. You need to say something.',
+    targetFinder: 'motive_target',
+    category: 'crime',
+    severity: 1,
+    resistTraits: [{ trait: 'agreeableness', direction: 'high' }],
+    requires: {
+      notGuard: true,
+      beliefConfidence: 0.15,  // lowest escalation tier
+    },
+    weights: [
+      { trait: 'A', direction: 'low', multiplier: 0.2 },
+      { trait: 'N', direction: 'high', multiplier: 0.15 },
+      { trait: 'E', direction: 'high', multiplier: 0.1 },
+    ],
+    moodWeight: 0.2,
+    relationshipWeight: 0.15,
+    beliefModifiers: [
+      { eventType: 'PERSONAL_GRUDGE', weight: 0.3 },
+      { eventType: 'REVENGE_DESIRE', weight: 0.2 },
+    ],
+    goalType: 'argue',
+    goalPriority: 4,
+    stepTemplates: [
+      { action: 'move_to', location: '$target', skipIfAt: true },
+      { action: 'argue_with', targetId: '$target', importance: 3 },
+    ],
+  },
+  {
+    id: 'threaten',
+    actionVerb: 'threaten',
+    actionDescription: 'threaten someone directly',
+    label: 'Make them fear you — words can cut deeper than any blade',
+    instinctContext: '{targetName} {reason:must learn to fear you}. A threat now could prevent... something worse later.',
+    targetFinder: 'motive_target',
+    category: 'crime',
+    suppressNearPlayer: true,
+    severity: 3,
+    resistTraits: [{ trait: 'agreeableness', direction: 'high' }, { trait: 'honesty', direction: 'high' }],
+    requires: {
+      moodBelow: -0.25,
+      notGuard: true,
+      beliefConfidence: 0.50,  // medium escalation tier
+    },
+    weights: [
+      { trait: 'A', direction: 'low', multiplier: 0.25 },
+      { trait: 'H', direction: 'low', multiplier: 0.2 },
+      { trait: 'N', direction: 'high', multiplier: 0.15 },
+    ],
+    moodWeight: 0.3,
+    relationshipWeight: 0.2,
+    beliefModifiers: [
+      { eventType: 'PERSONAL_GRUDGE', weight: 0.35 },
+      { eventType: 'REVENGE_DESIRE', weight: 0.4 },
+      { eventType: 'THREAT_PERCEIVED', weight: 0.25 },
+    ],
+    goalType: 'threaten',
+    goalPriority: 5,
+    stepTemplates: [
+      { action: 'move_to', location: '$target', skipIfAt: true },
+      { action: 'threaten_npc', targetId: '$target', importance: 5 },
+    ],
+  },
   // ─── Proactive (checked each tick) ───
   {
     id: 'steal',
@@ -55,6 +123,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
       moodBelow: -0.45,
       sentimentBelow: -0.4,
       notGuard: true,
+      beliefConfidence: 0.7,  // escalation: only at high motive confidence
     },
     weights: [
       { trait: 'A', direction: 'low', multiplier: 0.25 },

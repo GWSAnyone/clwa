@@ -107,6 +107,7 @@ export function registerCrimeJusticeModule(): void {
   registerEventCategory('theft', ['GOODS_STOLEN']);
   registerEventCategory('information_spread', ['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED']);
   registerEventCategory('witness_reaction', ['COVER_UP', 'REPORT_IMPULSE']);
+  registerEventCategory('escalation', ['ARGUMENT_WITNESSED', 'THREAT_WITNESSED']);
   registerEventCategory('justice_resolution', ['NPC_SENTENCED', 'NPC_FLED']);
 
   // Event type flags — engine checks boolean properties, not category names
@@ -145,6 +146,8 @@ export function registerCrimeJusticeModule(): void {
     THEFT_DISCOVERED: 'discovered theft',
     COVER_UP: 'cover-up',
     REPORT_IMPULSE: 'report impulse',
+    ARGUMENT_WITNESSED: 'argument',
+    THREAT_WITNESSED: 'threat',
   });
 
   registerEventGoalCleanup({
@@ -330,6 +333,8 @@ export function registerCrimeJusticeModule(): void {
     WANTED_STATUS: -0.05,     // tension
     COVER_UP: -0.10,          // guilt/anxiety from hiding what you know
     REPORT_IMPULSE: -0.05,    // righteous urgency, mild stress
+    ARGUMENT_WITNESSED: -0.04, // mild unease from seeing conflict
+    THREAT_WITNESSED: -0.10,   // anxiety from seeing someone threatened
   });
 
   registerGoalMoodBoost({
@@ -418,6 +423,8 @@ export function registerCrimeJusticeModule(): void {
 
   // Action verb → affordance ID mapping for LLM DO/WHY parser
   registerActionVerbs({
+    argue: ['argue'],
+    threaten: ['threaten'],
     steal: ['steal'],
     kill: ['kill'],
     attack: ['vigilante'],
@@ -852,6 +859,36 @@ export function registerCrimeJusticeModule(): void {
           gameDay: ctx.currentDay,
           lastUpdated: ctx.currentDay,
         });
+      }
+    }
+  });
+
+  // Motive confidence growth: unresolved grudges escalate over time (SPEC-criminal-escalation)
+  registerTickPhaseHandler(async (ctx) => {
+    if (ctx.gameMinute % 60 !== 0) return; // check every game hour
+    for (const [, agent] of ctx.agents) {
+      if (!agent.state.alive || agent.profile.isPlayer) continue;
+      if (!agent.state.beliefs) continue;
+      if (isStatusAbsent(agent.state.status)) continue;
+
+      const motives = agent.state.beliefs.getAllBeliefs().filter(
+        (b) => isEventCategory(b.eventType, 'motive') && b.confidence < 0.95,
+      );
+
+      for (const motive of motives) {
+        // Only grow motives older than 3 game hours (180 minutes)
+        const motiveAge = ctx.gameMinute - (motive.gameDay * 1440);
+        if (motiveAge < 180) continue;
+
+        // Growth modulated by personality:
+        // Low H → faster escalation (less moral restraint)
+        // High N → faster escalation (emotional volatility)
+        const H = agent.profile.bigFive.honesty;
+        const N = agent.profile.bigFive.neuroticism;
+        const personalityFactor = (1.0 - H) * 0.6 + N * 0.4;
+        const growth = 0.03 * (0.5 + personalityFactor); // 0.015 to 0.03 per hour
+
+        motive.confidence = Math.min(0.95, motive.confidence + growth);
       }
     }
   });

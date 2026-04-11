@@ -100,6 +100,39 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     tracksWitness: true,
   },
 
+  // ─── Escalation Precursors ─────────────────────────────
+
+  // Argument witnessed → low-importance witness memory (clue for observant player)
+  {
+    id: 'witness-argument',
+    trigger: 'ARGUMENT_WITNESSED',
+    targetMode: 'witnesses',
+    conditions: [],
+    consequence: {
+      type: 'WITNESS_MEMORY',
+      importance: 3,
+      delayDays: 0,
+      probability: 0.7,
+    },
+    maxChainDepth: 2,
+  },
+
+  // Threat witnessed → medium-importance witness memory + may cascade to guard
+  {
+    id: 'witness-threat',
+    trigger: 'THREAT_WITNESSED',
+    targetMode: 'witnesses',
+    conditions: [],
+    consequence: {
+      type: 'WITNESS_MEMORY',
+      importance: 5,
+      delayDays: 0,
+      probability: 0.9,
+    },
+    maxChainDepth: 3,
+    tracksWitness: true,
+  },
+
   // ─── Witness Reaction (CG v2 exclusive group) ──────────
   // When a witness sees a crime, personality and relationships determine their reaction.
   // Exclusive group: only the highest-priority matching rule fires per witness.

@@ -10,6 +10,8 @@ interface DestroyEvidenceStep { action: 'destroy_evidence'; importance: number; 
 interface FleeStep { action: 'flee'; importance: number; [k: string]: unknown }
 interface ExamineSceneStep { action: 'examine_scene'; importance: number; [k: string]: unknown }
 interface SentenceNpcStep { action: 'sentence_npc'; targetId: string; importance: number; [k: string]: unknown }
+interface ArgueWithStep { action: 'argue_with'; targetId: string; importance: number; [k: string]: unknown }
+interface ThreatenNpcStep { action: 'threaten_npc'; targetId: string; importance: number; [k: string]: unknown }
 
 // ─── Punishment System v2 — Graduated Verdicts ──────────────────
 
@@ -535,5 +537,94 @@ export function registerCrimeStepHandlers(): void {
     }
     goal.currentStep++;
     return { ...baseResult, action: 'sentence_npc', description: `${owner.profile.name} sentenced ${target.profile.name}: ${verdictLabel}` };
+  });
+
+  // ─── Escalation Steps ─────────────────────────────────
+
+  registerStepHandler('argue_with', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as ArgueWithStep;
+    const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
+    const target = agents.get(step.targetId);
+    if (!target || !target.state.alive) {
+      goal.state = 'failed';
+      return { ...baseResult, action: 'argue_with', description: `${owner.profile.name}: target not available` };
+    }
+    if (owner.state.location !== target.state.location) {
+      goal.state = 'failed';
+      return { ...baseResult, action: 'argue_with', description: `${owner.profile.name}: target not here` };
+    }
+
+    // Argument: both parties remember, sentiment drops
+    await owner.observe(`I had a heated argument with ${target.profile.name}. I said things I shouldn't have.`, step.importance);
+    await target.observe(`${owner.profile.name} confronted me with angry words. It was an unpleasant exchange.`, step.importance);
+
+    // Mutual sentiment drop
+    owner.state.relationships?.adjustSentiment(step.targetId, -0.08);
+    target.state.relationships?.adjustSentiment(goal.ownerId, -0.10);
+
+    // Fire event for witnesses and CG cascade
+    if (ctx.onCrimeEvent) {
+      await ctx.onCrimeEvent({
+        type: 'ARGUMENT_WITNESSED', subject: goal.ownerId, object: step.targetId,
+        location: owner.state.location, importance: step.importance,
+        payload: { suspectName: owner.profile.name, victimName: target.profile.name },
+      });
+    }
+
+    goal.currentStep++;
+    return { ...baseResult, action: 'argue_with', description: `${owner.profile.name} argued with ${target.profile.name}` };
+  });
+
+  registerStepHandler('threaten_npc', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as ThreatenNpcStep;
+    const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
+    const target = agents.get(step.targetId);
+    if (!target || !target.state.alive) {
+      goal.state = 'failed';
+      return { ...baseResult, action: 'threaten_npc', description: `${owner.profile.name}: target not available` };
+    }
+    if (owner.state.location !== target.state.location) {
+      goal.state = 'failed';
+      return { ...baseResult, action: 'threaten_npc', description: `${owner.profile.name}: target not here` };
+    }
+
+    // Threat: target gets THREAT_PERCEIVED motive (may trigger defensive behavior)
+    await owner.observe(`I threatened ${target.profile.name}. The look on their face... maybe this will make them stop.`, step.importance);
+    await target.observe(`${owner.profile.name} threatened me. I felt genuine fear. I need to be careful around them.`, step.importance);
+
+    // Target gets THREAT_PERCEIVED motive belief (defensive reaction)
+    target.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: 'THREAT_PERCEIVED',
+      subject: owner.profile.name, object: target.profile.id,
+      location: owner.state.location, confidence: 0.7,
+      source: 'personal_motive', sourceNpcId: null,
+      gameDay: goal.createdAtMinute ? Math.floor(goal.createdAtMinute / 1440) + 1 : 1,
+      lastUpdated: goal.createdAtMinute ? Math.floor(goal.createdAtMinute / 1440) + 1 : 1,
+    });
+
+    // Relationship damage
+    owner.state.relationships?.adjustSentiment(step.targetId, -0.12);
+    target.state.relationships?.adjustSentiment(goal.ownerId, -0.20);
+    target.state.relationships?.adjustTrust(goal.ownerId, -0.15);
+
+    // Mood impact on target
+    ctx.addMoodModifier(step.targetId, {
+      source: `threat_${goal.ownerId}`, category: 'event',
+      magnitude: -0.15, remaining: 480, duration: 480, decay: 'exponential',
+    });
+
+    // Fire event for witnesses
+    if (ctx.onCrimeEvent) {
+      await ctx.onCrimeEvent({
+        type: 'THREAT_WITNESSED', subject: goal.ownerId, object: step.targetId,
+        location: owner.state.location, importance: step.importance,
+        payload: { suspectName: owner.profile.name, victimName: target.profile.name },
+      });
+    }
+
+    goal.currentStep++;
+    return { ...baseResult, action: 'threaten_npc', description: `${owner.profile.name} threatened ${target.profile.name}` };
   });
 }
