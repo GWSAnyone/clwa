@@ -295,3 +295,65 @@ export const playerRumorTopics: TopicSource = (init, resp, ctx) => {
 
   return proposals;
 };
+
+// ─── Suspicion Topics ─────────────────────────────────────────
+// NPCs with crime beliefs speculate about who did it. Creates organic
+// detective clues — player overhearing NPC conversation may learn new leads.
+
+export const suspicionTopics: TopicSource = (init, resp, ctx) => {
+  const proposals: TopicProposal[] = [];
+  const initBeliefs = init.state.beliefs?.getAllBeliefs() ?? [];
+
+  // Find crime beliefs where suspect is known
+  const suspectBeliefs = initBeliefs.filter(b =>
+    b.eventType && b.subject && b.confidence >= 0.3 &&
+    (getEventLabel(b.eventType) !== null),
+  );
+  if (suspectBeliefs.length === 0) return proposals;
+
+  const respBeliefs = resp.state.beliefs?.getAllBeliefs() ?? [];
+
+  for (const belief of suspectBeliefs.slice(0, 2)) {
+    const crimeLabel = getEventLabel(belief.eventType) ?? 'crime';
+    const suspectName = ctx.agents?.get(belief.subject!)?.profile.name ?? belief.subject;
+    const victimName = belief.object ? (ctx.agents?.get(belief.object)?.profile.name ?? belief.object) : null;
+
+    const key = `suspicion:${belief.eventType}:${belief.subject}`;
+
+    const respKnows = respBeliefs.some(b =>
+      b.eventType === belief.eventType && b.subject === belief.subject && b.confidence >= 0.2,
+    );
+
+    if (respKnows) {
+      proposals.push({
+        topicKey: key,
+        subject: `suspicions about ${suspectName}`,
+        tone: 'conspiratorial, careful',
+        moodValence: -0.01,
+        mentionedNpcId: belief.subject!,
+        sentimentValence: -0.05,
+        weight: 5,
+        beliefTransfer: { eventType: belief.eventType, object: victimName ?? undefined, confidenceMultiplier: 0.6 },
+        initiatorHook: `You suspect ${suspectName} is involved in the ${crimeLabel}${victimName ? ` of ${victimName}` : ''}. ${resp.profile.name} seems to know something too. Compare notes carefully.`,
+        responderHook: `You also have suspicions about ${suspectName}. Share what you know, but be careful.`,
+        category: 'conflict',
+      });
+    } else {
+      proposals.push({
+        topicKey: key,
+        subject: `who might be responsible`,
+        tone: 'hushed, worried',
+        moodValence: -0.01,
+        mentionedNpcId: belief.subject!,
+        sentimentValence: -0.03,
+        weight: 4,
+        beliefTransfer: { eventType: belief.eventType, object: victimName ?? undefined, confidenceMultiplier: 0.3 },
+        initiatorHook: `You have your suspicions about the ${crimeLabel}${victimName ? ` involving ${victimName}` : ''}. Hint at what you think without naming names directly — feel out whether ${resp.profile.name} might know something.`,
+        responderHook: `${init.profile.name} seems to be hinting at something about recent events. Try to understand what they know.`,
+        category: 'conflict',
+      });
+    }
+  }
+
+  return proposals;
+};

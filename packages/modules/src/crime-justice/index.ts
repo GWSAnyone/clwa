@@ -35,7 +35,7 @@ import { CRIME_AFFORDANCES } from './affordances';
 import { registerCrimeTargetFinders, isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief, hasSuspicionBelief } from './target-finders';
 import { CRIME_EVIDENCE_RULES } from './evidence-rules';
 import { registerCrimeEvidenceSources } from './evidence-sources';
-import { justiceTopics, playerRumorTopics } from './topic-sources';
+import { justiceTopics, playerRumorTopics, suspicionTopics } from './topic-sources';
 import { registerCrimeEventHandlers } from './event-handlers';
 import { registerCrimeStepHandlers, imprisonmentTimers } from './step-handlers';
 export { CRIME_CG_RULES } from './cg-rules';
@@ -440,6 +440,7 @@ export function registerCrimeJusticeModule(): void {
   // Topic sources for NPC conversations about justice events + player rumors
   TOPIC_SOURCE_REGISTRY.push(justiceTopics);
   TOPIC_SOURCE_REGISTRY.push(playerRumorTopics);
+  TOPIC_SOURCE_REGISTRY.push(suspicionTopics);
 
   // Topic group mappings for crime-justice categories
   registerTopicGroupMapping({
