@@ -109,6 +109,7 @@ export function registerCrimeJusticeModule(): void {
   registerEventCategory('witness_reaction', ['COVER_UP', 'REPORT_IMPULSE']);
   registerEventCategory('escalation', ['ARGUMENT_WITNESSED', 'THREAT_WITNESSED']);
   registerEventCategory('emergent_cascade', ['REVENGE_IMPULSE', 'GUARD_WARNING', 'ARREST_RESENTMENT']);
+  registerEventCategory('corruption', ['CORRUPTION_COVER']);
   registerEventCategory('justice_resolution', ['NPC_SENTENCED', 'NPC_FLED']);
 
   // Event type flags — engine checks boolean properties, not category names
@@ -152,6 +153,7 @@ export function registerCrimeJusticeModule(): void {
     REVENGE_IMPULSE: 'revenge impulse',
     GUARD_WARNING: 'warning',
     ARREST_RESENTMENT: 'arrest backlash',
+    CORRUPTION_COVER: 'corruption',
   });
 
   registerEventGoalCleanup({
@@ -342,6 +344,7 @@ export function registerCrimeJusticeModule(): void {
     REVENGE_IMPULSE: -0.15,    // rage and grief driving toward action
     GUARD_WARNING: 0.02,       // slight relief — authority is aware
     ARREST_RESENTMENT: -0.12,  // anger at seeing a friend arrested
+    CORRUPTION_COVER: -0.05,   // unease from deliberately ignoring duty
   });
 
   registerGoalMoodBoost({
@@ -459,6 +462,18 @@ export function registerCrimeJusticeModule(): void {
     const arrestedName = event.object ? 'my friend' : 'someone I care about';
     return `They arrested ${arrestedName}. I can't believe it. Maybe they're wrong. Maybe someone set them up.`;
   });
+  registerBeliefCreator('CORRUPTION_COVER', (agent, event, _rule, crimeEventType, killer, victimName) => {
+    // Corrupt guard gets a concealment belief — knows about the crime but chooses to ignore it
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: crimeEventType,
+      subject: killer, object: victimName,
+      location: event.location, confidence: 0.5, source: 'cover_up',
+      sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
+  registerMemoryTextBuilder('CORRUPTION_COVER', (_event, killer, victimName) => {
+    return `I know about what ${killer} did to ${victimName}. But getting involved would only bring trouble. Best to look the other way.`;
+  });
 
   // Topic sources for NPC conversations about justice events + player rumors
   TOPIC_SOURCE_REGISTRY.push(justiceTopics);
@@ -516,6 +531,26 @@ export function registerCrimeJusticeModule(): void {
       `- If pressed hard: you might crack — the truth wants to come out, but fear holds you back.\n` +
       `- If the person asking seems trustworthy and powerful enough to protect you: you might open up, haltingly.\n` +
       `- You flinch at the mention of ${intimidator}'s name.`,
+    ];
+  });
+
+  // Corrupt guard directive: guards with concealment beliefs are covering for someone
+  registerSecretDirectiveBuilder(({ agent }) => {
+    if (!agent.profile.investigator) return [];
+    const concealBeliefs = agent.state.beliefs?.getAllBeliefs().filter(
+      b => b.source === 'cover_up',
+    ) ?? [];
+    if (concealBeliefs.length === 0) return [];
+
+    const suspectNames = concealBeliefs.map(b => b.subject).filter(Boolean);
+    const names = suspectNames.length > 0 ? suspectNames.join(' and ') : 'someone';
+    return [
+      `## HIDDEN: You are looking the other way\n` +
+      `You know about crimes committed by ${names}, but you've chosen not to act.\n` +
+      `- If asked about the crime: downplay it, say you're "still looking into it", stall.\n` +
+      `- If pressed for action: make excuses — not enough evidence, too busy, someone else's jurisdiction.\n` +
+      `- If the player brings solid evidence: you become uncomfortable, may eventually act if cornered.\n` +
+      `- You are NOT loyal to the criminal — just lazy and self-serving. Enough pressure breaks you.`,
     ];
   });
 

@@ -175,9 +175,31 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     maxChainDepth: 3,
   },
 
-  // ─── Guard Cascade Rules ───────────────────────────────
+  // ─── Guard Cascade Rules (Garrett Variability) ─────────
+  // Exclusive group 'guard_witness_response': corrupt guard covers up, honest guard investigates.
+  // This is the core Garrett variability mechanic — H < 0.4 = corrupt, H >= 0.4 = dutiful.
 
-  // Rule 2: Guard witnesses murder → immediate wanted status
+  // Corrupt guard witnesses crime → ignores it (covers up)
+  {
+    id: 'corrupt-guard-witness',
+    trigger: 'WITNESS_MEMORY',
+    targetMode: 'affected',
+    conditions: [
+      { op: 'has_capability', value: 'investigator' },
+      { op: 'trait', of: 'target', trait: 'honesty', comparator: '<', value: 0.4 },
+    ],
+    consequence: {
+      type: 'CORRUPTION_COVER',
+      importance: 5,
+      delayDays: 0,
+      probability: 0.8,
+    },
+    exclusive: 'guard_witness_response',
+    priority: 2,
+    maxChainDepth: 2,
+  },
+
+  // Honest guard witnesses crime → wanted status (standard behavior)
   {
     id: 'guard-witnessed-murder',
     trigger: 'WITNESS_MEMORY',
@@ -191,10 +213,32 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
       delayDays: 0,
       probability: 1.0,
     },
+    exclusive: 'guard_witness_response',
+    priority: 1,
     maxChainDepth: 3,
   },
 
-  // Rule 4: Rumor reaches a guard → wanted status
+  // Corrupt guard hears rumor → ignores it
+  {
+    id: 'corrupt-guard-rumor',
+    trigger: 'RUMOR_SPREAD',
+    targetMode: 'affected',
+    conditions: [
+      { op: 'has_capability', value: 'investigator' },
+      { op: 'trait', of: 'target', trait: 'honesty', comparator: '<', value: 0.4 },
+    ],
+    consequence: {
+      type: 'CORRUPTION_COVER',
+      importance: 4,
+      delayDays: 0,
+      probability: 0.7,
+    },
+    exclusive: 'guard_rumor_response',
+    priority: 2,
+    maxChainDepth: 1,
+  },
+
+  // Honest guard hears rumor → wanted status
   {
     id: 'guard-heard-rumor',
     trigger: 'RUMOR_SPREAD',
@@ -208,6 +252,8 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
       delayDays: 0,
       probability: 1.0,
     },
+    exclusive: 'guard_rumor_response',
+    priority: 1,
     maxChainDepth: 3,
   },
 
