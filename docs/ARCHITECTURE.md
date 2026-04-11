@@ -37,7 +37,7 @@ State (mood, beliefs, relationships, location)
 
 **Volition:** structured output (DO/WHY). Dynamic action enum from registries. Beliefs in user prompt (not system — avoids "lost middle"). "talk" → TopicEngine handles conversation.
 
-**20+ affordances** in crime-justice module (steal, kill, investigate, arrest, evaluate_case, surveillance, etc.). Each with declarative step templates, target finders, requirement checkers. All via registries.
+**22 affordances** in crime-justice module (steal, kill, investigate, arrest, evaluate_case, surveillance, etc.). Each with declarative step templates, target finders, requirement checkers. All via registries.
 
 ### PM — Personality Model (v1)
 
@@ -51,13 +51,13 @@ State (mood, beliefs, relationships, location)
 | Temporary shift | Behavior → stress/growth type | mood threshold | Fully |
 | Permanent (future) | Baseline shift | Traumatic event | No |
 
-### CG — Consequence Graph (v1, v2 spec ready)
+### CG — Consequence Graph (v2)
 
 Reactive cascade: event → conditions → consequence event → recurse (maxChainDepth 3).
 
-**v1:** 13 rules, conditions on event payload (has_witnesses, is_public_place, has_capability).
+**v2 architecture:** Target selection pipeline (resolveTargets → gate/filter conditions), NPC-state condition ops (trait, relationship, belief), exclusive groups with priority (friendship > honesty), O(1) trigger index Map.
 
-**v2 (SPEC-cg-v2.md):** NPC-state conditions (trait, relationship, belief), exclusive groups with priority, trigger index Map. Enables cover-up, corruption chains, revenge cascades. Implementation: M3 prep.
+**15 rules** in crime-justice module: 6 witness rules, 2 guard cascades, 3 rumor spread, 2 escalation precursors (argument/threat witnessed), 2 emergent personality-driven (grief-revenge, guard-warning). Plus `witness_reaction` exclusive group (cover-up vs eager-report).
 
 ### EL — Evidence Layer (v1)
 
@@ -123,7 +123,7 @@ Location-based. `canSee()`, `canHear()`, `canInteract()`, `getCoPresent()`, `get
 
 ### TopicEngine (v3.1)
 
-Plugin architecture. 13 sources (11 social + 2 crime). Weighted random selection with PM influence (OCEAN). Diversity tracking.
+Plugin architecture. 14 sources (12 social + 2 crime). Weighted random selection with PM influence (OCEAN). Diversity tracking.
 
 **TopicProposal:** moodValence (numeric, engine reads), sentimentValence, mentionedNpcId, beliefTransfer. Tone string = display only.
 
@@ -197,8 +197,8 @@ Silver Flagon Tavern, Town Square (hub), Town Gate, Market Square, Blacksmith, T
 packages/
   engine/src/     — subsystems, 40+ empty registries, ZERO module content
   modules/src/
-    social/       — 11 topic sources + socialize affordance
-    crime-justice/ — 20+ affordances, CG rules, step handlers, target finders
+    social/       — 12 topic sources + socialize affordance
+    crime-justice/ — 22 affordances, CG rules, step handlers, target finders
   server/
     src/          — HTTP/WS, world-loader (with JSON validation), bootstrap, position manager
     public/       — Web UI (Canvas2D game client)

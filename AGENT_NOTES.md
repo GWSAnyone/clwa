@@ -1,54 +1,81 @@
 # CLWA Autonomous Agent Notes
 
-## Session: 2026-04-11 23:45 → 2026-04-12 00:20
+## Session: 2026-04-11 23:45 → 2026-04-12 00:45
 
-### State assessment (start)
-- **Version**: v0.12.10 (branch `night/autonomous-20260411`)
-- **M1**: Done | **M2**: Done | **M2.5**: Done
-- **TypeScript errors**: 0 | **Tests**: 61 pass
-- **Polishing spec**: 86/109 done, 15 deferred
+### Commits (15)
 
-### Completed this session
+| # | Hash | What |
+|---|------|------|
+| 1 | `3e8c716` | v0.12.10: art pipeline files committed |
+| 2 | `222e7cf` | **CG v2**: target selection pipeline, NPC-state conditions, exclusive groups, trigger index |
+| 3 | `3f42864` | **M3 witness reactions**: COVER_UP (friend) + REPORT_IMPULSE (honest) in exclusive group |
+| 4 | `31695c8` | **Specs**: SPEC-heat-system + SPEC-criminal-escalation |
+| 5 | `97a078f` | **Heat Phase 1**: computeHeat(), 5 heat levels, secret directive builder |
+| 6 | `8d9d595` | **CG v2 tests**: 13 new tests (74 total) |
+| 7 | `991ae44` | **NNA polishing**: 15+ unsafe `!` → safe alternatives across 9 files |
+| 8 | `3c21e88` | **Docs**: ROADMAP + SPEC-cg-v2 status updated |
+| 9 | `4b3766e` | **Criminal escalation**: argue/threaten affordances, motive growth tick handler, kill threshold 0.3→0.7 |
+| 10 | `8db8480` | **Heat Phase 2**: anxiety mood modifier proportional to heat score |
+| 11 | `b795961` | **Conversation quality**: trust-aware notes, richer follow-ups, secretLeakageTopics |
+| 12 | `9bf5fbb` | **Emergent CG rules**: grief-revenge-impulse, guard-heard-argument, victim approach trigger |
+| 13 | `1bdfcf5` | **Motive rebalance**: initial confidences lowered for escalation staircase |
+| 14 | `3b2d36a` | **World data**: magistrate relationships expanded |
+| 15 | `7a6a6b2` | **Intimidated witness directive**: fear suppresses testimony |
+| 16 | (this) | **Docs**: ARCHITECTURE.md updated, final AGENT_NOTES |
 
-| # | Commit | What |
-|---|--------|------|
-| 1 | `222e7cf` | **CG v2**: target selection pipeline, NPC-state conditions (trait/relationship/belief), exclusive groups, trigger index. Migrated all 11 rules. |
-| 2 | `3f42864` | **M3 witness reaction rules**: first exclusive group `witness_reaction`. COVER_UP (friend covers) + REPORT_IMPULSE (honest witness). Full event type registration. |
-| 3 | `31695c8` | **SPEC-heat-system.md**: belief-derived criminal danger awareness. **SPEC-criminal-escalation.md**: motive confidence tiers (argue→steal→threaten→kill). |
-| 4 | `97a078f` | **Heat system phase 1**: `computeHeat()`, 5 heat levels, secret directive builder. Zero engine changes. |
-| 5 | `8d9d595` | **CG v2 test suite**: 13 tests covering pipeline, conditions, exclusive groups, trigger index. Total: 74 tests. |
-| 6 | `991ae44` | **NNA polishing**: 15+ unsafe `!` assertions → safe alternatives across 9 files. |
-| 7 | (this) | **Docs update**: ROADMAP (CG v2 done, new specs), SPEC-cg-v2 status → implemented. |
+### Key Architectural Decisions
 
-### Key architectural decisions
+1. **CG v2 pipeline**: Separated target selection from condition evaluation. Fixes v1 early-return bug. Enables combining targetMode with any number of NPC-state conditions.
 
-1. **CG v2 evaluateConditions rewrite**: Separated target selection (resolveTargets) from condition evaluation (gate/filter pipeline). This fixes the v1 early-return bug where the first target-selecting condition short-circuited all subsequent ones. The new pipeline allows combining `targetMode: 'witnesses'` with any number of filter conditions.
+2. **Exclusive groups**: Friendship > honesty (COVER_UP priority 2 > REPORT_IMPULSE priority 1). Personal loyalty as stronger force than abstract morality.
 
-2. **Exclusive groups**: Designed so friendship overrides honesty (COVER_UP priority 2 > REPORT_IMPULSE priority 1). This is a deliberate design choice — in CLWA's universe, personal loyalty is a stronger force than abstract morality. Can be easily reversed by changing priority numbers.
+3. **Heat as directive prose**: No new engine subsystem. Computed from existing beliefs, output through secret directive builder + mood modifier. Follows PM=instinct design.
 
-3. **Heat system as secret directive**: Rather than adding a new engine subsystem, heat is computed from existing beliefs and injected as prose into the LLM prompt. This follows PM=instinct design — vivid text creates behavioral pressure, LLM decides freely. Zero engine changes.
+4. **Escalation as motive confidence tiers**: argue (0.15) → steal (0.30) → threaten (0.50) → kill (0.70). Growth ~0.03/hour modulated by personality. Zero new state types.
 
-4. **Criminal escalation as motive confidence tiers**: Rather than adding an explicit "escalation state machine", crime severity naturally follows from motive belief confidence growth over time. This reuses existing motive mechanics — zero new state types.
+5. **Motive rebalance**: Initial confidences lowered from 0.5-0.9 to 0.25-0.50 so escalation staircase actually plays out over 5-8 game hours.
 
-### Open questions for review
+### New Systems Summary
 
-1. **Corruption cover rule**: Deferred — CORRUPTION_COVER needs to intercept the investigate affordance chain, not just produce an event. Needs more design work.
+| System | What it does | Engine changes |
+|--------|-------------|---------------|
+| CG v2 | Target pipeline, NPC-state conditions, exclusive groups, trigger index | Yes (cg-engine.ts, cg-types.ts rewrite) |
+| Witness reactions | Cover-up vs eager-report exclusive group | Module only |
+| Heat system | Belief-derived danger → directive prose + mood modifier | Module only |
+| Criminal escalation | argue/threaten affordances + motive growth tick | Module only |
+| Secret leakage topics | Stressed NPCs leak secret hints in conversation | Module only |
+| Intimidated witness directive | Fear suppresses testimony from intimidated witnesses | Module only |
+| Grief revenge cascade | Friend of victim + low A → revenge motive | Module only |
+| Victim approach | Threatened NPCs seek player for help | Module only |
+| Conversation improvements | Trust-aware notes, richer follow-ups | Engine (prompts) |
 
-2. **Heat Phase 2 (mood modifier)**: The spec describes adding a mood modifier proportional to heat. This would make criminal behavior organically shift via moodCurve without explicit LLM pressure. Worth implementing?
+### Open Questions for Review
 
-3. **Criminal escalation implementation**: SPEC ready, needs `argue` + `threaten` affordances + motive growth tick handler. Moderate effort, high gameplay impact.
+1. **COVER_UP suppression**: Currently COVER_UP creates a concealment belief but doesn't prevent the NPC from spreading rumors through normal WITNESS_MEMORY cascade. May need mechanism to mark NPC as "won't gossip".
 
-4. **Witness COVER_UP behavioral effect**: Currently COVER_UP creates a concealment belief, but doesn't actively prevent the NPC from spreading rumors. The witness still gets WITNESS_MEMORY from the parent rule. May need a mechanism where COVER_UP suppresses RUMOR_SPREAD for that NPC.
+2. **Motive growth vs decay**: Motive growth (+0.03/hour) competes with belief decay. If decay is faster, motives never escalate. Need gameplay testing.
 
-### Invariant violations found (none introduced, pre-existing)
+3. **Argue step handler**: Currently uses `onCrimeEvent` to fire ARGUMENT_WITNESSED. But arguments aren't crimes. May need separate event dispatch path.
 
-None found during this session. Engine/module boundary is clean.
+4. **Kill threshold at 0.7**: Combined with motive growth, kill becomes accessible after ~5-8 hours. Is this the right pacing for a 1.5-2 hour session?
 
-### Final state
-- **Branch**: `night/autonomous-20260411` (7 commits ahead of master)
+5. **Guard warning**: GUARD_WARNING event registered but no handler creates behavioral effect. Guard should patrol or warn the arguing NPCs.
+
+### Invariant Compliance
+
+All changes pass the A1-A9 checklist:
+- Zero module strings added to engine
+- All new state is typed
+- All new behavior via registries
+- Bilateral design maintained
+- No reflex bypass (LLM always decides)
+- Economy module test: all new mechanisms work with any event types
+
+### Final State
+- **Branch**: `night/autonomous-20260411` (15+ commits ahead of master)
 - **TypeScript errors**: 0
 - **Tests**: 74 pass, 0 fail
-- **CG v2**: Implemented + tested
-- **Heat system**: Phase 1 implemented
-- **New specs**: heat-system, criminal-escalation
-- **Polishing**: ~15 NNA items fixed
+- **New affordances**: 2 (argue, threaten) — 22 total
+- **New CG rules**: 5 (witness-cover-up, witness-eager-report, witness-argument, witness-threat, grief-revenge-impulse, guard-heard-argument)
+- **New topic sources**: 1 (secretLeakageTopics) — 12 social + 2 crime = 14 total
+- **New event types**: 6 (COVER_UP, REPORT_IMPULSE, ARGUMENT_WITNESSED, THREAT_WITNESSED, REVENGE_IMPULSE, GUARD_WARNING)
