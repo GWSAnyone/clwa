@@ -42,3 +42,11 @@ M3 Living Opposition feature-complete. Extensive bonus features for detective ga
 
 ### What Works End-to-End
 Traced full scenario: Mark (H=0.2, grudge 0.35) → argue with Bess → witnesses get MINOR_INCIDENT_MEMORY (no guard cascade) → grudge grows to 0.50 → threaten Bess → THREAT_WITNESSED → WITNESS_MEMORY → guard cascade → if honest guard: WANTED_STATUS + investigation. If corrupt guard (H<0.4): CORRUPTION_COVER.
+
+### CG Trigger Index Performance
+20 rules distributed across 12 trigger types. Max 5 rules per trigger (WITNESS_MEMORY — the most cascaded type). O(1) lookup. No performance concerns at current scale.
+
+### Victory/Conviction Feedback
+- Correct conviction (suspect in journal + exile/imprisonment): "Case solved!"
+- Unknown conviction (not in journal suspects): "Was it the right person?"
+- Creates emotional closure and seeds replay motivation.
