@@ -677,7 +677,14 @@ function handleWS(type, data) {
 
     case 'event_cascade':
       for (const c of (data.consequences || [])) {
-        addEvent('crime', `  ↳ ${c.type}: ${c.subject || '?'}`);
+        const label = {
+          'WITNESS_MEMORY': 'witnessed', 'RUMOR_SPREAD': 'rumor spreads',
+          'WANTED_STATUS': 'wanted', 'COVER_UP': 'covering up',
+          'REPORT_IMPULSE': 'eager to report', 'REVENGE_IMPULSE': 'seeks revenge',
+          'GUARD_WARNING': 'guard warned', 'CORRUPTION_COVER': 'guard looks away',
+          'ARREST_RESENTMENT': 'resents arrest',
+        }[c.type] ?? c.type;
+        addEvent('crime', `  ↳ ${label}${c.subject ? ': ' + c.subject : ''}`);
       }
       break;
 
