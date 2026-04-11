@@ -18,7 +18,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
-## Текущее состояние: v0.12.6
+## Текущее состояние: v0.12.10 (M3 in progress)
 
 ### Завершено
 
@@ -40,7 +40,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 |-----------|--------|-----------|
 | AL (Affordance Layer) | v2 | Пространство возможностей. 20+ affordances, declarative steps, instinct builder |
 | PM (Personality Model) | v1 | OCEAN+H + Enneagram → utility scores, instinct prose, stress/growth |
-| CG (Consequence Graph) | v1 (v2 spec ready) | Реактивные каскады. 13 rules. v2: NPC-state conditions + exclusive groups |
+| CG (Consequence Graph) | v2 | Реактивные каскады. 13 rules → targetMode pipeline, trait/relationship/belief conditions, exclusive groups, trigger index |
 | EL (Evidence Layer) | v1 | Structured evidence at locations, discovery, weights |
 | IL (Intent Layer) | v2 | Player speech → structured meaning → engine effects. Dynamic JSON schema |
 | Beliefs | v1 | Confidence, source dedup, decay, transfer weights |
@@ -62,7 +62,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | 1 | Replayable Crime | v0.11 | Randomization + motive pool → каждый рестарт = другой сценарий | Done |
 | 2 | Detective Toolkit | v0.12 | Accusation, evidence, prevention, journal | Done |
 | 2.5 | **Memory & Infrastructure** | v0.12.x | Persistent NPC memory, TS strict, contract validation, world editor | **Done** |
-| 3 | Living Opposition | v0.13 | Garrett variability, escalation, heat, NPC resistance, dual-layer mood, criminal confidence | Spec: CG v2, Design: Mood Review |
+| 3 | Living Opposition | v0.13 | Garrett variability, escalation, heat, NPC resistance, dual-layer mood, criminal confidence | CG v2 done, Heat Phase 1 done, Specs: heat-system, criminal-escalation |
 | 4 | Complete Session | v0.14 | Arrival event, win/lose, end-of-run summary | — |
 | 5 | Polish & Demo | v0.15 | Case journal UI, day/night, sound, tutorial, balance, arousal dimension, emotional tagging | Design: Mood Review |
 
@@ -203,8 +203,10 @@ Registry: FACTION_TYPES — modules define roles/structures
 
 | Подсистема | Спека | Суть | Когда |
 |-----------|------|------|-------|
-| CG v2 | SPEC-cg-v2.md | NPC-state conditions (trait/relationship/belief), exclusive groups, trigger index | M3 prep |
-| Conversation Session | SPEC-conversation-session.md | Per-chat state for repetition tracking, multi-suspect escalation | With M2 UI |
+| CG v2 | SPEC-cg-v2.md | NPC-state conditions (trait/relationship/belief), exclusive groups, trigger index | **Implemented** |
+| Conversation Session | SPEC-conversation-session.md | Per-chat state for repetition tracking, multi-suspect escalation | **Implemented** |
+| Heat System | SPEC-heat-system.md | Criminal danger awareness, belief-derived, secret directive prose | Phase 1 done |
+| Criminal Escalation | SPEC-criminal-escalation.md | Motive confidence tiers (argue→steal→threaten→kill), growth over time | Spec ready |
 
 ### LoRA Fine-Tuning (DEFERRED)
 
