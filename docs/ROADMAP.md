@@ -62,7 +62,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | 1 | Replayable Crime | v0.11 | Randomization + motive pool → каждый рестарт = другой сценарий | Done |
 | 2 | Detective Toolkit | v0.12 | Accusation, evidence, prevention, journal | Done |
 | 2.5 | **Memory & Infrastructure** | v0.12.x | Persistent NPC memory, TS strict, contract validation, world editor | **Done** |
-| 3 | Living Opposition | v0.13 | Garrett variability, escalation, heat, NPC resistance, dual-layer mood, criminal confidence | CG v2 done, Heat Phase 1 done, Specs: heat-system, criminal-escalation |
+| 3 | Living Opposition | v0.13 | Garrett variability, escalation, heat, NPC resistance | **Feature-complete** (CG v2, escalation, heat, witness reactions, corruption, trust-gating, alibi system) |
 | 4 | Complete Session | v0.14 | Arrival event, win/lose, end-of-run summary | — |
 | 5 | Polish & Demo | v0.15 | Case journal UI, day/night, sound, tutorial, balance, arousal dimension, emotional tagging | Design: Mood Review |
 
