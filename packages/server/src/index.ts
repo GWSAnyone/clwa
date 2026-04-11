@@ -283,6 +283,29 @@ async function createGameContext(
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npcLocation}`);
   }
 
+  // ─── Schedule Knowledge (alibi system) ───
+  // NPCs who know each other (have relationships) know each other's daily routines.
+  // This enables alibi-relevant conversation: "Mark is usually at the Market in the morning."
+  for (const [npcId, agent] of agents) {
+    if (agent.profile.isPlayer) continue;
+    const rels = agent.state.relationships?.getAllRelationships() ?? [];
+    for (const rel of rels) {
+      const otherProfile = worldData.profiles.find(p => p.id === rel.targetId);
+      if (!otherProfile) continue;
+      const otherSchedule = worldData.schedules.filter(s => s.npcId === rel.targetId);
+      if (otherSchedule.length === 0) continue;
+      // Only friends and colleagues know detailed schedules
+      if (rel.type !== 'friend' && rel.type !== 'colleague') continue;
+      const routineParts = otherSchedule
+        .slice(0, 3) // max 3 schedule entries per NPC
+        .map(s => `${s.period}: ${locationGraph.get(s.location)?.name ?? s.location}`)
+        .join(', ');
+      agent.state.knownFacts.push(
+        `${otherProfile.name} the ${otherProfile.role}'s routine: ${routineParts}.`,
+      );
+    }
+  }
+
   // ─── Position Manager ───
   const positionManager = new PositionManager();
   positionManager.loadZones(worldData.zones);
