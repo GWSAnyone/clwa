@@ -763,6 +763,13 @@ function updateHUD() {
   document.getElementById('hud-day').textContent = state.day;
   document.getElementById('hud-time').textContent = state.time;
   document.getElementById('hud-period').textContent = state.period;
+  // Investigation progress — clues + suspects in HUD
+  const clueEl = document.getElementById('hud-clues');
+  if (clueEl) {
+    const clues = _journalEntries.length;
+    const suspects = _journalSuspects.size;
+    clueEl.textContent = clues > 0 ? `${clues} clue${clues !== 1 ? 's' : ''}${suspects > 0 ? `, ${suspects} suspect${suspects !== 1 ? 's' : ''}` : ''}` : '';
+  }
 }
 
 // ─── ACTION EFFECTS ───
