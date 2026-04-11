@@ -674,7 +674,7 @@ export function registerCrimeJusticeModule(): void {
       if (urgentBeliefs.length > 0) {
         // Check if player already knows from this NPC
         const playerAlreadyKnows = urgentBeliefs.every((b) => {
-          const playerBeliefs = playerAgent!.state.beliefs?.getAllBeliefs() ?? [];
+          const playerBeliefs = playerAgent?.state.beliefs?.getAllBeliefs() ?? [];
           return playerBeliefs.some((pb) => pb.eventType === b.eventType && pb.sourceNpcId === npcId);
         });
 
@@ -696,7 +696,7 @@ export function registerCrimeJusticeModule(): void {
 
       // Check: NPC suspects the player (has transferable belief with subject = player name)
       const suspicionBeliefs = npc.state.beliefs?.getAllBeliefs().filter(
-        (b) => isTransferable(b.eventType) && b.subject === playerAgent!.profile.id && b.confidence >= 0.4,
+        (b) => isTransferable(b.eventType) && b.subject === playerAgent?.profile.id && b.confidence >= 0.4,
       ) ?? [];
 
       if (suspicionBeliefs.length > 0 && npc.profile.investigator) {
@@ -805,7 +805,8 @@ export function registerCrimeJusticeModule(): void {
           ([id, a]) => a.profile.investigator && a.state.alive && !isStatusAbsent(a.state.status) && id !== npcId,
         )?.[0];
         if (guardId) {
-          const guard = ctx.agents.get(guardId)!;
+          const guard = ctx.agents.get(guardId);
+          if (!guard) return;
           ctx.goalManager.addGoal({
             id: crypto.randomUUID(), ownerId: npcId, type: 'defensive', priority: 6, state: 'pending', currentStep: 0,
             createdAtMinute: ctx.gameMinute,

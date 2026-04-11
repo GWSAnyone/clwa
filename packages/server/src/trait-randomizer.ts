@@ -344,7 +344,7 @@ export async function assignMotives(
     // Push sentiment floor if motive assigned but sentiment too weak for social stress
     const rel = fromAgent.state.relationships?.getRelationship(motive.to);
     if (rel && rel.sentiment > -0.35) {
-      fromAgent.state.relationships!.adjustSentiment(motive.to, -0.35 - rel.sentiment);
+      fromAgent.state.relationships?.adjustSentiment(motive.to, -0.35 - rel.sentiment);
     }
 
     assigned.add(motive.from);

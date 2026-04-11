@@ -163,7 +163,8 @@ export async function llmStream(options: LlmStreamOptions): Promise<string> {
   }
 
   let fullReply = '';
-  const reader = res.body!.getReader();
+  if (!res.body) throw new Error('LLM stream response has no body');
+  const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
 

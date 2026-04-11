@@ -230,7 +230,8 @@ function findArrestTarget(npcId: string, agent: Agent, ctx: AffordanceContext, e
   // Deduplicate suspect names
   const suspects = new Map<string, Belief>();
   for (const b of crimeBeliefs) {
-    if (!suspects.has(b.subject!)) suspects.set(b.subject!, b);
+    const subj = b.subject as string; // filter above ensures subject is truthy
+    if (!suspects.has(subj)) suspects.set(subj, b);
   }
 
   for (const [suspectName, belief] of suspects) {
@@ -270,8 +271,8 @@ function findCrimeSceneForCriminal(npcId: string, agent: Agent, ctx: AffordanceC
   );
   if (!ownCrime) return null;
   return {
-    targetId: npcId, targetName: agent.profile.name, targetLocation: ownCrime.location!,
-    extra: { crimeLocation: ownCrime.location! },
+    targetId: npcId, targetName: agent.profile.name, targetLocation: ownCrime.location as string,
+    extra: { crimeLocation: ownCrime.location as string },
   };
 }
 
@@ -327,11 +328,11 @@ function findInvestigateTarget(npcId: string, agent: Agent, ctx: AffordanceConte
   return {
     targetId: npcId, // self — the goal is about the location, not a person
     targetName: agent.profile.name,
-    targetLocation: belief.location!,
+    targetLocation: belief.location as string,
     extra: {
       crimeType: getEventLabel(belief.eventType) ?? 'crime',
       victimName: resolveName(belief.object, ctx.agents),
-      crimeLocation: belief.location!,
+      crimeLocation: belief.location as string,
       suspectName: resolveName(belief.subject, ctx.agents),
     },
   };

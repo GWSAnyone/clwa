@@ -430,7 +430,7 @@ export class World {
       // Arrival
       if (agent.state.transitProgress >= 1) {
         const from = agent.state.location;
-        const to = agent.state.transitTo!;
+        const to = agent.state.transitTo ?? agent.state.location;
         agent.state.location = to;
         this._clearTransit(agent);
         // Reset processing state on arrival — unblock _enqueueWork checks
@@ -1358,7 +1358,7 @@ export class World {
         // victim identity + location. suspectName unknown.
         const discoveryEvent: WorldEvent = {
           id: crypto.randomUUID(),
-          type: bodyDiscoveryType!,
+          type: bodyDiscoveryType,
           subject: id,
           object: dead.id,
           location: agent.state.location,
@@ -1375,7 +1375,7 @@ export class World {
 
         // Module-registered handler processes discoverer's response (memory, mood, belief, grief)
         try {
-          const discoveryHandler = getDiscoveryHandler(bodyDiscoveryType!);
+          const discoveryHandler = getDiscoveryHandler(bodyDiscoveryType);
           if (discoveryHandler) {
             await discoveryHandler({
               discoverer: agent,
@@ -1391,7 +1391,7 @@ export class World {
           console.error(`  [Discovery:ERROR] Handler failed for ${agent.profile.name}:`, err instanceof Error ? err.message : err);
         }
         // Mark discoverer as already witnessed (so cascade skips them)
-        sharedCtx.witnessIds!.add(id);
+        sharedCtx.witnessIds?.add(id);
 
         // Process through consequence engine with shared ctx (dedup witnesses)
         try {

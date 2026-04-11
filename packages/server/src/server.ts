@@ -324,7 +324,7 @@ export function startServer(
               // Structured memory — no raw dialogue (prevents self-reference cascade)
               const actLabel = meaning.speechAct ?? 'conversation';
               await otherAgent.observe(
-                `Overheard ${playerAgent!.profile.name} and ${agent.profile.name} talking nearby (${actLabel}).`,
+                `Overheard ${playerAgent?.profile.name ?? 'someone'} and ${agent.profile.name} talking nearby (${actLabel}).`,
                 3,
               );
             }

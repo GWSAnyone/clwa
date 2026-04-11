@@ -206,7 +206,7 @@ export async function handleRequest(
 
   // ─── GET /api/beliefs/:id ───
   if (method === 'GET' && path.startsWith('/api/beliefs/')) {
-    const agentId = path.split('/').pop()!;
+    const agentId = path.split('/').pop() ?? '';
     const agent = agents.get(agentId);
     if (!agent) {
       return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
@@ -216,7 +216,7 @@ export async function handleRequest(
 
   // ─── GET /api/relationships/:id ───
   if (method === 'GET' && path.startsWith('/api/relationships/')) {
-    const agentId = path.split('/').pop()!;
+    const agentId = path.split('/').pop() ?? '';
     const agent = agents.get(agentId);
     if (!agent) {
       return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
@@ -226,7 +226,7 @@ export async function handleRequest(
 
   // ─── GET /api/memories/:id ───
   if (method === 'GET' && path.startsWith('/api/memories/')) {
-    const agentId = path.split('/').pop()!;
+    const agentId = path.split('/').pop() ?? '';
     const agent = agents.get(agentId);
     if (!agent) {
       return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
@@ -236,7 +236,7 @@ export async function handleRequest(
 
   // ─── GET /api/shop/:id ───
   if (method === 'GET' && path.startsWith('/api/shop/')) {
-    const agentId = path.split('/').pop()!;
+    const agentId = path.split('/').pop() ?? '';
     const agent = agents.get(agentId);
     if (!agent) {
       return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
@@ -487,7 +487,7 @@ export async function handleRequest(
 
   // ─── POST /api/kill/:id ───
   if (method === 'POST' && path.startsWith('/api/kill/')) {
-    const victimId = path.split('/').pop()!;
+    const victimId = path.split('/').pop() ?? '';
     return world.processKill(victimId).then(({ killEvent, results }) => {
       broadcast({ type: 'event', data: killEvent });
       return Response.json({

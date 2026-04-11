@@ -324,7 +324,7 @@ export function registerCrimeStepHandlers(): void {
     const currentDay = goal.createdAtMinute ? Math.floor(goal.createdAtMinute / 1440) + 1 : 1;
     let suspectCount = 0;
     for (const e of undiscovered) {
-      ctx.evidenceLayer!.discover(e.id, goal.ownerId);
+      ctx.evidenceLayer?.discover(e.id, goal.ownerId);
       if (!e.subjectName || !owner.state.beliefs) continue;
       // addBelief now deduplicates by (eventType, object, source).
       // evidence beliefs coexist with observation/testimony beliefs as separate proof.

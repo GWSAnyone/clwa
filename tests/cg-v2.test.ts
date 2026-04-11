@@ -30,7 +30,7 @@ function makeAgent(id: string, overrides?: {
 }): Agent {
   const beliefs = new BeliefManager();
   const relationships = new RelationshipGraph();
-  const memory = new VectorMemory(`http://localhost:1234/v1`, 'test', 200);
+  const memory = new VectorMemory(id, { lmStudioUrl: 'http://localhost:1234/v1', maxCapacity: 200 });
   const agent = new Agent(
     {
       id,
@@ -46,7 +46,7 @@ function makeAgent(id: string, overrides?: {
         neuroticism: 0.5,
         honesty: overrides?.honesty ?? 0.5,
       },
-      enneagram: { type: 5, wing: 4, coreFear: 'test', coreDesire: 'test' },
+      enneagram: { type: 5, wing: 4, coreFear: 'test', coreDesire: 'test', stressType: 7, growthType: 8 },
       investigator: overrides?.investigator,
     },
     {
@@ -55,26 +55,26 @@ function makeAgent(id: string, overrides?: {
       mood: 0,
       baseMood: 0,
       moodModifiers: [],
-      status: null,
+      status: undefined,
       currentDay: 1,
       knownFacts: [],
       beliefs,
       relationships,
-      currentActivity: null,
+      currentActivity: undefined,
       inPlayerChat: false,
       processingState: 'idle',
-      lastInteractionOutcome: null,
-      currentMotive: null,
+      lastInteractionOutcome: undefined,
+      currentMotive: undefined,
       inTransit: false,
-      transitTo: null,
-      transitPath: null,
+      transitTo: undefined,
+      transitPath: undefined,
       transitProgress: 0,
       transitStartMinute: 0,
       transitDuration: 0,
-      lastInteractionMinute: null,
+      lastInteractionMinute: undefined,
     },
     memory,
-    { baseUrl: 'http://localhost:1234/v1', model: 'test' },
+    { lmStudioUrl: 'http://localhost:1234/v1', model: 'test' },
   );
   return agent;
 }
