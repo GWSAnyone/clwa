@@ -104,6 +104,7 @@ export function registerCrimeJusticeModule(): void {
   registerEventCategory('witness_event', ['WITNESS_MEMORY']);
   registerEventCategory('theft', ['GOODS_STOLEN']);
   registerEventCategory('information_spread', ['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED']);
+  registerEventCategory('witness_reaction', ['COVER_UP', 'REPORT_IMPULSE']);
   registerEventCategory('justice_resolution', ['NPC_SENTENCED', 'NPC_FLED']);
 
   // Event type flags — engine checks boolean properties, not category names
@@ -140,6 +141,8 @@ export function registerCrimeJusticeModule(): void {
     WITNESS_MEMORY: 'witness account',
     RUMOR_SPREAD: 'rumor',
     THEFT_DISCOVERED: 'discovered theft',
+    COVER_UP: 'cover-up',
+    REPORT_IMPULSE: 'report impulse',
   });
 
   registerEventGoalCleanup({
@@ -323,6 +326,8 @@ export function registerCrimeJusticeModule(): void {
     BODY_DISCOVERED: -0.15,   // grim finding
     RUMOR_SPREAD: -0.08,      // unsettling
     WANTED_STATUS: -0.05,     // tension
+    COVER_UP: -0.10,          // guilt/anxiety from hiding what you know
+    REPORT_IMPULSE: -0.05,    // righteous urgency, mild stress
   });
 
   registerGoalMoodBoost({
@@ -373,6 +378,30 @@ export function registerCrimeJusticeModule(): void {
   });
   registerMemoryTextBuilder('WANTED_STATUS', (event, killer, victimName) => {
     return `URGENT: I received reports that ${killer} committed a crime against ${victimName} at ${event.location}. I must investigate immediately.`;
+  });
+  registerBeliefCreator('COVER_UP', (agent, event, _rule, crimeEventType, killer, victimName) => {
+    // Witness knows about the crime but chooses to conceal — low-confidence concealment belief
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: crimeEventType,
+      subject: killer, object: victimName,
+      location: event.location, confidence: 0.3, source: 'cover_up',
+      sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
+  registerBeliefCreator('REPORT_IMPULSE', (agent, event, _rule, crimeEventType, killer, victimName) => {
+    // Honest witness — high-confidence firsthand belief, eager to share
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: crimeEventType,
+      subject: killer, object: victimName,
+      location: event.location, confidence: 0.95, source: 'witness',
+      sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
+  registerMemoryTextBuilder('COVER_UP', (_event, killer, victimName) => {
+    return `I saw what happened to ${victimName}... but ${killer} is someone I care about. I'll keep what I know to myself.`;
+  });
+  registerMemoryTextBuilder('REPORT_IMPULSE', (event, killer, victimName) => {
+    return `I witnessed the crime against ${victimName} at ${event.location}. ${killer} must be held accountable. I need to find the guard immediately.`;
   });
 
   // Topic sources for NPC conversations about justice events + player rumors

@@ -100,6 +100,48 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     tracksWitness: true,
   },
 
+  // ─── Witness Reaction (CG v2 exclusive group) ──────────
+  // When a witness sees a crime, personality and relationships determine their reaction.
+  // Exclusive group: only the highest-priority matching rule fires per witness.
+
+  // Friend of criminal → covers up (stays silent, may lie if asked)
+  {
+    id: 'witness-cover-up',
+    trigger: 'WITNESS_MEMORY',
+    targetMode: 'affected',
+    conditions: [
+      { op: 'relationship', actor: 'target', toward: 'subject', field: 'sentiment', comparator: '>', value: 0.3 },
+    ],
+    consequence: {
+      type: 'COVER_UP',
+      importance: 5,
+      delayDays: 0,
+      probability: 0.6,
+    },
+    exclusive: 'witness_reaction',
+    priority: 2,
+    maxChainDepth: 3,
+  },
+
+  // Honest witness → eager to report (actively seeks guard)
+  {
+    id: 'witness-eager-report',
+    trigger: 'WITNESS_MEMORY',
+    targetMode: 'affected',
+    conditions: [
+      { op: 'trait', of: 'target', trait: 'honesty', comparator: '>', value: 0.6 },
+    ],
+    consequence: {
+      type: 'REPORT_IMPULSE',
+      importance: 6,
+      delayDays: 0,
+      probability: 0.9,
+    },
+    exclusive: 'witness_reaction',
+    priority: 1,
+    maxChainDepth: 3,
+  },
+
   // ─── Guard Cascade Rules ───────────────────────────────
 
   // Rule 2: Guard witnesses murder → immediate wanted status
