@@ -1,4 +1,4 @@
-import type { EventType, ConsequenceResult } from '@clwa/engine';
+import type { EventType, ConsequenceResult, WorldEvent } from '@clwa/engine';
 import { broadcast } from './ws';
 import type { GameContext } from './game-context';
 
@@ -756,6 +756,54 @@ export async function handleRequest(
       currentMood: agent.state.mood,
       entries: history.length,
       history,
+    }, { headers: cors });
+  }
+
+  // ─── GET /api/debug/pulse — town-wide emotional state summary ───
+  if (method === 'GET' && path === '/api/debug/pulse') {
+    const alive: { id: string; name: string; mood: number; location: string; status?: string; motive?: string }[] = [];
+    const dead: string[] = [];
+    let crimeCount = 0;
+    let avgMood = 0;
+    let motiveCount = 0;
+
+    for (const [id, agent] of agents) {
+      if (agent.profile.isPlayer) continue;
+      if (!agent.state.alive) { dead.push(agent.profile.name); continue; }
+
+      const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
+      const motives = beliefs.filter(b => b.eventType === 'PERSONAL_GRUDGE' || b.eventType === 'REVENGE_DESIRE' || b.eventType === 'THREAT_PERCEIVED');
+      const topMotive = motives.sort((a, b) => b.confidence - a.confidence)[0];
+
+      alive.push({
+        id, name: agent.profile.name,
+        mood: +agent.state.mood.toFixed(2),
+        location: agent.state.location,
+        status: agent.state.status ?? undefined,
+        motive: topMotive ? `${topMotive.eventType}(${topMotive.confidence.toFixed(2)}) → ${topMotive.object ?? '?'}` : undefined,
+      });
+      avgMood += agent.state.mood;
+      if (topMotive) motiveCount++;
+    }
+
+    const crimes = ctx.eventStore.getAll().filter((e: WorldEvent) =>
+      e.type === 'NPC_KILLED' || e.type === 'GOODS_STOLEN' || e.type === 'SELF_JUSTICE');
+    crimeCount = crimes.length;
+
+    const scenes = Array.from(world.crimeScenes.entries()).flatMap(([loc, scenes]) =>
+      scenes.map(s => ({ location: loc, type: s.crimeType, active: s.active })));
+
+    return Response.json({
+      gameMinute: world.gameMinute,
+      gameDay: world.getCurrentDay(),
+      period: world.currentPeriod,
+      alive: alive.length, dead: dead.length,
+      avgMood: alive.length > 0 ? +(avgMood / alive.length).toFixed(2) : 0,
+      crimesCommitted: crimeCount,
+      activeCrimeScenes: scenes.filter(s => s.active).length,
+      npcsWithMotives: motiveCount,
+      deadNpcs: dead,
+      npcs: alive,
     }, { headers: cors });
   }
 
