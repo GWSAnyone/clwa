@@ -127,7 +127,7 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 37. **triggerReactiveEvaluation**: callback in EventHandlerContext. Module handler triggers AL reactive evaluation for specific NPC. Engine provides mechanics.
 38. **Information spread**: sentiment cascade for RUMOR_SPREAD/WITNESS_MEMORY/THEFT_DISCOVERED handled by module event handlers, not engine.
 39. **World data = JSON**: all NPC profiles, locations, relationships, schedules, memories, lore, secrets in `worlds/millhaven/`. Server reads via `world-loader.ts`. Zero TypeScript constants for world content.
-40. **TopicEngine v3**: 13 sources (11 social + 2 crime). Bidirectional beliefs, recency weighting, location context, cross-source dedup (topicKey), death-aware opinions. Location hooks via `registerLocationHook` registry.
+40. **TopicEngine v3**: 14 sources (12 social + 2 crime). Bidirectional beliefs, recency weighting, location context, cross-source dedup (topicKey), death-aware opinions. Location hooks via `registerLocationHook` registry.
 41. **Location hooks**: `conversationHook` field in world.json locations → `registerLocationHook` registry → `getLocationHook` in topic sources. No hardcoded location names in modules.
 42. **Location IDs**: internal state uses slug IDs (`market-square`). LLM prompts use display names (`Market Square`) via `locationResolver` on Agent and `locName()` helpers. world-loader.ts maps JSON names → slugs. pathfinding/movement/perception all work with IDs.
 43. **Discovery handlers**: engine detects discovery condition (dead+alive co-location), creates event. Module owns the response (memory, mood, belief, grief) via DISCOVERY_HANDLERS registry. Engine has zero hardcoded discovery behavior.
@@ -191,7 +191,7 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Tests
 
-- **Run all**: `bun run test` (61 tests, or individually: `bun run test:arch`, `bun run test:smoke`, `bun run test:save`)
+- **Run all**: `bun run test` (77 tests, or individually: `bun run test:arch`, `bun run test:smoke`, `bun run test:save`, `bun run test:cg`)
 - **architecture.test.ts** — static lint: engine boundary, hardcoded module strings, direct mood mutation, text matching, `as any` ban
 - **boot-smoke.test.ts** — registry validation: affordance consistency, targetFinder/stepHandler/requirement integrity, topic source arity, step handler registration
 - **save-load.test.ts** — round-trip serialization: beliefs, relationships, mood modifiers, dead agents, memories, edge cases
@@ -207,10 +207,10 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.12.6. Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) complete — backend + Web UI. Milestone 2.5 (Memory & Infrastructure) complete — persistent memory, TS strict, contract validation.
+v0.12.10 (M3 in progress). Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) complete — backend + Web UI. Milestone 2.5 (Memory & Infrastructure) complete — persistent memory, TS strict, contract validation.
 
 Key systems: persistent NPC memory (dual storage _memoryLog + Qdrant, 3-level fallback, multiplayer-ready playerId), contract validation (runtime guards on addGoal/addBelief/registerStepHandler/registerTopicSource + `as any` lint + boot arity checks), world-loader JSON validation against engine registries.
 
-14 engine subsystems, 40+ registries, 20+ affordances, 22 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. 61 tests, 0 TS errors.
+14 engine subsystems, 40+ registries, 22 affordances, 24 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. 77 tests, 0 TS errors.
 
-Next: M3 (Living Opposition) — Garrett variability, escalation, heat, CG v2. See docs/ROADMAP.md for details.
+Next: M3 (Living Opposition) — CG v2 done, heat system done, criminal escalation done. Remaining: Garrett variability, NPC resistance. See docs/ROADMAP.md for details.
