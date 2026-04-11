@@ -108,7 +108,7 @@ export function registerCrimeJusticeModule(): void {
   registerEventCategory('information_spread', ['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED']);
   registerEventCategory('witness_reaction', ['COVER_UP', 'REPORT_IMPULSE']);
   registerEventCategory('escalation', ['ARGUMENT_WITNESSED', 'THREAT_WITNESSED']);
-  registerEventCategory('emergent_cascade', ['REVENGE_IMPULSE', 'GUARD_WARNING']);
+  registerEventCategory('emergent_cascade', ['REVENGE_IMPULSE', 'GUARD_WARNING', 'ARREST_RESENTMENT']);
   registerEventCategory('justice_resolution', ['NPC_SENTENCED', 'NPC_FLED']);
 
   // Event type flags — engine checks boolean properties, not category names
@@ -151,6 +151,7 @@ export function registerCrimeJusticeModule(): void {
     THREAT_WITNESSED: 'threat',
     REVENGE_IMPULSE: 'revenge impulse',
     GUARD_WARNING: 'warning',
+    ARREST_RESENTMENT: 'arrest backlash',
   });
 
   registerEventGoalCleanup({
@@ -340,6 +341,7 @@ export function registerCrimeJusticeModule(): void {
     THREAT_WITNESSED: -0.10,   // anxiety from seeing someone threatened
     REVENGE_IMPULSE: -0.15,    // rage and grief driving toward action
     GUARD_WARNING: 0.02,       // slight relief — authority is aware
+    ARREST_RESENTMENT: -0.12,  // anger at seeing a friend arrested
   });
 
   registerGoalMoodBoost({
@@ -452,6 +454,10 @@ export function registerCrimeJusticeModule(): void {
   });
   registerMemoryTextBuilder('GUARD_WARNING', (_event, killer, _victimName) => {
     return `The guard took note of the disturbance involving ${killer}. At least someone is paying attention.`;
+  });
+  registerMemoryTextBuilder('ARREST_RESENTMENT', (event, _killer, _victimName) => {
+    const arrestedName = event.object ? 'my friend' : 'someone I care about';
+    return `They arrested ${arrestedName}. I can't believe it. Maybe they're wrong. Maybe someone set them up.`;
   });
 
   // Topic sources for NPC conversations about justice events + player rumors

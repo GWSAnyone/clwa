@@ -304,4 +304,23 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     },
     maxChainDepth: 1,
   },
+
+  // Arrest backlash: friends of the arrested NPC resent whoever helped catch them.
+  // Creates social consequences for the player's investigation — not everyone is grateful.
+  {
+    id: 'arrest-backlash',
+    trigger: 'NPC_ARRESTED',
+    targetMode: 'all',
+    conditions: [
+      // Target must be a friend of the arrested NPC (high sentiment toward arrested object)
+      { op: 'relationship', actor: 'target', toward: 'object', field: 'sentiment', comparator: '>', value: 0.3 },
+    ],
+    consequence: {
+      type: 'ARREST_RESENTMENT',
+      importance: 4,
+      delayDays: 0,
+      probability: 0.6,
+    },
+    maxChainDepth: 1,
+  },
 ];
