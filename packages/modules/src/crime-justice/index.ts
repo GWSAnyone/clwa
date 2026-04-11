@@ -108,6 +108,7 @@ export function registerCrimeJusticeModule(): void {
   registerEventCategory('information_spread', ['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED']);
   registerEventCategory('witness_reaction', ['COVER_UP', 'REPORT_IMPULSE']);
   registerEventCategory('escalation', ['ARGUMENT_WITNESSED', 'THREAT_WITNESSED']);
+  registerEventCategory('emergent_cascade', ['REVENGE_IMPULSE', 'GUARD_WARNING']);
   registerEventCategory('justice_resolution', ['NPC_SENTENCED', 'NPC_FLED']);
 
   // Event type flags — engine checks boolean properties, not category names
@@ -148,6 +149,8 @@ export function registerCrimeJusticeModule(): void {
     REPORT_IMPULSE: 'report impulse',
     ARGUMENT_WITNESSED: 'argument',
     THREAT_WITNESSED: 'threat',
+    REVENGE_IMPULSE: 'revenge impulse',
+    GUARD_WARNING: 'warning',
   });
 
   registerEventGoalCleanup({
@@ -335,6 +338,8 @@ export function registerCrimeJusticeModule(): void {
     REPORT_IMPULSE: -0.05,    // righteous urgency, mild stress
     ARGUMENT_WITNESSED: -0.04, // mild unease from seeing conflict
     THREAT_WITNESSED: -0.10,   // anxiety from seeing someone threatened
+    REVENGE_IMPULSE: -0.15,    // rage and grief driving toward action
+    GUARD_WARNING: 0.02,       // slight relief — authority is aware
   });
 
   registerGoalMoodBoost({
@@ -409,6 +414,27 @@ export function registerCrimeJusticeModule(): void {
   });
   registerMemoryTextBuilder('REPORT_IMPULSE', (event, killer, victimName) => {
     return `I witnessed the crime against ${victimName} at ${event.location}. ${killer} must be held accountable. I need to find the guard immediately.`;
+  });
+  registerBeliefCreator('REVENGE_IMPULSE', (agent, event, _rule, crimeEventType, killer, victimName) => {
+    // Grief → REVENGE_DESIRE motive toward the killer
+    if (!killer) return;
+    // Find killer agent ID
+    const killerEntry = Array.from(
+      (agent.state.beliefs?.getAllBeliefs() ?? []).entries()
+    );
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: 'REVENGE_DESIRE',
+      subject: null, object: event.subject, // object = killer ID (perpetrator)
+      location: event.location, confidence: 0.8,
+      source: 'personal_motive', sourceNpcId: null,
+      gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
+  registerMemoryTextBuilder('REVENGE_IMPULSE', (_event, killer, victimName) => {
+    return `${victimName} is gone because of ${killer}. A cold fury burns inside me. This cannot go unanswered.`;
+  });
+  registerMemoryTextBuilder('GUARD_WARNING', (_event, killer, _victimName) => {
+    return `The guard took note of the disturbance involving ${killer}. At least someone is paying attention.`;
   });
 
   // Topic sources for NPC conversations about justice events + player rumors
@@ -733,6 +759,24 @@ export function registerCrimeJusticeModule(): void {
         });
         approachCooldowns.set(npcId, ctx.gameMinute);
         console.log(`  [Approach] ${npc.profile.name} wants to question player (suspicion)`);
+        continue;
+      }
+
+      // Threatened victim approaches player for help (from threaten affordance)
+      const threatBeliefs = npc.state.beliefs?.getAllBeliefs().filter(
+        (b) => b.eventType === 'THREAT_PERCEIVED' && b.object === npcId && b.confidence >= 0.5,
+      ) ?? [];
+      if (threatBeliefs.length > 0 && !npc.profile.investigator) {
+        const threatenerName = threatBeliefs[0].subject ?? 'someone';
+        ctx.approaches.push({
+          npcId,
+          npcName: npc.profile.name,
+          promptContext: `You were recently threatened by ${threatenerName}. You are frightened and looking for someone who might help. You want to tell ${playerAgent.profile.name} what happened — maybe they can do something.`,
+          displayText: `${npc.profile.name} approaches you, looking frightened`,
+          urgency: 0.7,
+        });
+        approachCooldowns.set(npcId, ctx.gameMinute);
+        console.log(`  [Approach] ${npc.profile.name} seeks help (threatened by ${threatenerName})`);
         continue;
       }
     }

@@ -263,4 +263,45 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     },
     maxChainDepth: 3,
   },
+
+  // ─── Emergent Personality-Driven Cascades ──────────────
+
+  // Grief revenge: friend of murder victim with low agreeableness → revenge impulse.
+  // Uses CG v2 relationship + trait conditions. Creates emergent revenge arcs.
+  {
+    id: 'grief-revenge-impulse',
+    trigger: 'NPC_KILLED',
+    targetMode: 'all',
+    conditions: [
+      // Target must be a friend of the victim (high sentiment toward object)
+      { op: 'relationship', actor: 'target', toward: 'object', field: 'sentiment', comparator: '>', value: 0.3 },
+      // And have low agreeableness (willing to act on anger rather than grieve passively)
+      { op: 'trait', of: 'target', trait: 'agreeableness', comparator: '<', value: 0.4 },
+    ],
+    consequence: {
+      type: 'REVENGE_IMPULSE',
+      importance: 7,
+      delayDays: 0,
+      probability: 0.7,
+    },
+    maxChainDepth: 2,
+  },
+
+  // Guard heard argument → patrol/warning (non-arrest, de-escalation)
+  // Low severity events get proportional response from authority.
+  {
+    id: 'guard-heard-argument',
+    trigger: 'ARGUMENT_WITNESSED',
+    targetMode: 'affected',
+    conditions: [
+      { op: 'has_capability', value: 'investigator' },
+    ],
+    consequence: {
+      type: 'GUARD_WARNING',
+      importance: 3,
+      delayDays: 0,
+      probability: 0.5,
+    },
+    maxChainDepth: 1,
+  },
 ];
