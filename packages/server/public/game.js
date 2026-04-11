@@ -590,9 +590,14 @@ function handleWS(type, data) {
         const verdict = data.payload?.verdict || 'sentenced';
         if (objectAgent) objectAgent.status = verdict;
         showToast(`${objectName} was ${verdict}`, 'sentence');
-        // Victory check: was the convicted NPC a suspect the player identified?
-        if ((verdict === 'exile' || verdict === 'imprisonment') && _journalSuspects.has(data.object)) {
-          setTimeout(() => showToast('Case solved! Justice has been served.', 'discovery', 8000), 2000);
+        // Conviction feedback: was the convicted NPC actually a suspect the player identified?
+        if (verdict === 'exile' || verdict === 'imprisonment') {
+          if (_journalSuspects.has(data.object)) {
+            setTimeout(() => showToast('Case solved! Justice has been served.', 'discovery', 8000), 2000);
+          } else {
+            // Player didn't mark this person as suspect — might be a false conviction
+            setTimeout(() => showToast('Someone was convicted... but was it the right person?', 'info', 8000), 2000);
+          }
         }
       } else if (evType === 'BODY_DISCOVERED') {
         showToast(`${subjectName} discovered a body!`, 'discovery');
