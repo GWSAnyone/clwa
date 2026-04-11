@@ -5,7 +5,7 @@
     "to": "bess",
     "type": "THREAT_PERCEIVED",
     "reason": "Old Bess figured out your exotic spices are common herbs. She hinted she might tell everyone.",
-    "confidence": 0.9,
+    "confidence": 0.45,
     "probability": 0.6,
     "requires": { "fromHBelow": 0.45 }
   },
@@ -15,7 +15,7 @@
     "to": "ted",
     "type": "REVENGE_DESIRE",
     "reason": "Your father bled out on the tavern floor while Ted watched and did nothing to help.",
-    "confidence": 0.85,
+    "confidence": 0.50,
     "probability": 0.45,
     "requires": { "sentimentBelow": -0.15 }
   },
@@ -25,7 +25,7 @@
     "to": "mark",
     "type": "PERSONAL_GRUDGE",
     "reason": "Mark holds your gambling debts over your head. Every day the interest grows.",
-    "confidence": 0.7,
+    "confidence": 0.35,
     "probability": 0.35,
     "requires": { "fromHBelow": 0.5, "sentimentBelow": -0.2 }
   },
@@ -35,7 +35,7 @@
     "to": "garrett",
     "type": "THREAT_PERCEIVED",
     "reason": "Garrett has been asking too many questions about your past. He's getting close to things that should stay buried.",
-    "confidence": 0.75,
+    "confidence": 0.40,
     "probability": 0.35,
     "requires": { "fromHBelow": 0.5, "sentimentBelow": -0.15 }
   },
@@ -45,7 +45,7 @@
     "to": "hilda",
     "type": "PERSONAL_GRUDGE",
     "reason": "Hilda overcharges you for metalwork and everyone knows it. She's bleeding you dry on purpose.",
-    "confidence": 0.6,
+    "confidence": 0.30,
     "probability": 0.3,
     "requires": { "fromHBelow": 0.4, "sentimentBelow": -0.15 }
   },
@@ -55,7 +55,7 @@
     "to": "mark",
     "type": "PERSONAL_GRUDGE",
     "reason": "Mark sells fake herbs as medicine. Someone could get hurt. Perhaps someone should ensure he stops.",
-    "confidence": 0.65,
+    "confidence": 0.30,
     "probability": 0.25,
     "requires": { "fromHBelow": 0.6, "fromNAbove": 0.5, "sentimentBelow": -0.3 }
   },
@@ -65,7 +65,7 @@
     "to": "elara",
     "type": "PERSONAL_GRUDGE",
     "reason": "Elara's stories always seem to know too much. She's hiding something, and you intend to find out — or make her pay.",
-    "confidence": 0.6,
+    "confidence": 0.30,
     "probability": 0.3,
     "requires": { "fromHBelow": 0.6, "sentimentBelow": -0.1 }
   },
@@ -75,7 +75,7 @@
     "to": "ted",
     "type": "PERSONAL_GRUDGE",
     "reason": "Ted waters down ale and cheats honest folk. You've prayed for his soul, but patience has limits.",
-    "confidence": 0.5,
+    "confidence": 0.25,
     "probability": 0.2,
     "requires": { "fromHBelow": 0.7, "fromNAbove": 0.4 }
   },
@@ -85,7 +85,7 @@
     "to": "bess",
     "type": "THREAT_PERCEIVED",
     "reason": "Bess has been asking pointed questions about your finances. She knows about the debts, and she talks to everyone.",
-    "confidence": 0.65,
+    "confidence": 0.35,
     "probability": 0.3,
     "requires": { "fromHBelow": 0.5, "sentimentBelow": -0.15 }
   }
