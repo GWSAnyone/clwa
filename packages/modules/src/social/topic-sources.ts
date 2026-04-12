@@ -12,17 +12,18 @@ import {
   type TopicContext,
   TOPIC_SOURCE_REGISTRY,
 } from '@clwa/engine';
-import { getEventLabel, isDeathEvent, getRoleTopicPool, getLocationHook } from '@clwa/engine';
+import { getEventLabel, isDeathEvent, getRoleTopicPool, getLocationHook, isPerpetrator } from '@clwa/engine';
 
 // ─── Belief Topics ─────────────────────────────────────────────
 // NPC shares or discusses structured beliefs about world events.
 
 const beliefTopics: TopicSource = (init, resp, ctx) => {
   const proposals: TopicProposal[] = [];
+  // Filter out perpetrator-source beliefs — criminals must NOT gossip about their own crimes
   const initBeliefs = init.state.beliefs?.getAllBeliefs()
-    .filter(b => b.confidence >= 0.3 && b.object) ?? [];
+    .filter(b => b.confidence >= 0.3 && b.object && !isPerpetrator(b.source)) ?? [];
   const respBeliefs = resp.state.beliefs?.getAllBeliefs()
-    .filter(b => b.confidence >= 0.3 && b.object) ?? [];
+    .filter(b => b.confidence >= 0.3 && b.object && !isPerpetrator(b.source)) ?? [];
 
   // Track already-proposed event+object combos to avoid duplicates from bidirectional scan
   const proposed = new Set<string>();

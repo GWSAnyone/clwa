@@ -10,7 +10,7 @@
 
 import type { Agent } from '@clwa/engine';
 import type { TopicSource, TopicProposal, TopicContext } from '@clwa/engine';
-import { getEventLabel } from '@clwa/engine';
+import { getEventLabel, isPerpetrator } from '@clwa/engine';
 
 // ─── Justice Topics ────────────────────────────────────────────
 // Arrest, sentencing, fled — crime-specific event discussions.
@@ -304,9 +304,12 @@ export const suspicionTopics: TopicSource = (init, resp, ctx) => {
   const proposals: TopicProposal[] = [];
   const initBeliefs = init.state.beliefs?.getAllBeliefs() ?? [];
 
-  // Find crime beliefs where suspect is known
+  // Find crime beliefs where suspect is known — exclude perpetrator's own beliefs
+  // (perpetrators must NOT gossip about their own crime through suspicion topics)
   const suspectBeliefs = initBeliefs.filter(b =>
     b.eventType && b.subject && b.confidence >= 0.3 &&
+    !isPerpetrator(b.source) &&
+    b.subject !== init.profile.id && b.subject !== init.profile.name &&
     (getEventLabel(b.eventType) !== null),
   );
   if (suspectBeliefs.length === 0) return proposals;
