@@ -270,3 +270,83 @@ describe('LLM Safety', () => {
     expect(violations).toEqual([]);
   });
 });
+
+// ─── 7. Null Semantics (Invariant #2, #9) ───
+
+describe('Null Semantics', () => {
+  test('no "free" as status string in engine (null = default, Invariant #9)', () => {
+    const violations: string[] = [];
+    for (const f of engineFiles) {
+      for (const { lineNum, code } of codeLines(f)) {
+        // 'free' as status check — but NOT as decay type or other legitimate enum values
+        if (/status\s*===\s*['"]free['"]/.test(code) || /===\s*['"]free['"]/.test(code) && /status/.test(code)) {
+          violations.push(`${relative(ROOT, f)}:${lineNum}: ${code.trim().slice(0, 80)}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ─── 8. Engine Behavioral Purity (post grief-extraction) ───
+
+describe('Engine Behavioral Purity', () => {
+  test('cg-engine has no direct relationship method calls (grief/sentiment in module)', () => {
+    const violations: string[] = [];
+    const cgFile = engineFiles.find(f => f.endsWith('cg-engine.ts'));
+    if (!cgFile) return;
+    for (const { lineNum, code } of codeLines(cgFile)) {
+      if (/getGriefPenalty|adjustSentiment|adjustTrust/.test(code)) {
+        violations.push(`cg-engine.ts:${lineNum}: behavioral logic belongs in module post-handler`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('cg-engine uses no old domain field names (suspectName/victimName)', () => {
+    const violations: string[] = [];
+    const cgFile = engineFiles.find(f => f.endsWith('cg-engine.ts'));
+    if (!cgFile) return;
+    for (const { lineNum, code } of codeLines(cgFile)) {
+      if (/suspectName|victimName|victimRole/.test(code)) {
+        violations.push(`cg-engine.ts:${lineNum}: old domain field name (use perpetratorName/affectedName)`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ─── 9. Registry Pattern — No Hardcoded Domain Strings in Engine ───
+
+describe('Registry Pattern Enforcement', () => {
+  test('engine never checks specific role strings (Invariant #4)', () => {
+    const violations: string[] = [];
+    const roleStrings = ['guard', 'bartender', 'merchant', 'herbalist', 'priest', 'blacksmith', 'bard', 'judge'];
+    for (const f of engineFiles) {
+      for (const { lineNum, code } of codeLines(f)) {
+        for (const role of roleStrings) {
+          // Only flag === 'role' comparisons, not type annotations or comments
+          if (new RegExp(`===\\s*['"]${role}['"]`).test(code)) {
+            violations.push(`${relative(ROOT, f)}:${lineNum}: role string '${role}'`);
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('engine never references specific location names', () => {
+    const violations: string[] = [];
+    const locationKeywords = ['tavern', 'market-square', 'blacksmith', 'temple', 'courthouse', 'millhaven'];
+    for (const f of engineFiles) {
+      for (const { lineNum, code } of codeLines(f)) {
+        for (const loc of locationKeywords) {
+          if (new RegExp(`['"]${loc}['"]`, 'i').test(code)) {
+            violations.push(`${relative(ROOT, f)}:${lineNum}: location '${loc}'`);
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
