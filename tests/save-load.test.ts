@@ -13,6 +13,7 @@ import {
   InMemoryEventStore,
   BeliefManager,
   RelationshipGraph,
+  VectorMemory,
   registerEventCategory,
   registerSpeechActs,
   registerClaimSources,
@@ -373,5 +374,72 @@ describe('Serialization Format', () => {
     // Verify cooldowns are in the save data
     expect(saved.affordanceCooldowns).toBeDefined();
     expect(saved.decisionCooldowns).toBeDefined();
+  });
+});
+
+// ─── VectorMemory Round-Trip (requires Qdrant) ───
+
+describe('VectorMemory round-trip (requires Qdrant)', () => {
+  test('store + toJSON + loadState preserves memories', async () => {
+    const mem = new VectorMemory('test-roundtrip-' + Date.now());
+    await mem.init({ reset: true });
+
+    await mem.store('I saw Mark steal from the shop.', 8, 1);
+    await mem.store('Ted served me ale at the tavern.', 3, 1);
+    await mem.store('The guard was patrolling the gate.', 5, 1);
+
+    // getAllMemories returns ScoredMemory[] (needs currentDay)
+    const all = mem.getAllMemories(1);
+    expect(all.length).toBe(3);
+
+    // Serialize to MemoryEntry[]
+    const json = mem.toJSON();
+    expect(json.length).toBe(3);
+    expect(json[0].text).toBe('I saw Mark steal from the shop.');
+
+    // Recreate and load
+    const mem2 = new VectorMemory('test-roundtrip-load-' + Date.now());
+    await mem2.init({ reset: true });
+    await mem2.loadState(json);
+
+    const restored = mem2.getAllMemories(1);
+    expect(restored.length).toBe(3);
+    expect(restored.map(m => m.text).sort()).toEqual(all.map(m => m.text).sort());
+
+    // Importance preserved
+    const highImportance = restored.find(m => m.text.includes('steal'));
+    expect(highImportance).toBeDefined();
+    expect(highImportance!.importance).toBe(8);
+  });
+
+  test('recall finds relevant memories by semantic similarity', async () => {
+    const mem = new VectorMemory('test-recall-' + Date.now());
+    await mem.init({ reset: true });
+
+    await mem.store('Mark committed murder at the tavern.', 9, 1);
+    await mem.store('The weather was nice today.', 2, 1);
+    await mem.store('Bess sold herbs at the market.', 3, 1);
+
+    // recall returns ScoredMemory[] — text is directly on ScoredMemory (extends Memory)
+    const results = await mem.recall('crime at the tavern', 1);
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].text).toContain('tavern');
+  });
+
+  test('protected memories survive eviction', async () => {
+    const mem = new VectorMemory('test-eviction-' + Date.now(), { maxCapacity: 3 });
+    await mem.init({ reset: true });
+
+    await mem.store('This is a critical fact about the case.', 10, 1, true);
+    await mem.store('Low importance 1.', 1, 1);
+    await mem.store('Low importance 2.', 1, 1);
+    // This should trigger eviction (capacity 3, adding 4th)
+    await mem.store('New memory pushing over capacity.', 5, 1);
+
+    // toJSON returns MemoryEntry[] which HAS protected field
+    const entries = mem.toJSON();
+    const protectedEntry = entries.find(m => m.text.includes('critical fact'));
+    expect(protectedEntry).toBeDefined();
+    expect(protectedEntry!.protected).toBe(true);
   });
 });
