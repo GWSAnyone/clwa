@@ -18,7 +18,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
-## Текущее состояние: v0.12.10 (M3 in progress)
+## Текущее состояние: v0.13.0 (M3 complete)
 
 ### Завершено
 
@@ -51,7 +51,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | Schedule | v1 | 5 periods, per-NPC entries, priority 3 goals |
 | Clock | v1 | Master Clock, ProcessingQueue (7 task types), NPC state machine (6 states) |
 | Journal | v2 | Structured evidence fields, suspect tracking, case summary scoring |
-| Dialogue | v1 | Structured JSON (speech+gesture), TopicEngine v3.1 (13 sources) |
+| Dialogue | v1 | Structured JSON (speech+gesture), TopicEngine v3.1 (16 sources: 13 social + 3 crime) |
 
 ---
 

@@ -37,7 +37,7 @@ State (mood, beliefs, relationships, location)
 
 **Volition:** structured output (DO/WHY). Dynamic action enum from registries. Beliefs in user prompt (not system — avoids "lost middle"). "talk" → TopicEngine handles conversation.
 
-**22 affordances** in crime-justice module (steal, kill, investigate, arrest, evaluate_case, surveillance, etc.). Each with declarative step templates, target finders, requirement checkers. All via registries.
+**23 affordances** in crime-justice module (steal, kill, investigate, arrest, evaluate_case, surveillance, etc.). Each with declarative step templates, target finders, requirement checkers. All via registries.
 
 ### PM — Personality Model (v1)
 
@@ -123,7 +123,7 @@ Location-based. `canSee()`, `canHear()`, `canInteract()`, `getCoPresent()`, `get
 
 ### TopicEngine (v3.1)
 
-Plugin architecture. 14 sources (12 social + 2 crime). Weighted random selection with PM influence (OCEAN). Diversity tracking.
+Plugin architecture. 16 sources (13 social + 3 crime). Weighted random selection with PM influence (OCEAN). Diversity tracking.
 
 **TopicProposal:** moodValence (numeric, engine reads), sentimentValence, mentionedNpcId, beliefTransfer. Tone string = display only.
 
@@ -197,14 +197,14 @@ Silver Flagon Tavern, Town Square (hub), Town Gate, Market Square, Blacksmith, T
 packages/
   engine/src/     — subsystems, 40+ empty registries, ZERO module content
   modules/src/
-    social/       — 12 topic sources + socialize affordance
-    crime-justice/ — 22 affordances, CG rules, step handlers, target finders
+    social/       — 13 topic sources + socialize affordance
+    crime-justice/ — 23 affordances, CG rules, step handlers, target finders
   server/
     src/          — HTTP/WS, world-loader (with JSON validation), bootstrap, position manager
     public/       — Web UI (Canvas2D game client)
 worlds/millhaven/ — JSON world data (NPC profiles, locations, relationships, motives, secrets, topics)
 tools/world-editor/ — standalone world JSON editor (port 3001, registry-driven dropdowns)
-tests/            — architecture lint, boot smoke, save-load round-trip (61 tests)
+tests/            — 8 test files, 151 tests (architecture, boot-smoke, save-load, cg-v2, heat, m3-systems, cg-integration, regression, world-data)
 ```
 
 Dependencies: `modules → engine`, `server → engine + modules`. Engine **never** imports modules.
