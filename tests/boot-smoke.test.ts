@@ -447,6 +447,49 @@ describe('Module contract validation', () => {
     expect(bad).toEqual([]);
   });
 
+  test('all CG rule consequence types have belief creators', () => {
+    const { CRIME_CG_RULES } = require('@clwa/modules');
+    const { getBeliefCreator } = require('@clwa/engine');
+    const bad: string[] = [];
+    for (const rule of CRIME_CG_RULES) {
+      if (!getBeliefCreator(rule.consequence.type)) {
+        bad.push(`Rule '${rule.id}': consequence '${rule.consequence.type}' has no belief creator`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('all CG rule consequence types have memory text builders', () => {
+    const { CRIME_CG_RULES } = require('@clwa/modules');
+    const { getMemoryTextBuilder } = require('@clwa/engine');
+    const bad: string[] = [];
+    for (const rule of CRIME_CG_RULES) {
+      if (!getMemoryTextBuilder(rule.consequence.type)) {
+        bad.push(`Rule '${rule.id}': consequence '${rule.consequence.type}' has no memory text builder`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('all CG exclusive groups have ≥2 rules', () => {
+    const { CRIME_CG_RULES } = require('@clwa/modules');
+    const groups = new Map<string, string[]>();
+    for (const rule of CRIME_CG_RULES) {
+      if (rule.exclusive) {
+        const arr = groups.get(rule.exclusive) ?? [];
+        arr.push(rule.id);
+        groups.set(rule.exclusive, arr);
+      }
+    }
+    const bad: string[] = [];
+    for (const [group, rules] of groups) {
+      if (rules.length < 2) {
+        bad.push(`Exclusive group '${group}' has only ${rules.length} rule(s): ${rules.join(', ')} — exclusive is meaningless with < 2`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
   test('all CG rule trait conditions reference valid BigFive traits', () => {
     const { CRIME_CG_RULES } = require('@clwa/modules');
     const validTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism', 'honesty'];

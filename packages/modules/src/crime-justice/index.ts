@@ -472,6 +472,34 @@ export function registerCrimeJusticeModule(): void {
     const arrestedName = event.object ? 'my friend' : 'someone I care about';
     return `They arrested ${arrestedName}. I can't believe it. Maybe they're wrong. Maybe someone set them up.`;
   });
+  // Belief creators for consequence types that previously had only memory builders (found by diagnostic scan)
+  registerBeliefCreator('MINOR_INCIDENT_MEMORY', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
+    // Witnesses of arguments get low-confidence observation belief
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: crimeEventType,
+      subject: perpetrator, object: affectedName,
+      location: event.location, confidence: 0.2, source: 'observation',
+      sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
+  registerBeliefCreator('GUARD_WARNING', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
+    // NPC learns that the guard took notice of a disturbance
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: crimeEventType,
+      subject: perpetrator, object: affectedName,
+      location: event.location, confidence: 0.3, source: 'observation',
+      sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
+  registerBeliefCreator('ARREST_RESENTMENT', (agent, event, _rule, crimeEventType, _perpetrator, _affectedName) => {
+    // NPC whose friend was arrested gets an emotional belief about the arrest
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: 'NPC_ARRESTED',
+      subject: null, object: event.object ?? null,
+      location: event.location, confidence: 0.6, source: 'observation',
+      sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
   registerBeliefCreator('CORRUPTION_COVER', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
     // Corrupt guard gets a concealment belief — knows about the crime but chooses to ignore it
     agent.state.beliefs?.addBelief({
