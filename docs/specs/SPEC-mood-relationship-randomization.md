@@ -1,7 +1,12 @@
 # SPEC: Mood & Relationship Randomization
 
+> **Milestone**: M1 (Replayable Crime)
+> **Status**: Implemented
+> **Depends on**: SPEC-trait-randomization (done)
+> **Engine changes**: None. Server-side mood/relationship randomizer.
+> **Created**: 2026-04-01
+> **Completed**: 2026-04-01
 > Milestone 1, задачи 2-3. Дополнение к trait randomization.
-> Статус: **реализовано ✅** (smoke test passed — determinism verified)
 
 ---
 

@@ -1,7 +1,12 @@
 # SPEC: Trait Randomization
 
+> **Milestone**: M1 (Replayable Crime)
+> **Status**: Implemented
+> **Depends on**: None
+> **Engine changes**: None. Server-side trait randomizer.
+> **Created**: 2026-04-01
+> **Completed**: 2026-04-01
 > Milestone 1, задача 1. Каждый запуск — другие личности NPC.
-> Статус: **реализовано ✅** (проаудировано CLWA auditor — 0 violations, 4 minor)
 
 ---
 

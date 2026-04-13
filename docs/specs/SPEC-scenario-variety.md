@@ -1,7 +1,12 @@
 # SPEC: Scenario Variety
 
+> **Milestone**: M1 (Replayable Crime)
+> **Status**: Superseded by SPEC-motive-pool
+> **Depends on**: SPEC-trait-randomization (done), SPEC-mood-relationship-randomization (done)
+> **Engine changes**: None. Superseded — variety achieved through emergent motives.
+> **Created**: 2026-04-01
+> **Completed**: 2026-04-06 (superseded by SPEC-motive-pool)
 > Milestone 1, финальная задача. Гарантировать что рандомизация даёт разные истории.
-> Статус: **superseded by SPEC-motive-pool** — variety обеспечена через emergent motives (sentiment < -0.5 → PERSONAL_GRUDGE → motive_target). Отдельный sentiment-based targeting не нужен.
 
 ---
 

@@ -1,7 +1,12 @@
 # SPEC: Journal V2 — Suspect Tracking & Case Summary
 
+> **Milestone**: M2 (Detective Toolkit)
+> **Status**: Implemented
+> **Depends on**: None
+> **Engine changes**: PlayerJournal with structured fields, suspect tracking, case summary.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-03
 > Milestone 2, фундамент. Журнал из плоского списка → инструмент детектива.
-> Статус: **реализовано** (structured fields, suspect tracking, case summary, groupBy API, UI)
 
 ---
 

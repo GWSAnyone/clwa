@@ -1,10 +1,13 @@
 # SPEC: Polishing to A+ State
 
-**Status**: NEAR-COMPLETE (2026-04-13) — 106/109 done, 3 conscious deferrals  
-**Created**: 2026-04-07  
-**Scope**: Full codebase quality sweep — dead code, type safety, frontend, LLM prompts, save/load, known debt  
-**Total items**: 162 (109 actionable → 106 done, 3 deferred, 10 false positive/already fixed)  
-**Pre-existing debt resolved**: VALID_QUESTION_TOPICS → registry, 'smalltalk' → getDefaultSpeechAct()  
+> **Milestone**: M3 (Living Opposition)
+> **Status**: Implemented (2026-04-13) — 106/109 done, 3 conscious deferrals
+> **Depends on**: All M3 systems (done)
+> **Engine changes**: registries (questionTopics, defaultSpeechAct), save validation guards, toJSON types.
+> **Created**: 2026-04-09
+> **Completed**: 2026-04-13
+> Full codebase quality sweep — 162 audit items, 109 actionable, 106 done, 3 deferred.
+
 
 ---
 

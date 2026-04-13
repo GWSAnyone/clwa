@@ -207,10 +207,12 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Current Status
 
-v0.12.10 (M3 in progress). Milestone 1 (Replayable Crime) complete. Milestone 2 (Detective Toolkit) complete — backend + Web UI. Milestone 2.5 (Memory & Infrastructure) complete — persistent memory, TS strict, contract validation.
+v0.13.1 (M3 complete). M1 (Replayable Crime) done. M2 (Detective Toolkit) done — backend + Web UI. M2.5 (Memory & Infrastructure) done — persistent memory, TS strict, contract validation. **M3 (Living Opposition) done** — CG v2, heat, criminal escalation, Garrett variability, NPC resistance, witness reactions.
 
 Key systems: persistent NPC memory (dual storage _memoryLog + Qdrant, 3-level fallback, multiplayer-ready playerId), contract validation (runtime guards on addGoal/addBelief/registerStepHandler/registerTopicSource + `as any` lint + boot arity checks), world-loader JSON validation against engine registries.
 
-14 engine subsystems, 40+ registries, 23 affordances, 28 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. 151 tests (8 test files), 0 TS errors.
+14 engine subsystems, 40+ registries, 23 affordances, 29 specs. Engine/module boundary fully clean — zero hardcoded module vocabulary in engine. 151 tests (8 test files), 0 TS errors.
+
+Tools: `bun clwa` (game server :3000), `bun world` (world editor :3001), `bun docs` (docs reader + intelligence dashboard :3002).
 
 M3 (Living Opposition) feature-complete: CG v2, heat system, criminal escalation, Garrett variability, NPC resistance, witness reactions, cover-up suppression, detective toolkit. Next: M4 (Complete Session). See docs/ROADMAP.md.

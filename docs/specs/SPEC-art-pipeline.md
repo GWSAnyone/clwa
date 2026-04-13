@@ -4,6 +4,8 @@
 > **Status**: PoC VALIDATED (v2.1, 2026-04-11)
 > **Depends on**: Web UI (exists), WebSocket API (exists)
 > **Engine changes**: Нет. Визуальный клиент — чистый frontend.
+> **Created**: 2026-04-11
+> **Completed**: 2026-04-11
 >
 > Пайплайн генерации игровой графики для CLWA в стиле Disco Elysium.
 > Blender (3D-болванки) → ComfyUI (AI-стилизация с SDXL) → Web UI (чанковая слоёвая система).

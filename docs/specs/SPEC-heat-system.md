@@ -1,9 +1,11 @@
 # SPEC: Heat System — Criminal Danger Awareness and Adaptive Behavior
 
 > **Milestone**: M3 (Living Opposition)
-> **Status**: spec
+> **Status**: Implemented (v0.13.0)
 > **Depends on**: CG v2 (done), existing affordance scoring, beliefModifiers, secret directives
 > **Engine changes**: None. Pure module data — beliefModifiers, secret directive builders, CG rules.
+> **Created**: 2026-04-12
+> **Completed**: 2026-04-12
 
 ---
 

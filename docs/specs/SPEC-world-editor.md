@@ -1,6 +1,11 @@
 # SPEC: World Editor
 
-> **Status:** IMPLEMENTED (v0.12.3–v0.12.6, 2026-04-10)
+> **Milestone**: M2.5 (Memory & Infrastructure)
+> **Status**: Implemented (v0.12.3)
+> **Depends on**: Engine registries (for typed dropdowns)
+> **Engine changes**: None. Standalone tool — tools/world-editor/.
+> **Created**: 2026-04-10
+> **Completed**: 2026-04-10
 
 ## Что это
 

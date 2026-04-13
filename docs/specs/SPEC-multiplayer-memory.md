@@ -1,8 +1,10 @@
 # SPEC: Multiplayer Memory Isolation
 
-> **Milestone**: M2.5 (Memory & Infrastructure) — DEFERRED часть, реализация при Phase 3
-> **Статус**: Spec ready, implementation deferred
-> **Зависит от**: [SPEC-persistent-memory](SPEC-persistent-memory.md) (must be implemented first)
+> **Milestone**: M2.5 (Memory & Infrastructure)
+> **Status**: Deferred
+> **Depends on**: SPEC-persistent-memory (done)
+> **Engine changes**: playerId field on MemoryEntry (already in place), Qdrant collection partitioning.
+> **Created**: 2026-04-10
 > **Связанные спеки**: SPEC-persistent-memory → **эта спека** → будущая SPEC-multiplayer-architecture
 > **Цель**: NPC помнит каждого игрока отдельно. Player A рассказал Garrett одно, Player B — другое. Garrett не путает.
 

@@ -1,9 +1,11 @@
 # SPEC: Garrett Variability — Коррумпированный, ленивый или честный страж
 
 > **Milestone**: M3 (Living Opposition)
-> **Status**: **implemented** (night/autonomous-20260411)
+> **Status**: Implemented (v0.13.0)
 > **Depends on**: CG v2 (done), trait randomization (done), secret directives, beliefTransfer suppression
 > **Engine changes**: None. Pure module data — CG rules, belief creators, secret directive builders, source flags.
+> **Created**: 2026-04-12
+> **Completed**: 2026-04-12
 
 ---
 

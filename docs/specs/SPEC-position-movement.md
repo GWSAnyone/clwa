@@ -1,7 +1,11 @@
 # SPEC: Position-Authoritative Movement System
 
-> Движение NPC: от таймера к физике. NPC идёт с фиксированной скоростью, прибывает когда дошёл.
-> Статус: **спека** (не реализовано, текущий workaround — distance-based timer в Path B)
+> **Milestone**: M4 (Complete Session)
+> **Status**: Spec
+> **Depends on**: None
+> **Engine changes**: Movement system rewrite — position-authoritative transit.
+> **Created**: 2026-04-03
+> Движение NPC: от таймера к физике. NPC идёт с фиксированной скоростью, прибывает когда дошёл. Текущий workaround — distance-based timer.
 
 ---
 

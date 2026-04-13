@@ -1,9 +1,12 @@
 # SPEC-mood-modifiers: Structured Mood System
 
-> **Status:** Implemented & Verified (2026-04-06). Audit: A-.
-> **Replaces:** Direct mood mutations, social stress hack, SPEC-mood-pressure (partial)
-> **Reference:** docs/MOOD_REVIEW.md (industry/academic analysis)
-> **Deferred to M3:** Dual-layer (surface/deep), criminal confidence
+> **Milestone**: M3 (Living Opposition)
+> **Status**: Implemented (v0.12.0)
+> **Depends on**: None (replaces direct mood mutations)
+> **Engine changes**: MoodModifier system in world.ts, addModifier API, mood tick rewrite.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-06
+> Replaces: Direct mood mutations, social stress hack. Audit: A-.
 > **Deferred to M5:** Arousal dimension, emotional tagging
 
 ---

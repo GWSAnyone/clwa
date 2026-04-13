@@ -1,8 +1,12 @@
 # SPEC-dev-tools: Universal Developer Tools
 
-> **Status:** Implemented & Verified (2026-04-06)
-> **Depends on:** All existing engine subsystems (save/load, CG, goals, mood modifiers, AL)
-> **Principle:** State manipulation, not scenario scripts. Engine-level operations, not module-specific.
+> **Milestone**: M2.5 (Memory & Infrastructure)
+> **Status**: Implemented (v0.12.3)
+> **Depends on**: All existing engine subsystems (save/load, CG, goals, mood modifiers, AL)
+> **Engine changes**: Server routes — 6 debug endpoints + observation + quick mutation.
+> **Created**: 2026-04-06
+> **Completed**: 2026-04-06
+> Principle: State manipulation, not scenario scripts. Engine-level operations, not module-specific.
 
 ---
 

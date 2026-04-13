@@ -1,7 +1,12 @@
 # SPEC: Scenario Manager
 
+> **Milestone**: M1 (Replayable Crime)
+> **Status**: Implemented
+> **Depends on**: None
+> **Engine changes**: World.reset(), server /api/new-game endpoint.
+> **Created**: 2026-04-01
+> **Completed**: 2026-04-01
 > Milestone 1, задача 4. New game / restart без перезапуска сервера.
-> Статус: **реализовано** (код готов, runtime тест pending — needs Qdrant)
 
 ---
 

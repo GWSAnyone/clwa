@@ -1,7 +1,11 @@
 # SPEC-web-ui-m2: Detective Gameplay UI
 
-> **Status:** IMPLEMENTED (2026-04-08)
-> **Depends on:** SPEC-player-accusation, SPEC-evidence-presentation, SPEC-crime-prevention, SPEC-journal-v2
+> **Milestone**: M2 (Detective Toolkit)
+> **Status**: Implemented (v0.12.8)
+> **Depends on**: SPEC-player-accusation (done), SPEC-evidence-presentation (done), SPEC-crime-prevention (done), SPEC-journal-v2 (done)
+> **Engine changes**: None. Frontend — game.html + game.js Canvas2D client.
+> **Created**: 2026-04-07
+> **Completed**: 2026-04-08
 > **Goal:** After implementing this spec, a player can sit down and play a complete detective scenario — from crime discovery through investigation to resolution — entirely through the Web UI, using natural language.
 
 ---

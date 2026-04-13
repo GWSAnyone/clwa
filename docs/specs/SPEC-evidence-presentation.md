@@ -1,8 +1,12 @@
 # SPEC: Evidence Presentation — Show Evidence to NPC
 
+> **Milestone**: M2 (Detective Toolkit)
+> **Status**: Implemented
+> **Depends on**: SPEC-journal-v2 (done)
+> **Engine changes**: EvidenceLayer, structured JournalEntry fields, IL evidence handling.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-03
 > Milestone 2, задача 3. Игрок показывает собранные улики NPC → backed beliefs.
-> Зависимость: SPEC-journal-v2 (structured fields на JournalEntry)
-> Статус: **реализовано** (EvidenceLayer, structured fields, UI selector, dedup, belief creation)
 
 ---
 

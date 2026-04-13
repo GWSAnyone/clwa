@@ -1,9 +1,11 @@
 # SPEC: Criminal Escalation — Progressive Crime Severity
 
 > **Milestone**: M3 (Living Opposition)
-> **Status**: spec
+> **Status**: Implemented (v0.13.0)
 > **Depends on**: Motive pool (done), affordance scoring (done), heat system (SPEC-heat-system)
 > **Engine changes**: None. Module data — new affordances, motive escalation, belief modifiers.
+> **Created**: 2026-04-12
+> **Completed**: 2026-04-12
 
 ---
 

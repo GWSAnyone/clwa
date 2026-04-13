@@ -1,8 +1,12 @@
 # SPEC: Player Accusation — Formal Accusation via Dialogue
 
+> **Milestone**: M2 (Detective Toolkit)
+> **Status**: Implemented
+> **Depends on**: SPEC-journal-v2 (done), SPEC-evidence-presentation (done)
+> **Engine changes**: IL accusation detection, evidence scoring, authority filtering.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-03
 > Milestone 2, задача 1. Игрок обвиняет NPC через диалог → оценка доказательств → NPC реагирует.
-> Зависимости: SPEC-journal-v2, SPEC-evidence-presentation
-> Статус: **реализовано** (accusation detection, evidence scoring, repetition tracking, authority filtering)
 
 ---
 

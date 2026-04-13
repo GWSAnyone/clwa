@@ -1,7 +1,12 @@
 # SPEC: Ambient Mood Pressure — Loneliness Decay
 
+> **Milestone**: M3 (Living Opposition)
+> **Status**: Implemented
+> **Depends on**: SPEC-mood-modifiers (done)
+> **Engine changes**: None. Mood tick handler additions.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-03
 > Micro-spec. Mood давление без conversations — personality-driven loneliness.
-> Статус: **реализовано** (loneliness decay, BigFive scaling, 3 callsite-а)
 
 ---
 

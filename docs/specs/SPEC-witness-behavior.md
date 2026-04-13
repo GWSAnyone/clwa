@@ -1,9 +1,11 @@
 # SPEC: Witness Behavior — Personality-Driven Reactions to Crime
 
 > **Milestone**: M3 (Living Opposition)
-> **Status**: **implemented** (v0.13.0-dev, night/autonomous-20260411)
+> **Status**: Implemented (v0.13.0)
 > **Depends on**: CG v2 (done), motive pool (done), belief system (done)
 > **Engine changes**: cover-up suppression в beliefTransfer (world.ts). Остальное — module data.
+> **Created**: 2026-04-12
+> **Completed**: 2026-04-12
 
 ---
 

@@ -1,8 +1,12 @@
 # SPEC: TypeScript Strict Mode Cleanup
 
-> **Milestone**: Infrastructure
-> **Status**: DONE (v0.12.1, 2026-04-10) — 156 errors → 0, 4 runtime bugs found and fixed
-> **Priority**: Low (Bun runtime doesn't enforce, but IDE and CI benefit)
+> **Milestone**: M2.5 (Memory & Infrastructure)
+> **Status**: Implemented (v0.12.1)
+> **Depends on**: None
+> **Engine changes**: Zero — pure type annotation fixes, no runtime changes.
+> **Created**: 2026-04-10
+> **Completed**: 2026-04-10
+> 156 errors → 0, 4 runtime bugs found and fixed.
 
 ## Problem
 

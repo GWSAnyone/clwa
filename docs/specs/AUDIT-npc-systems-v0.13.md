@@ -1,10 +1,13 @@
 # AUDIT: NPC Systems Quality — v0.13.0
 
-> **Commit**: f94aa79 (v0.13.0, M3 complete)
-> **Date**: 2026-04-13
-> **Scope**: Полный аудит NPC подсистем — affordances, CG v2, beliefs, motives, heat, mood, volition, conversations
-> **Method**: Символьный анализ (Serena), sequential thinking, сравнение с индустрией (Dwarf Fortress, Rimworld, LLM-agent research 2025-2026)
-> **Limitation**: Qualitative. Эмпирическая верификация (прогон тиков, mood-history, belief snapshots) **не проводилась**. Числовые утверждения — гипотезы, не факты.
+> **Milestone**: Audit
+> **Status**: Active
+> **Depends on**: All M3 systems (done)
+> **Engine changes**: None. Analysis document.
+> **Created**: 2026-04-13
+> **Commit**: f94aa79 (v0.13.0, M3 complete). **Date**: 2026-04-13.
+> **Method**: Символьный анализ (Serena), sequential thinking, сравнение с индустрией (Dwarf Fortress, Rimworld, LLM-agent research 2025-2026).
+> **Limitation**: Qualitative. Эмпирическая верификация не проводилась.
 
 ---
 

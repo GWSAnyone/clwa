@@ -1,8 +1,11 @@
 # SPEC: Persistent NPC Memory (v3 — post-audit + manual review)
 
 > **Milestone**: M2.5 (Memory & Infrastructure)
-> **Статус**: IMPLEMENTED (v0.12.0, 2026-04-10)
-> **Связанные спеки**: [SPEC-multiplayer-memory](SPEC-multiplayer-memory.md) (deferred, builds on this)
+> **Status**: Implemented (v0.12.0)
+> **Depends on**: None
+> **Engine changes**: VectorMemory dual storage (_memoryLog + Qdrant), 3-level recall fallback, save/load.
+> **Created**: 2026-04-10
+> **Completed**: 2026-04-10
 >
 > NPC помнят не только ЧТО произошло (beliefs), но и КАК проходили разговоры.
 > Память переживает рестарт сервера.

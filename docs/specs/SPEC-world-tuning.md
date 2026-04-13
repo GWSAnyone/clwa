@@ -1,7 +1,12 @@
 # SPEC: World Tuning — Millhaven Data Design
 
+> **Milestone**: M1 (Replayable Crime)
+> **Status**: Implemented
+> **Depends on**: SPEC-trait-randomization (done)
+> **Engine changes**: None. World JSON data tuning.
+> **Created**: 2026-04-01
+> **Completed**: 2026-04-01
 > Milestone 1, data layer. Числа которые определяют gameplay.
-> Статус: **реализовано** (kill moodBelow -0.6→-0.45, sentiment ranges widened, mood ranges widened, moodBias -0.02, Mark mood always negative)
 
 ---
 

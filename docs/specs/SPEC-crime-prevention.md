@@ -1,8 +1,12 @@
 # SPEC: Crime Prevention — Warn, Alert, Confront
 
+> **Milestone**: M2 (Detective Toolkit)
+> **Status**: Implemented
+> **Depends on**: IL pipeline (existing)
+> **Engine changes**: IL claim→belief→goal pipeline for prevention actions.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-03
 > Milestone 2, задача 2. Игрок может предотвратить преступление через диалог.
-> Зависимости: нет (использует существующий IL pipeline)
-> Статус: **реализовано** (warn victim, alert guard/surveillance, confront suspect)
 
 ---
 

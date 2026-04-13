@@ -1,8 +1,12 @@
 # SPEC: Consequence Graph v2 — NPC-State Conditions, Exclusive Groups, Performance
 
+> **Milestone**: M3 (Living Opposition)
+> **Status**: Implemented (v0.13.0)
+> **Depends on**: Existing CG engine
+> **Engine changes**: cg-engine.ts rewritten — target selection pipeline, NPC-state conditions, exclusive groups, trigger index.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-12
 > Подготовка к Milestone 3+. Расширение CG engine без ломающих изменений.
-> Цель: одна доработка сейчас → никаких крупных рефакторингов при добавлении Economy/Politics/Combat модулей.
-> Статус: **implemented** (v0.13.0-dev, night/autonomous-20260411)
 
 ---
 

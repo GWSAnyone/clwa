@@ -1,9 +1,11 @@
 # SPEC-motive-pool: Motives as Beliefs
 
-> **Status:** Implemented (2026-04-06)
-> **Scope:** GDD M1 — "Motive network expansion" + "Conditional motives"
-> **Depends on:** SPEC-trait-randomization, belief system (BeliefManager)
-> **Engine changes:** EventTypeFlags.decayRate (1 field). Rest = module + server.
+> **Milestone**: M3 (Living Opposition)
+> **Status**: Implemented (v0.12.0)
+> **Depends on**: SPEC-trait-randomization (done), belief system (BeliefManager)
+> **Engine changes**: EventTypeFlags.decayRate (1 field). Rest = module + server.
+> **Created**: 2026-04-06
+> **Completed**: 2026-04-06
 
 ---
 

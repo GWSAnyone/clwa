@@ -26,6 +26,7 @@
         </div>
       </div>
 
+      <div class="sidebar-nav-actions" id="sidebar-nav-actions"></div>
       <div class="sidebar-tree" id="sidebar-tree"></div>
 
       <div class="sidebar-footer">
@@ -41,6 +42,12 @@
 
     <!-- Main -->
     <main class="main" id="main">
+      <div class="history-bar" id="history-bar">
+        <button class="history-btn" id="history-back" title="Back" disabled>&larr;</button>
+        <button class="history-btn" id="history-forward" title="Forward" disabled>&rarr;</button>
+        <div class="history-list" id="history-list"></div>
+      </div>
+
       <div class="doc-toolbar" id="doc-toolbar" style="display:none">
         <nav class="breadcrumb" id="breadcrumb"></nav>
         <div class="toolbar-actions" id="toolbar-actions"></div>
@@ -91,6 +98,8 @@
     words: '<circle cx="4" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="12" cy="8" r="1.5" fill="currentColor"/>',
     moon: '<path d="M13.5 8.5a5.5 5.5 0 01-7.5 5.1A6.5 6.5 0 018.5 1a5.5 5.5 0 005 7.5z" fill="currentColor"/>',
     sun: '<circle cx="8" cy="8" r="3" fill="currentColor"/><g stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/><line x1="3.05" y1="3.05" x2="4.46" y2="4.46"/><line x1="11.54" y1="11.54" x2="12.95" y2="12.95"/><line x1="3.05" y1="12.95" x2="4.46" y2="11.54"/><line x1="11.54" y1="4.46" x2="12.95" y2="3.05"/></g>',
+    dashboard: '<rect x="1" y="1" width="5.5" height="5.5" rx="1" fill="currentColor" opacity="0.7"/><rect x="8.5" y="1" width="5.5" height="3" rx="1" fill="currentColor"/><rect x="1" y="8.5" width="5.5" height="5.5" rx="1" fill="currentColor"/><rect x="8.5" y="6" width="5.5" height="8" rx="1" fill="currentColor" opacity="0.7"/>',
+    close: '<line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
   };
 
   function svgIcon(name, cls) {
@@ -105,6 +114,14 @@
   let currentDoc = null;
   let editMode = false;
   let originalContent = '';
+  let dashboardCache = null;
+  let isDashboardView = true;
+  let glossaryTerms = null; // loaded once from /api/glossary
+
+  // Navigation history
+  const navHistory = [];  // [{path, title}]
+  let navHistoryIdx = -1;
+  let navIsHistoryNav = false; // prevent recording during back/forward
 
   // ============================================================
   // DOM REFS
@@ -122,6 +139,7 @@
   const $toast = document.getElementById('toast');
   const $themeIcon = document.getElementById('theme-icon');
   const $themeLabel = document.getElementById('theme-label');
+  const $navActions = document.getElementById('sidebar-nav-actions');
 
   // ============================================================
   // THEME
@@ -277,21 +295,36 @@
     for (const r of results.slice(0, 15)) {
       const item = document.createElement('div');
       item.className = 'search-result-item';
-      item.addEventListener('click', () => {
-        hideSearchResults();
-        $searchInput.value = '';
-        navigateTo(r.path);
-        closeSidebar();
-      });
+      const isCode = r.path.startsWith('code://');
+      if (!isCode) {
+        item.addEventListener('click', () => {
+          const searchQuery = $searchInput.value.trim();
+          hideSearchResults();
+          $searchInput.value = '';
+          navigateTo(r.path, searchQuery);
+          closeSidebar();
+        });
+      } else {
+        item.style.opacity = '0.7';
+        item.style.cursor = 'default';
+      }
 
       const nameEl = document.createElement('div');
       nameEl.className = 'search-result-name';
-      nameEl.textContent = r.name;
+      if (isCode) {
+        const codeBadge = document.createElement('span');
+        codeBadge.style.cssText = 'font-size:9px;padding:1px 4px;background:var(--bg-hover);border-radius:3px;margin-right:4px;color:var(--mono);text-transform:uppercase;font-weight:700;letter-spacing:0.5px';
+        codeBadge.textContent = 'code';
+        nameEl.appendChild(codeBadge);
+        nameEl.appendChild(document.createTextNode(r.name));
+      } else {
+        nameEl.textContent = r.name;
+      }
       item.appendChild(nameEl);
 
       const pathEl = document.createElement('div');
       pathEl.className = 'search-result-path';
-      pathEl.textContent = r.path === '__CLAUDE_MD__' ? 'CLAUDE.md' : r.path;
+      pathEl.textContent = isCode ? r.path.replace('code://', '') : (r.path === '__CLAUDE_MD__' ? 'CLAUDE.md' : r.path);
       item.appendChild(pathEl);
 
       if (r.matches && r.matches.length > 0) {
@@ -429,15 +462,31 @@
   // ============================================================
   // NAVIGATION
   // ============================================================
-  async function navigateTo(path) {
+  async function navigateTo(path, highlightTerm) {
     if (editMode) {
       if (!confirm('Discard unsaved changes?')) return;
       editMode = false;
     }
 
+    isDashboardView = false;
     currentPath = path;
     localStorage.setItem('dr-last-doc', path);
+
+    // Record in navigation history (unless navigating via back/forward)
+    if (!navIsHistoryNav) {
+      // Trim forward history if we navigated from middle
+      if (navHistoryIdx < navHistory.length - 1) navHistory.length = navHistoryIdx + 1;
+      const title = path === '__CLAUDE_MD__' ? 'CLAUDE' : path.split('/').pop()?.replace('.md', '') || path;
+      navHistory.push({ path, title });
+      if (navHistory.length > 10) navHistory.shift();
+      navHistoryIdx = navHistory.length - 1;
+      renderHistoryBar();
+    }
+    navIsHistoryNav = false;
     updateActiveFile();
+    // Deactivate dashboard button
+    const dashBtn = document.getElementById('dash-btn');
+    if (dashBtn) dashBtn.classList.remove('active');
     showLoading();
     $toolbar.style.display = 'flex';
 
@@ -445,10 +494,83 @@
       const doc = await apiGet('doc?path=' + encodeURIComponent(path));
       currentDoc = doc;
       renderDocument(doc);
+      // Scroll to and highlight a term if requested
+      if (highlightTerm) {
+        requestAnimationFrame(() => {
+          const mdContent = $contentBody.querySelector('.md-content');
+          if (!mdContent) return;
+          // Find text containing the term
+          const walker = document.createTreeWalker(mdContent, NodeFilter.SHOW_TEXT);
+          let found = null;
+          while (walker.nextNode()) {
+            if (walker.currentNode.textContent.includes(highlightTerm)) {
+              found = walker.currentNode.parentElement;
+              break;
+            }
+          }
+          if (found) {
+            found.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            found.classList.add('glossary-highlight-flash');
+            setTimeout(() => found.classList.remove('glossary-highlight-flash'), 4000);
+          }
+        });
+      }
     } catch (err) {
       showError('Failed to load document', err.message);
     }
   }
+
+  // ─── History bar ───
+  const $historyBar = document.getElementById('history-bar');
+  const $historyBack = document.getElementById('history-back');
+  const $historyForward = document.getElementById('history-forward');
+  const $historyList = document.getElementById('history-list');
+
+  function renderHistoryBar() {
+    $historyBack.disabled = navHistoryIdx <= 0;
+    $historyForward.disabled = navHistoryIdx >= navHistory.length - 1;
+    $historyList.innerHTML = '';
+    // Show last 10 entries
+    const start = Math.max(0, navHistory.length - 10);
+    for (let i = start; i < navHistory.length; i++) {
+      const entry = navHistory[i];
+      const el = document.createElement('button');
+      el.className = 'history-item' + (i === navHistoryIdx ? ' active' : '');
+      el.textContent = entry.title;
+      el.title = entry.path;
+      el.addEventListener('click', () => {
+        navHistoryIdx = i;
+        navIsHistoryNav = true;
+        navigateTo(entry.path);
+        renderHistoryBar();
+      });
+      $historyList.appendChild(el);
+    }
+  }
+
+  $historyBack.addEventListener('click', () => {
+    if (navHistoryIdx > 0) {
+      navHistoryIdx--;
+      navIsHistoryNav = true;
+      navigateTo(navHistory[navHistoryIdx].path);
+      renderHistoryBar();
+    }
+  });
+
+  $historyForward.addEventListener('click', () => {
+    if (navHistoryIdx < navHistory.length - 1) {
+      navHistoryIdx++;
+      navIsHistoryNav = true;
+      navigateTo(navHistory[navHistoryIdx].path);
+      renderHistoryBar();
+    }
+  });
+
+  // Keyboard: Alt+Left/Right for back/forward
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey && e.key === 'ArrowLeft') { e.preventDefault(); $historyBack.click(); }
+    if (e.altKey && e.key === 'ArrowRight') { e.preventDefault(); $historyForward.click(); }
+  });
 
   // ─── Internal link navigation ───
   // Resolve relative .md paths against current document's directory
@@ -574,7 +696,40 @@
     const mdDiv = document.createElement('div');
     mdDiv.className = 'md-content';
     mdDiv.innerHTML = renderMarkdown(doc.content);
-    docView.appendChild(mdDiv);
+    applyGlossaryToDOM(mdDiv);
+
+    // Build heading outline (TOC) from rendered h2/h3
+    const headings = mdDiv.querySelectorAll('h2, h3');
+    if (headings.length >= 3) {
+      const outline = document.createElement('nav');
+      outline.className = 'doc-outline';
+      const outlineTitle = document.createElement('div');
+      outlineTitle.className = 'doc-outline-title';
+      outlineTitle.textContent = 'Contents';
+      outline.appendChild(outlineTitle);
+
+      headings.forEach((h, i) => {
+        const id = 'heading-' + i;
+        h.id = id;
+        const link = document.createElement('a');
+        link.className = 'doc-outline-link' + (h.tagName === 'H3' ? ' doc-outline-link--sub' : '');
+        link.textContent = h.textContent;
+        link.href = '#' + id;
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        outline.appendChild(link);
+      });
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'doc-with-outline';
+      wrapper.appendChild(mdDiv);
+      wrapper.appendChild(outline);
+      docView.appendChild(wrapper);
+    } else {
+      docView.appendChild(mdDiv);
+    }
 
     $contentBody.appendChild(docView);
 
@@ -682,12 +837,149 @@
       return '<pre><code>' + escapeHTML(src) + '</code></pre>';
     }
     try {
-      return marked.parse(src);
+      let html = marked.parse(src);
+      // Post-process: blockquotes with **Key**: value lines → structured metadata card
+      html = html.replace(/<blockquote>([\s\S]*?)<\/blockquote>/g, (match, inner) => {
+        // Check if content has metadata-like pattern: **Word**: value
+        const metaPattern = /<strong>([^<]+)<\/strong>\s*:\s*/g;
+        const metaCount = (inner.match(metaPattern) || []).length;
+        if (metaCount >= 2) {
+          // Split on <strong>Key</strong>: pattern, rebuild as table
+          const items = [];
+          const re = /<strong>([^<]+)<\/strong>\s*:\s*([\s\S]*?)(?=<strong>|$)/g;
+          let m;
+          while ((m = re.exec(inner)) !== null) {
+            const key = m[1].trim();
+            let val = m[2].trim().replace(/<\/?p>/g, '').replace(/\n/g, ' ').trim();
+            if (val.endsWith('<br>')) val = val.slice(0, -4);
+            items.push('<div class="spec-meta-row"><span class="spec-meta-key">' + key + '</span><span class="spec-meta-val">' + val + '</span></div>');
+          }
+          if (items.length > 0) {
+            return '<div class="spec-meta-card">' + items.join('') + '</div>';
+          }
+        }
+        return match; // Not metadata, keep as blockquote
+      });
+      return html;
     } catch (e) {
       console.error('[Markdown]', e);
       return '<pre><code>' + escapeHTML(src) + '</code></pre>';
     }
   }
+
+  // ─── Glossary: DOM-based auto-linking ───
+
+  async function loadGlossary() {
+    if (glossaryTerms) return;
+    try {
+      const data = await apiGet('glossary');
+      glossaryTerms = data.terms || [];
+    } catch { glossaryTerms = []; }
+  }
+  loadGlossary();
+
+  const SKIP_TAGS = new Set(['CODE', 'PRE', 'A', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SPAN']);
+
+  function applyGlossaryToDOM(container) {
+    if (!glossaryTerms || glossaryTerms.length === 0) return;
+
+    // Collect all text nodes first (avoid mutation during walk)
+    const textNodes = [];
+    function collectText(node) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (SKIP_TAGS.has(node.tagName)) return;
+        if (node.classList?.contains('spec-meta-card')) return;
+        for (const child of Array.from(node.childNodes)) collectText(child);
+      } else if (node.nodeType === Node.TEXT_NODE && node.textContent.trim().length >= 2) {
+        textNodes.push(node);
+      }
+    }
+    collectText(container);
+
+    // Process each text node — find ALL matching terms, replace all occurrences
+    for (const node of textNodes) {
+      let text = node.textContent;
+      // Find first matching term in this text node
+      let bestMatch = null;
+      for (const entry of glossaryTerms) {
+        const escaped = entry.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('\\b(' + escaped + ')\\b', entry.term.length <= 3 ? '' : 'i');
+        const match = text.match(re);
+        if (match && match.index != null) {
+          if (!bestMatch || match.index < bestMatch.index) {
+            bestMatch = { entry, match, index: match.index };
+          }
+        }
+      }
+      if (!bestMatch) continue;
+
+      // Split: before | matched | after — then recurse on "after"
+      const { entry, match } = bestMatch;
+      const before = text.substring(0, match.index);
+      const matched = match[1];
+      const after = text.substring(match.index + matched.length);
+      const span = document.createElement('span');
+      span.className = 'glossary-term glossary-tier-' + entry.tier;
+      span.textContent = matched;
+      span.dataset.glossaryDoc = entry.doc;
+      span.dataset.glossaryDesc = entry.description;
+      span.dataset.glossaryTerm = entry.term;
+      const parent = node.parentNode;
+      if (before) parent.insertBefore(document.createTextNode(before), node);
+      parent.insertBefore(span, node);
+      if (after) {
+        const afterNode = document.createTextNode(after);
+        parent.insertBefore(afterNode, node);
+        // Queue afterNode for further processing (remaining terms in same text)
+        textNodes.push(afterNode);
+      }
+      parent.removeChild(node);
+    }
+  }
+
+  // Custom tooltip popup
+  const $tooltip = document.createElement('div');
+  $tooltip.className = 'glossary-tooltip';
+  $tooltip.style.display = 'none';
+  document.body.appendChild($tooltip);
+  let tooltipTimer = null;
+
+  document.addEventListener('mouseover', (e) => {
+    const gt = e.target.closest('.glossary-term');
+    if (!gt) return;
+    clearTimeout(tooltipTimer);
+    const desc = gt.dataset.glossaryDesc || gt.dataset.glossaryTerm;
+    const doc = gt.dataset.glossaryDoc;
+    $tooltip.innerHTML = '<div class="glossary-tooltip-term">' + escapeHTML(gt.dataset.glossaryTerm || gt.textContent) + '</div>'
+      + '<div class="glossary-tooltip-desc">' + escapeHTML(desc) + '</div>'
+      + (doc ? '<div class="glossary-tooltip-link">Open definition</div>' : '');
+    $tooltip.style.display = 'block';
+    const rect = gt.getBoundingClientRect();
+    $tooltip.style.left = Math.min(rect.left, window.innerWidth - 260) + 'px';
+    $tooltip.style.top = (rect.bottom + 6) + 'px';
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    const gt = e.target.closest('.glossary-term');
+    if (!gt) return;
+    tooltipTimer = setTimeout(() => { $tooltip.style.display = 'none'; }, 200);
+  });
+
+  $tooltip.addEventListener('mouseover', () => clearTimeout(tooltipTimer));
+  $tooltip.addEventListener('mouseout', () => { tooltipTimer = setTimeout(() => { $tooltip.style.display = 'none'; }, 200); });
+
+  // Click → navigate to doc + scroll to term definition
+  document.addEventListener('click', (e) => {
+    const gt = e.target.closest('.glossary-term[data-glossary-doc]');
+    if (!gt) return;
+    e.preventDefault();
+    $tooltip.style.display = 'none';
+    navigateTo(gt.dataset.glossaryDoc, gt.dataset.glossaryTerm);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') $tooltip.style.display = 'none';
+  });
 
   // ============================================================
   // EDIT MODE
@@ -782,17 +1074,1219 @@
   });
 
   // ============================================================
+  // DASHBOARD SIDEBAR BUTTON
+  // ============================================================
+  (function buildDashboardButton() {
+    const btn = document.createElement('button');
+    btn.className = 'sidebar-dash-btn';
+    btn.id = 'dash-btn';
+    btn.setAttribute('aria-label', 'Intelligence Dashboard');
+    btn.innerHTML = svgIcon('dashboard', 'sidebar-dash-icon') + '<span>Dashboard</span>';
+    btn.addEventListener('click', () => {
+      showDashboard();
+      closeSidebar();
+    });
+    $navActions.appendChild(btn);
+  })();
+
+  // ============================================================
+  // DASHBOARD — Intelligence Dashboard
+  // ============================================================
+  const ROLE_COLORS = {
+    bartender:  '#e8993a',
+    merchant:   '#d4a843',
+    bard:       '#a371d6',
+    guard:      '#6498c8',
+    priest:     '#e0c97f',
+    blacksmith: '#c47a5a',
+    herbalist:  '#6abf8a',
+    judge:      '#8b949e',
+  };
+
+  const MOTIVE_COLORS = {
+    REVENGE_DESIRE: '#f85149',
+    PERSONAL_GRUDGE: '#d29922',
+    THREAT_PERCEIVED: '#e8993a',
+  };
+
+  function normalizeStatus(raw) {
+    if (!raw) return 'spec';
+    const s = raw.toLowerCase().trim();
+    if (s.includes('implemented') || s.includes('done') || s.includes('complete') || s.includes('verified') || s.includes('validated') || s.includes('superseded') || s.includes('реализовано') || s.includes('near-complete')) return 'done';
+    if (s.includes('progress') || s.includes('partial')) return 'in-progress';
+    if (s.includes('deferred')) return 'deferred';
+    if (s.includes('спека')) return 'spec';
+    return 'spec';
+  }
+
+  const STATUS_COLORS = {
+    'done': 'var(--success)',
+    'in-progress': 'var(--warning)',
+    'spec': 'var(--accent)',
+    'deferred': 'var(--text-muted)',
+  };
+
+  const STATUS_LABELS = {
+    'done': 'Done',
+    'in-progress': 'In Progress',
+    'spec': 'Spec',
+    'deferred': 'Deferred',
+  };
+
+  async function fetchDashboardData() {
+    if (dashboardCache) return dashboardCache;
+    const [health, specs, world, roadmap, affordances, cgRules, invariants] = await Promise.all([
+      apiGet('dashboard/health').catch(() => null),
+      apiGet('dashboard/specs').catch(() => ({ specs: [], summary: { total: 0, implemented: 0, inProgress: 0, deferred: 0, spec: 0 } })),
+      apiGet('dashboard/world').catch(() => ({ npcs: [], relationships: [], motives: [], secrets: [], locations: [] })),
+      apiGet('dashboard/roadmap').catch(() => ({ milestones: [] })),
+      apiGet('dashboard/affordances').catch(() => ({ affordances: [] })),
+      apiGet('dashboard/cg-rules').catch(() => ({ rules: [] })),
+      apiGet('dashboard/invariants').catch(() => ({ invariants: [], total: 0 })),
+    ]);
+    dashboardCache = { health, specs, world, roadmap, affordances, cgRules, invariants };
+    return dashboardCache;
+  }
+
+  async function showDashboard() {
+    if (editMode) {
+      if (!confirm('Discard unsaved changes?')) return;
+      editMode = false;
+    }
+    isDashboardView = true;
+    currentPath = null;
+    localStorage.removeItem('dr-last-doc');
+    $toolbar.style.display = 'none';
+    document.title = 'CLWA Intelligence Dashboard';
+
+    // Deselect any active file in sidebar
+    const files = $sidebarTree.querySelectorAll('.tree-file');
+    for (const f of files) f.classList.remove('active');
+    const dashBtn = document.getElementById('dash-btn');
+    if (dashBtn) dashBtn.classList.add('active');
+
+    // Show loading
+    $contentBody.innerHTML = '';
+    const loading = document.createElement('div');
+    loading.className = 'loading';
+    loading.innerHTML = '<div class="loading-spinner"></div> Loading dashboard...';
+    $contentBody.appendChild(loading);
+
+    try {
+      const data = await fetchDashboardData();
+      renderDashboard(data);
+    } catch (err) {
+      showError('Failed to load dashboard', err.message);
+    }
+  }
+
+  function renderDashboard(data) {
+    $contentBody.innerHTML = '';
+    const dash = document.createElement('div');
+    dash.className = 'dash';
+
+    const sections = [
+      () => buildProjectPulse(data.health),
+      () => buildMilestoneTimeline(data.roadmap),
+      () => buildSpecFlow(data.specs),
+      () => buildTensionTimeline(data.world),
+      () => buildNpcConstellation(data.world),
+      () => buildAffordanceMatrix(data.affordances),
+      () => buildCgVisualizer(data.cgRules),
+      () => buildInvariantExplorer(data.invariants),
+    ];
+    for (const buildFn of sections) {
+      try { dash.appendChild(buildFn()); }
+      catch (e) { console.error('[Dashboard section]', e); }
+    }
+
+    $contentBody.appendChild(dash);
+  }
+
+  // ─── Section 1: Project Pulse ───
+
+  function buildProjectPulse(health) {
+    const section = document.createElement('section');
+    section.className = 'dash-section';
+
+    if (!health) {
+      const err = document.createElement('div');
+      err.className = 'dash-pulse-empty';
+      err.textContent = 'Health data unavailable';
+      section.appendChild(err);
+      return section;
+    }
+
+    // Top bar with version + commit
+    const topBar = document.createElement('div');
+    topBar.className = 'dash-topbar';
+
+    const vBadge = document.createElement('span');
+    vBadge.className = 'dash-version-badge';
+    vBadge.textContent = health.version || 'v?.?.?';
+    topBar.appendChild(vBadge);
+
+    if (health.lastCommit) {
+      const commitInfo = document.createElement('span');
+      commitInfo.className = 'dash-commit-info';
+      const commitMsg = document.createElement('span');
+      commitMsg.className = 'dash-commit-msg';
+      commitMsg.textContent = health.lastCommit.message;
+      commitInfo.appendChild(commitMsg);
+      const commitDate = document.createElement('span');
+      commitDate.className = 'dash-commit-date';
+      commitDate.textContent = formatDate(health.lastCommit.date);
+      commitInfo.appendChild(commitDate);
+      topBar.appendChild(commitInfo);
+    }
+
+    section.appendChild(topBar);
+
+    // Metric cards row
+    const row = document.createElement('div');
+    row.className = 'dash-pulse-row';
+
+    // Card 1: Specs donut
+    const specCard = createPulseCard('Specs', () => {
+      const total = dashboardCache.specs.summary.total;
+      const done = dashboardCache.specs.summary.implemented;
+      const wrap = document.createElement('div');
+      wrap.className = 'dash-donut-wrap';
+      wrap.appendChild(createDonutChart(done, total, 80));
+      const labels = document.createElement('div');
+      labels.className = 'dash-donut-labels';
+      const doneLabel = document.createElement('span');
+      doneLabel.className = 'dash-donut-done';
+      doneLabel.textContent = done + ' done';
+      labels.appendChild(doneLabel);
+      const totalLabel = document.createElement('span');
+      totalLabel.className = 'dash-donut-total';
+      totalLabel.textContent = total + ' total';
+      labels.appendChild(totalLabel);
+      wrap.appendChild(labels);
+      return wrap;
+    });
+    row.appendChild(specCard);
+
+    // Card 2: Tests
+    const testCard = createPulseCard('Tests', () => {
+      const wrap = document.createElement('div');
+      wrap.className = 'dash-test-wrap';
+      const big = document.createElement('div');
+      big.className = 'dash-test-big';
+      big.textContent = String(health.testCount || 0);
+      wrap.appendChild(big);
+      const label = document.createElement('div');
+      label.className = 'dash-test-label';
+      label.textContent = 'passing';
+      wrap.appendChild(label);
+      const ok = document.createElement('span');
+      ok.className = 'dash-test-ok';
+      ok.textContent = '0 failing';
+      wrap.appendChild(ok);
+      return wrap;
+    });
+    row.appendChild(testCard);
+
+    // Card 3: Health
+    const healthCard = createPulseCard('Health', () => {
+      const wrap = document.createElement('div');
+      wrap.className = 'dash-health-wrap';
+      const items = [
+        { label: 'Invariants', value: health.invariantCount },
+        { label: 'Registries', value: health.registryCount + '+' },
+        { label: 'Affordances', value: health.affordanceCount },
+      ];
+      for (const item of items) {
+        const row = document.createElement('div');
+        row.className = 'dash-health-item';
+        const val = document.createElement('span');
+        val.className = 'dash-health-val';
+        val.textContent = String(item.value);
+        row.appendChild(val);
+        const lbl = document.createElement('span');
+        lbl.className = 'dash-health-lbl';
+        lbl.textContent = item.label;
+        row.appendChild(lbl);
+        wrap.appendChild(row);
+      }
+      return wrap;
+    });
+    row.appendChild(healthCard);
+
+    section.appendChild(row);
+    return section;
+  }
+
+  function createPulseCard(title, contentBuilder) {
+    const card = document.createElement('div');
+    card.className = 'dash-pulse-card';
+    const header = document.createElement('div');
+    header.className = 'dash-card-header';
+    header.textContent = title;
+    card.appendChild(header);
+    const body = document.createElement('div');
+    body.className = 'dash-card-body';
+    body.appendChild(contentBuilder());
+    card.appendChild(body);
+    return card;
+  }
+
+  function createDonutChart(done, total, size) {
+    const pct = total > 0 ? done / total : 0;
+    const r = (size - 10) / 2;
+    const cx = size / 2;
+    const cy = size / 2;
+    const circumference = 2 * Math.PI * r;
+    const offset = circumference * (1 - pct);
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
+    svg.classList.add('dash-donut-svg');
+
+    // Background ring
+    const bgCircle = document.createElementNS(ns, 'circle');
+    bgCircle.setAttribute('cx', String(cx));
+    bgCircle.setAttribute('cy', String(cy));
+    bgCircle.setAttribute('r', String(r));
+    bgCircle.setAttribute('fill', 'none');
+    bgCircle.setAttribute('stroke', 'var(--border)');
+    bgCircle.setAttribute('stroke-width', '6');
+    svg.appendChild(bgCircle);
+
+    // Progress ring
+    const fgCircle = document.createElementNS(ns, 'circle');
+    fgCircle.setAttribute('cx', String(cx));
+    fgCircle.setAttribute('cy', String(cy));
+    fgCircle.setAttribute('r', String(r));
+    fgCircle.setAttribute('fill', 'none');
+    fgCircle.setAttribute('stroke', 'var(--success)');
+    fgCircle.setAttribute('stroke-width', '6');
+    fgCircle.setAttribute('stroke-linecap', 'round');
+    fgCircle.setAttribute('stroke-dasharray', String(circumference));
+    fgCircle.setAttribute('stroke-dashoffset', String(offset));
+    fgCircle.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
+    fgCircle.classList.add('dash-donut-progress');
+    svg.appendChild(fgCircle);
+
+    // Center text
+    const text = document.createElementNS(ns, 'text');
+    text.setAttribute('x', String(cx));
+    text.setAttribute('y', String(cy));
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.setAttribute('fill', 'var(--text)');
+    text.setAttribute('font-size', '16');
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('font-family', 'var(--font)');
+    text.textContent = Math.round(pct * 100) + '%';
+    svg.appendChild(text);
+
+    return svg;
+  }
+
+  // ─── Section 2: Milestone Timeline ───
+
+  function buildMilestoneTimeline(roadmap) {
+    const section = document.createElement('section');
+    section.className = 'dash-section';
+    const heading = document.createElement('h2');
+    heading.className = 'dash-section-title';
+    heading.textContent = 'Milestone Progress';
+    section.appendChild(heading);
+
+    const timeline = document.createElement('div');
+    timeline.className = 'dash-timeline';
+
+    const line = document.createElement('div');
+    line.className = 'dash-timeline-line';
+    timeline.appendChild(line);
+
+    const markers = document.createElement('div');
+    markers.className = 'dash-timeline-markers';
+
+    for (const ms of roadmap.milestones) {
+      const marker = document.createElement('div');
+      marker.className = 'dash-timeline-marker';
+      marker.setAttribute('data-status', ms.status);
+
+      const dot = document.createElement('div');
+      dot.className = 'dash-timeline-dot';
+      if (ms.status === 'in-progress') dot.classList.add('dash-timeline-dot--pulse');
+      marker.appendChild(dot);
+
+      const label = document.createElement('div');
+      label.className = 'dash-timeline-label';
+      label.textContent = ms.id;
+      marker.appendChild(label);
+
+      const name = document.createElement('div');
+      name.className = 'dash-timeline-name';
+      name.textContent = ms.name;
+      marker.appendChild(name);
+
+      markers.appendChild(marker);
+    }
+
+    timeline.appendChild(markers);
+    section.appendChild(timeline);
+    return section;
+  }
+
+  // ─── Section 3: Spec Flow ───
+
+  function buildSpecFlow(specsData) {
+    const section = document.createElement('section');
+    section.className = 'dash-section';
+    const heading = document.createElement('h2');
+    heading.className = 'dash-section-title';
+    heading.textContent = 'Spec Flow';
+    section.appendChild(heading);
+
+    // Group by milestone — all mapping done server-side, frontend just normalizes
+    function normalizeMilestone(raw) {
+      if (!raw) return null;
+      const m = raw.match(/^(M\d+\.?\d?|P\d)/);
+      return m ? m[1] : raw;
+    }
+
+    const groups = {};
+    for (const spec of specsData.specs) {
+      const ms = normalizeMilestone(spec.milestone) || 'Other';
+      if (!groups[ms]) groups[ms] = [];
+      groups[ms].push(spec);
+    }
+
+    // Sort milestones naturally: M1 < M2 < M2.5 < M3 ... then non-M groups alphabetically, Other last
+    const milestoneOrder = Object.keys(groups).sort((a, b) => {
+      const aM = a.match(/^M(\d+\.?\d*)/), bM = b.match(/^M(\d+\.?\d*)/);
+      if (aM && bM) return parseFloat(aM[1]) - parseFloat(bM[1]);
+      if (aM) return -1;
+      if (bM) return 1;
+      if (a === 'Other') return 1;
+      if (b === 'Other') return -1;
+      return a.localeCompare(b);
+    });
+    for (const ms of milestoneOrder) {
+      if (!groups[ms] || groups[ms].length === 0) continue;
+
+      const group = document.createElement('div');
+      group.className = 'dash-spec-group';
+
+      const specs_in_group = groups[ms];
+      const doneCount = specs_in_group.filter(s => normalizeStatus(s.status) === 'done').length;
+
+      const groupHeader = document.createElement('div');
+      groupHeader.className = 'dash-spec-group-header';
+
+      const groupLabel = document.createElement('span');
+      groupLabel.className = 'dash-spec-group-label';
+      groupLabel.textContent = ms;
+      groupHeader.appendChild(groupLabel);
+
+      const groupCounter = document.createElement('span');
+      groupCounter.className = 'dash-spec-group-counter';
+      groupCounter.textContent = doneCount + '/' + specs_in_group.length;
+      if (doneCount === specs_in_group.length) groupCounter.classList.add('complete');
+      groupHeader.appendChild(groupCounter);
+
+      group.appendChild(groupHeader);
+
+      const grid = document.createElement('div');
+      grid.className = 'dash-spec-grid';
+
+      for (const spec of groups[ms]) {
+        const card = document.createElement('button');
+        card.className = 'dash-spec-card';
+        const specPath = 'specs/' + spec.name + '.md';
+        card.addEventListener('click', () => navigateTo(specPath));
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'dash-spec-name';
+        const displayName = (spec.title || spec.name).replace('SPEC-', '').replace('AUDIT-', '').replace(/-/g, ' ');
+        nameEl.textContent = displayName;
+        card.appendChild(nameEl);
+
+        const status = normalizeStatus(spec.status);
+        const badge = document.createElement('span');
+        badge.className = 'dash-spec-badge';
+        badge.style.setProperty('--badge-color', STATUS_COLORS[status] || 'var(--text-muted)');
+        badge.textContent = STATUS_LABELS[status] || spec.status || 'Spec';
+        card.appendChild(badge);
+
+        grid.appendChild(card);
+      }
+
+      group.appendChild(grid);
+      section.appendChild(group);
+    }
+
+    return section;
+  }
+
+  // ─── Section 4: Tension Timeline ───
+
+  // Derive escalation steps dynamically from cached affordance data
+  function getEscalationSteps() {
+    if (!dashboardCache?.affordances?.affordances) return [];
+    return dashboardCache.affordances.affordances
+      .filter(a => a.category === 'crime' && a.threshold)
+      .map(a => {
+        const confMatch = a.threshold.match(/conf >= ([\d.]+)/);
+        const moodMatch = a.threshold.match(/mood <= ([\-\d.]+)/);
+        const val = confMatch ? parseFloat(confMatch[1]) : (moodMatch ? Math.abs(parseFloat(moodMatch[1])) : null);
+        return val != null ? { label: a.id, conf: val } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.conf - b.conf);
+  }
+
+  function buildTensionTimeline(world) {
+    const section = document.createElement('section');
+    section.className = 'dash-section';
+    const heading = document.createElement('h2');
+    heading.className = 'dash-section-title';
+    heading.textContent = 'Tension Map';
+    section.appendChild(heading);
+
+    if (!world.motives || world.motives.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'dash-pulse-empty';
+      empty.textContent = 'No active motives';
+      section.appendChild(empty);
+      return section;
+    }
+
+    const npcMap = {};
+    for (const n of world.npcs) npcMap[n.id] = n;
+
+    const container = document.createElement('div');
+    container.className = 'dash-tension-list';
+
+    for (const m of world.motives) {
+      const fromNpc = npcMap[m.from];
+      const toNpc = npcMap[m.to];
+      if (!fromNpc || !toNpc) continue;
+
+      const row = document.createElement('div');
+      row.className = 'dash-tension-row';
+
+      // Names
+      const names = document.createElement('div');
+      names.className = 'dash-tension-names';
+      names.innerHTML = '<span class="tension-from">' + escapeHTML(fromNpc.name) + '</span>'
+        + '<span class="tension-arrow">&#8594;</span>'
+        + '<span class="tension-to">' + escapeHTML(toNpc.name) + '</span>';
+      row.appendChild(names);
+
+      // Type badge
+      const typeBadge = document.createElement('span');
+      typeBadge.className = 'dash-tension-type';
+      typeBadge.style.color = MOTIVE_COLORS[m.type] || 'var(--text-muted)';
+      // Auto-label from type name: REVENGE_DESIRE → Revenge Desire
+      typeBadge.textContent = (m.type || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+      row.appendChild(typeBadge);
+
+      // Confidence bar
+      const barWrap = document.createElement('div');
+      barWrap.className = 'dash-tension-bar-wrap';
+      const bar = document.createElement('div');
+      bar.className = 'dash-tension-bar';
+      bar.style.width = Math.round(m.confidence * 100) + '%';
+      bar.style.background = MOTIVE_COLORS[m.type] || 'var(--accent)';
+      barWrap.appendChild(bar);
+
+      // Escalation markers on bar
+      for (const step of getEscalationSteps()) {
+        const marker = document.createElement('div');
+        marker.className = 'dash-tension-marker';
+        marker.style.left = Math.round(step.conf * 100) + '%';
+        marker.title = step.label + ' (' + step.conf + ')';
+        if (m.confidence >= step.conf) marker.classList.add('passed');
+        barWrap.appendChild(marker);
+      }
+      row.appendChild(barWrap);
+
+      // Confidence value
+      const confVal = document.createElement('span');
+      confVal.className = 'dash-tension-conf';
+      confVal.textContent = m.confidence.toFixed(2);
+      row.appendChild(confVal);
+
+      // Reason (truncated)
+      if (m.reason) {
+        const reason = document.createElement('div');
+        reason.className = 'dash-tension-reason';
+        reason.textContent = m.reason.length > 80 ? m.reason.substring(0, 77) + '...' : m.reason;
+        row.appendChild(reason);
+      }
+
+      container.appendChild(row);
+    }
+
+    section.appendChild(container);
+    return section;
+  }
+
+  // ─── Section 5: NPC Constellation ───
+
+  function buildNpcConstellation(world) {
+    const section = document.createElement('section');
+    section.className = 'dash-section';
+    const heading = document.createElement('h2');
+    heading.className = 'dash-section-title';
+    heading.textContent = 'NPC Constellation';
+    section.appendChild(heading);
+
+    const container = document.createElement('div');
+    container.className = 'dash-constellation-container';
+
+    const svgSize = 480;
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + svgSize + ' ' + svgSize);
+    svg.classList.add('dash-constellation-svg');
+
+    const npcs = world.npcs;
+    const rels = world.relationships;
+    const cx = svgSize / 2;
+    const cy = svgSize / 2;
+    const radius = svgSize / 2 - 60;
+
+    // Calculate positions in a ring
+    const npcPositions = {};
+    npcs.forEach((npc, i) => {
+      const angle = (2 * Math.PI * i / npcs.length) - Math.PI / 2;
+      npcPositions[npc.id] = {
+        x: cx + radius * Math.cos(angle),
+        y: cy + radius * Math.sin(angle),
+      };
+    });
+
+    // Draw edges
+    const edgeGroup = document.createElementNS(ns, 'g');
+    edgeGroup.classList.add('dash-constellation-edges');
+    for (const rel of rels) {
+      const from = npcPositions[rel.from];
+      const to = npcPositions[rel.to];
+      if (!from || !to) continue;
+
+      const sentiment = rel.sentiment ?? 0;
+      let color = 'var(--text-muted)'; // neutral
+      if (sentiment > 0.1) color = 'var(--success)';
+      else if (sentiment < -0.1) color = 'var(--danger)';
+
+      const trust = rel.trust ?? 0.5;
+      const width = 0.5 + trust * 2;
+
+      const line = document.createElementNS(ns, 'line');
+      line.setAttribute('x1', String(from.x));
+      line.setAttribute('y1', String(from.y));
+      line.setAttribute('x2', String(to.x));
+      line.setAttribute('y2', String(to.y));
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', String(width));
+      line.setAttribute('stroke-opacity', '0.35');
+      edgeGroup.appendChild(line);
+    }
+    svg.appendChild(edgeGroup);
+
+    // Draw nodes
+    const nodeGroup = document.createElementNS(ns, 'g');
+    nodeGroup.classList.add('dash-constellation-nodes');
+    for (const npc of npcs) {
+      const pos = npcPositions[npc.id];
+      const color = ROLE_COLORS[npc.role] || '#8b949e';
+
+      const g = document.createElementNS(ns, 'g');
+      g.classList.add('dash-constellation-node');
+      g.setAttribute('data-npc-id', npc.id);
+      g.style.cursor = 'pointer';
+
+      // Glow effect
+      const glow = document.createElementNS(ns, 'circle');
+      glow.setAttribute('cx', String(pos.x));
+      glow.setAttribute('cy', String(pos.y));
+      glow.setAttribute('r', '22');
+      glow.setAttribute('fill', color);
+      glow.setAttribute('opacity', '0.12');
+      g.appendChild(glow);
+
+      // Main circle
+      const circle = document.createElementNS(ns, 'circle');
+      circle.setAttribute('cx', String(pos.x));
+      circle.setAttribute('cy', String(pos.y));
+      circle.setAttribute('r', '16');
+      circle.setAttribute('fill', 'var(--bg-surface)');
+      circle.setAttribute('stroke', color);
+      circle.setAttribute('stroke-width', '2.5');
+      g.appendChild(circle);
+
+      // Name label
+      const labelY = pos.y > cy ? pos.y + 30 : pos.y - 26;
+      const text = document.createElementNS(ns, 'text');
+      text.setAttribute('x', String(pos.x));
+      text.setAttribute('y', String(labelY));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('fill', 'var(--text-sec)');
+      text.setAttribute('font-size', '11');
+      text.setAttribute('font-family', 'var(--font)');
+      text.textContent = npc.name;
+      g.appendChild(text);
+
+      // Role initial inside circle
+      const initial = document.createElementNS(ns, 'text');
+      initial.setAttribute('x', String(pos.x));
+      initial.setAttribute('y', String(pos.y));
+      initial.setAttribute('text-anchor', 'middle');
+      initial.setAttribute('dominant-baseline', 'central');
+      initial.setAttribute('fill', color);
+      initial.setAttribute('font-size', '12');
+      initial.setAttribute('font-weight', '700');
+      initial.setAttribute('font-family', 'var(--font)');
+      initial.textContent = npc.name.charAt(0);
+      g.appendChild(initial);
+
+      // Tooltip on hover (via title element)
+      const titleEl = document.createElementNS(ns, 'title');
+      const bigFive = npc.bigFive || npc.personality || {};
+      titleEl.textContent = npc.name + ' (' + npc.role + ')\nO:' + (bigFive.O ?? '?') + ' C:' + (bigFive.C ?? '?') + ' E:' + (bigFive.E ?? '?') + ' A:' + (bigFive.A ?? '?') + ' N:' + (bigFive.N ?? '?') + ' H:' + (bigFive.H ?? '?');
+      g.appendChild(titleEl);
+
+      // Click handler
+      g.addEventListener('click', () => {
+        showNpcDossier(npc.id, world);
+      });
+
+      nodeGroup.appendChild(g);
+    }
+    svg.appendChild(nodeGroup);
+
+    container.appendChild(svg);
+
+    // Legend
+    const legend = document.createElement('div');
+    legend.className = 'dash-constellation-legend';
+    legend.innerHTML = '<span class="legend-item"><span class="legend-line" style="background:#3fb950"></span> positive sentiment</span>'
+      + '<span class="legend-item"><span class="legend-line" style="background:#f85149"></span> negative sentiment</span>'
+      + '<span class="legend-item"><span class="legend-line" style="background:#6e7681"></span> neutral</span>'
+      + '<span class="legend-item"><span class="legend-dot"></span> thickness = trust</span>';
+    container.appendChild(legend);
+
+    section.appendChild(container);
+
+    // Dossier container (hidden by default)
+    const dossier = document.createElement('div');
+    dossier.className = 'dash-dossier';
+    dossier.id = 'dash-dossier';
+    dossier.style.display = 'none';
+    section.appendChild(dossier);
+
+    return section;
+  }
+
+  // ─── Section 5: NPC Dossier ───
+
+  function showNpcDossier(npcId, world) {
+    const npc = world.npcs.find(n => n.id === npcId);
+    if (!npc) return;
+
+    const dossier = document.getElementById('dash-dossier');
+    if (!dossier) return;
+    dossier.style.display = 'block';
+    dossier.innerHTML = '';
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'dash-dossier-close';
+    closeBtn.setAttribute('aria-label', 'Close dossier');
+    closeBtn.innerHTML = svgIcon('close', 'dash-dossier-close-icon');
+    closeBtn.addEventListener('click', () => {
+      dossier.style.display = 'none';
+    });
+    dossier.appendChild(closeBtn);
+
+    // Header: Name + Role badge
+    const header = document.createElement('div');
+    header.className = 'dash-dossier-header';
+    const nameEl = document.createElement('h3');
+    nameEl.className = 'dash-dossier-name';
+    nameEl.textContent = npc.name;
+    header.appendChild(nameEl);
+    const roleBadge = document.createElement('span');
+    roleBadge.className = 'dash-dossier-role';
+    roleBadge.style.setProperty('--role-color', ROLE_COLORS[npc.role] || '#8b949e');
+    roleBadge.textContent = npc.role;
+    header.appendChild(roleBadge);
+    dossier.appendChild(header);
+
+    // Two columns layout
+    const cols = document.createElement('div');
+    cols.className = 'dash-dossier-cols';
+
+    // Left: Radar chart + Enneagram
+    const left = document.createElement('div');
+    left.className = 'dash-dossier-col';
+
+    const radarTitle = document.createElement('div');
+    radarTitle.className = 'dash-dossier-subtitle';
+    radarTitle.textContent = 'Big Five + Honesty';
+    left.appendChild(radarTitle);
+    left.appendChild(createRadarChart(npc.bigFive || npc.personality || {}, 160));
+
+    if (npc.enneagram) {
+      const ennTitle = document.createElement('div');
+      ennTitle.className = 'dash-dossier-subtitle';
+      ennTitle.textContent = 'Enneagram';
+      left.appendChild(ennTitle);
+
+      const ennType = document.createElement('div');
+      ennType.className = 'dash-dossier-enn-type';
+      ennType.textContent = 'Type ' + npc.enneagram.type + 'w' + npc.enneagram.wing;
+      left.appendChild(ennType);
+
+      const ennFear = document.createElement('div');
+      ennFear.className = 'dash-dossier-enn-detail';
+      const fearLabel = document.createElement('span');
+      fearLabel.className = 'dash-dossier-enn-label';
+      fearLabel.textContent = 'Fear: ';
+      ennFear.appendChild(fearLabel);
+      const fearText = document.createElement('span');
+      fearText.textContent = npc.enneagram.coreFear;
+      ennFear.appendChild(fearText);
+      left.appendChild(ennFear);
+
+      const ennDesire = document.createElement('div');
+      ennDesire.className = 'dash-dossier-enn-detail';
+      const desireLabel = document.createElement('span');
+      desireLabel.className = 'dash-dossier-enn-label';
+      desireLabel.textContent = 'Desire: ';
+      ennDesire.appendChild(desireLabel);
+      const desireText = document.createElement('span');
+      desireText.textContent = npc.enneagram.coreDesire;
+      ennDesire.appendChild(desireText);
+      left.appendChild(ennDesire);
+    }
+
+    cols.appendChild(left);
+
+    // Right: Motives + Secrets + Relationships
+    const right = document.createElement('div');
+    right.className = 'dash-dossier-col';
+
+    // Motives
+    const npcMotives = world.motives.filter(m => m.from === npc.id);
+    if (npcMotives.length > 0) {
+      const motiveTitle = document.createElement('div');
+      motiveTitle.className = 'dash-dossier-subtitle';
+      motiveTitle.textContent = 'Motives';
+      right.appendChild(motiveTitle);
+
+      for (const m of npcMotives) {
+        const motiveItem = document.createElement('div');
+        motiveItem.className = 'dash-dossier-motive';
+
+        const motiveBar = document.createElement('div');
+        motiveBar.className = 'dash-dossier-motive-bar';
+        motiveBar.style.setProperty('--motive-color', MOTIVE_COLORS[m.type] || 'var(--warning)');
+        motiveBar.style.setProperty('--motive-pct', (m.confidence * 100) + '%');
+        motiveItem.appendChild(motiveBar);
+
+        const motiveLabel = document.createElement('div');
+        motiveLabel.className = 'dash-dossier-motive-label';
+        const targetNpc = world.npcs.find(n => n.id === m.to);
+        motiveLabel.textContent = m.type.replace(/_/g, ' ').toLowerCase() + ' \u2192 ' + (targetNpc ? targetNpc.name : m.to);
+        motiveItem.appendChild(motiveLabel);
+
+        const motiveConf = document.createElement('span');
+        motiveConf.className = 'dash-dossier-motive-conf';
+        motiveConf.textContent = Math.round(m.confidence * 100) + '%';
+        motiveItem.appendChild(motiveConf);
+
+        right.appendChild(motiveItem);
+      }
+    }
+
+    // Secrets
+    const npcSecrets = world.secrets.filter(s => s.npcId === npc.id);
+    if (npcSecrets.length > 0) {
+      const secretTitle = document.createElement('div');
+      secretTitle.className = 'dash-dossier-subtitle';
+      secretTitle.textContent = 'Secrets';
+      right.appendChild(secretTitle);
+
+      for (const s of npcSecrets) {
+        const secretItem = document.createElement('div');
+        secretItem.className = 'dash-dossier-secret';
+        const subject = world.npcs.find(n => n.id === s.subject);
+        secretItem.textContent = (subject ? subject.name : s.subject) + ': ' + s.object;
+        right.appendChild(secretItem);
+      }
+    }
+
+    // Relationships
+    const npcRels = world.relationships.filter(r => r.from === npc.id);
+    if (npcRels.length > 0) {
+      const relTitle = document.createElement('div');
+      relTitle.className = 'dash-dossier-subtitle';
+      relTitle.textContent = 'Relationships';
+      right.appendChild(relTitle);
+
+      for (const r of npcRels) {
+        const target = world.npcs.find(n => n.id === r.to);
+        const relItem = document.createElement('div');
+        relItem.className = 'dash-dossier-rel';
+
+        const relName = document.createElement('span');
+        relName.className = 'dash-dossier-rel-name';
+        relName.textContent = target ? target.name : r.to;
+        relItem.appendChild(relName);
+
+        const relType = document.createElement('span');
+        relType.className = 'dash-dossier-rel-type';
+        relType.textContent = r.type;
+        relItem.appendChild(relType);
+
+        const sentiment = r.sentiment ?? 0;
+        const trust = r.trust ?? 0.5;
+
+        const barWrap = document.createElement('div');
+        barWrap.className = 'dash-dossier-rel-bars';
+
+        // Sentiment bar
+        const sentBar = document.createElement('div');
+        sentBar.className = 'dash-dossier-rel-bar';
+        const sentFill = document.createElement('div');
+        sentFill.className = 'dash-dossier-rel-bar-fill';
+        sentFill.style.setProperty('--bar-pct', Math.abs(sentiment) * 100 + '%');
+        sentFill.style.setProperty('--bar-color', sentiment >= 0 ? 'var(--success)' : 'var(--danger)');
+        sentFill.style.setProperty('--bar-dir', sentiment >= 0 ? 'right' : 'left');
+        sentBar.appendChild(sentFill);
+        barWrap.appendChild(sentBar);
+
+        const sentLabel = document.createElement('span');
+        sentLabel.className = 'dash-dossier-rel-bar-label';
+        sentLabel.textContent = 'S:' + sentiment.toFixed(2);
+        barWrap.appendChild(sentLabel);
+
+        // Trust bar
+        const trustBar = document.createElement('div');
+        trustBar.className = 'dash-dossier-rel-bar';
+        const trustFill = document.createElement('div');
+        trustFill.className = 'dash-dossier-rel-bar-fill';
+        trustFill.style.setProperty('--bar-pct', trust * 100 + '%');
+        trustFill.style.setProperty('--bar-color', 'var(--accent)');
+        trustFill.style.setProperty('--bar-dir', 'right');
+        trustBar.appendChild(trustFill);
+        barWrap.appendChild(trustBar);
+
+        const trustLabel = document.createElement('span');
+        trustLabel.className = 'dash-dossier-rel-bar-label';
+        trustLabel.textContent = 'T:' + trust.toFixed(2);
+        barWrap.appendChild(trustLabel);
+
+        relItem.appendChild(barWrap);
+        right.appendChild(relItem);
+      }
+    }
+
+    cols.appendChild(right);
+    dossier.appendChild(cols);
+
+    // Scroll into view
+    dossier.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function createRadarChart(personality, size) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', String(size));
+    svg.setAttribute('height', String(size));
+    svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
+    svg.classList.add('dash-radar-svg');
+
+    const traits = ['O', 'C', 'E', 'A', 'N', 'H'];
+    const cx = size / 2;
+    const cy = size / 2;
+    const maxR = size / 2 - 24;
+    const n = traits.length;
+
+    // Draw concentric hexagons (grid)
+    for (const level of [0.25, 0.5, 0.75, 1.0]) {
+      const r = maxR * level;
+      const points = [];
+      for (let i = 0; i < n; i++) {
+        const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+        points.push((cx + r * Math.cos(angle)).toFixed(1) + ',' + (cy + r * Math.sin(angle)).toFixed(1));
+      }
+      const hex = document.createElementNS(ns, 'polygon');
+      hex.setAttribute('points', points.join(' '));
+      hex.setAttribute('fill', 'none');
+      hex.setAttribute('stroke', 'var(--border)');
+      hex.setAttribute('stroke-width', level === 1.0 ? '1' : '0.5');
+      hex.setAttribute('stroke-opacity', '0.5');
+      svg.appendChild(hex);
+    }
+
+    // Draw axes
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+      const line = document.createElementNS(ns, 'line');
+      line.setAttribute('x1', String(cx));
+      line.setAttribute('y1', String(cy));
+      line.setAttribute('x2', String(cx + maxR * Math.cos(angle)));
+      line.setAttribute('y2', String(cy + maxR * Math.sin(angle)));
+      line.setAttribute('stroke', 'var(--border)');
+      line.setAttribute('stroke-width', '0.5');
+      line.setAttribute('stroke-opacity', '0.4');
+      svg.appendChild(line);
+    }
+
+    // Draw data polygon
+    const dataPoints = [];
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+      const val = personality[traits[i]] || 0;
+      const r = maxR * val;
+      dataPoints.push((cx + r * Math.cos(angle)).toFixed(1) + ',' + (cy + r * Math.sin(angle)).toFixed(1));
+    }
+    const dataPolygon = document.createElementNS(ns, 'polygon');
+    dataPolygon.setAttribute('points', dataPoints.join(' '));
+    dataPolygon.setAttribute('fill', 'var(--accent)');
+    dataPolygon.setAttribute('fill-opacity', '0.15');
+    dataPolygon.setAttribute('stroke', 'var(--accent)');
+    dataPolygon.setAttribute('stroke-width', '1.5');
+    svg.appendChild(dataPolygon);
+
+    // Data points (dots)
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+      const val = personality[traits[i]] || 0;
+      const r = maxR * val;
+      const dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('cx', String(cx + r * Math.cos(angle)));
+      dot.setAttribute('cy', String(cy + r * Math.sin(angle)));
+      dot.setAttribute('r', '3');
+      dot.setAttribute('fill', 'var(--accent)');
+      svg.appendChild(dot);
+    }
+
+    // Labels
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI * i / n) - Math.PI / 2;
+      const labelR = maxR + 16;
+      const text = document.createElementNS(ns, 'text');
+      text.setAttribute('x', String(cx + labelR * Math.cos(angle)));
+      text.setAttribute('y', String(cy + labelR * Math.sin(angle)));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'central');
+      text.setAttribute('fill', 'var(--text-sec)');
+      text.setAttribute('font-size', '11');
+      text.setAttribute('font-weight', '600');
+      text.setAttribute('font-family', 'var(--font)');
+      text.textContent = traits[i];
+      svg.appendChild(text);
+    }
+
+    return svg;
+  }
+
+  // ─── Section 6: Affordance Matrix ───
+
+  function buildAffordanceMatrix(affordanceData) {
+    const section = document.createElement('section');
+    section.className = 'dash-section';
+    const heading = document.createElement('h2');
+    heading.className = 'dash-section-title';
+    heading.textContent = 'Affordance Matrix';
+    section.appendChild(heading);
+
+    // Dynamic columns from actual registry categories
+    const columns = {};
+    for (const aff of affordanceData.affordances) {
+      const cat = aff.category || 'other';
+      if (!columns[cat]) columns[cat] = { label: cat.charAt(0).toUpperCase() + cat.slice(1), items: [] };
+      columns[cat].items.push(aff);
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'dash-affordance-grid';
+
+    for (const [key, col] of Object.entries(columns)) {
+      const column = document.createElement('div');
+      column.className = 'dash-affordance-col';
+
+      const colHeader = document.createElement('div');
+      colHeader.className = 'dash-affordance-col-header';
+      colHeader.textContent = col.label;
+      column.appendChild(colHeader);
+
+      for (const aff of col.items) {
+        const card = document.createElement('div');
+        card.className = 'dash-affordance-card';
+
+        // Severity color stripe
+        const severityHue = Math.max(0, 120 - aff.severity * 12);
+        card.style.setProperty('--severity-color', 'hsl(' + severityHue + ', 65%, 50%)');
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'dash-affordance-name';
+        nameEl.textContent = aff.name;
+        card.appendChild(nameEl);
+
+        const thresh = document.createElement('div');
+        thresh.className = 'dash-affordance-threshold';
+        thresh.textContent = aff.threshold;
+        card.appendChild(thresh);
+
+        if (aff.period) {
+          const period = document.createElement('span');
+          period.className = 'dash-affordance-period';
+          period.textContent = aff.period;
+          card.appendChild(period);
+        }
+
+        column.appendChild(card);
+      }
+
+      grid.appendChild(column);
+    }
+
+    section.appendChild(grid);
+    return section;
+  }
+
+  // ─── Section: CG Rule Visualizer ───
+
+  function buildCgVisualizer(cgData) {
+    const section = document.createElement('section');
+    section.className = 'dash-section';
+    const heading = document.createElement('h2');
+    heading.className = 'dash-section-title';
+    heading.textContent = 'CG Cascade Rules';
+    section.appendChild(heading);
+
+    if (!cgData?.rules?.length) {
+      section.innerHTML += '<div class="dash-pulse-empty">No CG rules loaded</div>';
+      return section;
+    }
+
+    // Group by trigger
+    const byTrigger = {};
+    for (const rule of cgData.rules) {
+      const t = rule.trigger || '?';
+      if (!byTrigger[t]) byTrigger[t] = [];
+      byTrigger[t].push(rule);
+    }
+
+    const container = document.createElement('div');
+    container.className = 'dash-cg-container';
+
+    for (const [trigger, rules] of Object.entries(byTrigger)) {
+      const group = document.createElement('div');
+      group.className = 'dash-cg-group';
+
+      const triggerEl = document.createElement('div');
+      triggerEl.className = 'dash-cg-trigger';
+      triggerEl.textContent = trigger;
+      group.appendChild(triggerEl);
+
+      const arrow = document.createElement('div');
+      arrow.className = 'dash-cg-arrow';
+      arrow.textContent = '\u2192';
+      group.appendChild(arrow);
+
+      const consequences = document.createElement('div');
+      consequences.className = 'dash-cg-consequences';
+
+      for (const rule of rules) {
+        const card = document.createElement('div');
+        card.className = 'dash-cg-card';
+        if (rule.exclusive) card.classList.add('dash-cg-card--exclusive');
+
+        const name = document.createElement('div');
+        name.className = 'dash-cg-card-name';
+        name.textContent = rule.consequence || rule.id;
+        card.appendChild(name);
+
+        const meta = document.createElement('div');
+        meta.className = 'dash-cg-card-meta';
+        const parts = [];
+        if (rule.targetMode !== 'affected') parts.push(rule.targetMode);
+        if (rule.probability < 1) parts.push(Math.round(rule.probability * 100) + '%');
+        if (rule.exclusive) parts.push('ex:' + rule.exclusive);
+        if (rule.maxChainDepth) parts.push('depth:' + rule.maxChainDepth);
+        meta.textContent = parts.join(' | ');
+        card.appendChild(meta);
+
+        consequences.appendChild(card);
+      }
+
+      group.appendChild(consequences);
+      container.appendChild(group);
+    }
+
+    section.appendChild(container);
+    return section;
+  }
+
+  // ─── Section: Invariant Explorer ───
+
+  function buildInvariantExplorer(invData) {
+    const section = document.createElement('section');
+    section.className = 'dash-section';
+    const heading = document.createElement('h2');
+    heading.className = 'dash-section-title';
+    heading.textContent = 'Engine Invariants (' + (invData?.total || 0) + ')';
+    section.appendChild(heading);
+
+    if (!invData?.invariants?.length) {
+      section.innerHTML += '<div class="dash-pulse-empty">No invariants parsed</div>';
+      return section;
+    }
+
+    const list = document.createElement('div');
+    list.className = 'dash-invariant-list';
+
+    for (const inv of invData.invariants) {
+      const item = document.createElement('div');
+      item.className = 'dash-invariant-item';
+
+      const num = document.createElement('span');
+      num.className = 'dash-invariant-num';
+      num.textContent = '#' + inv.num;
+      item.appendChild(num);
+
+      const text = document.createElement('span');
+      text.className = 'dash-invariant-text';
+      text.textContent = inv.text;
+      item.appendChild(text);
+
+      list.appendChild(item);
+    }
+
+    section.appendChild(list);
+    return section;
+  }
+
+  // ============================================================
   // INIT
   // ============================================================
   async function init() {
     await loadTree();
 
-    // Restore last opened document
+    // Restore last opened document or show dashboard
     const lastDoc = localStorage.getItem('dr-last-doc');
     if (lastDoc) {
       // Ensure parent folders are expanded
       expandParentFolders(lastDoc);
       navigateTo(lastDoc);
+    } else {
+      // Show dashboard as landing page
+      showDashboard();
     }
   }
 

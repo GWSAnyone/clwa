@@ -1,8 +1,12 @@
 # SPEC: Conversation Session — Per-Chat State for Multi-Turn Detective Interaction
 
+> **Milestone**: M3 (Living Opposition)
+> **Status**: Implemented (v0.11.0)
+> **Depends on**: SPEC-player-accusation (done)
+> **Engine changes**: ChatSession state, per-session accusation tracking, multi-suspect detection.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-03
 > Решает deferred задачи из SPEC-player-accusation (repetition tracking, multiple suspects).
-> Необходим для M3 multi-turn interrogations.
-> Статус: **implemented** (v0.11.0-dev)
 
 ---
 

@@ -1,9 +1,11 @@
 # SPEC: Detective Toolkit — Alibi Verification, Passive Clue Discovery, Trust-Gated Information
 
 > **Milestone**: M2 (Detective Toolkit)
-> **Status**: **implemented** (branch `night/autonomous-20260411`)
+> **Status**: Implemented (v0.13.0)
 > **Depends on**: CG v2 (done), Journal v2 (done), IL (done), motive system (done)
 > **Engine changes**: WorldCallbacks.onJournalEntry (callback). Остальное — server + module data.
+> **Created**: 2026-04-03
+> **Completed**: 2026-04-03
 
 ---
 
