@@ -33,10 +33,12 @@ export class LocationHistory {
     if (entries.length > this.maxEntries) entries.shift();
   }
 
-  /** Get where NPC was at a specific game minute (binary search) */
+  /** Get where NPC was at a specific game minute (linear scan) */
   getLocationAt(npcId: string, minute: number): string | null {
     const entries = this.history.get(npcId);
     if (!entries || entries.length === 0) return null;
+    // Before first recorded entry → unknown
+    if (minute < entries[0].minute) return null;
     // Find the last entry at or before the given minute
     let result = entries[0].location;
     for (const e of entries) {

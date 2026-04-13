@@ -702,6 +702,9 @@ function handleWS(type, data) {
           'GUARD_WARNING': 'guard warned', 'CORRUPTION_COVER': 'guard looks away',
           'ARREST_RESENTMENT': 'resents arrest',
           'MINOR_INCIDENT_MEMORY': 'noticed incident',
+          'THEFT_DISCOVERED': 'theft discovered',
+          'ARGUMENT_WITNESSED': 'argument',
+          'THREAT_WITNESSED': 'threat',
         }[c.type] ?? c.type;
         addEvent('crime', `  ↳ ${label}${c.subject ? ': ' + c.subject : ''}`);
       }
@@ -1131,7 +1134,9 @@ function renderJournalEntry(e) {
   const period = minuteOfDay < 300 ? 'night' : minuteOfDay < 420 ? 'dawn' : minuteOfDay < 720 ? 'morning'
     : minuteOfDay < 1020 ? 'afternoon' : minuteOfDay < 1260 ? 'evening' : 'night';
   const timeStr = periodNames[period] || '';
-  const day = `Day ${e.gameDay || '?'}${timeStr ? ', ' + timeStr : ''} — ${e.location || e.locationId || ''}`;
+  const locSlug = e.location || e.locationId || '';
+  const locDisplay = LOCATIONS[locSlug]?.label || locSlug;
+  const day = `Day ${e.gameDay || '?'}${timeStr ? ', ' + timeStr : ''} — ${locDisplay}`;
   const text = escapeHTML(e.text || e.clueText || e.description || '');
   const type = e.type || 'clue';
 
