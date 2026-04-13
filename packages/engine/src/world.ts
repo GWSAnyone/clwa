@@ -1810,7 +1810,13 @@ export class World {
       const agent = this.agents.get(id);
       if (!agent) continue;
       agent.state.alive = saved.alive;
-      agent.state.status = saved.status ?? undefined;
+      const savedStatus = saved.status ?? undefined;
+      if (savedStatus && !isStatusAbsent(savedStatus) && !isStatusActive(savedStatus)) {
+        console.warn(`  [Save] Unknown status '${savedStatus}' for ${id} — resetting to undefined`);
+        agent.state.status = undefined;
+      } else {
+        agent.state.status = savedStatus;
+      }
       agent.state.location = saved.location;
       // Validate numeric ranges on load (SL-07)
       agent.state.mood = Math.max(-1, Math.min(1, saved.mood));

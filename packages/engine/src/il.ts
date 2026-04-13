@@ -16,7 +16,7 @@
 import { llmSemaphore } from './agent';
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
-import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs } from './event-registry';
+import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs, getRegisteredQuestionTopics, getDefaultSpeechAct } from './event-registry';
 import type { PressureHandlerContext } from './event-registry';
 import type { ILConfig } from './world-types';
 import type { PlayerJournal, CaseSummary } from './journal';
@@ -24,7 +24,7 @@ import { DEFAULT_IL_CONFIG } from './world-types';
 import { llmCall } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 
-const VALID_QUESTION_TOPICS = ['whereabouts', 'opinion', 'knowledge', 'relationship', 'secret'];
+// Question topics registered dynamically via registerQuestionTopics() — no hardcoded array.
 
 /**
  * Build IL extraction schema dynamically with enum constraints from context.
@@ -57,7 +57,7 @@ function buildILSchema(ctx: ILContext): LlmJsonSchema {
         }, required: ['confidence'], additionalProperties: false } },
         questions: { type: 'array', items: { type: 'object', properties: {
           about: { type: 'string' },        // free text — fuzzy match
-          topic: { type: 'string', enum: VALID_QUESTION_TOPICS },
+          topic: { type: 'string', enum: getRegisteredQuestionTopics().sort() },
         }, required: ['about'], additionalProperties: false } },
         requestedAction: { type: 'object', properties: {
           action: { type: 'string', enum: actionVerbs },
@@ -224,7 +224,7 @@ export async function extractDialogueMeaning(
     ``,
     `3. questions: array of questions being asked (if any). Each:`,
     `   - about: who/what is being asked about (NPC name or topic)`,
-    `   - topic: ${VALID_QUESTION_TOPICS.join(', ')} (or null)`,
+    `   - topic: ${getRegisteredQuestionTopics().sort().join(', ')} (or null)`,
     ``,
     `4. requestedAction: if player is asking the NPC to DO a specific action (NOT buying/selling — that is trade):`,
     `   - action: use one of these verbs: ${[...getILTradeVerbs(), ...ctx.availableActions].join(', ')}`,
@@ -257,8 +257,8 @@ export async function extractDialogueMeaning(
     });
 
     if (!content) {
-      console.warn(`  [IL] LLM returned empty content — falling back to smalltalk`);
-      return { speechAct: 'smalltalk', extractionConfidence: 0, _fallback: 'empty_response' };
+      console.warn(`  [IL] LLM returned empty content — falling back to ${getDefaultSpeechAct()}`);
+      return { speechAct: getDefaultSpeechAct(), extractionConfidence: 0, _fallback: 'empty_response' };
     }
 
     const raw = JSON.parse(content) as Record<string, unknown>;
@@ -266,7 +266,7 @@ export async function extractDialogueMeaning(
     return validateAndResolve(raw, ctx);
   } catch (err) {
     console.error(`  [IL] Extraction failed:`, err);
-    return { speechAct: 'smalltalk', extractionConfidence: 0, _fallback: 'extraction_error' };
+    return { speechAct: getDefaultSpeechAct(), extractionConfidence: 0, _fallback: 'extraction_error' };
   } finally {
     llmSemaphore.release();
   }
@@ -278,7 +278,7 @@ export async function extractDialogueMeaning(
 
 function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): DialogueMeaning {
   if (!isValidSpeechAct(raw.speechAct as string)) {
-    console.warn(`  [IL] Invalid speechAct '${raw.speechAct}' — falling back to 'smalltalk'`);
+    console.warn(`  [IL] Invalid speechAct '${raw.speechAct}' — falling back to '${getDefaultSpeechAct()}'`);
   }
   if (raw.extractionConfidence == null || isNaN(Number(raw.extractionConfidence))) {
     console.warn(`  [IL] Missing/invalid extractionConfidence '${raw.extractionConfidence}' — defaulting to 0.5`);
@@ -290,7 +290,7 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
   // explicit signal priority: tradeIntent > requestedAction when both present.
   let speechAct: SpeechAct = isValidSpeechAct(raw.speechAct as string)
     ? raw.speechAct as string
-    : 'smalltalk';
+    : getDefaultSpeechAct();
   // Detect trade intent from multiple signals — IL trade verbs registered dynamically.
   const tradeIntentObj = raw.tradeIntent && typeof raw.tradeIntent === 'object' ? raw.tradeIntent as Record<string, unknown> : null;
   const hasTradeContent = tradeIntentObj && (tradeIntentObj.category || tradeIntentObj.itemName);

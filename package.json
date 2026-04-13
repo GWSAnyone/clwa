@@ -10,6 +10,8 @@
     "test:cg": "bun test tests/cg-v2.test.ts",
     "test:cg-int": "bun test tests/cg-integration.test.ts",
     "test:m3": "bun test tests/m3-systems.test.ts",
-    "editor": "bun run tools/world-editor/server.ts"
+    "clwa": "bun tools/kill-port.ts 3000 && bun run packages/server/src/index.ts",
+    "world": "bun tools/kill-port.ts 3001 && bun run tools/world-editor/server.ts",
+    "docs": "bun tools/kill-port.ts 3002 && bun run tools/docs-reader/server.ts"
   }
 }

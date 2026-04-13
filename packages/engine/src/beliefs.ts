@@ -184,10 +184,18 @@ export class BeliefManager {
     return this.getAllBeliefs();
   }
 
-  /** Restore from saved snapshot */
+  /** Restore from saved snapshot — validates fields, skips corrupted entries */
   static fromJSON(data: Belief[]): BeliefManager {
     const manager = new BeliefManager();
     for (const belief of data) {
+      if (!belief.id || !belief.eventType || !belief.source) {
+        console.warn(`  [Save] Skipping belief with missing fields: id=${belief.id}, type=${belief.eventType}, source=${belief.source}`);
+        continue;
+      }
+      if (typeof belief.confidence !== 'number' || belief.confidence < 0 || belief.confidence > 1) {
+        console.warn(`  [Save] Clamping invalid confidence ${belief.confidence} for belief ${belief.id}`);
+        belief.confidence = Math.max(0, Math.min(1, Number(belief.confidence) || 0));
+      }
       manager.beliefs.set(belief.id, belief);
     }
     return manager;

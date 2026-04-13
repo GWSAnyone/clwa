@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLWA Docs Reader</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <h1>CLWA</h1>
+        <p>Docs Reader</p>
+      </div>
+
+      <div class="sidebar-search">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="6.5" cy="6.5" r="5"/>
+            <line x1="10.2" y1="10.2" x2="14.5" y2="14.5"/>
+          </svg>
+          <input type="text" class="search-input" id="search-input" placeholder="Search docs..." autocomplete="off" spellcheck="false">
+          <div class="search-results" id="search-results"></div>
+        </div>
+      </div>
+
+      <div class="sidebar-tree" id="sidebar-tree"></div>
+
+      <div class="sidebar-footer">
+        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+          <svg class="theme-toggle-icon" id="theme-icon" viewBox="0 0 16 16" fill="currentColor"></svg>
+          <span id="theme-label">Dark</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Mobile overlay -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- Main -->
+    <main class="main" id="main">
+      <div class="doc-toolbar" id="doc-toolbar" style="display:none">
+        <nav class="breadcrumb" id="breadcrumb"></nav>
+        <div class="toolbar-actions" id="toolbar-actions"></div>
+      </div>
+
+      <div class="content-body" id="content-body">
+        <div class="welcome">
+          <div>
+            <div class="welcome-title">CLWA Docs Reader</div>
+            <div class="welcome-sub">Select a document from the sidebar</div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Hamburger -->
+  <button class="hamburger" id="hamburger" aria-label="Open navigation">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+      <line x1="2" y1="4" x2="16" y2="4"/>
+      <line x1="2" y1="9" x2="16" y2="9"/>
+      <line x1="2" y1="14" x2="16" y2="14"/>
+    </svg>
+  </button>
+
+  <!-- Toast -->
+  <div id="toast" class="toast toast-success"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+  /**
+   * CLWA Docs Reader -- UI logic
+   * Design matches World Editor (dark detective-noir theme)
+   */
+
+  // ============================================================
+  // SVG ICONS (inline, no external deps)
+  // ============================================================
+  const ICONS = {
+    folder: '<path d="M2 3.5A1.5 1.5 0 013.5 2h2.764a1.5 1.5 0 011.025.404l1.122 1.044A.5.5 0 008.752 3.5H12.5A1.5 1.5 0 0114 5v7.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z" fill="currentColor"/>',
+    file: '<path d="M3.5 2A1.5 1.5 0 002 3.5v9A1.5 1.5 0 003.5 14h9a1.5 1.5 0 001.5-1.5V5.621a1.5 1.5 0 00-.44-1.06L10.94 1.94A1.5 1.5 0 009.879 1.5H3.5z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M9.5 1.5v3a1 1 0 001 1h3" fill="none" stroke="currentColor" stroke-width="1.2"/>',
+    chevron: '<path d="M5 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>',
+    edit: '<path d="M11.5 1.5l3 3L5 14H2v-3L11.5 1.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>',
+    save: '<path d="M12.5 14.5h-9a1 1 0 01-1-1v-11a1 1 0 011-1h7l3 3v9a1 1 0 01-1 1z" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="5" y="9" width="6" height="4" rx="0.5" fill="none" stroke="currentColor" stroke-width="1"/>',
+    cancel: '<line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+    clock: '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.2"/><polyline points="8,4 8,8 11,10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>',
+    fileSize: '<path d="M3 2h8l3 3v9a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1z" fill="none" stroke="currentColor" stroke-width="1"/><line x1="5" y1="8" x2="11" y2="8" stroke="currentColor" stroke-width="1"/><line x1="5" y1="10.5" x2="9" y2="10.5" stroke="currentColor" stroke-width="1"/>',
+    words: '<circle cx="4" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="12" cy="8" r="1.5" fill="currentColor"/>',
+    moon: '<path d="M13.5 8.5a5.5 5.5 0 01-7.5 5.1A6.5 6.5 0 018.5 1a5.5 5.5 0 005 7.5z" fill="currentColor"/>',
+    sun: '<circle cx="8" cy="8" r="3" fill="currentColor"/><g stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><line x1="8" y1="1" x2="8" y2="3"/><line x1="8" y1="13" x2="8" y2="15"/><line x1="1" y1="8" x2="3" y2="8"/><line x1="13" y1="8" x2="15" y2="8"/><line x1="3.05" y1="3.05" x2="4.46" y2="4.46"/><line x1="11.54" y1="11.54" x2="12.95" y2="12.95"/><line x1="3.05" y1="12.95" x2="4.46" y2="11.54"/><line x1="11.54" y1="4.46" x2="12.95" y2="3.05"/></g>',
+  };
+
+  function svgIcon(name, cls) {
+    return '<svg class="' + (cls || '') + '" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' + ICONS[name] + '</svg>';
+  }
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  let treeData = [];
+  let currentPath = null;
+  let currentDoc = null;
+  let editMode = false;
+  let originalContent = '';
+
+  // ============================================================
+  // DOM REFS
+  // ============================================================
+  const $sidebar = document.getElementById('sidebar');
+  const $sidebarTree = document.getElementById('sidebar-tree');
+  const $sidebarOverlay = document.getElementById('sidebar-overlay');
+  const $hamburger = document.getElementById('hamburger');
+  const $searchInput = document.getElementById('search-input');
+  const $searchResults = document.getElementById('search-results');
+  const $toolbar = document.getElementById('doc-toolbar');
+  const $breadcrumb = document.getElementById('breadcrumb');
+  const $toolbarActions = document.getElementById('toolbar-actions');
+  const $contentBody = document.getElementById('content-body');
+  const $toast = document.getElementById('toast');
+  const $themeIcon = document.getElementById('theme-icon');
+  const $themeLabel = document.getElementById('theme-label');
+
+  // ============================================================
+  // THEME
+  // ============================================================
+  const savedTheme = localStorage.getItem('dr-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  updateThemeUI(savedTheme);
+
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('dr-theme', next);
+    updateThemeUI(next);
+  });
+
+  function updateThemeUI(t) {
+    $themeIcon.innerHTML = t === 'dark' ? ICONS.moon : ICONS.sun;
+    $themeLabel.textContent = t === 'dark' ? 'Dark' : 'Light';
+  }
+
+  // ============================================================
+  // TOAST
+  // ============================================================
+  function showToast(msg, type) {
+    $toast.textContent = msg;
+    $toast.className = 'toast toast-' + (type || 'success') + ' visible';
+    clearTimeout($toast._t);
+    $toast._t = setTimeout(() => {
+      $toast.className = 'toast toast-' + (type || 'success');
+    }, 2200);
+  }
+
+  // ============================================================
+  // API
+  // ============================================================
+  async function apiGet(path) {
+    const resp = await fetch('/api/' + path);
+    if (!resp.ok) throw new Error(resp.status + ' ' + resp.statusText);
+    return resp.json();
+  }
+
+  async function apiPut(path, data) {
+    const resp = await fetch('/api/' + path, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!resp.ok) throw new Error(resp.status + ' ' + resp.statusText);
+    return resp.json();
+  }
+
+  // ============================================================
+  // MOBILE SIDEBAR
+  // ============================================================
+  let touchStartX = 0;
+  let touchCurrentX = 0;
+  let sidebarOpen = false;
+
+  function openSidebar() {
+    sidebarOpen = true;
+    $sidebar.classList.add('open');
+    $sidebarOverlay.classList.add('visible');
+  }
+  function closeSidebar() {
+    sidebarOpen = false;
+    $sidebar.classList.remove('open');
+    $sidebarOverlay.classList.remove('visible');
+  }
+
+  $hamburger.addEventListener('click', () => {
+    if (sidebarOpen) closeSidebar();
+    else openSidebar();
+  });
+  $sidebarOverlay.addEventListener('click', closeSidebar);
+
+  // Swipe to close
+  document.addEventListener('touchstart', (e) => {
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  document.addEventListener('touchmove', (e) => {
+    touchCurrentX = e.touches[0].clientX;
+  }, { passive: true });
+  document.addEventListener('touchend', () => {
+    const diff = touchStartX - touchCurrentX;
+    // Swipe left on sidebar to close
+    if (sidebarOpen && diff > 60 && touchStartX < 320) {
+      closeSidebar();
+    }
+    // Swipe right from edge to open
+    if (!sidebarOpen && diff < -80 && touchStartX < 30) {
+      openSidebar();
+    }
+    touchStartX = 0;
+    touchCurrentX = 0;
+  });
+
+  // ============================================================
+  // SEARCH (debounced)
+  // ============================================================
+  let searchTimeout = null;
+
+  $searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    const q = $searchInput.value.trim();
+    if (q.length < 2) {
+      hideSearchResults();
+      return;
+    }
+    searchTimeout = setTimeout(() => performSearch(q), 300);
+  });
+
+  $searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      $searchInput.value = '';
+      hideSearchResults();
+      $searchInput.blur();
+    }
+  });
+
+  // Close search results when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.sidebar-search')) {
+      hideSearchResults();
+    }
+  });
+
+  async function performSearch(query) {
+    try {
+      const results = await apiGet('search?q=' + encodeURIComponent(query));
+      renderSearchResults(results, query);
+    } catch (err) {
+      $searchResults.innerHTML = '';
+      const div = document.createElement('div');
+      div.className = 'search-no-results';
+      div.textContent = 'Search error';
+      $searchResults.appendChild(div);
+      $searchResults.classList.add('visible');
+    }
+  }
+
+  function renderSearchResults(results, query) {
+    $searchResults.innerHTML = '';
+    if (results.length === 0) {
+      const div = document.createElement('div');
+      div.className = 'search-no-results';
+      div.textContent = 'No results found';
+      $searchResults.appendChild(div);
+      $searchResults.classList.add('visible');
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const r of results.slice(0, 15)) {
+      const item = document.createElement('div');
+      item.className = 'search-result-item';
+      item.addEventListener('click', () => {
+        hideSearchResults();
+        $searchInput.value = '';
+        navigateTo(r.path);
+        closeSidebar();
+      });
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'search-result-name';
+      nameEl.textContent = r.name;
+      item.appendChild(nameEl);
+
+      const pathEl = document.createElement('div');
+      pathEl.className = 'search-result-path';
+      pathEl.textContent = r.path === '__CLAUDE_MD__' ? 'CLAUDE.md' : r.path;
+      item.appendChild(pathEl);
+
+      if (r.matches && r.matches.length > 0) {
+        const matchEl = document.createElement('div');
+        matchEl.className = 'search-result-match';
+        // Highlight query in match text safely
+        const matchText = r.matches.slice(0, 2).join(' ... ');
+        matchEl.innerHTML = highlightQuery(matchText, query);
+        item.appendChild(matchEl);
+      }
+      frag.appendChild(item);
+    }
+    $searchResults.appendChild(frag);
+    $searchResults.classList.add('visible');
+  }
+
+  function highlightQuery(text, query) {
+    // Escape HTML entities first, then wrap matches
+    const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const re = new RegExp('(' + escapeRegex(query) + ')', 'gi');
+    return escaped.replace(re, '<mark>$1</mark>');
+  }
+
+  function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function hideSearchResults() {
+    $searchResults.classList.remove('visible');
+  }
+
+  // ============================================================
+  // FILE TREE
+  // ============================================================
+  const expandedFolders = new Set(JSON.parse(localStorage.getItem('dr-expanded') || '[]'));
+
+  async function loadTree() {
+    try {
+      treeData = await apiGet('tree');
+      renderTree(treeData);
+    } catch (err) {
+      $sidebarTree.innerHTML = '';
+      const errDiv = document.createElement('div');
+      errDiv.style.cssText = 'padding: 16px; color: var(--danger); font-size: 0.82rem;';
+      errDiv.textContent = 'Failed to load document tree';
+      $sidebarTree.appendChild(errDiv);
+    }
+  }
+
+  function renderTree(entries) {
+    $sidebarTree.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (const entry of entries) {
+      frag.appendChild(buildTreeNode(entry));
+    }
+    $sidebarTree.appendChild(frag);
+    updateActiveFile();
+  }
+
+  function buildTreeNode(entry) {
+    if (entry.type === 'directory') {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'tree-node';
+
+      const btn = document.createElement('button');
+      btn.className = 'tree-folder';
+      btn.setAttribute('aria-label', 'Folder: ' + entry.name);
+
+      const isOpen = expandedFolders.has(entry.path);
+
+      btn.innerHTML =
+        '<svg class="tree-chevron' + (isOpen ? ' open' : '') + '" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' + ICONS.chevron + '</svg>' +
+        svgIcon('folder', 'tree-icon') +
+        '<span class="tree-folder-name">' + escapeHTML(entry.name) + '</span>';
+
+      const children = document.createElement('div');
+      children.className = 'tree-children' + (isOpen ? '' : ' collapsed');
+      if (entry.children) {
+        for (const child of entry.children) {
+          children.appendChild(buildTreeNode(child));
+        }
+      }
+
+      btn.addEventListener('click', () => {
+        const chevron = btn.querySelector('.tree-chevron');
+        const isNowOpen = children.classList.toggle('collapsed');
+        if (isNowOpen) {
+          chevron.classList.remove('open');
+          expandedFolders.delete(entry.path);
+        } else {
+          chevron.classList.add('open');
+          expandedFolders.add(entry.path);
+        }
+        saveExpandedState();
+      });
+
+      wrapper.appendChild(btn);
+      wrapper.appendChild(children);
+      return wrapper;
+    }
+
+    // File node
+    const btn = document.createElement('button');
+    btn.className = 'tree-file';
+    btn.setAttribute('data-path', entry.path);
+    btn.setAttribute('aria-label', 'Document: ' + entry.name);
+    btn.innerHTML =
+      svgIcon('file', 'tree-icon') +
+      '<span class="tree-file-name">' + escapeHTML(entry.name) + '</span>';
+
+    btn.addEventListener('click', () => {
+      navigateTo(entry.path);
+      closeSidebar();
+    });
+
+    return btn;
+  }
+
+  function saveExpandedState() {
+    localStorage.setItem('dr-expanded', JSON.stringify([...expandedFolders]));
+  }
+
+  function updateActiveFile() {
+    const files = $sidebarTree.querySelectorAll('.tree-file');
+    for (const f of files) {
+      f.classList.toggle('active', f.getAttribute('data-path') === currentPath);
+    }
+  }
+
+  function escapeHTML(str) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+    return str.replace(/[&<>"]/g, c => map[c]);
+  }
+
+  // ============================================================
+  // NAVIGATION
+  // ============================================================
+  async function navigateTo(path) {
+    if (editMode) {
+      if (!confirm('Discard unsaved changes?')) return;
+      editMode = false;
+    }
+
+    currentPath = path;
+    localStorage.setItem('dr-last-doc', path);
+    updateActiveFile();
+    showLoading();
+    $toolbar.style.display = 'flex';
+
+    try {
+      const doc = await apiGet('doc?path=' + encodeURIComponent(path));
+      currentDoc = doc;
+      renderDocument(doc);
+    } catch (err) {
+      showError('Failed to load document', err.message);
+    }
+  }
+
+  // ─── Internal link navigation ───
+  // Resolve relative .md paths against current document's directory
+  function resolveDocPath(href) {
+    const clean = href.split('#')[0]; // strip anchor
+    if (!clean) return '';
+
+    // Special case: CLAUDE.md at project root
+    const basename = clean.split('/').pop();
+    if (basename === 'CLAUDE.md') return '__CLAUDE_MD__';
+
+    if (!currentPath || currentPath === '__CLAUDE_MD__') return clean;
+    const dir = currentPath.includes('/') ? currentPath.substring(0, currentPath.lastIndexOf('/')) : '';
+
+    // Absolute from docs root
+    if (clean.startsWith('/')) return clean.substring(1);
+
+    // Relative: resolve ../ against current directory
+    const parts = (dir ? dir + '/' + clean : clean).split('/');
+    const resolved = [];
+    for (const p of parts) {
+      if (p === '..') { if (resolved.length) resolved.pop(); }
+      else if (p !== '.') resolved.push(p);
+    }
+    return resolved.join('/');
+  }
+
+  $contentBody.addEventListener('click', (e) => {
+    const link = e.target.closest('a[data-doc-link]');
+    if (!link) return;
+    e.preventDefault();
+    const href = link.getAttribute('href');
+    if (!href) return;
+    const docPath = resolveDocPath(href);
+    if (docPath) navigateTo(docPath);
+  });
+
+  function showLoading() {
+    $contentBody.innerHTML = '';
+    $toolbarActions.innerHTML = '';
+    $breadcrumb.innerHTML = '';
+    const loading = document.createElement('div');
+    loading.className = 'loading';
+    loading.innerHTML = '<div class="loading-spinner"></div> Loading...';
+    $contentBody.appendChild(loading);
+  }
+
+  function showError(title, detail) {
+    $contentBody.innerHTML = '';
+    const err = document.createElement('div');
+    err.className = 'error-state';
+
+    const msg = document.createElement('div');
+    msg.className = 'error-state-msg';
+    msg.textContent = title;
+    err.appendChild(msg);
+
+    if (detail) {
+      const det = document.createElement('div');
+      det.className = 'error-state-detail';
+      det.textContent = detail;
+      err.appendChild(det);
+    }
+    $contentBody.appendChild(err);
+  }
+
+  // ============================================================
+  // RENDER DOCUMENT
+  // ============================================================
+  function renderDocument(doc) {
+    // Breadcrumb
+    renderBreadcrumb(doc.path);
+
+    // Toolbar actions: Edit button
+    $toolbarActions.innerHTML = '';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-ghost';
+    editBtn.innerHTML = svgIcon('edit', 'btn-icon') + ' Edit';
+    editBtn.addEventListener('click', () => enterEditMode());
+    $toolbarActions.appendChild(editBtn);
+
+    // Content
+    $contentBody.innerHTML = '';
+    const docView = document.createElement('div');
+    docView.className = 'doc-view';
+
+    // Metadata bar
+    const meta = document.createElement('div');
+    meta.className = 'doc-meta';
+
+    if (doc.modified) {
+      const dateItem = document.createElement('span');
+      dateItem.className = 'doc-meta-item';
+      dateItem.innerHTML = svgIcon('clock', 'doc-meta-icon');
+      const dateText = document.createElement('span');
+      dateText.textContent = formatDate(doc.modified);
+      dateItem.appendChild(dateText);
+      meta.appendChild(dateItem);
+    }
+
+    if (doc.size != null) {
+      const sizeItem = document.createElement('span');
+      sizeItem.className = 'doc-meta-item';
+      sizeItem.innerHTML = svgIcon('fileSize', 'doc-meta-icon');
+      const sizeText = document.createElement('span');
+      sizeText.textContent = formatSize(doc.size);
+      sizeItem.appendChild(sizeText);
+      meta.appendChild(sizeItem);
+    }
+
+    const wordCount = countWords(doc.content);
+    const wordsItem = document.createElement('span');
+    wordsItem.className = 'doc-meta-item';
+    wordsItem.innerHTML = svgIcon('words', 'doc-meta-icon');
+    const wordsText = document.createElement('span');
+    wordsText.textContent = wordCount.toLocaleString() + ' words';
+    wordsItem.appendChild(wordsText);
+    meta.appendChild(wordsItem);
+
+    docView.appendChild(meta);
+
+    // Rendered markdown
+    const mdDiv = document.createElement('div');
+    mdDiv.className = 'md-content';
+    mdDiv.innerHTML = renderMarkdown(doc.content);
+    docView.appendChild(mdDiv);
+
+    $contentBody.appendChild(docView);
+
+    // Update page title
+    const title = extractTitle(doc.content, doc.name);
+    document.title = title + ' — CLWA Docs';
+  }
+
+  function renderBreadcrumb(path) {
+    $breadcrumb.innerHTML = '';
+    const parts = path === '__CLAUDE_MD__' ? ['CLAUDE.md'] : path.split('/');
+
+    // "docs" root
+    const root = document.createElement('span');
+    root.className = 'breadcrumb-item';
+    root.textContent = 'docs';
+    $breadcrumb.appendChild(root);
+
+    for (let i = 0; i < parts.length; i++) {
+      const sep = document.createElement('span');
+      sep.className = 'breadcrumb-sep';
+      sep.textContent = '/';
+      $breadcrumb.appendChild(sep);
+
+      const crumb = document.createElement('span');
+      crumb.className = 'breadcrumb-item';
+      const label = parts[i].replace('.md', '');
+      crumb.textContent = label;
+
+      if (i === parts.length - 1) {
+        crumb.classList.add('current');
+      }
+      $breadcrumb.appendChild(crumb);
+    }
+  }
+
+  function extractTitle(content, fallbackName) {
+    const match = content.match(/^#\s+(.+)$/m);
+    if (match) return match[1].replace(/[*_`]/g, '');
+    return fallbackName || 'Untitled';
+  }
+
+  function countWords(text) {
+    return text.replace(/```[\s\S]*?```/g, '').replace(/[#*_`>\-|=\[\]()]/g, ' ').split(/\s+/).filter(w => w.length > 0).length;
+  }
+
+  function formatDate(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }) +
+        ', ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    } catch { return iso; }
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  // ============================================================
+  // MARKDOWN RENDERING (marked.use API for v13+)
+  // ============================================================
+  if (typeof marked !== 'undefined') {
+    marked.use({
+      gfm: true,
+      breaks: false,
+      renderer: {
+        table({ header, rows, align }) {
+          let h = '<tr>';
+          for (let i = 0; i < header.length; i++) {
+            const a = align[i] ? ' style="text-align:' + align[i] + '"' : '';
+            h += '<th' + a + '>' + this.parser.parseInline(header[i].tokens) + '</th>';
+          }
+          h += '</tr>';
+          let b = '';
+          for (const row of rows) {
+            b += '<tr>';
+            for (let i = 0; i < row.length; i++) {
+              const a = align[i] ? ' style="text-align:' + align[i] + '"' : '';
+              b += '<td' + a + '>' + this.parser.parseInline(row[i].tokens) + '</td>';
+            }
+            b += '</tr>';
+          }
+          return '<div class="table-wrap"><table><thead>' + h + '</thead><tbody>' + b + '</tbody></table></div>';
+        },
+        link({ href, title, tokens }) {
+          const text = this.parser.parseInline(tokens);
+          const t = title ? ' title="' + escapeHTML(title) + '"' : '';
+          if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
+            return '<a href="' + escapeHTML(href) + '"' + t + ' target="_blank" rel="noopener noreferrer">' + text + '</a>';
+          }
+          // Internal .md links — mark for SPA navigation
+          if (href && (href.endsWith('.md') || href.includes('.md#'))) {
+            return '<a href="' + escapeHTML(href) + '"' + t + ' data-doc-link>' + text + '</a>';
+          }
+          return '<a href="' + escapeHTML(href || '') + '"' + t + '>' + text + '</a>';
+        },
+      },
+    });
+  }
+
+  function renderMarkdown(src) {
+    if (typeof marked === 'undefined') {
+      return '<pre><code>' + escapeHTML(src) + '</code></pre>';
+    }
+    try {
+      return marked.parse(src);
+    } catch (e) {
+      console.error('[Markdown]', e);
+      return '<pre><code>' + escapeHTML(src) + '</code></pre>';
+    }
+  }
+
+  // ============================================================
+  // EDIT MODE
+  // ============================================================
+  function enterEditMode() {
+    if (!currentDoc) return;
+    editMode = true;
+    originalContent = currentDoc.content;
+
+    // Update toolbar
+    $toolbarActions.innerHTML = '';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn btn-success';
+    saveBtn.innerHTML = svgIcon('save', 'btn-icon') + ' Save <span class="kbd">Ctrl+S</span>';
+    saveBtn.addEventListener('click', saveDocument);
+    $toolbarActions.appendChild(saveBtn);
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-ghost';
+    cancelBtn.innerHTML = svgIcon('cancel', 'btn-icon') + ' Cancel <span class="kbd">Esc</span>';
+    cancelBtn.addEventListener('click', exitEditMode);
+    $toolbarActions.appendChild(cancelBtn);
+
+    // Replace content with textarea
+    $contentBody.innerHTML = '';
+    const editArea = document.createElement('div');
+    editArea.className = 'edit-area';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'edit-textarea';
+    textarea.id = 'edit-textarea';
+    textarea.value = currentDoc.content;
+    textarea.spellcheck = false;
+
+    // Handle Tab key for indentation
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        textarea.value = textarea.value.substring(0, start) + '  ' + textarea.value.substring(end);
+        textarea.selectionStart = textarea.selectionEnd = start + 2;
+      }
+    });
+
+    editArea.appendChild(textarea);
+    $contentBody.appendChild(editArea);
+    textarea.focus();
+  }
+
+  function exitEditMode() {
+    if (!currentDoc) return;
+    editMode = false;
+    renderDocument(currentDoc);
+  }
+
+  async function saveDocument() {
+    const textarea = document.getElementById('edit-textarea');
+    if (!textarea || !currentDoc) return;
+
+    const content = textarea.value;
+    try {
+      await apiPut('doc?path=' + encodeURIComponent(currentDoc.path), { content });
+      currentDoc.content = content;
+      showToast('Saved');
+      exitEditMode();
+    } catch (err) {
+      showToast('Save failed: ' + err.message, 'error');
+    }
+  }
+
+  // ============================================================
+  // KEYBOARD SHORTCUTS
+  // ============================================================
+  document.addEventListener('keydown', (e) => {
+    // Ctrl+S — save in edit mode
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      if (editMode) saveDocument();
+    }
+    // Escape — cancel edit mode
+    if (e.key === 'Escape' && editMode) {
+      exitEditMode();
+    }
+    // Ctrl+K or / — focus search (when not editing)
+    if (((e.ctrlKey || e.metaKey) && e.key === 'k') || (e.key === '/' && !editMode && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA')) {
+      e.preventDefault();
+      $searchInput.focus();
+      if (window.innerWidth < 768 && !sidebarOpen) openSidebar();
+    }
+  });
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  async function init() {
+    await loadTree();
+
+    // Restore last opened document
+    const lastDoc = localStorage.getItem('dr-last-doc');
+    if (lastDoc) {
+      // Ensure parent folders are expanded
+      expandParentFolders(lastDoc);
+      navigateTo(lastDoc);
+    }
+  }
+
+  function expandParentFolders(path) {
+    if (path === '__CLAUDE_MD__') return;
+    const parts = path.split('/');
+    let accumulated = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      accumulated = accumulated ? accumulated + '/' + parts[i] : parts[i];
+      expandedFolders.add(accumulated);
+    }
+    saveExpandedState();
+    // Re-render tree to apply expansion
+    renderTree(treeData);
+  }
+
+  init();
+  </script>
+</body>
+</html>

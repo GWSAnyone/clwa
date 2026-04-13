@@ -827,3 +827,27 @@ export function registerILTradeVerbs(verbs: string[]): void {
 }
 
 export function getILTradeVerbs(): ReadonlySet<string> { return IL_TRADE_VERB_SET; }
+
+// ─── Question Topic Registry ───
+// Modules register valid question topics for IL schema constrained decoding.
+const QUESTION_TOPICS = new Set<string>();
+
+export function registerQuestionTopics(topics: string[]): void {
+  for (const t of topics) QUESTION_TOPICS.add(t);
+}
+
+export function getRegisteredQuestionTopics(): string[] { return Array.from(QUESTION_TOPICS); }
+
+// ─── Default Speech Act ───
+// Module registers the fallback speech act used when IL extraction fails.
+let _defaultSpeechAct: string | null = null;
+
+export function registerDefaultSpeechAct(act: string): void {
+  if (!SPEECH_ACTS.has(act)) throw new Error(`[Registry] Cannot register default speechAct '${act}' — not a registered speech act`);
+  _defaultSpeechAct = act;
+}
+
+export function getDefaultSpeechAct(): string {
+  if (!_defaultSpeechAct) throw new Error('[Registry] No default speechAct registered — call registerDefaultSpeechAct() at startup');
+  return _defaultSpeechAct;
+}

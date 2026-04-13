@@ -1,9 +1,10 @@
 # SPEC: Polishing to A+ State
 
-**Status**: PARTIAL (2026-04-12) — 101/109 done, 15 deferred (NNA-16..41 fixed in autonomous session)  
+**Status**: NEAR-COMPLETE (2026-04-13) — 106/109 done, 3 conscious deferrals  
 **Created**: 2026-04-07  
 **Scope**: Full codebase quality sweep — dead code, type safety, frontend, LLM prompts, save/load, known debt  
-**Total items**: 162 (109 actionable → 86 done, 15 deferred, 10 false positive/already fixed)  
+**Total items**: 162 (109 actionable → 106 done, 3 deferred, 10 false positive/already fixed)  
+**Pre-existing debt resolved**: VALID_QUESTION_TOPICS → registry, 'smalltalk' → getDefaultSpeechAct()  
 
 ---
 
@@ -118,8 +119,8 @@ All items are confirmed unused exports — zero breaking changes expected.
 |----|----------|--------|------|-------|
 | TS-36 | P1 | [x] | `engine/src/world.ts` | `Record<string, Record<string, unknown>>`. |
 | TS-37 | P2 | [x] | `engine/src/world.ts` | `ReturnType<TopicEngine['toJSON']>`. |
-| TS-38 | P3 | [~] | `engine/src/topic-engine.ts` | Deferred — toJSON return type derived via ReturnType in consumer. |
-| TS-39 | P2 | [~] | `modules/src/crime-justice/index.ts` | Deferred — `data: {}` is intentional for reactive goals with no extra data. |
+| TS-38 | P3 | [x] | `engine/src/topic-engine.ts` | Fixed: explicit return type on toJSON — `{ topicHistory, dayDistribution, dayConversationCount }`. |
+| TS-39 | P2 | [x] | `modules/src/crime-justice/index.ts` | Closed: intentional pattern — `data: {}` for reactive goals with no module-specific state. |
 
 ### 4.4 — Non-null Assertions (`!`)
 
@@ -156,9 +157,9 @@ Every `!` is a runtime assumption that value is non-null. If assumption breaks, 
 | NNA-18 | P2 | [x] | `engine/src/world.ts:1379` | Fixed: same as NNA-17. |
 | NNA-19 | P2 | [x] | `engine/src/world.ts:1395` | Fixed: `?.add()` optional chaining. |
 | NNA-20 | P2 | [x] | `engine/src/goals.ts` | Fixed: `(goal.waitTicks ?? 0) + 1`. |
-| NNA-21 | P2 | [ ] | `engine/src/goals.ts:412` | `sender.state.beliefs!.getAllBeliefs()` | Direction-dependent: sender varies. Partial guard on line 406. |
-| NNA-22 | P2 | [ ] | `engine/src/goals.ts:420` | `receiver.state.beliefs!.getAllBeliefs()` | Same as NNA-21. |
-| NNA-23 | P2 | [ ] | `engine/src/goals.ts:425` | `receiver.state.beliefs!.addBelief(...)` | Same as NNA-21. |
+| NNA-21 | P2 | [x] | `engine/src/goals.ts:145` | Fixed: early return guard `if (!sender.state.beliefs \|\| !receiver.state.beliefs) return`. |
+| NNA-22 | P2 | [x] | `engine/src/goals.ts:145` | Fixed: same guard as NNA-21. |
+| NNA-23 | P2 | [x] | `engine/src/goals.ts:145` | Fixed: same guard as NNA-21. |
 | NNA-24 | P2 | [x] | `server/src/server.ts` | Fixed: `playerAgent?.profile.name ?? 'someone'`. |
 | NNA-25 | P2 | [x] | `server/src/routes.ts` | Fixed: `pop() ?? ''` (5 occurrences). |
 | NNA-26 | P2 | [x] | `server/src/routes.ts` | Fixed: same as NNA-25. |
@@ -234,25 +235,25 @@ Every `as Type` tells TypeScript "trust me" — bypasses compile-time checking.
 | ID | Severity | Status | File | Issue |
 |----|----------|--------|------|-------|
 | FE-04 | P1 | [x] | `public/game.js` | All 6 `.catch(() => {})` → `.catch(err => console.warn('[Fetch]', err))`. |
-| FE-05 | P2 | [~] | `public/game.js` | Partially fixed (Array.isArray on movement data). Relationship fetch deferred — server always returns array. |
+| FE-05 | P2 | [x] | `public/game.js` | Fixed: Array.isArray guard on all 3 relationship fetch sites + optional chaining on field access. |
 | FE-06 | P2 | [x] | `public/game.js` | WS reconnect debounce via `_wsReconnectTimer` guard. |
 
 ### 5.2 — Code Quality
 
 | ID | Severity | Status | File | Issue |
 |----|----------|--------|------|-------|
-| FE-07 | P2 | [~] | `public/game.js` | Deferred — large refactor (258 lines, 22 cases), high blast radius. |
-| FE-08 | P2 | [~] | `public/game.js` | Deferred — magic numbers refactor, low risk but tedious. |
-| FE-09 | P2 | [~] | `public/game.js` | Deferred — name→agent map cache, O(n)→O(1). |
-| FE-10 | P2 | [~] | `public/game.js` | Deferred — openChat() split. |
-| FE-11 | P2 | [~] | `public/game.js` | Deferred — renderMindSection() refactor. |
+| FE-07 | P2 | [x] | `public/game.js` | Fixed: extracted handleWSMovement, handleWSEvent, handleWSCascade + CASCADE_LABELS constant. |
+| FE-08 | P2 | [x] | `public/game.js` | Fixed: 12 named constants (INTERACT_RADIUS, SNAP_DISTANCE, WAYPOINT_TOLERANCE_X/Y, etc). |
+| FE-09 | P2 | [x] | `public/game.js` | Fixed: state.agentNameMap + agentByName() helper, 5 O(n) lookups replaced with O(1). |
+| FE-10 | P2 | [x] | `public/game.js` | Fixed: openChat split into 6 sub-functions (setupChatNpcDisplay, fetchChatBars, restoreChatMessages, setupShopButton, setupPlayerFooter, CHAT_STARTERS). |
+| FE-11 | P2 | [x] | `public/game.js` | Fixed: extracted renderBeliefItem, renderRelItem, renderGoalItem, renderPersonalitySection + color helpers (beliefConfColor, sentimentColor, TRAIT_COLORS, ENNE_NAMES). |
 | FE-12 | P3 | [x] | `public/game.js` | Status sanitized via `.replace(/[^a-z_-]/gi, '')`. |
 
 ### 5.3 — Performance
 
 | ID | Severity | Status | File | Issue |
 |----|----------|--------|------|-------|
-| FE-13 | P2 | [~] | `public/game.js` | CHAT_HISTORY_CAP=50 defined but not enforced. Deferred — scroll container visually caps. |
+| FE-13 | P2 | [x] | `public/game.js` | Fixed: CHAT_HISTORY_CAP enforced via chatHistory.shift() on overflow. |
 | FE-14 | P3 | [x] | `public/game.js` | Cached via `state._feedEl`. |
 | FE-15 | P3 | [x] | `public/game.js` | Added delta threshold (< 0.01 skip). |
 
@@ -262,7 +263,7 @@ Every `as Type` tells TypeScript "trust me" — bypasses compile-time checking.
 |----|----------|--------|------|-------|
 | FE-16 | P2 | [x] | `public/game.html` | Added `role="button"`, `tabindex="0"`, `onkeydown` for Enter/Space on all 4 mind headers. |
 | FE-17 | P3 | [x] | `public/game.html` | Increased contrast: #888→#aaa, #5a7a8a→#8aacbc, #6a8a9a→#9abaca. |
-| FE-18 | P3 | [~] | `public/game.js` | Deferred — keyboard shortcuts for chat/journal/evidence. |
+| FE-18 | P3 | [x] | `public/game.js` | Fixed: J (journal toggle), E (chat), Escape (close). |
 
 ### 5.5 — Networking
 
@@ -311,7 +312,7 @@ Every `as Type` tells TypeScript "trust me" — bypasses compile-time checking.
 | ID | Severity | Status | File | Issue |
 |----|----------|--------|------|-------|
 | LLM-11 | P3 | [x] | `engine/src/volition.ts` | Volition schema already lazy singleton. IL schema is per-call (ctx-dependent) — correct, not cacheable. |
-| LLM-12 | P3 | [~] | `engine/src/agent.ts`, `engine/src/volition.ts` | Deferred — belief dedup requires careful prompt restructuring. |
+| LLM-12 | P3 | [x] | `engine/src/agent.ts`, `engine/src/volition.ts` | Closed: working as designed — by-source dedup at storage + top-3 cap in prompt prevents bloat. |
 
 ---
 
@@ -331,11 +332,11 @@ Every `as Type` tells TypeScript "trust me" — bypasses compile-time checking.
 
 | ID | Severity | Status | File | Issue |
 |----|----------|--------|------|-------|
-| SL-06 | P2 | [~] | `engine/src/world.ts` | Deferred — status validation. NpcStatus is string, no enum to validate against (by design). |
+| SL-06 | P2 | [x] | `engine/src/world.ts` | Fixed: status checked against isStatusAbsent/isStatusActive registries, unknown reset to undefined. |
 | SL-07 | P2 | [x] | `engine/src/world.ts` | Mood clamped to [-1,1] on load. NaN modifiers filtered. |
-| SL-08 | P2 | [~] | `engine/src/beliefs.ts` | Deferred — belief validation on load. Low risk: corrupted saves are rare. |
-| SL-09 | P3 | [~] | `engine/src/goals.ts` | Deferred — goal step validation. |
-| SL-10 | P3 | [~] | `server/src/position-manager.ts` | Deferred — position bounds. |
+| SL-08 | P2 | [x] | `engine/src/beliefs.ts` | Fixed: fromJSON validates id/eventType/source (skip) + confidence clamping. |
+| SL-09 | P3 | [x] | `engine/src/goals.ts` | Fixed: loadFromJSON validates step.action against BUILT_IN_ACTIONS + STEP_HANDLERS. |
+| SL-10 | P3 | [x] | `server/src/position-manager.ts` | Fixed: loadFromJSON validates finite + warns on out-of-bounds via validatePosition(). |
 
 ### 7.3 — Migration Infrastructure (for future)
 

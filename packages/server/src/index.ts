@@ -8,7 +8,7 @@ import { World, findPath } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
-import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerILTradeVerbs } from '@clwa/engine';
+import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerILTradeVerbs, registerQuestionTopics, registerDefaultSpeechAct } from '@clwa/engine';
 
 // Player action vocabulary — module-level constants, NOT engine
 const PLAYER_ACTION_EVENT = 'PLAYER_ACTION';
@@ -43,6 +43,8 @@ registerSpeechActs([
 ]);
 registerClaimSources(['witnessed', 'heard', 'suspects', 'deduced']);
 registerILTradeVerbs(['buy', 'sell', 'browse', 'trade']);
+registerQuestionTopics(['whereabouts', 'opinion', 'knowledge', 'relationship', 'secret']);
+registerDefaultSpeechAct('smalltalk');
 
 // ─── Pressure Types — emotional pressure vocabulary for IL constrained decoding ───
 registerPressureTypes(['threat', 'bribe', 'flattery', 'guilt', 'intimidation']);

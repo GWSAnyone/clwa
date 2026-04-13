@@ -12,6 +12,20 @@ const PLAYER_SPEED = 160;
 const SPRITE_SCALE = 0.45;
 const FRAME_MS = 120; // sprite animation frame duration
 
+// ─── UI & INTERACTION THRESHOLDS ───
+const INTERACT_RADIUS = 100;      // px — click/E-key NPC interaction range
+const SNAP_DISTANCE = 150;        // px — teleport NPC if too far from target
+const WAYPOINT_TOLERANCE_X = 30;  // px — waypoint arrival threshold (x-axis)
+const WAYPOINT_TOLERANCE_Y = 40;  // px — waypoint arrival threshold (y-axis)
+const SPEECH_BUBBLE_DURATION = 4; // seconds — how long speech/thought bubbles last
+const MOOD_CHANGE_THRESHOLD = 0.05; // mood delta to trigger visual feedback
+const MOOD_RENDER_SKIP = 0.01;    // skip mood bar re-render if delta below this
+const BELIEF_CONFIDENCE_HIGH = 60; // % threshold for "high confidence" display
+const TEXT_TRUNCATE_LEN = 60;     // chars — truncate conversation text display
+const LOCATION_DETECT_RADIUS = 300; // px — radius for player location detection
+const RECONNECT_DELAY = 3000;     // ms — WS reconnect delay
+const CASE_SOLVED_DELAY = 2000;   // ms — delay for "case solved" message
+
 // ─── LOCATION LAYOUT ───
 // Positions from Godot zone polygon centers (world pixels, original)
 const LOCATIONS = {
@@ -217,6 +231,7 @@ const AVATAR_MAP = {
 // ─── STATE ───
 const state = {
   agents: {},       // id → { name, role, location, mood, alive, status, x, y, targetX, targetY, moving, frames, frameIdx, animTimer }
+  agentNameMap: {}, // name → id (rebuilt on agent init for O(1) lookup)
   player: { x: 15*TILE, y: 8*TILE, sprites: null, frameIdx: 0, animTimer: 0, flipH: false, moving: false },
   camera: { fx: 0, fy: 0, zoom: 1.0 },  // fx,fy = world focus point (center of screen)
   day: 1, time: '07:00', period: 'morning',
@@ -228,6 +243,12 @@ const state = {
   autoTick: false, gameSpeed: 1,
   hoveredNpc: null,
 };
+
+/** O(1) agent lookup by display name */
+function agentByName(name) {
+  const id = state.agentNameMap[name];
+  return id ? state.agents[id] : undefined;
+}
 
 // ─── CANVAS ───
 const canvas = document.getElementById('game-canvas');
@@ -342,6 +363,7 @@ async function init() {
         moving: false, waypoints: [], wpIdx: 0,
         sprites, frameIdx: 0, animTimer: 0, flipH: false,
       };
+      state.agentNameMap[a.name] = a.id;
     }
 
     const playerRes = await fetch('/api/player');
@@ -365,7 +387,7 @@ async function init() {
     updateHUD();
   } catch (e) {
     showToast('Server unavailable — retrying...', 'info', 4000);
-    setTimeout(init, 3000);
+    setTimeout(init, RECONNECT_DELAY);
     return;
   }
 
@@ -396,7 +418,7 @@ async function init() {
     state.keys[e.key.toLowerCase()] = true;
     // E key — interact with nearest NPC
     if (e.key.toLowerCase() === 'e' && !state.chatOpen) {
-      const nearest = findNearestNpc(state.player.x, state.player.y, 100);
+      const nearest = findNearestNpc(state.player.x, state.player.y, INTERACT_RADIUS);
       if (nearest) openChat(nearest);
     }
     // Escape — close chat or journal
@@ -466,7 +488,7 @@ function sendWS(msg) {
 function connectWS() {
   state.ws = new WebSocket(`ws://${location.host}/ws`);
   state.ws.onopen = () => { state.connected = true; document.getElementById('ws-status').className = 'connected'; };
-  state.ws.onclose = () => { state.connected = false; document.getElementById('ws-status').className = ''; if (!state._wsReconnectTimer) state._wsReconnectTimer = setTimeout(() => { state._wsReconnectTimer = null; connectWS(); }, 2000); };
+  state.ws.onclose = () => { state.connected = false; document.getElementById('ws-status').className = ''; if (!state._wsReconnectTimer) state._wsReconnectTimer = setTimeout(() => { state._wsReconnectTimer = null; connectWS(); }, RECONNECT_DELAY); };
   state.ws.onerror = () => { console.error('[WS Error]'); };
   state.ws.onmessage = (e) => {
     try {
@@ -476,6 +498,111 @@ function connectWS() {
       console.error('[WS Parse Error]', err);
     }
   };
+}
+
+// ─── WS Handler: extracted sub-handlers ───
+
+const CASCADE_LABELS = {
+  'WITNESS_MEMORY': 'witnessed', 'RUMOR_SPREAD': 'rumor spreads',
+  'WANTED_STATUS': 'wanted', 'COVER_UP': 'covering up',
+  'REPORT_IMPULSE': 'eager to report', 'REVENGE_IMPULSE': 'seeks revenge',
+  'GUARD_WARNING': 'guard warned', 'CORRUPTION_COVER': 'guard looks away',
+  'ARREST_RESENTMENT': 'resents arrest',
+  'MINOR_INCIDENT_MEMORY': 'noticed incident',
+  'THEFT_DISCOVERED': 'theft discovered',
+  'ARGUMENT_WITNESSED': 'argument',
+  'THREAT_WITNESSED': 'threat',
+};
+
+function handleWSMovement(data) {
+  const moves = Array.isArray(data) ? data : [];
+  for (const m of moves) {
+    const npc = agentByName(m.agentName);
+    if (!npc) continue;
+    npc.location = m.to;
+    if (m.arrived) {
+      const tx = m.targetX ?? m.x ?? npc.x;
+      const ty = m.targetY ?? m.y ?? npc.y;
+      const dx = tx - npc.x, dy = ty - npc.y;
+      if (Math.sqrt(dx * dx + dy * dy) > SNAP_DISTANCE) {
+        npc.x = tx; npc.y = ty;
+        npc.moving = false;
+        npc.waypoints = [];
+      }
+      npc.transitDist = 0;
+      npc.transitDuration = 0;
+    } else {
+      const tx = m.targetX ?? 0, ty = m.targetY ?? 0;
+      npc.waypoints = astarPath(npc.x, npc.y, tx, ty);
+      npc.wpIdx = 0;
+      npc.moving = true;
+      if (m.transitDuration > 0) {
+        npc.transitDist = pathLength(npc.waypoints, npc.x, npc.y);
+        npc.transitDuration = m.transitDuration;
+      } else {
+        npc.transitDist = 0;
+        npc.transitDuration = 0;
+      }
+      addEvent('movement', `${m.agentName} → ${LOCATIONS[m.to]?.label || m.to}`);
+    }
+  }
+}
+
+function handleWSEvent(data) {
+  const evType = data.type || '';
+  const subjectAgent = data.subject ? state.agents[data.subject] : null;
+  const objectAgent = data.object ? state.agents[data.object] : null;
+  const subjectName = subjectAgent?.name || data.subject || '?';
+  const objectName = objectAgent?.name || data.object || '?';
+
+  const isCrime = evType.includes('KILL') || evType.includes('STOLEN');
+  let feedText;
+  if (evType === 'NPC_ARRESTED') feedText = `${subjectName} arrested ${objectName}`;
+  else if (evType === 'NPC_SENTENCED') feedText = `${objectName} was ${data.payload?.verdict || 'sentenced'}`;
+  else if (evType === 'BODY_DISCOVERED') feedText = `${subjectName} discovered a body`;
+  else if (evType === 'GOODS_STOLEN') feedText = `Theft at ${data.location || '?'}`;
+  else if (evType === 'NPC_FLED') feedText = `${objectName} fled the town`;
+  else if (evType === 'NPC_KILLED') feedText = `${subjectName} killed ${objectName}`;
+  else if (evType === 'ARGUMENT_WITNESSED') feedText = `${subjectName} argued with ${objectName}`;
+  else if (evType === 'THREAT_WITNESSED') feedText = `${subjectName} threatened ${objectName}`;
+  else if (evType === 'WITNESS_INTIMIDATED') feedText = `${subjectName} intimidated ${objectName}`;
+  else if (evType === 'EVIDENCE_DESTROYED') feedText = `${subjectName} destroyed evidence`;
+  else feedText = `${evType}: ${subjectName} → ${objectName}`;
+  addEvent(isCrime ? 'crime' : evType === 'NPC_ARRESTED' ? 'crime' : 'conversation', feedText);
+
+  if (evType === 'NPC_ARRESTED' && objectAgent) {
+    objectAgent.status = 'detained';
+    showToast(`${subjectName} arrested ${objectName}`, 'arrest');
+  } else if (evType === 'NPC_SENTENCED') {
+    const verdict = data.payload?.verdict || 'sentenced';
+    if (objectAgent) objectAgent.status = verdict;
+    showToast(`${objectName} was ${verdict}`, 'sentence');
+    if (verdict === 'exile' || verdict === 'imprisonment') {
+      if (_journalSuspects.has(data.object)) {
+        setTimeout(() => showToast('Case solved! Justice has been served.', 'discovery', 8000), CASE_SOLVED_DELAY);
+      } else {
+        setTimeout(() => showToast('Someone was convicted... but was it the right person?', 'info', 8000), CASE_SOLVED_DELAY);
+      }
+    }
+  } else if (evType === 'BODY_DISCOVERED') {
+    showToast(`${subjectName} discovered a body!`, 'discovery');
+  } else if (evType === 'GOODS_STOLEN') {
+    showToast(`Goods stolen at ${data.location || '?'}`, 'theft');
+  } else if (evType === 'NPC_FLED') {
+    if (objectAgent) objectAgent.status = 'fled';
+    showToast(`${objectName} fled the town!`, 'sentence');
+  } else if (evType === 'ARGUMENT_WITNESSED') {
+    showToast(`${subjectName} is arguing with ${objectName}!`, 'info', 4000);
+  } else if (evType === 'THREAT_WITNESSED') {
+    showToast(`${subjectName} threatened ${objectName}!`, 'crime', 5000);
+  }
+}
+
+function handleWSCascade(data) {
+  for (const c of (data.consequences || [])) {
+    const label = CASCADE_LABELS[c.type] ?? c.type;
+    addEvent('crime', `  ↳ ${label}${c.subject ? ': ' + c.subject : ''}`);
+  }
 }
 
 function handleWS(type, data) {
@@ -497,55 +624,16 @@ function handleWS(type, data) {
       updateHUD();
       break;
 
-    case 'movement': {
-      const moves = Array.isArray(data) ? data : [];
-      for (const m of moves) {
-        const npc = Object.values(state.agents).find(a => a.name === m.agentName);
-        if (!npc) continue;
-        npc.location = m.to;
-
-        if (m.arrived) {
-          // NPC arrived — update location, let animation finish naturally
-          // Only snap if NPC is far from destination (e.g. reconnect/desync)
-          const tx = m.targetX ?? m.x ?? npc.x;
-          const ty = m.targetY ?? m.y ?? npc.y;
-          const dx = tx - npc.x, dy = ty - npc.y;
-          const distToTarget = Math.sqrt(dx * dx + dy * dy);
-          if (distToTarget > 150) {
-            // Far away — snap (reconnect scenario)
-            npc.x = tx; npc.y = ty;
-            npc.moving = false;
-            npc.waypoints = [];
-          }
-          // Close or walking — let client animation finish, just clear transit state
-          npc.transitDist = 0;
-          npc.transitDuration = 0;
-        } else {
-          // Start walking to target
-          const tx = m.targetX ?? 0, ty = m.targetY ?? 0;
-          npc.waypoints = astarPath(npc.x, npc.y, tx, ty);
-          npc.wpIdx = 0;
-          npc.moving = true;
-          if (m.transitDuration > 0) {
-            npc.transitDist = pathLength(npc.waypoints, npc.x, npc.y);
-            npc.transitDuration = m.transitDuration;
-          } else {
-            npc.transitDist = 0;
-            npc.transitDuration = 0;
-          }
-          addEvent('movement', `${m.agentName} → ${LOCATIONS[m.to]?.label || m.to}`);
-        }
-      }
+    case 'movement':
+      handleWSMovement(data);
       break;
-    }
 
     case 'conversation:line': {
       addEvent('conversation', `${data.speakerName}: "${data.text}"`);
-      // Show speech bubble above NPC with typewriter effect
-      const speaker = Object.values(state.agents).find(a => a.name === data.speakerName);
+      const speaker = agentByName(data.speakerName);
       if (speaker) {
         const fullText = data.text.length > 60 ? data.text.slice(0, 57) + '...' : data.text;
-        speaker._speech = { fullText, text: '', charIdx: 0, timer: 4.0, typing: true };
+        speaker._speech = { fullText, text: '', charIdx: 0, timer: SPEECH_BUBBLE_DURATION, typing: true };
       }
       if (state.chatOpen && state.chatNpcId) {
         const a = state.agents[state.chatNpcId];
@@ -557,84 +645,32 @@ function handleWS(type, data) {
     }
 
     case 'conversation:complete': {
-      // Use server-authoritative approach points
       const ap = data.approachPoints;
       if (ap) {
-        const initNpc = Object.values(state.agents).find(a => a.name === data.initiator);
-        const respNpc = Object.values(state.agents).find(a => a.name === data.responder);
+        const initNpc = agentByName(data.initiator);
+        const respNpc = agentByName(data.responder);
         if (initNpc) { initNpc.waypoints = astarPath(initNpc.x, initNpc.y, ap.ax, ap.ay); initNpc.wpIdx = 0; initNpc.moving = true; initNpc.transitDist = 0; initNpc.transitDuration = 0; }
         if (respNpc) { respNpc.waypoints = astarPath(respNpc.x, respNpc.y, ap.bx, ap.by); respNpc.wpIdx = 0; respNpc.moving = true; respNpc.transitDist = 0; respNpc.transitDuration = 0; }
       }
       break;
     }
 
-    case 'event': {
-      const evType = data.type || '';
-      const subjectAgent = data.subject ? state.agents[data.subject] : null;
-      const objectAgent = data.object ? state.agents[data.object] : null;
-      const subjectName = subjectAgent?.name || data.subject || '?';
-      const objectName = objectAgent?.name || data.object || '?';
-
-      // Enriched event feed text
-      const isCrime = evType.includes('KILL') || evType.includes('STOLEN');
-      let feedText;
-      if (evType === 'NPC_ARRESTED') feedText = `${subjectName} arrested ${objectName}`;
-      else if (evType === 'NPC_SENTENCED') feedText = `${objectName} was ${data.payload?.verdict || 'sentenced'}`;
-      else if (evType === 'BODY_DISCOVERED') feedText = `${subjectName} discovered a body`;
-      else if (evType === 'GOODS_STOLEN') feedText = `Theft at ${data.location || '?'}`;
-      else if (evType === 'NPC_FLED') feedText = `${objectName} fled the town`;
-      else if (evType === 'NPC_KILLED') feedText = `${subjectName} killed ${objectName}`;
-      else if (evType === 'ARGUMENT_WITNESSED') feedText = `${subjectName} argued with ${objectName}`;
-      else if (evType === 'THREAT_WITNESSED') feedText = `${subjectName} threatened ${objectName}`;
-      else if (evType === 'WITNESS_INTIMIDATED') feedText = `${subjectName} intimidated ${objectName}`;
-      else if (evType === 'EVIDENCE_DESTROYED') feedText = `${subjectName} destroyed evidence`;
-      else feedText = `${evType}: ${subjectName} → ${objectName}`;
-      addEvent(isCrime ? 'crime' : evType === 'NPC_ARRESTED' ? 'crime' : 'conversation', feedText);
-
-      // State updates + toasts
-      if (evType === 'NPC_ARRESTED' && objectAgent) {
-        objectAgent.status = 'detained';
-        showToast(`${subjectName} arrested ${objectName}`, 'arrest');
-      } else if (evType === 'NPC_SENTENCED') {
-        const verdict = data.payload?.verdict || 'sentenced';
-        if (objectAgent) objectAgent.status = verdict;
-        showToast(`${objectName} was ${verdict}`, 'sentence');
-        // Conviction feedback: was the convicted NPC actually a suspect the player identified?
-        if (verdict === 'exile' || verdict === 'imprisonment') {
-          if (_journalSuspects.has(data.object)) {
-            setTimeout(() => showToast('Case solved! Justice has been served.', 'discovery', 8000), 2000);
-          } else {
-            // Player didn't mark this person as suspect — might be a false conviction
-            setTimeout(() => showToast('Someone was convicted... but was it the right person?', 'info', 8000), 2000);
-          }
-        }
-      } else if (evType === 'BODY_DISCOVERED') {
-        showToast(`${subjectName} discovered a body!`, 'discovery');
-      } else if (evType === 'GOODS_STOLEN') {
-        showToast(`Goods stolen at ${data.location || '?'}`, 'theft');
-      } else if (evType === 'NPC_FLED') {
-        if (objectAgent) objectAgent.status = 'fled';
-        showToast(`${objectName} fled the town!`, 'sentence');
-      } else if (evType === 'ARGUMENT_WITNESSED') {
-        showToast(`${subjectName} is arguing with ${objectName}!`, 'info', 4000);
-      } else if (evType === 'THREAT_WITNESSED') {
-        showToast(`${subjectName} threatened ${objectName}!`, 'crime', 5000);
-      }
+    case 'event':
+      handleWSEvent(data);
       break;
-    }
 
-    case 'murder':
-      const victim = Object.values(state.agents).find(a => a.name === data.affectedName);
+    case 'murder': {
+      const victim = agentByName(data.affectedName);
       if (victim) { victim.alive = false; }
       addEvent('crime', `${data.killerName} killed ${data.affectedName}!`);
       showToast(`${data.killerName} killed ${data.affectedName}!`, 'murder');
       break;
+    }
 
     case 'npc_thought':
-      // Only show thought bubble for non-talk actions (crime, duty, etc)
       if (data.action && data.action !== 'talk') {
         const tNpc = state.agents[data.npcId];
-        if (tNpc) tNpc._thought = { text: `${data.instinctTier}: ${data.action}`, timer: 4.0 };
+        if (tNpc) tNpc._thought = { text: `${data.instinctTier}: ${data.action}`, timer: SPEECH_BUBBLE_DURATION };
       }
       addEvent('thought', `${data.npcName}: ${data.action} (${data.instinctTier})`);
       break;
@@ -643,15 +679,14 @@ function handleWS(type, data) {
       const mNpc = state.agents[data.npcId];
       if (mNpc) {
         mNpc.mood = data.newMood;
-        // Mood visual cue — pulse on significant shift
-        if (Math.abs(data.newMood - data.oldMood) > 0.05) {
+        if (Math.abs(data.newMood - data.oldMood) > MOOD_CHANGE_THRESHOLD) {
           mNpc._moodPulse = { timer: 1.0, positive: data.newMood > data.oldMood };
         }
       }
       if (state.chatOpen && state.chatNpcId === data.npcId) {
         updateChatMoodBar(data.newMood);
       }
-      if (Math.abs(data.newMood - data.oldMood) > 0.05) {
+      if (Math.abs(data.newMood - data.oldMood) > MOOD_CHANGE_THRESHOLD) {
         addEvent('mood', `${data.npcName} mood: ${data.oldMood.toFixed(2)} → ${data.newMood.toFixed(2)}`);
       }
       break;
@@ -672,12 +707,11 @@ function handleWS(type, data) {
     }
 
     case 'relationship_change': {
-      // Update trust/sentiment in chat panel if open for this NPC→player
       if (state.chatOpen && data.fromId === state.chatNpcId && data.toId === 'player') {
-        // Re-fetch full relationship to get both trust and sentiment
-        fetch(`/api/relationships/${data.fromId}`).then(r => r.json()).then(rels => {
+        fetch(`/api/relationships/${data.fromId}`).then(r => r.json()).then(raw => {
+          const rels = Array.isArray(raw) ? raw : [];
           if (state.chatNpcId !== data.fromId) return;
-          const playerRel = rels.find(r => r.targetId === 'player');
+          const playerRel = rels.find(r => r?.targetId === 'player');
           if (playerRel) updateChatTrustBar(playerRel.trust, playerRel.sentiment);
         }).catch(err => console.warn('[Fetch]', err));
       }
@@ -694,20 +728,7 @@ function handleWS(type, data) {
       break;
 
     case 'event_cascade':
-      for (const c of (data.consequences || [])) {
-        const label = {
-          'WITNESS_MEMORY': 'witnessed', 'RUMOR_SPREAD': 'rumor spreads',
-          'WANTED_STATUS': 'wanted', 'COVER_UP': 'covering up',
-          'REPORT_IMPULSE': 'eager to report', 'REVENGE_IMPULSE': 'seeks revenge',
-          'GUARD_WARNING': 'guard warned', 'CORRUPTION_COVER': 'guard looks away',
-          'ARREST_RESENTMENT': 'resents arrest',
-          'MINOR_INCIDENT_MEMORY': 'noticed incident',
-          'THEFT_DISCOVERED': 'theft discovered',
-          'ARGUMENT_WITNESSED': 'argument',
-          'THREAT_WITNESSED': 'threat',
-        }[c.type] ?? c.type;
-        addEvent('crime', `  ↳ ${label}${c.subject ? ': ' + c.subject : ''}`);
-      }
+      handleWSCascade(data);
       break;
 
     case 'chat:token':
@@ -1388,34 +1409,22 @@ function addEvent(cls, text) {
 }
 
 // ─── CHAT ───
-function openChat(npcId) {
-  state.chatOpen = true; state.chatNpcId = npcId;
-  sendWS({ type: 'chat_open', agentId: npcId });
-  document.getElementById('examine-panel').style.display = 'none';
-  clearEvidenceSelection();
-  const a = state.agents[npcId];
-  if (!a) return;
+// ─── openChat Sub-functions ───
 
-  // Avatar — portrait from Tiny Swords Human Avatars
+function setupChatNpcDisplay(npcId, a) {
   const avatarNum = AVATAR_MAP[npcId] || '01';
   document.getElementById('chat-avatar').src = `/assets/tinyswords/UI%20Elements/UI%20Elements/Human%20Avatars/Avatars_${avatarNum}.png`;
-
-  // NPC info
   const nameEl = document.getElementById('chat-npc-name');
   nameEl.textContent = a.name;
-  nameEl.style.color = '#e8dcc8'; // reset, updated by sentiment below
+  nameEl.style.color = '#e8dcc8';
   document.getElementById('chat-npc-role').textContent = a.role;
   document.getElementById('chat-npc-loc').textContent = LOCATIONS[a.location]?.label || a.location;
-
-  // Details / NPC Mind — reset to collapsed, clear cache for fresh data
   document.getElementById('chat-npc-background').textContent = a.background || '';
   const detailsBody = document.getElementById('chat-details-body');
   detailsBody.classList.remove('open');
   detailsBody.style.maxHeight = '0';
   document.getElementById('chat-details-toggle').classList.remove('open');
   resetMindCache();
-
-  // Status badge
   const badge = document.getElementById('chat-status-badge');
   if (a.status && a.status !== 'free' && a.status !== '') {
     badge.textContent = a.status.toUpperCase();
@@ -1424,26 +1433,35 @@ function openChat(npcId) {
   } else {
     badge.style.display = 'none';
   }
+}
 
-  // Mood bar
+function fetchChatBars(npcId, a) {
   updateChatMoodBar(a.mood);
-
-  // Trust bar — fetch relationship to player
-  updateChatTrustBar(0.3, 0); // default while loading
-  fetch(`/api/relationships/${npcId}`).then(r => r.json()).then(rels => {
-    if (state.chatNpcId !== npcId) return; // chat closed or switched
-    const playerRel = rels.find(r => r.targetId === 'player');
-    if (playerRel) {
-      updateChatTrustBar(playerRel.trust, playerRel.sentiment);
-    }
+  updateChatTrustBar(0.3, 0);
+  fetch(`/api/relationships/${npcId}`).then(r => r.json()).then(raw => {
+    const rels = Array.isArray(raw) ? raw : [];
+    if (state.chatNpcId !== npcId) return;
+    const playerRel = rels.find(r => r?.targetId === 'player');
+    if (playerRel) updateChatTrustBar(playerRel.trust, playerRel.sentiment);
   }).catch(err => console.warn('[Fetch]', err));
+}
 
-  // Restore or reset messages — single source of truth: chatHistory
+const CHAT_STARTERS = {
+  guard: 'Ask about recent disturbances or if anything unusual has happened.',
+  bartender: 'Ask about the town gossip or who has been acting strangely.',
+  merchant: 'Ask about their trade or the other villagers.',
+  herbalist: 'Ask about the village or if anyone has needed remedies lately.',
+  priest: 'Ask about the congregation or anyone who seems troubled.',
+  blacksmith: 'Ask about their work or who they have seen today.',
+  bard: 'Ask about stories or what they have observed in town.',
+  judge: 'Ask about the state of justice or any pending matters.',
+};
+
+function restoreChatMessages(a) {
   const msgDiv = document.getElementById('chat-messages');
-  finalizeChatStream(); // flush any pending stream from previous chat
+  finalizeChatStream();
   const history = a.chatHistory || [];
   msgDiv.innerHTML = '';
-
   if (history.length > 0) {
     renderChatHistory(msgDiv, history);
     msgDiv.classList.add('has-messages');
@@ -1457,32 +1475,18 @@ function openChat(npcId) {
       }
     });
   } else {
-    // First conversation — show conversation starter hint
-    const starters = {
-      guard: 'Ask about recent disturbances or if anything unusual has happened.',
-      bartender: 'Ask about the town gossip or who has been acting strangely.',
-      merchant: 'Ask about their trade or the other villagers.',
-      herbalist: 'Ask about the village or if anyone has needed remedies lately.',
-      priest: 'Ask about the congregation or anyone who seems troubled.',
-      blacksmith: 'Ask about their work or who they have seen today.',
-      bard: 'Ask about stories or what they have observed in town.',
-      judge: 'Ask about the state of justice or any pending matters.',
-    };
-    const starter = starters[a.role] || 'Introduce yourself and ask about the town.';
+    const starter = CHAT_STARTERS[a.role] || 'Introduce yourself and ask about the town.';
     msgDiv.innerHTML = `<div style="opacity:0.5;font-style:italic;padding:8px;font-size:11px">${starter}</div>`;
     msgDiv.style.height = 'auto';
     msgDiv.classList.remove('has-messages');
   }
+}
 
-  // Mark new conversation session
-  a._chatSession = `Day ${state.day}, ${state.time}`;
-
-  // Shop button — show if NPC has shop
+function setupShopButton(npcId, a) {
   const shopBtn = document.getElementById('btn-shop');
   if (a.hasShop) {
     shopBtn.style.display = 'inline-block';
     shopBtn.classList.remove('glow');
-    // Pre-load shop data from agent profile
     fetch(`/api/agent/${npcId}`).then(r => r.json()).then(d => {
       if (d.shop) state._shopData = { agentId: npcId, npcName: d.name, items: d.shop };
     }).catch(err => console.warn('[Fetch]', err));
@@ -1490,18 +1494,17 @@ function openChat(npcId) {
     shopBtn.style.display = 'none';
     state._shopData = null;
   }
+}
 
-  // Player footer — portrait avatar (same style as NPC)
+function setupPlayerFooter() {
   const playerAvNum = AVATAR_MAP['player'] || '01';
   document.getElementById('chat-player-avatar').src = `/assets/tinyswords/UI%20Elements/UI%20Elements/Human%20Avatars/Avatars_${playerAvNum}.png`;
-  // Location
   const playerLoc = Object.entries(LOCATIONS).find(([id]) => {
     const z = LOCATIONS[id];
     const dx = state.player.x - z.px, dy = state.player.y - z.py;
-    return Math.sqrt(dx*dx + dy*dy) < 300;
+    return Math.sqrt(dx*dx + dy*dy) < LOCATION_DETECT_RADIUS;
   });
   document.getElementById('chat-player-loc').textContent = playerLoc ? playerLoc[1].label : '';
-  // Mood + beliefs from server
   fetch('/api/player').then(r => r.json()).then(pd => {
     const moodEl = document.getElementById('chat-player-mood');
     if (moodEl) {
@@ -1511,11 +1514,24 @@ function openChat(npcId) {
     const belEl = document.getElementById('chat-player-beliefs');
     if (belEl) belEl.textContent = `${pd.beliefs ?? 0} beliefs`;
   }).catch(err => console.warn('[Fetch]', err));
+}
 
-  // Show panel
+function openChat(npcId) {
+  state.chatOpen = true; state.chatNpcId = npcId;
+  sendWS({ type: 'chat_open', agentId: npcId });
+  document.getElementById('examine-panel').style.display = 'none';
+  clearEvidenceSelection();
+  const a = state.agents[npcId];
+  if (!a) return;
+
+  setupChatNpcDisplay(npcId, a);
+  fetchChatBars(npcId, a);
+  restoreChatMessages(a);
+  a._chatSession = `Day ${state.day}, ${state.time}`;
+  setupShopButton(npcId, a);
+  setupPlayerFooter();
+
   document.getElementById('chat-panel').classList.add('open');
-
-  // Save current zoom and smoothly transition to NPC
   state._preZoom = state.camera.zoom;
   state._chatZoomTarget = Math.max(state.camera.zoom, 1.5);
   state._chatCamTarget = { x: a.x, y: a.y };
@@ -1589,7 +1605,7 @@ function dismissHint() {
 
 let _lastRenderedMood = null;
 function updateChatMoodBar(mood) {
-  if (_lastRenderedMood !== null && Math.abs(mood - _lastRenderedMood) < 0.01) return;
+  if (_lastRenderedMood !== null && Math.abs(mood - _lastRenderedMood) < MOOD_RENDER_SKIP) return;
   _lastRenderedMood = mood;
   const pct = (mood + 1) / 2 * 100;
   const bar = document.getElementById('chat-mood-bar');
@@ -1695,7 +1711,8 @@ async function fetchMindData(npcId, section) {
     }
     case 'relationships': {
       const res = await fetch(`/api/relationships/${npcId}`);
-      const data = await res.json();
+      const raw = await res.json();
+      const data = Array.isArray(raw) ? raw : [];
       document.getElementById('mind-relationships-count').textContent = `(${data.length})`;
       return data;
     }
@@ -1714,102 +1731,109 @@ async function fetchMindData(npcId, section) {
   }
 }
 
+// ─── Mind Section Helpers ───
+const TRAIT_COLORS = { O: '#a080d0', C: '#60a0d0', E: '#d0a040', A: '#60c080', N: '#d06060', H: '#40a0a0' };
+const ENNE_NAMES = {1:'Perfectionist',2:'Helper',3:'Achiever',4:'Individualist',5:'Investigator',6:'Loyalist',7:'Enthusiast',8:'Challenger',9:'Peacemaker'};
+
+function beliefConfColor(pct) { return pct > BELIEF_CONFIDENCE_HIGH ? '#6aba6a' : pct > 30 ? '#ba8a4a' : '#6a6a6a'; }
+function sentimentColor(val) { return val > 0.2 ? '#6aba6a' : val < -0.2 ? '#ba4a4a' : '#8a8a6a'; }
+
+function renderBeliefItem(b) {
+  const pct = Math.round((b.confidence ?? 0) * 100);
+  const div = document.createElement('div');
+  div.className = 'belief-item';
+  div.innerHTML = `
+    <span class="belief-type">${escapeHTML(b.eventType || '?')}</span>
+    <div class="belief-conf"><div class="belief-conf-fill" style="width:${pct}%;background:${beliefConfColor(pct)}"></div></div>
+    <span class="belief-text">${escapeHTML(b.subject || '?')}${b.object ? ' → ' + escapeHTML(b.object) : ''}</span>
+    <span class="belief-source">${escapeHTML(b.source || '')}</span>
+  `;
+  return div;
+}
+
+function renderRelItem(r) {
+  const sentPct = ((r.sentiment + 1) / 2) * 100;
+  const trustPct = r.trust * 100;
+  const div = document.createElement('div');
+  div.className = 'rel-item';
+  div.innerHTML = `
+    <span class="rel-name">${escapeHTML(r.targetName)}</span>
+    <span class="rel-type-badge">${escapeHTML(r.type)}</span>
+    <div class="rel-bars">
+      <div class="rel-bar"><span class="rel-bar-label">S</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${sentPct}%;background:${sentimentColor(r.sentiment)}"></div></div><span class="rel-bar-val">${r.sentiment.toFixed(1)}</span></div>
+      <div class="rel-bar"><span class="rel-bar-label">T</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${trustPct}%;background:#4a7aba"></div></div><span class="rel-bar-val">${r.trust.toFixed(1)}</span></div>
+    </div>
+  `;
+  return div;
+}
+
+function renderGoalItem(g) {
+  const div = document.createElement('div');
+  div.className = 'goal-item';
+  div.innerHTML = `
+    <span class="goal-state ${g.state}">${escapeHTML(g.state)}</span>
+    <span class="goal-text">${escapeHTML(g.type)}</span>
+    <span class="goal-progress">${g.currentStep + 1}/${g.totalSteps}</span>
+  `;
+  return div;
+}
+
+function renderPersonalitySection(data, container) {
+  const bf = data.bigFive;
+  for (const [key, label] of [['openness','O'],['conscientiousness','C'],['extraversion','E'],['agreeableness','A'],['neuroticism','N'],['honesty','H']]) {
+    const val = bf[key] ?? 0;
+    const div = document.createElement('div');
+    div.className = 'trait-row';
+    div.innerHTML = `
+      <span class="trait-label" style="color:${TRAIT_COLORS[label]}">${label}</span>
+      <div class="trait-bar-bg"><div class="trait-bar-fill" style="width:${val*100}%;background:${TRAIT_COLORS[label]}"></div></div>
+      <span class="trait-val">${val.toFixed(2)}</span>
+    `;
+    container.appendChild(div);
+  }
+  if (data.enneagram) {
+    const e = data.enneagram;
+    const typeName = ENNE_NAMES[e.type] || e.type;
+    const d1 = document.createElement('div');
+    d1.className = 'enne-line';
+    d1.innerHTML = `<span class="enne-label">Type</span> ${e.type}w${e.wing} ${escapeHTML(typeName)}`;
+    container.appendChild(d1);
+    if (e.coreFear) {
+      const d2 = document.createElement('div');
+      d2.className = 'enne-line';
+      d2.innerHTML = `<span class="enne-label">Fear</span> ${escapeHTML(e.coreFear)}`;
+      container.appendChild(d2);
+    }
+    if (e.coreDesire) {
+      const d3 = document.createElement('div');
+      d3.className = 'enne-line';
+      d3.innerHTML = `<span class="enne-label">Desire</span> ${escapeHTML(e.coreDesire)}`;
+      container.appendChild(d3);
+    }
+  }
+}
+
 function renderMindSection(section, data, container) {
   container.innerHTML = '';
   if (!data) return;
 
   switch (section) {
-    case 'beliefs': {
+    case 'beliefs':
       if (data.length === 0) { container.innerHTML = '<div class="mind-loading">No beliefs</div>'; return; }
-      for (const b of data) {
-        const pct = Math.round((b.confidence ?? 0) * 100);
-        const div = document.createElement('div');
-        div.className = 'belief-item';
-        div.innerHTML = `
-          <span class="belief-type">${escapeHTML(b.eventType || '?')}</span>
-          <div class="belief-conf"><div class="belief-conf-fill" style="width:${pct}%;background:${pct>60?'#6aba6a':pct>30?'#ba8a4a':'#6a6a6a'}"></div></div>
-          <span class="belief-text">${escapeHTML(b.subject || '?')}${b.object ? ' → ' + escapeHTML(b.object) : ''}</span>
-          <span class="belief-source">${escapeHTML(b.source || '')}</span>
-        `;
-        container.appendChild(div);
-      }
+      for (const b of data) container.appendChild(renderBeliefItem(b));
       break;
-    }
-
-    case 'relationships': {
+    case 'relationships':
       if (data.length === 0) { container.innerHTML = '<div class="mind-loading">No relationships</div>'; return; }
-      for (const r of data) {
-        const sentPct = ((r.sentiment + 1) / 2) * 100; // -1..1 → 0..100
-        const trustPct = r.trust * 100;
-        const sentColor = r.sentiment > 0.2 ? '#6aba6a' : r.sentiment < -0.2 ? '#ba4a4a' : '#8a8a6a';
-        const div = document.createElement('div');
-        div.className = 'rel-item';
-        div.innerHTML = `
-          <span class="rel-name">${escapeHTML(r.targetName)}</span>
-          <span class="rel-type-badge">${escapeHTML(r.type)}</span>
-          <div class="rel-bars">
-            <div class="rel-bar"><span class="rel-bar-label">S</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${sentPct}%;background:${sentColor}"></div></div><span class="rel-bar-val">${r.sentiment.toFixed(1)}</span></div>
-            <div class="rel-bar"><span class="rel-bar-label">T</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${trustPct}%;background:#4a7aba"></div></div><span class="rel-bar-val">${r.trust.toFixed(1)}</span></div>
-          </div>
-        `;
-        container.appendChild(div);
-      }
+      for (const r of data) container.appendChild(renderRelItem(r));
       break;
-    }
-
-    case 'goals': {
+    case 'goals':
       if (data.length === 0) { container.innerHTML = '<div class="mind-loading">No active goals</div>'; return; }
-      for (const g of data) {
-        const div = document.createElement('div');
-        div.className = 'goal-item';
-        div.innerHTML = `
-          <span class="goal-state ${g.state}">${escapeHTML(g.state)}</span>
-          <span class="goal-text">${escapeHTML(g.type)}${g.ownerName ? '' : ''}</span>
-          <span class="goal-progress">${g.currentStep + 1}/${g.totalSteps}</span>
-        `;
-        container.appendChild(div);
-      }
+      for (const g of data) container.appendChild(renderGoalItem(g));
       break;
-    }
-
-    case 'personality': {
+    case 'personality':
       if (!data.bigFive) { container.innerHTML = '<div class="mind-loading">No personality data</div>'; return; }
-      const bf = data.bigFive;
-      const traitColors = { O: '#a080d0', C: '#60a0d0', E: '#d0a040', A: '#60c080', N: '#d06060', H: '#40a0a0' };
-      for (const [key, label] of [['openness','O'],['conscientiousness','C'],['extraversion','E'],['agreeableness','A'],['neuroticism','N'],['honesty','H']]) {
-        const val = bf[key] ?? 0;
-        const div = document.createElement('div');
-        div.className = 'trait-row';
-        div.innerHTML = `
-          <span class="trait-label" style="color:${traitColors[label]}">${label}</span>
-          <div class="trait-bar-bg"><div class="trait-bar-fill" style="width:${val*100}%;background:${traitColors[label]}"></div></div>
-          <span class="trait-val">${val.toFixed(2)}</span>
-        `;
-        container.appendChild(div);
-      }
-      if (data.enneagram) {
-        const e = data.enneagram;
-        const enneNames = {1:'Perfectionist',2:'Helper',3:'Achiever',4:'Individualist',5:'Investigator',6:'Loyalist',7:'Enthusiast',8:'Challenger',9:'Peacemaker'};
-        const typeName = enneNames[e.type] || e.type;
-        const d1 = document.createElement('div');
-        d1.className = 'enne-line';
-        d1.innerHTML = `<span class="enne-label">Type</span> ${e.type}w${e.wing} ${escapeHTML(typeName)}`;
-        container.appendChild(d1);
-        if (e.coreFear) {
-          const d2 = document.createElement('div');
-          d2.className = 'enne-line';
-          d2.innerHTML = `<span class="enne-label">Fear</span> ${escapeHTML(e.coreFear)}`;
-          container.appendChild(d2);
-        }
-        if (e.coreDesire) {
-          const d3 = document.createElement('div');
-          d3.className = 'enne-line';
-          d3.innerHTML = `<span class="enne-label">Desire</span> ${escapeHTML(e.coreDesire)}`;
-          container.appendChild(d3);
-        }
-      }
+      renderPersonalitySection(data, container);
       break;
-    }
   }
 }
 
@@ -2091,9 +2115,9 @@ function onCanvasClick(e) {
     if (!a.alive) continue;
     if (a.status && a.status !== 'free' && a.status !== '') continue;
     const dx = wx - a.x, dy = wy - a.y;
-    if (Math.abs(dx) < 30 && Math.abs(dy) < 40) {
+    if (Math.abs(dx) < WAYPOINT_TOLERANCE_X && Math.abs(dy) < WAYPOINT_TOLERANCE_Y) {
       const distToNpc = Math.sqrt((state.player.x - a.x)**2 + (state.player.y - a.y)**2);
-      if (distToNpc < 100) {
+      if (distToNpc < INTERACT_RADIUS) {
         openChat(id);
       } else {
         // Walk to NPC, open chat on arrival
@@ -2117,7 +2141,7 @@ function onCanvasMouseMove(e) {
   state.hoveredNpc = null;
   for (const [id, a] of Object.entries(state.agents)) {
     if (!a.alive) continue;
-    if (Math.abs(wx - a.x) < 30 && Math.abs(wy - a.y) < 40) {
+    if (Math.abs(wx - a.x) < WAYPOINT_TOLERANCE_X && Math.abs(wy - a.y) < WAYPOINT_TOLERANCE_Y) {
       state.hoveredNpc = id;
       const tip = document.getElementById('tooltip');
       tip.style.display = 'block';
@@ -2278,7 +2302,7 @@ function update(dt) {
             const a = state.agents[npcId];
             if (a) {
               const d = Math.sqrt((state.player.x-a.x)**2 + (state.player.y-a.y)**2);
-              if (d < 120) openChat(npcId);
+              if (d < INTERACT_RADIUS * 1.2) openChat(npcId);
             }
           }
         }

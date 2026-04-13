@@ -280,7 +280,7 @@ export class TopicEngine {
     this.dayConversationCount = 0;
   }
 
-  toJSON(): object {
+  toJSON(): { topicHistory: Record<string, string[]>; dayDistribution: Record<string, number>; dayConversationCount: number } {
     const history: Record<string, string[]> = {};
     for (const [key, val] of this.topicHistory) {
       history[key] = val;

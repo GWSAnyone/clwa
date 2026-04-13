@@ -187,9 +187,16 @@ export class PositionManager {
     return data;
   }
 
-  /** Restore positions from save.json */
+  /** Restore positions from save.json — warns on out-of-bounds entries */
   loadFromJSON(data: Record<string, { x: number; y: number }>): void {
     for (const [id, { x, y }] of Object.entries(data)) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        console.warn(`  [Save] Invalid position for ${id}: (${x}, ${y}) — skipping`);
+        continue;
+      }
+      if (this.zones.size > 0 && !this.validatePosition(x, y)) {
+        console.warn(`  [Save] Out-of-bounds position for ${id}: (${x}, ${y})`);
+      }
       this.positions.set(id, { x, y, inTransit: false });
     }
   }

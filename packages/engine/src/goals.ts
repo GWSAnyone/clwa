@@ -300,10 +300,16 @@ export class GoalManager {
     return result;
   }
 
-  /** Restore goals from a saved snapshot */
+  /** Restore goals from a saved snapshot — validates step actions */
   loadFromJSON(data: Record<string, NpcGoal[]>): void {
+    const BUILT_IN_ACTIONS = new Set(['move_to', 'interact', 'interact_present', 'announce', 'wait']);
     for (const [ownerId, goals] of Object.entries(data)) {
       for (const goal of goals) {
+        const invalidStep = goal.steps?.find(s => !BUILT_IN_ACTIONS.has(s.action) && !getStepHandler(s.action));
+        if (invalidStep) {
+          console.warn(`  [Save] Skipping goal ${goal.id} for ${ownerId} — unknown step action '${invalidStep.action}'`);
+          continue;
+        }
         this.addGoal(goal);
       }
     }
