@@ -107,36 +107,36 @@ export function buildHeatDirective(agent: Agent, ctx: HeatContext): string | nul
   if (heat < 0.05) return null;
 
   const level = getHeatLevel(heat);
-  const victimName = agent.state.beliefs?.getAllBeliefs()
+  const affectedName = agent.state.beliefs?.getAllBeliefs()
     .find(b => isPerpetrator(b.source))?.object ?? 'your victim';
 
   switch (level) {
     case 'desperate':
       return `## EXTREME DANGER\n` +
-        `The investigation is closing in on you. You are almost certain the guard knows what you did to ${victimName}. ` +
+        `The investigation is closing in on you. You are almost certain the guard knows what you did to ${affectedName}. ` +
         `Every moment you stay increases the risk of arrest. You must flee town or find a way to destroy all evidence immediately. ` +
         `Trust no one — anyone could be working with the investigator.`;
 
     case 'panicked':
       return `## HIGH DANGER\n` +
-        `You sense real danger. People are talking about what happened to ${victimName}, and the guard may already be investigating. ` +
+        `You sense real danger. People are talking about what happened to ${affectedName}, and the guard may already be investigating. ` +
         `You should seriously consider laying low — avoid public places, stay away from the crime scene, ` +
         `and think about silencing anyone who might know what you did.`;
 
     case 'anxious':
       return `## GROWING DANGER\n` +
-        `You're increasingly worried about being caught. There may have been witnesses to what you did to ${victimName}, ` +
+        `You're increasingly worried about being caught. There may have been witnesses to what you did to ${affectedName}, ` +
         `and rumors could be spreading. Stay alert — avoid suspicious behavior, consider destroying evidence if any exists, ` +
         `and be ready to deflect if anyone asks questions.`;
 
     case 'uneasy':
       return `## CAUTION\n` +
-        `You're somewhat uneasy about what you did to ${victimName}. You don't know for certain if anyone saw, ` +
+        `You're somewhat uneasy about what you did to ${affectedName}. You don't know for certain if anyone saw, ` +
         `but you can't be sure either. Act normal, avoid the scene of the crime, and keep your ears open for any rumors.`;
 
     case 'safe':
       return `## AWARENESS\n` +
-        `You believe no one knows about what happened with ${victimName}. You feel relatively safe, ` +
+        `You believe no one knows about what happened with ${affectedName}. You feel relatively safe, ` +
         `but some paranoia lingers at the edges of your mind. Stay vigilant.`;
   }
 }

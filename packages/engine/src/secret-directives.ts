@@ -23,12 +23,12 @@ export function buildSecretDirectives(
 
   if (ownCrimes.length > 0) {
     const crime = ownCrimes[ownCrimes.length - 1];
-    const victimName = (crime.payload?.victimName as string) ?? 'someone';
+    const affectedName = (crime.payload?.affectedName as string) ?? 'someone';
     const crimeLabel = getEventLabelSafe(crime.type);
     sections.push(
       `## HIDDEN: You committed ${crimeLabel}\n` +
-      `You committed ${crimeLabel} against ${victimName}. Nobody must find out.\n` +
-      `- If asked about ${victimName} or the ${crimeLabel}: act surprised, deny any involvement.\n` +
+      `You committed ${crimeLabel} against ${affectedName}. Nobody must find out.\n` +
+      `- If asked about ${affectedName} or the ${crimeLabel}: act surprised, deny any involvement.\n` +
       `- If confronted with evidence pointing to you: become defensive, try to explain it away.\n` +
       `- If pressed hard: show cracks — nervous pauses, contradictions — but do NOT confess easily.\n` +
       `- You may try to redirect suspicion to someone else if it feels natural.`,
@@ -74,7 +74,7 @@ export function buildSecretDirectives(
       if (!suspectId) continue;
 
       const suspectAgent = agents.get(suspectId);
-      const suspectName = suspectAgent?.profile.name ?? suspectId;
+      const perpetratorName = suspectAgent?.profile.name ?? suspectId;
       const rel = agent.state.relationships?.getRelationship(suspectId);
       const sentiment = rel?.sentiment ?? 0;
 
@@ -82,7 +82,7 @@ export function buildSecretDirectives(
         const justiceCrimeLabel = getEventLabelSafe(wb.eventType, 'a crime');
         sections.push(
           `## HIDDEN: You want justice\n` +
-          `You have information about ${justiceCrimeLabel} and you suspect ${suspectName}.\n` +
+          `You have information about ${justiceCrimeLabel} and you suspect ${perpetratorName}.\n` +
           `- You are eager to share what you know — even volunteer details without being asked.\n` +
           `- You may exaggerate slightly to make sure the guilty party is caught.`,
         );

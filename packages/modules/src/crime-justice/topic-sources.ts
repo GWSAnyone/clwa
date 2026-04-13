@@ -318,8 +318,8 @@ export const suspicionTopics: TopicSource = (init, resp, ctx) => {
 
   for (const belief of suspectBeliefs.slice(0, 2)) {
     const crimeLabel = getEventLabel(belief.eventType) ?? 'crime';
-    const suspectName = ctx.agents?.get(belief.subject!)?.profile.name ?? belief.subject;
-    const victimName = belief.object ? (ctx.agents?.get(belief.object)?.profile.name ?? belief.object) : null;
+    const perpetratorName = ctx.agents?.get(belief.subject!)?.profile.name ?? belief.subject;
+    const affectedName = belief.object ? (ctx.agents?.get(belief.object)?.profile.name ?? belief.object) : null;
 
     const key = `suspicion:${belief.eventType}:${belief.subject}`;
 
@@ -330,15 +330,15 @@ export const suspicionTopics: TopicSource = (init, resp, ctx) => {
     if (respKnows) {
       proposals.push({
         topicKey: key,
-        subject: `suspicions about ${suspectName}`,
+        subject: `suspicions about ${perpetratorName}`,
         tone: 'conspiratorial, careful',
         moodValence: -0.01,
         mentionedNpcId: belief.subject!,
         sentimentValence: -0.05,
         weight: 5,
-        beliefTransfer: { eventType: belief.eventType, object: victimName ?? undefined, confidenceMultiplier: 0.6 },
-        initiatorHook: `You suspect ${suspectName} is involved in the ${crimeLabel}${victimName ? ` of ${victimName}` : ''}. ${resp.profile.name} seems to know something too. Compare notes carefully.`,
-        responderHook: `You also have suspicions about ${suspectName}. Share what you know, but be careful.`,
+        beliefTransfer: { eventType: belief.eventType, object: affectedName ?? undefined, confidenceMultiplier: 0.6 },
+        initiatorHook: `You suspect ${perpetratorName} is involved in the ${crimeLabel}${affectedName ? ` of ${affectedName}` : ''}. ${resp.profile.name} seems to know something too. Compare notes carefully.`,
+        responderHook: `You also have suspicions about ${perpetratorName}. Share what you know, but be careful.`,
         category: 'conflict',
       });
     } else {
@@ -350,8 +350,8 @@ export const suspicionTopics: TopicSource = (init, resp, ctx) => {
         mentionedNpcId: belief.subject!,
         sentimentValence: -0.03,
         weight: 4,
-        beliefTransfer: { eventType: belief.eventType, object: victimName ?? undefined, confidenceMultiplier: 0.3 },
-        initiatorHook: `You have your suspicions about the ${crimeLabel}${victimName ? ` involving ${victimName}` : ''}. Hint at what you think without naming names directly — feel out whether ${resp.profile.name} might know something.`,
+        beliefTransfer: { eventType: belief.eventType, object: affectedName ?? undefined, confidenceMultiplier: 0.3 },
+        initiatorHook: `You have your suspicions about the ${crimeLabel}${affectedName ? ` involving ${affectedName}` : ''}. Hint at what you think without naming names directly — feel out whether ${resp.profile.name} might know something.`,
         responderHook: `${init.profile.name} seems to be hinting at something about recent events. Try to understand what they know.`,
         category: 'conflict',
       });

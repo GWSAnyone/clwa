@@ -77,7 +77,7 @@ export interface EventBoost {
  * Location fields: '$target' | '$home' | '$extra.KEY' | literal string.
  * TargetId fields: '$target' | literal string.
  * String fields (purpose, message, reason): interpolation with {varName:fallback}.
- * Variables: targetName, targetId, targetLocation, reason, suspectName, victimName,
+ * Variables: targetName, targetId, targetLocation, reason, perpetratorName, affectedName,
  *   crimeLocation, crimeType, relationship, relationshipDesc, + all target.extra keys.
  */
 export interface StepTemplate {
@@ -277,8 +277,8 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
     (b: Belief) => isTransferable(b.eventType) && b.confidence >= 0.3,
   );
   if (crimeBelief) {
-    if (crimeBelief.subject) { extra.suspectName = crimeBelief.subject; }
-    if (crimeBelief.object) extra.victimName = crimeBelief.object;
+    if (crimeBelief.subject) { extra.perpetratorName = crimeBelief.subject; }
+    if (crimeBelief.object) extra.affectedName = crimeBelief.object;
     if (crimeBelief.location) extra.crimeLocation = crimeBelief.location;
     extra.crimeType = getEventLabelSafe(crimeBelief.eventType);
   }

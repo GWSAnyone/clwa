@@ -488,9 +488,9 @@ async function createGameContext(
         console.log(`  [Goal] ${action.ownerName}: ${action.description}`);
         broadcast({ type: 'goal:action', data: action });
       },
-      onMurder: (killerId, victimId, killerName, victimName) => {
-        console.log(`  [MURDER] ${killerName} killed ${victimName}!`);
-        broadcast({ type: 'murder', data: { killerId, victimId, killerName, victimName } });
+      onMurder: (killerId, victimId, killerName, affectedName) => {
+        console.log(`  [MURDER] ${killerName} killed ${affectedName}!`);
+        broadcast({ type: 'murder', data: { killerId, victimId, killerName, affectedName } });
       },
       onLlmCall: (reason, target) => {
         broadcast({ type: 'debug:llm', data: { reason, target } });

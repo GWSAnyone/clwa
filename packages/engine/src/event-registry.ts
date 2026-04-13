@@ -563,7 +563,7 @@ export function getRoleTopicPool(role: string): RoleTopicDef[] {
 export interface DiscoveryContext {
   discoverer: Agent;
   victimId: string;
-  victimName: string;
+  affectedName: string;
   location: string;
   gameDay: number;
   /** Event type from associated scene (e.g., 'NPC_KILLED'). null if no scene. */
@@ -596,7 +596,7 @@ export function getRumorEventType(): string | null {
 
 // ─── CG Belief Creators ───
 // Modules register how beliefs are created from CG consequence types
-export type BeliefCreatorFn = (agent: Agent, event: WorldEvent, rule: ConsequenceRule, crimeEventType: string, killer: string | null, victimName: string | null) => void;
+export type BeliefCreatorFn = (agent: Agent, event: WorldEvent, rule: ConsequenceRule, crimeEventType: string, perpetrator: string | null, affectedName: string | null) => void;
 
 const BELIEF_CREATORS: Map<string, BeliefCreatorFn> = new Map();
 
@@ -609,7 +609,7 @@ export function getBeliefCreator(consequenceType: string): BeliefCreatorFn | nul
 }
 
 // ─── CG Memory Text Builders ───
-export type MemoryTextBuilderFn = (event: WorldEvent, killer: string, victimName: string) => string;
+export type MemoryTextBuilderFn = (event: WorldEvent, perpetrator: string, affectedName: string) => string;
 
 const MEMORY_TEXT_BUILDERS: Map<string, MemoryTextBuilderFn> = new Map();
 
@@ -718,6 +718,29 @@ export function getSecretDirectiveBuilders(): SecretDirectiveBuilderFn[] {
   return SECRET_DIRECTIVE_BUILDERS;
 }
 
+
+// ─── Consequence Post-Handlers ───
+// Modules register handlers that run AFTER CG consequence is applied to each target.
+// Replaces inline grief/sentiment logic in cg-engine — engine delegates behavioral response to modules.
+
+export type ConsequencePostHandlerFn = (ctx: {
+  targetId: string;
+  agent: Agent;
+  rule: ConsequenceRule;
+  event: import('./cg-types').WorldEvent;
+  agents: Map<string, Agent>;
+  addMoodModifier?: (npcId: string, mod: { source: string; category: string; magnitude: number; remaining: number; duration: number; decay: 'exponential' | 'linear' | 'none' }) => void;
+}) => void;
+
+const CONSEQUENCE_POST_HANDLERS: ConsequencePostHandlerFn[] = [];
+
+export function registerConsequencePostHandler(handler: ConsequencePostHandlerFn): void {
+  CONSEQUENCE_POST_HANDLERS.push(handler);
+}
+
+export function getConsequencePostHandlers(): ConsequencePostHandlerFn[] {
+  return CONSEQUENCE_POST_HANDLERS;
+}
 
 // ─── Pressure Type Registry ───
 // Modules register valid emotional pressure types (for IL JSON schema constrained decoding).

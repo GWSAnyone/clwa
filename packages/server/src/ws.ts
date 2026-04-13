@@ -14,7 +14,7 @@ export type WSMessage =
   | { type: 'state:update'; data: { agentId: string; mood: number; alive: boolean; location: string } }
   | { type: 'movement'; data: MovementResult[] }
   | { type: 'goal:action'; data: GoalActionResult }
-  | { type: 'murder'; data: { killerId: string; victimId: string; killerName: string; victimName: string } }
+  | { type: 'murder'; data: { killerId: string; victimId: string; killerName: string; affectedName: string } }
   | { type: 'intent'; data: { agentId: string; intent: string; targetNpc?: string; detail?: string } }
   | { type: 'shop:open'; data: { agentId: string; npcName: string; items: Array<{ id: string; name: string; price: number; description: string }> } }
   | { type: 'crime:scene'; data: { id: string; locationId: string; crimeType: string; pointCount: number } }

@@ -468,7 +468,7 @@ export interface PresentedEvidence {
   evidenceWeight?: number;
   eventType?: string;
   suspectId?: string;
-  suspectName?: string;
+  perpetratorName?: string;
   victimId?: string;
 }
 
@@ -484,7 +484,7 @@ export interface ConversationSession {
     lastJournalHash: number;
   }>;
   /** Log of formal accusations made in this chat — detects scatter-accusing */
-  formalAccusations: Array<{ suspectId: string; suspectName: string; gameDay: number }>;
+  formalAccusations: Array<{ suspectId: string; perpetratorName: string; gameDay: number }>;
 }
 
 export interface ILEffectContext {
@@ -556,14 +556,14 @@ export function processEvidencePresentation(ctx: ILEffectContext): string {
     ctx.effects.push({
       type: 'belief_created',
       eventType: ev.eventType,
-      subject: ev.suspectName ?? null,
+      subject: ev.perpetratorName ?? null,
       confidence: +confidence.toFixed(2),
       trust: +playerTrust.toFixed(2),
     });
 
     const catLabel = ev.evidenceCategory ?? 'evidence';
-    lines.push(`- "${ev.text}" (${catLabel}${ev.suspectName ? `, pointing to ${ev.suspectName}` : ''})`);
-    console.log(`  [IL] Evidence belief: ${ev.eventType} suspect=${ev.suspectName} conf=${confidence.toFixed(2)} cat=${catLabel} (NOT trust-scaled)`);
+    lines.push(`- "${ev.text}" (${catLabel}${ev.perpetratorName ? `, pointing to ${ev.perpetratorName}` : ''})`);
+    console.log(`  [IL] Evidence belief: ${ev.eventType} suspect=${ev.perpetratorName} conf=${confidence.toFixed(2)} cat=${catLabel} (NOT trust-scaled)`);
   }
 
   if (lines.length === 0) return '';
@@ -581,7 +581,7 @@ export function processEvidencePresentation(ctx: ILEffectContext): string {
 
 export interface AccusationContext {
   suspectId: string;
-  suspectName: string;
+  perpetratorName: string;
   crimeLabel: string;
   journalEvidence: CaseSummary;
   npcMaxConfidence: number;
@@ -610,11 +610,11 @@ export function buildAccusationContext(
   agents: Map<string, Agent>,
 ): AccusationContext {
   const suspectAgent = agents.get(suspectId);
-  const suspectName = suspectAgent?.profile.name ?? suspectId;
+  const perpetratorName = suspectAgent?.profile.name ?? suspectId;
   const crimeLabel = getEventLabelSafe(claimEventType, 'wrongdoing');
 
   // Player's journal evidence
-  const journalEvidence = playerJournal.getCaseSummary(suspectId, suspectName);
+  const journalEvidence = playerJournal.getCaseSummary(suspectId, perpetratorName);
 
   // NPC's own beliefs about suspect
   let npcMaxConfidence = 0;
@@ -641,7 +641,7 @@ export function buildAccusationContext(
     'insufficient';
 
   return {
-    suspectId, suspectName, crimeLabel,
+    suspectId, perpetratorName, crimeLabel,
     journalEvidence, npcMaxConfidence, npcHasOwnEvidence,
     playerTrust, combinedScore, combinedQuality,
   };
@@ -685,7 +685,7 @@ function buildAccusationPrompt(acc: AccusationContext, npc: Agent): string {
 
   return [
     '[FORMAL ACCUSATION]',
-    `The player formally accuses ${acc.suspectName} of ${acc.crimeLabel}.`,
+    `The player formally accuses ${acc.perpetratorName} of ${acc.crimeLabel}.`,
     '',
     'Evidence assessment:',
     `- Player documented evidence: ${acc.journalEvidence.quality} (${evDesc})`,
@@ -833,7 +833,7 @@ export async function applyDialogueMeaning(
             // Multiple suspect detection — unique suspects only
             const prevSuspects = session.formalAccusations.filter(a => a.suspectId !== suspId);
             if (prevSuspects.length > 0) {
-              const prevNames = [...new Set(prevSuspects.map(a => a.suspectName))].join(', ');
+              const prevNames = [...new Set(prevSuspects.map(a => a.perpetratorName))].join(', ');
               const uniqueCount = new Set(prevSuspects.map(a => a.suspectId)).size;
               if (uniqueCount === 1) {
                 sections.push(`Note: this player previously formally accused ${prevNames}. Now they're accusing ${suspName}. Their investigative judgment may be questionable.`);
@@ -844,7 +844,7 @@ export async function applyDialogueMeaning(
               ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.05 });
             }
             if (!session.formalAccusations.some(a => a.suspectId === suspId)) {
-              session.formalAccusations.push({ suspectId: suspId, suspectName: suspName, gameDay: ctx.gameDay });
+              session.formalAccusations.push({ suspectId: suspId, perpetratorName: suspName, gameDay: ctx.gameDay });
             }
           }
 

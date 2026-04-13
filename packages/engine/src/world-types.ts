@@ -103,7 +103,7 @@ export interface TickResult {
   /** Idle reason if no conversation happened */
   idleReason?: string;
   /** Murder that happened this tick (NPC-on-NPC, motivation system) */
-  murder?: { killerId: string; victimId: string; killerName: string; victimName: string };
+  murder?: { killerId: string; victimId: string; killerName: string; affectedName: string };
   /** New crime scene created this tick */
   crimeScene?: { id: string; locationId: string; crimeType: string; pointCount: number };
   /** NPCs that want to approach the player this tick */

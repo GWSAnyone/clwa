@@ -624,10 +624,10 @@ function handleWS(type, data) {
     }
 
     case 'murder':
-      const victim = Object.values(state.agents).find(a => a.name === data.victimName);
+      const victim = Object.values(state.agents).find(a => a.name === data.affectedName);
       if (victim) { victim.alive = false; }
-      addEvent('crime', `${data.killerName} killed ${data.victimName}!`);
-      showToast(`${data.killerName} killed ${data.victimName}!`, 'murder');
+      addEvent('crime', `${data.killerName} killed ${data.affectedName}!`);
+      showToast(`${data.killerName} killed ${data.affectedName}!`, 'murder');
       break;
 
     case 'npc_thought':
@@ -1148,8 +1148,8 @@ function renderJournalEntry(e) {
     meta += `<span class="journal-weight">${e.evidenceWeight.toFixed(2)}</span>`;
   }
   if (e.suspectId) {
-    const suspectName = state.agents[e.suspectId]?.name || e.suspectId;
-    meta += `<span class="journal-suspect-link" onclick="toggleSuspect('${escapeAttr(e.suspectId)}')">${escapeHTML(suspectName)}</span>`;
+    const perpetratorName = state.agents[e.suspectId]?.name || e.suspectId;
+    meta += `<span class="journal-suspect-link" onclick="toggleSuspect('${escapeAttr(e.suspectId)}')">${escapeHTML(perpetratorName)}</span>`;
   }
   if (e.presentedTo && e.presentedTo.length > 0) {
     const names = e.presentedTo.map(id => state.agents[id]?.name || id).join(', ');
@@ -1260,7 +1260,7 @@ async function openCaseReview(npcId) {
 
 function renderCaseReview(data) {
   const body = document.getElementById('journal-body');
-  const name = escapeHTML(data.suspectName || data.suspectId);
+  const name = escapeHTML(data.perpetratorName || data.suspectId);
 
   if (!data.entries || data.entries.length === 0) {
     body.innerHTML = `<div class="case-review">

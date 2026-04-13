@@ -96,7 +96,7 @@ export function registerCrimeEventHandlers(): void {
 
   // WANTED_STATUS: investigator sentiment + criminal awareness
   registerEventHandler('WANTED_STATUS', async (event: WorldEvent, ctx: EventHandlerContext) => {
-    const criminalName = (event.payload?.suspectName as string);
+    const criminalName = (event.payload?.perpetratorName as string);
     if (!criminalName) return;
 
     const criminalEntry = Array.from(ctx.agents.entries())
@@ -138,20 +138,20 @@ export function registerCrimeEventHandlers(): void {
   // Information spread: sentiment toward criminal drops for affected NPCs
   // Registered for all informational event types — module decides the effects
   const informationSentimentHandler = (event: WorldEvent, ctx: EventHandlerContext) => {
-    const criminalName = (event.payload?.suspectName as string);
+    const criminalName = (event.payload?.perpetratorName as string);
     if (!criminalName) return;
     const criminalEntry = Array.from(ctx.agents.entries())
       .find(([, a]) => a.profile.name === criminalName || a.profile.id === criminalName);
     if (!criminalEntry) return;
     const [criminalId] = criminalEntry;
-    const victimName = (event.payload?.victimName as string) ?? null;
+    const affectedName = (event.payload?.affectedName as string) ?? null;
     const affected = (event.payload?.affectedTargets as string[]) ?? [];
     for (const npcId of affected) {
       const agent = ctx.agents.get(npcId);
       if (agent?.state.relationships && npcId !== criminalId) {
         let drop = -0.15;
-        if (victimName) {
-          const victimEntry = Array.from(ctx.agents.entries()).find(([, a]) => a.profile.name === victimName);
+        if (affectedName) {
+          const victimEntry = Array.from(ctx.agents.entries()).find(([, a]) => a.profile.name === affectedName);
           if (victimEntry) {
             const victimRel = agent.state.relationships.getRelationship(victimEntry[0]);
             if (victimRel && victimRel.sentiment > 0.1) {
@@ -187,7 +187,7 @@ export function registerCrimeEventHandlers(): void {
 
   // NPC_ARRESTED: create beliefs for all NPCs + trust evolution for player claims
   registerEventHandler('NPC_ARRESTED', (event: WorldEvent, ctx: EventHandlerContext) => {
-    const suspectName = (event.payload?.suspectName as string) ?? null;
+    const perpetratorName = (event.payload?.perpetratorName as string) ?? null;
     const affected = (event.payload?.affectedTargets as string[]) ?? [];
     for (const npcId of affected) {
       const agent = ctx.agents.get(npcId);
@@ -195,7 +195,7 @@ export function registerCrimeEventHandlers(): void {
         id: crypto.randomUUID(),
         eventType: 'NPC_ARRESTED',
         subject: event.subject ?? null,
-        object: event.object ?? suspectName,
+        object: event.object ?? perpetratorName,
         location: event.location,
         confidence: 0.8,
         source: npcId === event.subject ? 'observation' : 'rumor',
@@ -216,14 +216,14 @@ export function registerCrimeEventHandlers(): void {
       const claims = findPlayerClaimsAbout(agent, playerId, suspectId);
       if (claims.length > 0) {
         agent.state.relationships?.adjustTrust(playerId, 0.08);
-        console.log(`  [Trust] ${agent.profile.name} trust in player +0.08 (arrest confirmed claim about ${suspectName})`);
+        console.log(`  [Trust] ${agent.profile.name} trust in player +0.08 (arrest confirmed claim about ${perpetratorName})`);
       }
     }
   });
 
   // NPC_SENTENCED: beliefs + trust evolution + verdict-conditional belief zeroing/scene cleanup
   registerEventHandler('NPC_SENTENCED', (event: WorldEvent, ctx: EventHandlerContext) => {
-    const suspectName = (event.payload?.suspectName as string) ?? null;
+    const perpetratorName = (event.payload?.perpetratorName as string) ?? null;
     const suspectId = event.object;
     const verdict = (event.payload?.verdict as string) ?? 'unknown';
     const affected = (event.payload?.affectedTargets as string[]) ?? [];
@@ -283,7 +283,7 @@ export function registerCrimeEventHandlers(): void {
             }
           }
         }
-        console.log(`  [CaseResolution] ${verdict}: beliefs zeroed, scenes deactivated for ${suspectName}`);
+        console.log(`  [CaseResolution] ${verdict}: beliefs zeroed, scenes deactivated for ${perpetratorName}`);
       } else if (verdict === 'fine') {
         // PARTIAL resolution: reduce beliefs but don't zero — stigma remains
         const suspect2 = ctx.agents.get(suspectId);
@@ -297,7 +297,7 @@ export function registerCrimeEventHandlers(): void {
               }
             }
           }
-          console.log(`  [CaseResolution] fine: beliefs reduced for ${suspectName}`);
+          console.log(`  [CaseResolution] fine: beliefs reduced for ${perpetratorName}`);
         }
       }
       // warning, release: NO belief zeroing — suspicions remain
@@ -316,13 +316,13 @@ export function registerCrimeEventHandlers(): void {
       if (verdict === 'exile' || verdict === 'imprisonment') {
         const boost = verdict === 'exile' ? 0.12 : 0.08;
         agent.state.relationships?.adjustTrust(playerId, boost);
-        console.log(`  [Trust] ${agent.profile.name} trust +${boost} (${verdict} confirmed claim about ${suspectName})`);
+        console.log(`  [Trust] ${agent.profile.name} trust +${boost} (${verdict} confirmed claim about ${perpetratorName})`);
       } else if (verdict === 'fine' || verdict === 'warning') {
         agent.state.relationships?.adjustTrust(playerId, 0.04);
-        console.log(`  [Trust] ${agent.profile.name} trust +0.04 (${verdict} partially confirmed claim about ${suspectName})`);
+        console.log(`  [Trust] ${agent.profile.name} trust +0.04 (${verdict} partially confirmed claim about ${perpetratorName})`);
       } else if (verdict === 'release') {
         agent.state.relationships?.adjustTrust(playerId, -0.15);
-        console.log(`  [Trust] ${agent.profile.name} trust -0.15 (acquittal refuted claim about ${suspectName})`);
+        console.log(`  [Trust] ${agent.profile.name} trust -0.15 (acquittal refuted claim about ${perpetratorName})`);
       }
     }
   });

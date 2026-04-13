@@ -50,7 +50,7 @@ export interface WorldCallbacks {
   /** Called when a goal action is executed */
   onGoalAction?: (action: GoalActionResult) => void;
   /** Called when an NPC commits murder (motivation system) */
-  onMurder?: (killerId: string, victimId: string, killerName: string, victimName: string) => void;
+  onMurder?: (killerId: string, victimId: string, killerName: string, affectedName: string) => void;
   /** Called when a new crime scene is created */
   onCrimeScene?: (scene: CrimeScene) => void;
   /** Called before an LLM call (for debug UI) */
@@ -1044,7 +1044,7 @@ export class World {
       if (sceneType) this.markCrimeScene(crimeData.location, sceneType, crimeData.subject, crimeData.object, sceneWitnesses, crimeData.type);
       if (isDeathEvent(crimeData.type) && crimeData.object) {
         this.callbacks.onMurder?.(crimeData.subject, crimeData.object,
-          crimeData.payload.suspectName as string, crimeData.payload.victimName as string);
+          crimeData.payload.perpetratorName as string, crimeData.payload.affectedName as string);
       }
       const elCtx: EvidenceContext = { event: crimeEvent, agents: this.agents, crimeScenes: this.crimeScenes };
       this.evidence.generate(crimeEvent, elCtx);
@@ -1360,14 +1360,14 @@ export class World {
         // This NPC just discovered a body!
         this.bodyDiscoveries.add(key);
 
-        const victimName = dead.agent.profile.name;
+        const affectedName = dead.agent.profile.name;
         // Find crime scene for this victim to get eventType
         const victimScene = Array.from(this.crimeScenes.values()).flat()
           .find(s => s.victimId === dead.id && s.active);
         const deathEventType = victimScene?.eventType ?? victimScene?.crimeType;
 
         // BODY_DISCOVERED represents what the discoverer knows:
-        // victim identity + location. suspectName unknown.
+        // victim identity + location. perpetratorName unknown.
         const discoveryEvent: WorldEvent = {
           id: crypto.randomUUID(),
           type: bodyDiscoveryType,
@@ -1378,8 +1378,8 @@ export class World {
           importance: 8,
           payload: {
             discoveredBy: agent.profile.name,
-            victimName,
-            suspectName: null,
+            affectedName,
+            perpetratorName: null,
           },
         };
 
@@ -1392,7 +1392,7 @@ export class World {
             await discoveryHandler({
               discoverer: agent,
               victimId: dead.id,
-              victimName,
+              affectedName,
               location: agent.state.location,
               gameDay: this.getCurrentDay(),
               deathEventType: deathEventType ?? null,
@@ -1426,7 +1426,7 @@ export class World {
         // Creating WITNESS_MEMORY here caused bogus WANTED_STATUS via CG cascade
         // (subject=discoverer instead of subject=suspect).
 
-        console.log(`  [Discovery] ${agent.profile.name} found the body of ${victimName} at ${agent.state.location}`);
+        console.log(`  [Discovery] ${agent.profile.name} found the body of ${affectedName} at ${agent.state.location}`);
       }
     }
   }
@@ -1516,7 +1516,7 @@ export class World {
     const killer = killerId ? this.agents.get(killerId) : null;
     const playerAgent = this.playerAgent;
     const killerSubject = killerId ?? playerAgent?.profile.id ?? 'unknown';
-    const suspectName = killer ? killer.profile.name : (playerAgent?.profile.name ?? 'unknown');
+    const perpetratorName = killer ? killer.profile.name : (playerAgent?.profile.name ?? 'unknown');
 
     victim.state.alive = false;
     this.addModifier(victim.profile.id, { source: 'death', category: 'event',
@@ -1541,10 +1541,10 @@ export class World {
       gameDay: this.getCurrentDay(),
       importance: 9,
       payload: {
-        suspectName,
+        perpetratorName,
         killerRole: killer?.profile.role,
-        victimName: victim.profile.name,
-        victimRole: victim.profile.role,
+        affectedName: victim.profile.name,
+        affectedRole: victim.profile.role,
       },
     };
 

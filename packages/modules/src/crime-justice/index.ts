@@ -28,6 +28,7 @@ import {
   registerBlockingGoalTypes,
   registerRelationshipLabels,
   registerSecretDirectiveBuilder,
+  registerConsequencePostHandler,
 } from '@clwa/engine';
 import type { Belief, WorldEvent } from '@clwa/engine';
 import { buildHeatDirective, computeHeat } from './heat';
@@ -185,7 +186,7 @@ export function registerCrimeJusticeModule(): void {
     // Memory: discoverer's first-person account
     const locationName = ctx.location; // ID — engine resolves display name in prompt
     await ctx.discoverer.observe(
-      `I discovered the body of ${ctx.victimName} at ${locationName}! They appear to have been murdered. I need to tell someone about this immediately.`,
+      `I discovered the body of ${ctx.affectedName} at ${locationName}! They appear to have been murdered. I need to tell someone about this immediately.`,
       8,
     );
     // Mood: direct trauma (stronger than cascade's -0.15)
@@ -196,7 +197,7 @@ export function registerCrimeJusticeModule(): void {
         id: crypto.randomUUID(),
         eventType: ctx.deathEventType,
         subject: null, // suspect unknown
-        object: ctx.victimName,
+        object: ctx.affectedName,
         location: ctx.location,
         confidence: 0.7,
         source: BELIEF_SOURCE.BODY_DISCOVERY,
@@ -360,29 +361,29 @@ export function registerCrimeJusticeModule(): void {
   });
 
   // CG belief creators — how beliefs are created from consequence types
-  registerBeliefCreator('WITNESS_MEMORY', (agent, event, rule, crimeEventType, killer, victimName) => {
+  registerBeliefCreator('WITNESS_MEMORY', (agent, event, rule, crimeEventType, perpetrator, affectedName) => {
     const isUnknown = rule.subjectUnknown === true;
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: crimeEventType,
-      subject: isUnknown ? null : killer, object: victimName,
+      subject: isUnknown ? null : perpetrator, object: affectedName,
       location: event.location, confidence: isUnknown ? 0.7 : 0.95,
       source: isUnknown ? 'body_discovery' : 'witness',
       sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
     });
   });
-  registerBeliefCreator('RUMOR_SPREAD', (agent, event, _rule, crimeEventType, killer, victimName) => {
+  registerBeliefCreator('RUMOR_SPREAD', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: crimeEventType,
-      subject: killer, object: victimName,
+      subject: perpetrator, object: affectedName,
       location: event.location, confidence: 0.4, source: 'rumor',
       sourceNpcId: (event.payload?.reportedBy as string) ?? null,
       gameDay: event.gameDay, lastUpdated: event.gameDay,
     });
   });
-  registerBeliefCreator('WANTED_STATUS', (agent, event, _rule, crimeEventType, killer, victimName) => {
+  registerBeliefCreator('WANTED_STATUS', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: crimeEventType,
-      subject: killer, object: victimName,
+      subject: perpetrator, object: affectedName,
       location: event.location, confidence: 0.8, source: 'testimony',
       sourceNpcId: (event.payload?.reportedBy as string) ?? null,
       gameDay: event.gameDay, lastUpdated: event.gameDay,
@@ -390,98 +391,98 @@ export function registerCrimeJusticeModule(): void {
   });
 
   // CG memory text builders — prose for NPC memories from consequences
-  registerMemoryTextBuilder('WITNESS_MEMORY', (event, killer, victimName) => {
+  registerMemoryTextBuilder('WITNESS_MEMORY', (event, perpetrator, affectedName) => {
     const originalType = event.payload?.originalEventType as string | undefined;
-    if (event.payload?.sourceRule === 'body-discovery-to-witness' || !killer || killer === 'someone unknown') {
-      return `I discovered the body of ${victimName} at ${event.location}! They appear to have been murdered. I don't know who did this.`;
+    if (event.payload?.sourceRule === 'body-discovery-to-witness' || !perpetrator || perpetrator === 'someone unknown') {
+      return `I discovered the body of ${affectedName} at ${event.location}! They appear to have been murdered. I don't know who did this.`;
     }
     // Context-specific witness memories based on what was actually witnessed
     if (originalType === 'EVIDENCE_DESTROYED') {
-      return `I saw ${killer} destroying evidence at ${event.location}. They were clearly trying to hide something. Very suspicious.`;
+      return `I saw ${perpetrator} destroying evidence at ${event.location}. They were clearly trying to hide something. Very suspicious.`;
     }
     if (originalType === 'WITNESS_INTIMIDATED') {
-      return `I saw ${killer} intimidating someone at ${event.location}. They were threatening them to keep quiet. This is disturbing.`;
+      return `I saw ${perpetrator} intimidating someone at ${event.location}. They were threatening them to keep quiet. This is disturbing.`;
     }
     if (originalType === 'ARGUMENT_WITNESSED') {
-      return `I saw ${killer} having a heated argument with ${victimName} at ${event.location}. Tempers were running high.`;
+      return `I saw ${perpetrator} having a heated argument with ${affectedName} at ${event.location}. Tempers were running high.`;
     }
     if (originalType === 'THREAT_WITNESSED') {
-      return `I saw ${killer} directly threatening ${victimName} at ${event.location}. It looked serious — someone could get hurt.`;
+      return `I saw ${perpetrator} directly threatening ${affectedName} at ${event.location}. It looked serious — someone could get hurt.`;
     }
     if (originalType === 'GOODS_STOLEN') {
-      return `I saw ${killer} steal from ${victimName} at ${event.location}. They thought no one was watching.`;
+      return `I saw ${perpetrator} steal from ${affectedName} at ${event.location}. They thought no one was watching.`;
     }
-    return `I witnessed a horrifying event: ${killer} harmed ${victimName} at ${event.location}. I will never forget this.`;
+    return `I witnessed a horrifying event: ${perpetrator} harmed ${affectedName} at ${event.location}. I will never forget this.`;
   });
-  registerMemoryTextBuilder('RUMOR_SPREAD', (_event, killer, victimName) => {
-    return `I heard a disturbing rumor: ${killer} committed a crime against ${victimName}. People are whispering about it.`;
+  registerMemoryTextBuilder('RUMOR_SPREAD', (_event, perpetrator, affectedName) => {
+    return `I heard a disturbing rumor: ${perpetrator} committed a crime against ${affectedName}. People are whispering about it.`;
   });
-  registerMemoryTextBuilder('WANTED_STATUS', (event, killer, victimName) => {
-    return `URGENT: I received reports that ${killer} committed a crime against ${victimName} at ${event.location}. I must investigate immediately.`;
+  registerMemoryTextBuilder('WANTED_STATUS', (event, perpetrator, affectedName) => {
+    return `URGENT: I received reports that ${perpetrator} committed a crime against ${affectedName} at ${event.location}. I must investigate immediately.`;
   });
-  registerBeliefCreator('COVER_UP', (agent, event, _rule, crimeEventType, killer, victimName) => {
+  registerBeliefCreator('COVER_UP', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
     // Witness knows about the crime but chooses to conceal — low-confidence concealment belief
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: crimeEventType,
-      subject: killer, object: victimName,
+      subject: perpetrator, object: affectedName,
       location: event.location, confidence: 0.3, source: 'cover_up',
       sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
     });
   });
-  registerBeliefCreator('REPORT_IMPULSE', (agent, event, _rule, crimeEventType, killer, victimName) => {
+  registerBeliefCreator('REPORT_IMPULSE', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
     // Honest witness — high-confidence firsthand belief, eager to share
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: crimeEventType,
-      subject: killer, object: victimName,
+      subject: perpetrator, object: affectedName,
       location: event.location, confidence: 0.95, source: 'witness',
       sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
     });
   });
-  registerMemoryTextBuilder('COVER_UP', (_event, killer, victimName) => {
-    return `I saw what happened to ${victimName}... but ${killer} is someone I care about. I'll keep what I know to myself.`;
+  registerMemoryTextBuilder('COVER_UP', (_event, perpetrator, affectedName) => {
+    return `I saw what happened to ${affectedName}... but ${perpetrator} is someone I care about. I'll keep what I know to myself.`;
   });
-  registerMemoryTextBuilder('REPORT_IMPULSE', (event, killer, victimName) => {
-    return `I witnessed the crime against ${victimName} at ${event.location}. ${killer} must be held accountable. I need to find the guard immediately.`;
+  registerMemoryTextBuilder('REPORT_IMPULSE', (event, perpetrator, affectedName) => {
+    return `I witnessed the crime against ${affectedName} at ${event.location}. ${perpetrator} must be held accountable. I need to find the guard immediately.`;
   });
-  registerBeliefCreator('REVENGE_IMPULSE', (agent, event, _rule, crimeEventType, killer, victimName) => {
-    // Grief → REVENGE_DESIRE motive toward the killer
-    if (!killer) return;
-    // Find killer agent ID
+  registerBeliefCreator('REVENGE_IMPULSE', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
+    // Grief → REVENGE_DESIRE motive toward the perpetrator
+    if (!perpetrator) return;
+    // Find perpetrator agent ID
     const killerEntry = Array.from(
       (agent.state.beliefs?.getAllBeliefs() ?? []).entries()
     );
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: 'REVENGE_DESIRE',
-      subject: null, object: event.subject, // object = killer ID (perpetrator)
+      subject: null, object: event.subject, // object = perpetrator ID (perpetrator)
       location: event.location, confidence: 0.8,
       source: 'personal_motive', sourceNpcId: null,
       gameDay: event.gameDay, lastUpdated: event.gameDay,
     });
   });
-  registerMemoryTextBuilder('REVENGE_IMPULSE', (_event, killer, victimName) => {
-    return `${victimName} is gone because of ${killer}. A cold fury burns inside me. This cannot go unanswered.`;
+  registerMemoryTextBuilder('REVENGE_IMPULSE', (_event, perpetrator, affectedName) => {
+    return `${affectedName} is gone because of ${perpetrator}. A cold fury burns inside me. This cannot go unanswered.`;
   });
-  registerMemoryTextBuilder('GUARD_WARNING', (_event, killer, _victimName) => {
-    return `The guard took note of the disturbance involving ${killer}. At least someone is paying attention.`;
+  registerMemoryTextBuilder('GUARD_WARNING', (_event, perpetrator, _affectedName) => {
+    return `The guard took note of the disturbance involving ${perpetrator}. At least someone is paying attention.`;
   });
-  registerMemoryTextBuilder('MINOR_INCIDENT_MEMORY', (event, killer, victimName) => {
-    return `I saw ${killer} and ${victimName} having a heated exchange. Tempers were running high — something to keep an eye on.`;
+  registerMemoryTextBuilder('MINOR_INCIDENT_MEMORY', (event, perpetrator, affectedName) => {
+    return `I saw ${perpetrator} and ${affectedName} having a heated exchange. Tempers were running high — something to keep an eye on.`;
   });
-  registerMemoryTextBuilder('ARREST_RESENTMENT', (event, _killer, _victimName) => {
+  registerMemoryTextBuilder('ARREST_RESENTMENT', (event, _killer, _affectedName) => {
     const arrestedName = event.object ? 'my friend' : 'someone I care about';
     return `They arrested ${arrestedName}. I can't believe it. Maybe they're wrong. Maybe someone set them up.`;
   });
-  registerBeliefCreator('CORRUPTION_COVER', (agent, event, _rule, crimeEventType, killer, victimName) => {
+  registerBeliefCreator('CORRUPTION_COVER', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
     // Corrupt guard gets a concealment belief — knows about the crime but chooses to ignore it
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: crimeEventType,
-      subject: killer, object: victimName,
+      subject: perpetrator, object: affectedName,
       location: event.location, confidence: 0.5, source: 'cover_up',
       sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
     });
   });
-  registerMemoryTextBuilder('CORRUPTION_COVER', (_event, killer, victimName) => {
-    return `I know about what ${killer} did to ${victimName}. But getting involved would only bring trouble. Best to look the other way.`;
+  registerMemoryTextBuilder('CORRUPTION_COVER', (_event, perpetrator, affectedName) => {
+    return `I know about what ${perpetrator} did to ${affectedName}. But getting involved would only bring trouble. Best to look the other way.`;
   });
 
   // Topic sources for NPC conversations about justice events + player rumors
@@ -525,6 +526,35 @@ export function registerCrimeJusticeModule(): void {
   // Event handlers for belief creation and state changes
   registerCrimeEventHandlers();
 
+  // Consequence post-handler: grief + sentiment shift when NPC learns about harm to someone they care about.
+  // Moved from cg-engine.ts — behavioral response is module responsibility, not engine.
+  registerConsequencePostHandler(({ targetId, agent, event, agents, addMoodModifier }) => {
+    const victimId = event.object;
+    if (!victimId || !agent.state.relationships) return;
+
+    // Grief: mood penalty proportional to relationship with victim
+    const griefPenalty = agent.state.relationships.getGriefPenalty(victimId);
+    if (griefPenalty !== 0) {
+      addMoodModifier?.(targetId, { source: `grief_${victimId}`, category: 'event',
+        magnitude: griefPenalty, remaining: 720, duration: 720, decay: 'exponential' });
+    }
+
+    // Sentiment shift: learn who hurt someone you care about → hatred toward perpetrator
+    const perpetratorRef = (event.payload?.perpetratorName as string) ?? event.subject;
+    if (!perpetratorRef) return;
+    const victimRel = agent.state.relationships.getRelationship(victimId);
+    if (!victimRel || victimRel.sentiment <= 0) return;
+
+    const perpetratorEntry = Array.from(agents.entries())
+      .find(([, a]) => a.profile.name === perpetratorRef || a.profile.id === perpetratorRef);
+    if (!perpetratorEntry) return;
+
+    const [perpetratorId] = perpetratorEntry;
+    const sentimentDrop = -(0.3 + victimRel.sentiment * 0.5);
+    agent.state.relationships.adjustSentiment(perpetratorId, sentimentDrop);
+    agent.state.relationships.adjustTrust(perpetratorId, -0.4);
+  });
+
   // Intimidated witness directive: witnesses who were threatened stay silent about crimes
   registerSecretDirectiveBuilder(({ agent, eventStore }) => {
     const agentId = agent.profile.id;
@@ -532,7 +562,7 @@ export function registerCrimeJusticeModule(): void {
       .filter((e: WorldEvent) => e.object === agentId);
     if (intimidationEvents.length === 0) return [];
 
-    const intimidator = intimidationEvents[intimidationEvents.length - 1].payload?.suspectName as string ?? 'someone';
+    const intimidator = intimidationEvents[intimidationEvents.length - 1].payload?.perpetratorName as string ?? 'someone';
     return [
       `## HIDDEN: You have been intimidated\n` +
       `${intimidator} threatened you to keep quiet about what you know. You are afraid.\n` +
@@ -551,8 +581,8 @@ export function registerCrimeJusticeModule(): void {
     ) ?? [];
     if (concealBeliefs.length === 0) return [];
 
-    const suspectNames = concealBeliefs.map(b => b.subject).filter(Boolean);
-    const names = suspectNames.length > 0 ? suspectNames.join(' and ') : 'someone';
+    const perpetratorNames = concealBeliefs.map(b => b.subject).filter(Boolean);
+    const names = perpetratorNames.length > 0 ? perpetratorNames.join(' and ') : 'someone';
     return [
       `## HIDDEN: You are looking the other way\n` +
       `You know about crimes committed by ${names}, but you've chosen not to act.\n` +
@@ -630,7 +660,7 @@ export function registerCrimeJusticeModule(): void {
     for (const pair of match[1].matchAll(/(\w+)=(.*?)(?=\s+\w+=|$)/g)) {
       fields[pair[1]] = (pair[2]?.trim()) || null;
     }
-    const killer = fields.killer ?? null;
+    const perpetrator = fields.perpetrator ?? null;
     const victim = fields.victim ?? null;
     const location = fields.location ?? null;
     const eventType = fields.eventType
@@ -645,7 +675,7 @@ export function registerCrimeJusticeModule(): void {
       ctx.target.state.beliefs.addBelief({
         id: crypto.randomUUID(),
         eventType,
-        subject: killer,
+        subject: perpetrator,
         object: victim,
         location,
         confidence: Math.min(0.9, 0.5 + trustWeight * 0.4),
@@ -662,14 +692,14 @@ export function registerCrimeJusticeModule(): void {
     const rumorEvent = {
       id: crypto.randomUUID(),
       type: rumorType,
-      subject: killer ?? '',
+      subject: perpetrator ?? '',
       object: ctx.target.profile.id,
       location: ctx.target.state.location,
       gameDay: ctx.target.state.currentDay,
       importance: 7,
       payload: {
-        suspectName: killer,
-        victimName: victim,
+        perpetratorName: perpetrator,
+        affectedName: victim,
         crimeLocation: location,
         affectedTargets: [ctx.target.profile.id],
         reportedBy: ctx.initiator.profile.name,
@@ -698,7 +728,7 @@ export function registerCrimeJusticeModule(): void {
 
       ctx.discoveries.add(discoveryKey);
 
-      const suspectName = (theft.payload?.suspectName as string) ?? 'someone';
+      const perpetratorName = (theft.payload?.perpetratorName as string) ?? 'someone';
       await owner.observe(
         `I discovered that goods have been stolen from my shop! Things are missing and scattered. Someone robbed me!`,
         7,
@@ -728,8 +758,8 @@ export function registerCrimeJusticeModule(): void {
         gameDay: ctx.currentDay,
         importance: 6,
         payload: {
-          suspectName,
-          victimName: owner.profile.name,
+          perpetratorName,
+          affectedName: owner.profile.name,
           originalTheftId: theft.id,
           sourceEvent: 'theft_discovery',
         },
@@ -1065,7 +1095,7 @@ export function registerCrimeJusticeModule(): void {
       const criminalId = belief.subject;
       const victimId = belief.object;
       const criminalName = criminalId ? (ctx.agents.get(criminalId)?.profile.name ?? criminalId) : 'someone';
-      const victimName = victimId ? (ctx.agents.get(victimId)?.profile.name ?? victimId) : 'someone';
+      const affectedName = victimId ? (ctx.agents.get(victimId)?.profile.name ?? victimId) : 'someone';
       const crimeLocation = belief.location ?? witness.state.location;
       const crimeLabel = getEventLabel(belief.eventType);
       if (!crimeLabel) continue;
@@ -1084,7 +1114,7 @@ export function registerCrimeJusticeModule(): void {
 
         alreadySpreadTo.add(targetId);
 
-        const rumorText = `I heard a rumor: ${criminalName} committed ${crimeLabel} of ${victimName} at ${crimeLocation}. The townsfolk are alarmed.`;
+        const rumorText = `I heard a rumor: ${criminalName} committed ${crimeLabel} of ${affectedName} at ${crimeLocation}. The townsfolk are alarmed.`;
         await target.observe(rumorText, 6);
         ctx.addMoodModifier(targetId, { source: 'rumor_heard', category: 'event', magnitude: -0.15, remaining: 480, duration: 480, decay: 'exponential' });
 
@@ -1101,8 +1131,8 @@ export function registerCrimeJusticeModule(): void {
             affectedTargets: [targetId],
             sourceRule: 'daily-rumor-spread',
             sourceEvent: belief.id,
-            suspectName: criminalName,
-            victimName,
+            perpetratorName: criminalName,
+            affectedName,
             crimeLocation,
           },
         };
@@ -1111,7 +1141,7 @@ export function registerCrimeJusticeModule(): void {
         ctx.onEvent?.(rumorEvent);
 
         if (target.profile.investigator && !existingWanted.has(targetId)) {
-          const wantedText = `URGENT: I received reports that ${criminalName} committed ${crimeLabel} of ${victimName} at ${crimeLocation}. I must investigate immediately.`;
+          const wantedText = `URGENT: I received reports that ${criminalName} committed ${crimeLabel} of ${affectedName} at ${crimeLocation}. I must investigate immediately.`;
           await target.observe(wantedText, 7);
           ctx.addMoodModifier(targetId, { source: 'rumor_urgent', category: 'pressure', magnitude: -0.1, remaining: 240, duration: 240, decay: 'linear' });
 
@@ -1128,8 +1158,8 @@ export function registerCrimeJusticeModule(): void {
               affectedTargets: [targetId],
               sourceRule: 'guard-heard-rumor',
               sourceEvent: belief.id,
-              victimName,
-              suspectName: criminalName,
+              affectedName,
+              perpetratorName: criminalName,
             },
           };
           ctx.eventStore.append(wantedEvent);

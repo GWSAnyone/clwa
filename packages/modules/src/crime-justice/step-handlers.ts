@@ -54,10 +54,10 @@ function gatherEvidenceGrouped(suspect: Agent, agents: Map<string, Agent>): { st
   const moderate: string[] = [];
   const weak: string[] = [];
   const crimeTypes = new Set<string>();
-  const suspectName = suspect.profile.name;
+  const perpetratorName = suspect.profile.name;
   const suspectId = suspect.profile.id;
   const matchesSuspect = (field: string | null | undefined): boolean =>
-    !!field && (field === suspectName || field === suspectId);
+    !!field && (field === perpetratorName || field === suspectId);
 
   for (const [, agent] of agents) {
     if (!agent.state.alive || agent.profile.id === suspectId) continue;
@@ -215,7 +215,7 @@ export function registerCrimeStepHandlers(): void {
     goal.waitTicks = 0;
     await owner.observe(`I stole goods from ${target.profile.name}'s shop. I was desperate — I had no choice. The guilt weighs on me.`, step.importance);
     if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: 'GOODS_STOLEN', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { suspectName: owner.profile.name, victimName: target.profile.name, victimRole: target.profile.role } });
+      await ctx.onCrimeEvent({ type: 'GOODS_STOLEN', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role } });
     }
     goal.currentStep++;
     return { ...baseResult, action: 'steal_from', description: `${owner.profile.name} stole from ${target.profile.name}'s shop`, crimeEvent: { type: 'GOODS_STOLEN', targetId: step.targetId, targetName: target.profile.name } };
@@ -249,7 +249,7 @@ export function registerCrimeStepHandlers(): void {
     if (target.state.relationships) { target.state.relationships.adjustSentiment(goal.ownerId, -0.5); target.state.relationships.adjustTrust(goal.ownerId, -0.6); }
     if (owner.state.relationships) { owner.state.relationships.adjustSentiment(step.targetId, -0.2); }
     if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: eventType, subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: isLethal ? 10 : step.importance, payload: isLethal ? { suspectName: owner.profile.name, victimName: target.profile.name, victimRole: target.profile.role } : { attackerName: owner.profile.name, victimName: target.profile.name, reason: step.reason } });
+      await ctx.onCrimeEvent({ type: eventType, subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: isLethal ? 10 : step.importance, payload: isLethal ? { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role } : { attackerName: owner.profile.name, affectedName: target.profile.name, reason: step.reason } });
     }
     goal.currentStep++;
     return { ...baseResult, action: 'attack_npc', description: isLethal ? `${owner.profile.name} killed ${target.profile.name}` : `${owner.profile.name} attacked ${target.profile.name}`, crimeEvent: { type: eventType, targetId: step.targetId, targetName: target.profile.name } };
@@ -283,7 +283,7 @@ export function registerCrimeStepHandlers(): void {
     await target.observe(`${owner.profile.name} arrested me. I am being held at the Courthouse awaiting judgment.`, step.importance);
     ctx.addMoodModifier(step.targetId, { source: 'arrest_shock', category: 'event', magnitude: -0.4, remaining: 720, duration: 720, decay: 'exponential' });
     if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: 'NPC_ARRESTED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { guardName: owner.profile.name, suspectName: target.profile.name, suspectRole: target.profile.role, affectedTargets: Array.from(agents.keys()) } });
+      await ctx.onCrimeEvent({ type: 'NPC_ARRESTED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { guardName: owner.profile.name, perpetratorName: target.profile.name, suspectRole: target.profile.role, affectedTargets: Array.from(agents.keys()) } });
     }
     goal.currentStep++;
     return { ...baseResult, action: 'arrest_npc', description: `${owner.profile.name} arrested ${target.profile.name}` };
@@ -348,9 +348,9 @@ export function registerCrimeStepHandlers(): void {
     }
     const scenes = ctx.crimeScenes?.get(owner.state.location) ?? [];
     const activeScene = scenes.find((s: CrimeScene) => s.active);
-    const victimName = activeScene?.victimId ? agents.get(activeScene.victimId)?.profile.name ?? 'unknown' : 'unknown';
+    const affectedName = activeScene?.victimId ? agents.get(activeScene.victimId)?.profile.name ?? 'unknown' : 'unknown';
     const crimeLabel = activeScene?.crimeType ? (getEventLabel(activeScene.eventType ?? activeScene.crimeType) ?? 'crime') : 'crime';
-    await owner.observe(`I examined the crime scene. ${suspectCount > 0 ? `Found ${suspectCount} suspect(s) in the ${crimeLabel} of ${victimName}.` : `Reinforced suspicions about ${victimName}.`}`, step.importance);
+    await owner.observe(`I examined the crime scene. ${suspectCount > 0 ? `Found ${suspectCount} suspect(s) in the ${crimeLabel} of ${affectedName}.` : `Reinforced suspicions about ${affectedName}.`}`, step.importance);
     goal.currentStep++;
     return { ...baseResult, action: 'examine_scene', description: `${owner.profile.name} examined evidence: ${undiscovered.length} clue(s), ${suspectCount} suspect(s)` };
   });
@@ -364,7 +364,7 @@ export function registerCrimeStepHandlers(): void {
 
     // 1. Determine crime severity from crime scenes, fallback to beliefs
     let crimeSeverity = 3; // conservative fallback
-    let victimName: string | null = null;
+    let affectedName: string | null = null;
     let victimId: string | null = null;
     let crimeEventType: string | null = null;
     if (ctx.crimeScenes) {
@@ -377,7 +377,7 @@ export function registerCrimeStepHandlers(): void {
             }
             victimId = scene.victimId ?? null;
             if (victimId) {
-              victimName = agents.get(victimId)?.profile.name ?? null;
+              affectedName = agents.get(victimId)?.profile.name ?? null;
             }
             break;
           }
@@ -423,7 +423,7 @@ export function registerCrimeStepHandlers(): void {
     const crimeLabel = crimeEventType ? (getEventLabel(crimeEventType) ?? 'crime') : 'crime';
     const system = `You are ${owner.profile.name}, the town magistrate. You must deliver a just verdict.\n${judgeContext}`;
     const user = [
-      `${target.profile.name} the ${target.profile.role} stands accused of ${crimeLabel}${victimName ? ` against ${victimName}` : ''}.`,
+      `${target.profile.name} the ${target.profile.role} stands accused of ${crimeLabel}${affectedName ? ` against ${affectedName}` : ''}.`,
       `Crime severity: ${crimeSeverity}/10.`,
       ``,
       evidenceSummary,
@@ -528,8 +528,8 @@ export function registerCrimeStepHandlers(): void {
         type: 'NPC_SENTENCED', subject: goal.ownerId, object: step.targetId as string,
         location: owner.state.location, importance: step.importance as number,
         payload: {
-          judgeName: owner.profile.name, suspectName: target.profile.name,
-          victimName, verdict: chosenVerdict, verdictLabel, reasoning,
+          judgeName: owner.profile.name, perpetratorName: target.profile.name,
+          affectedName, verdict: chosenVerdict, verdictLabel, reasoning,
           crimeSeverity, evidenceCount: totalEvidence,
           releaseDay: chosenVerdict === 'imprisonment' ? imprisonmentTimers.get(target.profile.id) : undefined,
           affectedTargets: Array.from(agents.keys()),
@@ -569,7 +569,7 @@ export function registerCrimeStepHandlers(): void {
       await ctx.onCrimeEvent({
         type: 'ARGUMENT_WITNESSED', subject: goal.ownerId, object: step.targetId,
         location: owner.state.location, importance: step.importance,
-        payload: { suspectName: owner.profile.name, victimName: target.profile.name },
+        payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name },
       });
     }
 
@@ -621,7 +621,7 @@ export function registerCrimeStepHandlers(): void {
       await ctx.onCrimeEvent({
         type: 'THREAT_WITNESSED', subject: goal.ownerId, object: step.targetId,
         location: owner.state.location, importance: step.importance,
-        payload: { suspectName: owner.profile.name, victimName: target.profile.name },
+        payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name },
       });
     }
 
@@ -662,7 +662,7 @@ export function registerCrimeStepHandlers(): void {
       await ctx.onCrimeEvent({
         type: 'WITNESS_INTIMIDATED', subject: goal.ownerId, object: step.targetId,
         location: owner.state.location, importance: step.importance,
-        payload: { suspectName: owner.profile.name, victimName: target.profile.name },
+        payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name },
       });
     }
 

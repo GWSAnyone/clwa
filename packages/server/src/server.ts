@@ -194,7 +194,7 @@ export function startServer(
                 if (!world.journal.canPresent(entryId, msg.agentId)) continue;
                 const entry = world.journal.getEntry(entryId);
                 if (!entry) continue;
-                const suspectName = entry.suspectId ? agents.get(entry.suspectId)?.profile.name : undefined;
+                const perpetratorName = entry.suspectId ? agents.get(entry.suspectId)?.profile.name : undefined;
                 presentedEvidence.push({
                   entryId: entry.id,
                   text: entry.text,
@@ -202,7 +202,7 @@ export function startServer(
                   evidenceWeight: entry.evidenceWeight,
                   eventType: entry.eventType,
                   suspectId: entry.suspectId,
-                  suspectName,
+                  perpetratorName,
                   victimId: entry.victimId,
                 });
                 world.journal.markPresented(entryId, msg.agentId);

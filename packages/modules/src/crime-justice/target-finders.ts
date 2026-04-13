@@ -67,7 +67,7 @@ function findCrimeBeliefTarget(npcId: string, agent: Agent, ctx: AffordanceConte
       if (belief.subject && matchesNpc(belief.subject, other)) {
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
-          extra: { beliefId: belief.id, eventType: belief.eventType, victimName: resolveName(belief.object, ctx.agents), reason: `${belief.eventType === 'NPC_KILLED' ? 'murder' : 'crime'} of ${resolveName(belief.object, ctx.agents)}` },
+          extra: { beliefId: belief.id, eventType: belief.eventType, affectedName: resolveName(belief.object, ctx.agents), reason: `${belief.eventType === 'NPC_KILLED' ? 'murder' : 'crime'} of ${resolveName(belief.object, ctx.agents)}` },
         };
       }
     }
@@ -112,8 +112,8 @@ function findGossipTarget(npcId: string, agent: Agent, ctx: AffordanceContext): 
           .sort((a, b) => b.confidence - a.confidence) ?? [];
         if (crimeBeliefs.length > 0) {
           const top = crimeBeliefs[0];
-          extra.suspectName = top.subject ?? 'someone';
-          extra.victimName = top.object ?? 'someone';
+          extra.perpetratorName = top.subject ?? 'someone';
+          extra.affectedName = top.object ?? 'someone';
           extra.crimeType = getEventLabel(top.eventType) ?? 'crime';
           if (top.location) extra.crimeLocation = top.location;
         }
@@ -208,7 +208,7 @@ function findInterrogationTarget(npcId: string, agent: Agent, ctx: AffordanceCon
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
             crimeType: getEventLabel(belief.eventType) ?? 'crime',
-            victimName: resolveName(belief.object, ctx.agents),
+            affectedName: resolveName(belief.object, ctx.agents),
             crimeLocation: belief.location,
           },
         };
@@ -234,10 +234,10 @@ function findArrestTarget(npcId: string, agent: Agent, ctx: AffordanceContext, e
     if (!suspects.has(subj)) suspects.set(subj, b);
   }
 
-  for (const [suspectName, belief] of suspects) {
+  for (const [perpetratorName, belief] of suspects) {
     // Aggregate confidence: max across ALL beliefs about this suspect
     const aggConf = agent.state.beliefs.getMaxConfidenceFor(
-      suspectName,
+      perpetratorName,
       (et) => isEventCategory(et, 'crime'),
     );
     if (aggConf < 0.7) continue;
@@ -246,12 +246,12 @@ function findArrestTarget(npcId: string, agent: Agent, ctx: AffordanceContext, e
       if (otherId === npcId || !other.state.alive) continue;
       if (other.state.status) continue; // can't arrest someone already detained/exiled
 
-      if (matchesNpc(suspectName, other)) {
+      if (matchesNpc(perpetratorName, other)) {
         return {
           targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location,
           extra: {
             crimeType: getEventLabel(belief.eventType) ?? 'crime',
-            victimName: resolveName(belief.object, ctx.agents),
+            affectedName: resolveName(belief.object, ctx.agents),
           },
         };
       }
@@ -331,9 +331,9 @@ function findInvestigateTarget(npcId: string, agent: Agent, ctx: AffordanceConte
     targetLocation: belief.location as string,
     extra: {
       crimeType: getEventLabel(belief.eventType) ?? 'crime',
-      victimName: resolveName(belief.object, ctx.agents),
+      affectedName: resolveName(belief.object, ctx.agents),
       crimeLocation: belief.location as string,
-      suspectName: resolveName(belief.subject, ctx.agents),
+      perpetratorName: resolveName(belief.subject, ctx.agents),
     },
   };
 }
@@ -412,18 +412,18 @@ export function registerCrimeTargetFinders(): void {
   REACTIVE_TARGET_FINDERS.set('report_crime', (npcId, agent, ctx, event) => {
     const guard = findByRole('guard', npcId, agent, ctx);
     if (!guard) return null;
-    const suspectName = (event.payload?.suspectName as string) ?? 'someone';
-    const victimName = (event.payload?.victimName as string) ?? 'someone';
-    guard.extra = { ...guard.extra, suspectName, victimName, crimeLocation: event.location, eventType: event.type };
+    const perpetratorName = (event.payload?.perpetratorName as string) ?? 'someone';
+    const affectedName = (event.payload?.affectedName as string) ?? 'someone';
+    guard.extra = { ...guard.extra, perpetratorName, affectedName, crimeLocation: event.location, eventType: event.type };
     return guard;
   });
 
   REACTIVE_TARGET_FINDERS.set('investigate', (npcId, agent, _ctx, event) => {
     if (!agent.profile.investigator) return null;
     const crimeLocation = (event.payload?.crimeLocation as string) ?? event.location;
-    const suspectName = (event.payload?.suspectName as string) ?? 'an unknown suspect';
-    const victimName = (event.payload?.victimName as string) ?? 'the victim';
-    return { targetId: npcId, targetName: agent.profile.name, targetLocation: crimeLocation, extra: { crimeLocation, suspectName, victimName } };
+    const perpetratorName = (event.payload?.perpetratorName as string) ?? 'an unknown suspect';
+    const affectedName = (event.payload?.affectedName as string) ?? 'the victim';
+    return { targetId: npcId, targetName: agent.profile.name, targetLocation: crimeLocation, extra: { crimeLocation, perpetratorName, affectedName } };
   });
 
   REACTIVE_TARGET_FINDERS.set('gossip', (npcId, agent, ctx, event) => {
@@ -432,8 +432,8 @@ export function registerCrimeTargetFinders(): void {
     // Merge event payload crime details (more specific than belief-derived)
     target.extra = {
       ...target.extra,
-      suspectName: (event.payload?.suspectName as string) ?? target.extra?.suspectName ?? 'someone',
-      victimName: (event.payload?.victimName as string) ?? target.extra?.victimName ?? 'someone',
+      perpetratorName: (event.payload?.perpetratorName as string) ?? target.extra?.perpetratorName ?? 'someone',
+      affectedName: (event.payload?.affectedName as string) ?? target.extra?.affectedName ?? 'someone',
       crimeLocation: (event.payload?.crimeLocation as string) ?? event.location ?? target.extra?.crimeLocation ?? '',
     };
     return target;
@@ -446,26 +446,26 @@ export function registerCrimeTargetFinders(): void {
     if (!rel || rel.sentiment < 0.2) return null; // only close relationships
     const priest = findByRole('priest', npcId, agent, ctx);
     if (!priest) return null;
-    const victimName = (event.payload?.victimName as string) ?? 'someone';
-    priest.extra = { ...priest.extra, victimName, relationship: rel.type };
+    const affectedName = (event.payload?.affectedName as string) ?? 'someone';
+    priest.extra = { ...priest.extra, affectedName, relationship: rel.type };
     return priest;
   });
 
   REACTIVE_TARGET_FINDERS.set('lay_low', (npcId, agent, ctx, event) => {
-    const criminalName = (event.payload?.suspectName as string) ?? event.subject;
+    const criminalName = (event.payload?.perpetratorName as string) ?? event.subject;
     if (agent.profile.name !== criminalName && agent.profile.id !== criminalName) return null;
     const home = ctx.npcHomes.get(npcId) ?? agent.state.location;
     return { targetId: npcId, targetName: agent.profile.name, targetLocation: home };
   });
 
   REACTIVE_TARGET_FINDERS.set('seek_forgiveness', (npcId, agent, ctx, event) => {
-    const criminalName = (event.payload?.suspectName as string) ?? event.subject;
+    const criminalName = (event.payload?.perpetratorName as string) ?? event.subject;
     if (agent.profile.name !== criminalName && agent.profile.id !== criminalName) return null;
     const priest = findByRole('priest', npcId, agent, ctx);
     if (!priest) return null;
-    const victimName = (event.payload?.victimName as string) ?? 'someone';
+    const affectedName = (event.payload?.affectedName as string) ?? 'someone';
     const crimeEventType = (event.payload?.originalEventType as string) ?? event.type;
-    priest.extra = { ...priest.extra, victimName, crimeType: crimeEventType === 'GOODS_STOLEN' ? 'theft' : 'crime' };
+    priest.extra = { ...priest.extra, affectedName, crimeType: crimeEventType === 'GOODS_STOLEN' ? 'theft' : 'crime' };
     return priest;
   });
 
@@ -482,34 +482,34 @@ export function registerCrimeTargetFinders(): void {
   REACTIVE_TARGET_FINDERS.set('testify', (npcId, agent, ctx, event) => {
     const guard = findByRole('guard', npcId, agent, ctx);
     if (!guard) return null;
-    const vName = (event.payload?.victimName as string) ?? 'someone';
+    const vName = (event.payload?.affectedName as string) ?? 'someone';
     const cType = event.type === 'NPC_KILLED' ? 'murder' : 'crime';
-    guard.extra = { ...guard.extra, victimName: vName, crimeType: cType };
+    guard.extra = { ...guard.extra, affectedName: vName, crimeType: cType };
     return guard;
   });
 
   REACTIVE_TARGET_FINDERS.set('demand_justice', (npcId, agent, ctx, event) => {
     const guard = findByRole('guard', npcId, agent, ctx);
     if (!guard) return null;
-    const vName = (event.payload?.victimName as string) ?? 'someone';
-    guard.extra = { ...guard.extra, victimName: vName, crimeType: 'crime' };
+    const vName = (event.payload?.affectedName as string) ?? 'someone';
+    guard.extra = { ...guard.extra, affectedName: vName, crimeType: 'crime' };
     return guard;
   });
 
   REACTIVE_TARGET_FINDERS.set('destroy_evidence', (npcId, agent, ctx, event) => {
-    const criminalName = (event.payload?.suspectName as string) ?? event.subject;
+    const criminalName = (event.payload?.perpetratorName as string) ?? event.subject;
     if (agent.profile.name !== criminalName && agent.profile.id !== criminalName) return null;
     return findCrimeSceneForCriminal(npcId, agent, ctx);
   });
 
   REACTIVE_TARGET_FINDERS.set('intimidate_witness', (npcId, agent, ctx, event) => {
-    const criminalName = (event.payload?.suspectName as string) ?? event.subject;
+    const criminalName = (event.payload?.perpetratorName as string) ?? event.subject;
     if (agent.profile.name !== criminalName && agent.profile.id !== criminalName) return null;
     return findWitnessTarget(npcId, agent, ctx);
   });
 
   REACTIVE_TARGET_FINDERS.set('flee_town', (npcId, agent, _ctx, event) => {
-    const criminalName = (event.payload?.suspectName as string) ?? event.subject;
+    const criminalName = (event.payload?.perpetratorName as string) ?? event.subject;
     if (agent.profile.name !== criminalName && agent.profile.id !== criminalName) return null;
     return { targetId: npcId, targetName: agent.profile.name, targetLocation: 'town-gate' };
   });

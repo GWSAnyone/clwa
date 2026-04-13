@@ -28,7 +28,7 @@ export interface JournalEntry {
 /** Aggregated evidence assessment for a suspect */
 export interface CaseSummary {
   suspectId: string;
-  suspectName: string;
+  perpetratorName: string;
   entries: JournalEntry[];
   /** Dynamic evidence category counts — keys come from module data, not engine */
   evidence: Record<string, number>;
@@ -189,7 +189,7 @@ export class PlayerJournal {
 
   // ─── Case Summary ───
 
-  getCaseSummary(suspectId: string, suspectName: string): CaseSummary {
+  getCaseSummary(suspectId: string, perpetratorName: string): CaseSummary {
     const entries = this.getEntriesForSuspect(suspectId);
 
     const evidence: Record<string, number> = {};
@@ -212,7 +212,7 @@ export class PlayerJournal {
     const parts = Object.entries(evidence).map(([cat, count]) => `${count} ${cat}`);
     const summary = parts.length ? parts.join(', ') : 'no evidence';
 
-    return { suspectId, suspectName, entries, evidence, totalScore, quality, summary };
+    return { suspectId, perpetratorName, entries, evidence, totalScore, quality, summary };
   }
 
   /** Get entry count */

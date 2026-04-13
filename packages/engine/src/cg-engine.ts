@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { WorldEvent, ConsequenceRule, ConsequenceResult, RuleCondition } from './cg-types';
-import { getEventMoodShift, getBeliefCreator, getMemoryTextBuilder } from './event-registry';
+import { getEventMoodShift, getBeliefCreator, getMemoryTextBuilder, getConsequencePostHandlers } from './event-registry';
 
 export interface WorldContext {
   agents: Map<string, Agent>;
@@ -131,30 +131,9 @@ export class ConsequenceEngine {
         await agent.observe(memoryText, rule.consequence.importance);
         this.createBelief(rule, event, targetId, ctx);
 
-        // Grief: extra mood penalty if victim was someone the agent cares about
-        const victimId = event.object;
-        if (victimId && agent.state.relationships) {
-          const griefPenalty = agent.state.relationships.getGriefPenalty(victimId);
-          if (griefPenalty !== 0) {
-            ctx.addMoodModifier?.(targetId, { source: `grief_${victimId}`, category: 'event',
-              magnitude: griefPenalty, remaining: 720, duration: 720, decay: 'exponential' });
-          }
-        }
-
-        // Sentiment shift: if NPC learns who killed someone they cared about
-        const killerId = (event.payload?.suspectName as string) ?? event.subject;
-        if (killerId && victimId && agent.state.relationships) {
-          const victimRel = agent.state.relationships.getRelationship(victimId);
-          if (victimRel && victimRel.sentiment > 0) {
-            const killerAgent = Array.from(ctx.agents.entries())
-              .find(([, a]) => a.profile.name === killerId || a.profile.id === killerId);
-            if (killerAgent) {
-              const [killerAgentId] = killerAgent;
-              const sentimentDrop = -(0.3 + victimRel.sentiment * 0.5);
-              agent.state.relationships.adjustSentiment(killerAgentId, sentimentDrop);
-              agent.state.relationships.adjustTrust(killerAgentId, -0.4);
-            }
-          }
+        // Module-registered post-handlers (grief, sentiment shift, etc.)
+        for (const postHandler of getConsequencePostHandlers()) {
+          postHandler({ targetId, agent, rule, event, agents: ctx.agents, addMoodModifier: ctx.addMoodModifier });
         }
 
         if (moodShift !== 0) {
@@ -362,7 +341,7 @@ export class ConsequenceEngine {
     return beliefs.some(b => {
       if (cond.eventType && b.eventType !== cond.eventType) return false;
       if (cond.minConfidence && b.confidence < cond.minConfidence) return false;
-      if (cond.aboutSubject && b.subject !== ((event.payload?.suspectName as string) ?? event.subject)) return false;
+      if (cond.aboutSubject && b.subject !== ((event.payload?.perpetratorName as string) ?? event.subject)) return false;
       return true;
     });
   }
@@ -388,16 +367,16 @@ export class ConsequenceEngine {
     const agent = ctx.agents.get(targetId);
     if (!agent?.state.beliefs) return;
 
-    const suspect = (event.payload?.suspectName as string) ?? null;
+    const suspect = (event.payload?.perpetratorName as string) ?? null;
     const victim = event.object ? ctx.agents.get(event.object) : null;
-    const victimName = (event.payload?.victimName as string)
+    const affectedName = (event.payload?.affectedName as string)
       ?? (victim ? `${victim.profile.name} the ${victim.profile.role}` : null)
       ?? event.object ?? null;
     const crimeEventType = (event.payload?.originalEventType as string) ?? event.type;
 
     const creator = getBeliefCreator(rule.consequence.type);
     if (creator) {
-      creator(agent, event, rule, crimeEventType, suspect, victimName);
+      creator(agent, event, rule, crimeEventType, suspect, affectedName);
     }
   }
 
@@ -407,14 +386,14 @@ export class ConsequenceEngine {
     _targetId: string,
     ctx: WorldContext,
   ): string {
-    const suspect = (event.payload?.suspectName as string) ?? 'someone unknown';
+    const suspect = (event.payload?.perpetratorName as string) ?? 'someone unknown';
     const victim = event.object ? ctx.agents.get(event.object) : null;
-    const victimName = (event.payload?.victimName as string)
+    const affectedName = (event.payload?.affectedName as string)
       ?? (victim ? victim.profile.name : null)
       ?? event.object ?? 'someone';
 
     const builder = getMemoryTextBuilder(rule.consequence.type);
-    if (builder) return builder(event, suspect, victimName);
+    if (builder) return builder(event, suspect, affectedName);
 
     console.warn(`[CG] No memory text builder for consequence type: ${rule.consequence.type}`);
     return `Something significant happened involving ${suspect}.`;

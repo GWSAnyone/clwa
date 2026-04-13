@@ -208,6 +208,7 @@ export {
   registerInteractionResultHook, getInteractionResultHooks,
   registerTickPhaseHandler, getTickPhaseHandlers,
   registerSecretDirectiveBuilder, getSecretDirectiveBuilders,
+  registerConsequencePostHandler, getConsequencePostHandlers,
   getAllRegisteredVerbs,
   registerSecretEventType, getSecretEventType,
   registerPressureTypes, getRegisteredPressureTypes,
