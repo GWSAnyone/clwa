@@ -12,6 +12,7 @@ interface ExamineSceneStep { action: 'examine_scene'; importance: number; [k: st
 interface SentenceNpcStep { action: 'sentence_npc'; targetId: string; importance: number; [k: string]: unknown }
 interface ArgueWithStep { action: 'argue_with'; targetId: string; importance: number; [k: string]: unknown }
 interface ThreatenNpcStep { action: 'threaten_npc'; targetId: string; importance: number; [k: string]: unknown }
+interface IntimidateWitnessStep { action: 'intimidate_witness_action'; targetId: string; importance: number; [k: string]: unknown }
 
 // ─── Punishment System v2 — Graduated Verdicts ──────────────────
 
@@ -626,5 +627,46 @@ export function registerCrimeStepHandlers(): void {
 
     goal.currentStep++;
     return { ...baseResult, action: 'threaten_npc', description: `${owner.profile.name} threatened ${target.profile.name}` };
+  });
+
+  registerStepHandler('intimidate_witness_action', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as IntimidateWitnessStep;
+    const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
+    const target = agents.get(step.targetId);
+    if (!target || !target.state.alive) {
+      goal.state = 'failed';
+      return { ...baseResult, action: 'intimidate_witness_action', description: `${owner.profile.name}: target not available` };
+    }
+    if (owner.state.location !== target.state.location) {
+      goal.state = 'failed';
+      return { ...baseResult, action: 'intimidate_witness_action', description: `${owner.profile.name}: target not here` };
+    }
+
+    // Intimidation: criminal threatens witness to stay silent
+    await owner.observe(`I threatened ${target.profile.name} to keep quiet about what they saw. They looked terrified.`, step.importance);
+    await target.observe(`${owner.profile.name} cornered me and threatened me. They said terrible things would happen if I talk. I'm scared.`, step.importance);
+
+    // Relationship damage
+    target.state.relationships?.adjustSentiment(goal.ownerId, -0.15);
+    target.state.relationships?.adjustTrust(goal.ownerId, -0.25);
+
+    // Mood impact on target — fear
+    ctx.addMoodModifier(step.targetId, {
+      source: `intimidation_${goal.ownerId}`, category: 'event',
+      magnitude: -0.20, remaining: 720, duration: 720, decay: 'exponential',
+    });
+
+    // Fire WITNESS_INTIMIDATED event — activates CG cascade + intimidated witness directive
+    if (ctx.onCrimeEvent) {
+      await ctx.onCrimeEvent({
+        type: 'WITNESS_INTIMIDATED', subject: goal.ownerId, object: step.targetId,
+        location: owner.state.location, importance: step.importance,
+        payload: { suspectName: owner.profile.name, victimName: target.profile.name },
+      });
+    }
+
+    goal.currentStep++;
+    return { ...baseResult, action: 'intimidate_witness_action', description: `${owner.profile.name} intimidated ${target.profile.name} into silence` };
   });
 }

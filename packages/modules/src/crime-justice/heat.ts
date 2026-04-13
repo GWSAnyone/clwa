@@ -114,7 +114,7 @@ export function buildHeatDirective(agent: Agent, ctx: HeatContext): string | nul
     case 'desperate':
       return `## EXTREME DANGER\n` +
         `The investigation is closing in on you. You are almost certain the guard knows what you did to ${victimName}. ` +
-        `Every moment you stay increases the risk of arrest. You must flee Millhaven or find a way to destroy all evidence immediately. ` +
+        `Every moment you stay increases the risk of arrest. You must flee town or find a way to destroy all evidence immediately. ` +
         `Trust no one — anyone could be working with the investigator.`;
 
     case 'panicked':

@@ -1033,6 +1033,7 @@ export function registerCrimeJusticeModule(): void {
         const growth = 0.06 * (0.5 + personalityFactor); // 0.03 to 0.06 per hour (tuned for 1.5-2h sessions at 3x)
 
         motive.confidence = Math.min(0.95, motive.confidence + growth);
+        motive.lastUpdated = ctx.currentDay; // keep decay calculation accurate
       }
     }
   });

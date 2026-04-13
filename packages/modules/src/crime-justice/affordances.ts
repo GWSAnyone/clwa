@@ -627,7 +627,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact', targetId: '$target', purpose: 'Threaten {targetName} to keep quiet about what they saw. Make it clear there will be consequences if they talk.', importance: 7 },
+      { action: 'intimidate_witness_action', targetId: '$target', importance: 7 },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },
