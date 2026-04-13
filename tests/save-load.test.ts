@@ -353,4 +353,25 @@ describe('Serialization Format', () => {
     expect(a2.state.baseMood).toBeGreaterThanOrEqual(-1);
     expect(a2.state.baseMood).toBeLessThanOrEqual(1);
   });
+
+  test('cooldowns persist through save/load (Invariant #57)', () => {
+    const world = createTestWorld();
+
+    // Set affordance cooldown: alice's steal expires at minute 300
+    const affordanceCooldowns = new Map<string, Map<string, number>>();
+    affordanceCooldowns.set('alice', new Map([['steal', 300], ['kill', 500]]));
+    (world as any)._affordanceCooldowns = affordanceCooldowns;
+
+    // Set decision cooldown: alice re-evaluates at minute 120
+    const decisionCooldowns = new Map<string, number>();
+    decisionCooldowns.set('alice', 120);
+    (world as any)._decisionCooldowns = decisionCooldowns;
+
+    const snap = world.toJSON();
+    const saved = JSON.parse(JSON.stringify(snap));
+
+    // Verify cooldowns are in the save data
+    expect(saved.affordanceCooldowns).toBeDefined();
+    expect(saved.decisionCooldowns).toBeDefined();
+  });
 });

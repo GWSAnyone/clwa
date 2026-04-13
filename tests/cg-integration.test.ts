@@ -7,10 +7,10 @@
  * Run: bun test tests/cg-integration.test.ts
  */
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import type { WorldEvent, ConsequenceResult } from '@clwa/engine';
+import type { WorldEvent, ConsequenceResult, ConsequenceRule } from '@clwa/engine';
 import { ConsequenceEngine } from '@clwa/engine';
 import type { WorldContext } from '@clwa/engine';
-import { Agent, VectorMemory, BeliefManager, RelationshipGraph } from '@clwa/engine';
+import { Agent, VectorMemory, BeliefManager, RelationshipGraph, isPerpetrator, isConcealment } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
 
 // ─── Register modules once ───
@@ -503,5 +503,75 @@ describe('CG Integration: Emergent Cascades', () => {
     const resentments = fired.filter(e => e.type === 'ARREST_RESENTMENT');
     expect(resentments.length).toBeGreaterThanOrEqual(1);
     expect((resentments[0].payload.affectedTargets as string[])).toContain('loyal');
+  });
+});
+
+// ─── Cascade Termination (Level 2.1) ───
+
+describe('CG Integration: Cascade Termination', () => {
+  test('cascade respects maxChainDepth and does not loop infinitely', async () => {
+    // Synthetic circular rules: A → B → A, maxChainDepth 2
+    const ruleAB: ConsequenceRule = {
+      id: 'a-to-b', trigger: 'TYPE_A', targetMode: 'all', conditions: [],
+      consequence: { type: 'TYPE_B', importance: 5, delayDays: 0, probability: 1 },
+      maxChainDepth: 2,
+    };
+    const ruleBA: ConsequenceRule = {
+      id: 'b-to-a', trigger: 'TYPE_B', targetMode: 'all', conditions: [],
+      consequence: { type: 'TYPE_A', importance: 5, delayDays: 0, probability: 1 },
+      maxChainDepth: 2,
+    };
+
+    const fired: string[] = [];
+    const engine = new ConsequenceEngine([ruleAB, ruleBA], { onEvent: e => fired.push(e.type) });
+    const agent = makeAgent('ted');
+    const ctx: WorldContext = { agents: new Map([['ted', agent]]) };
+
+    await engine.process(makeEvent('TYPE_A'), ctx);
+
+    // Should fire: TYPE_A→TYPE_B (depth 0→1), TYPE_B→TYPE_A (depth 1→2), stop at depth 2
+    expect(fired.length).toBeLessThanOrEqual(4); // max 2 cascades per direction
+    // No infinite loop — test completes
+  });
+
+  test('witnessIds dedup prevents double WITNESS_MEMORY for same NPC', async () => {
+    const engine = new ConsequenceEngine(CRIME_CG_RULES, { onEvent: () => {} });
+    const mark = makeAgent('mark', { location: 'tavern' });
+    const bess = makeAgent('bess', { location: 'tavern' });
+    const ted = makeAgent('ted', { location: 'tavern' });
+
+    const ctx: WorldContext = {
+      agents: new Map([['mark', mark], ['bess', bess], ['ted', ted]]),
+      publicPlaces: new Set(['tavern']),
+    };
+
+    const results = await engine.process(
+      makeEvent('NPC_KILLED', { subject: 'mark', object: 'bess', location: 'tavern' }),
+      ctx,
+    );
+
+    // Ted should appear as witness exactly ONCE in WITNESS_MEMORY targets
+    const witnessResults = results.filter(r => r.rule.id === 'witness-murder');
+    const tedAppearances = witnessResults.filter(r => r.targets.includes('ted'));
+    expect(tedAppearances.length).toBe(1);
+  });
+});
+
+// ─── Belief Transfer Suppression (Level 2.3) ───
+
+describe('CG Integration: Belief Suppression Flags', () => {
+  test('perpetrator source is correctly flagged', () => {
+    expect(isPerpetrator('perpetrator')).toBe(true);
+    expect(isPerpetrator('witness')).toBe(false);
+    expect(isPerpetrator('rumor')).toBe(false);
+    expect(isPerpetrator('cover_up')).toBe(false);
+    expect(isPerpetrator(null)).toBe(false);
+  });
+
+  test('concealment source is correctly flagged', () => {
+    expect(isConcealment('cover_up')).toBe(true);
+    expect(isConcealment('destroy_evidence')).toBe(true);
+    expect(isConcealment('witness')).toBe(false);
+    expect(isConcealment('perpetrator')).toBe(false);
   });
 });

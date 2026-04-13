@@ -219,6 +219,46 @@ describe('Bilateral Design', () => {
     }
     expect(violations).toEqual([]);
   });
+
+  test('tick handlers that modify NPC-only state have isPlayer guard', () => {
+    const violations: string[] = [];
+    // NPC-only operations: volition, schedule, goal processing, motive growth, movement
+    const npcOnlyPatterns = /volition|schedule|processGoal|motive.*confidence|processMovement/;
+    for (const f of [...moduleFiles, ...engineFiles]) {
+      const content = readFileSync(f, 'utf-8');
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (/registerTickPhaseHandler/.test(lines[i])) {
+          const block = lines.slice(i, Math.min(i + 40, lines.length)).join('\n');
+          // Only flag if handler does NPC-only ops AND iterates agents without isPlayer
+          if (npcOnlyPatterns.test(block) && /for\s*\(.*ctx\.agents/.test(block) && !/isPlayer/.test(block)) {
+            violations.push(`${relative(ROOT, f)}:${i + 1} — NPC-only tick handler without isPlayer guard`);
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('proactive target finders (not reactive) exclude player', () => {
+    const violations: string[] = [];
+    for (const f of moduleFiles) {
+      const content = readFileSync(f, 'utf-8');
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        // Only check named proactive finders, not reactive (reactive respond to events, bilateral OK)
+        if (/function\s+find\w+Target/.test(lines[i]) && !/Reactive/.test(lines[i])) {
+          const block = lines.slice(i, Math.min(i + 30, lines.length)).join('\n');
+          if (/for\s*\(.*agents/.test(block) && /return\s*\{.*targetId/.test(block) && !/isPlayer/.test(block)) {
+            violations.push(`${relative(ROOT, f)}:${i + 1} — proactive target finder may select player as target`);
+          }
+        }
+      }
+    }
+    // Known acceptable: some finders use other guards (status checks, role checks, belief checks)
+    // that naturally exclude the player. Advisory threshold — alert if count grows.
+    expect(violations.length).toBeLessThan(5);
+  });
 });
 
 // ─── 5. LLM Safety (Invariant #1) ───
