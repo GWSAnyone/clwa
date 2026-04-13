@@ -242,6 +242,15 @@ export interface WorldConfig {
   speechConstraint?: string;
   /** Max memories per NPC before eviction (default: 200) */
   memoryCapacity?: number;
+  /** Trust thresholds for NPC chat response style (SPEC-detective-toolkit) */
+  trustDirective?: {
+    /** Below this: deeply distrustful, evasive (default: 0.2) */
+    hostile?: number;
+    /** Below this + negative sentiment: guarded (default: 0.35) */
+    wary?: number;
+    /** Above this: speaks openly (default: 0.7) */
+    open?: number;
+  };
 }
 
 // ─── IL Config ───

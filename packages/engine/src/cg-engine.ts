@@ -255,9 +255,10 @@ export class ConsequenceEngine {
     if (cond.op === 'eq' || cond.op === 'gt' || cond.op === 'lt') return true;
     if (cond.op === 'is_public_place') return true;
     // NPC-state conditions: gate if checking subject/object, filter if checking target
-    if (cond.op === 'trait') return cond.of !== 'target';
-    if (cond.op === 'relationship') return cond.actor !== 'target';
-    if (cond.op === 'belief') return cond.of !== 'target';
+    // Default: 'target' (filter) — missing 'of'/'actor' = per-target check, not gate
+    if (cond.op === 'trait') return (cond.of ?? 'target') !== 'target';
+    if (cond.op === 'relationship') return (cond.actor ?? 'target') !== 'target';
+    if (cond.op === 'belief') return (cond.of ?? 'target') !== 'target';
     // has_capability is always a filter (checks each target)
     if (cond.op === 'has_capability') return false;
     return false;
@@ -350,8 +351,9 @@ export class ConsequenceEngine {
   private checkRelationship(agent: Agent, towardId: string, cond: RuleCondition): boolean {
     const rel = agent.state.relationships?.getRelationship(towardId);
     if (!rel) return false;
-    const field = cond.field === 'trust' ? rel.trust : rel.sentiment;
-    return this.compare(field, cond.comparator ?? '>', cond.value as number);
+    const val = (rel as unknown as Record<string, number>)[cond.field ?? 'sentiment'];
+    if (val == null) return false;
+    return this.compare(val, cond.comparator ?? '>', cond.value as number);
   }
 
   private checkBelief(agent: Agent, event: WorldEvent, cond: RuleCondition): boolean {

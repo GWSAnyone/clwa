@@ -420,4 +420,44 @@ describe('Module contract validation', () => {
     }
     expect(bad).toEqual([]);
   });
+
+  // ─── CG Rule Integrity ───
+
+  test('all CG rule trigger types are registered event types', () => {
+    const { CRIME_CG_RULES } = require('@clwa/modules');
+    const registered = getAllRegisteredEventTypes();
+    const bad: string[] = [];
+    for (const rule of CRIME_CG_RULES) {
+      if (!registered.includes(rule.trigger)) {
+        bad.push(`Rule '${rule.id}': trigger '${rule.trigger}' not in registered event types`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('all CG rule consequence types have labels', () => {
+    const { CRIME_CG_RULES } = require('@clwa/modules');
+    const bad: string[] = [];
+    for (const rule of CRIME_CG_RULES) {
+      const label = getEventLabel(rule.consequence.type);
+      if (!label) {
+        bad.push(`Rule '${rule.id}': consequence type '${rule.consequence.type}' has no label`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('all CG rule trait conditions reference valid BigFive traits', () => {
+    const { CRIME_CG_RULES } = require('@clwa/modules');
+    const validTraits = ['openness', 'conscientiousness', 'extraversion', 'agreeableness', 'neuroticism', 'honesty'];
+    const bad: string[] = [];
+    for (const rule of CRIME_CG_RULES) {
+      for (const cond of rule.conditions ?? []) {
+        if (cond.op === 'trait' && cond.trait && !validTraits.includes(cond.trait)) {
+          bad.push(`Rule '${rule.id}': invalid trait '${cond.trait}'`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
 });

@@ -123,7 +123,7 @@ export class World {
   readonly goalManager: GoalManager;
   readonly scheduleManager: ScheduleManager | null;
   private scheduler: ConversationScheduler;
-  private config: WorldConfig;
+  readonly config: WorldConfig;
   private movementConfig: NpcMovementConfig;
   private npcHomes: Map<string, string>; // npcId → home location name
   private callbacks: WorldCallbacks;

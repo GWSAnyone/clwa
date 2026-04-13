@@ -1,4 +1,5 @@
 import type { EventType, ConsequenceResult, WorldEvent } from '@clwa/engine';
+import { isEventCategory } from '@clwa/engine';
 import { broadcast } from './ws';
 import type { GameContext } from './game-context';
 
@@ -772,7 +773,7 @@ export async function handleRequest(
       if (!agent.state.alive) { dead.push(agent.profile.name); continue; }
 
       const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
-      const motives = beliefs.filter(b => b.eventType === 'PERSONAL_GRUDGE' || b.eventType === 'REVENGE_DESIRE' || b.eventType === 'THREAT_PERCEIVED');
+      const motives = beliefs.filter(b => isEventCategory(b.eventType, 'motive'));
       const topMotive = motives.sort((a, b) => b.confidence - a.confidence)[0];
 
       alive.push({

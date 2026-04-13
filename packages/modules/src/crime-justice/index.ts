@@ -108,6 +108,8 @@ export function registerCrimeJusticeModule(): void {
   registerEventCategory('information_spread', ['RUMOR_SPREAD', 'WITNESS_MEMORY', 'THEFT_DISCOVERED']);
   registerEventCategory('witness_reaction', ['COVER_UP', 'REPORT_IMPULSE']);
   registerEventCategory('escalation', ['ARGUMENT_WITNESSED', 'THREAT_WITNESSED']);
+  registerEventCategory('secondary_crime', ['EVIDENCE_DESTROYED', 'WITNESS_INTIMIDATED']);
+  registerEventCategory('justice_action', ['NPC_ARRESTED', 'WANTED_STATUS', 'NPC_RELEASED']);
   registerEventCategory('minor_incident', ['MINOR_INCIDENT_MEMORY']);
   registerEventCategory('emergent_cascade', ['REVENGE_IMPULSE', 'GUARD_WARNING', 'ARREST_RESENTMENT']);
   registerEventCategory('corruption', ['CORRUPTION_COVER']);
@@ -147,6 +149,7 @@ export function registerCrimeJusticeModule(): void {
     WITNESS_MEMORY: 'witness account',
     RUMOR_SPREAD: 'rumor',
     THEFT_DISCOVERED: 'discovered theft',
+    WANTED_STATUS: 'wanted status',
     COVER_UP: 'cover-up',
     REPORT_IMPULSE: 'report impulse',
     ARGUMENT_WITNESSED: 'argument',
@@ -525,8 +528,8 @@ export function registerCrimeJusticeModule(): void {
   // Intimidated witness directive: witnesses who were threatened stay silent about crimes
   registerSecretDirectiveBuilder(({ agent, eventStore }) => {
     const agentId = agent.profile.id;
-    const intimidationEvents = eventStore.getAll()
-      .filter((e: WorldEvent) => e.type === 'WITNESS_INTIMIDATED' && e.object === agentId);
+    const intimidationEvents = eventStore.query({ type: 'WITNESS_INTIMIDATED' })
+      .filter((e: WorldEvent) => e.object === agentId);
     if (intimidationEvents.length === 0) return [];
 
     const intimidator = intimidationEvents[intimidationEvents.length - 1].payload?.suspectName as string ?? 'someone';
