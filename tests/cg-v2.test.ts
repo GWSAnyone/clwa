@@ -458,6 +458,64 @@ describe('CG v2: Exclusive Groups', () => {
     expect(fired).toContain('EXCLUSIVE_RESULT');
     expect(fired).toContain('INDEPENDENT_RESULT');
   });
+
+  test('exclusive group: per-target resolution — different NPCs get different rules', async () => {
+    const fired: Array<{ type: string; targets: string[] }> = [];
+
+    // High priority: only targets with honesty > 0.7
+    const highRule: ConsequenceRule = {
+      id: 'high-honest',
+      trigger: 'TEST_EVENT',
+      targetMode: 'all',
+      conditions: [
+        { op: 'trait', of: 'target', trait: 'honesty', comparator: '>', value: 0.7 },
+      ],
+      consequence: { type: 'HONEST_RESULT', importance: 5, delayDays: 0, probability: 1.0 },
+      exclusive: 'reaction',
+      priority: 2,
+      maxChainDepth: 1,
+    };
+
+    // Low priority: only targets with agreeableness < 0.3
+    const lowRule: ConsequenceRule = {
+      id: 'low-aggressive',
+      trigger: 'TEST_EVENT',
+      targetMode: 'all',
+      conditions: [
+        { op: 'trait', of: 'target', trait: 'agreeableness', comparator: '<', value: 0.3 },
+      ],
+      consequence: { type: 'AGGRESSIVE_RESULT', importance: 5, delayDays: 0, probability: 1.0 },
+      exclusive: 'reaction',
+      priority: 1,
+      maxChainDepth: 1,
+    };
+
+    const honest = makeAgent('aldric', { honesty: 0.9, agreeableness: 0.8 }); // matches high only
+    const aggressive = makeAgent('hilda', { honesty: 0.3, agreeableness: 0.2 }); // matches low only
+    const both = makeAgent('ted', { honesty: 0.8, agreeableness: 0.2 }); // matches both → high wins
+
+    const engine = new ConsequenceEngine([lowRule, highRule], {
+      onEvent: (e) => fired.push({ type: e.type, targets: (e.payload?.affectedTargets as string[]) ?? [] }),
+    });
+    const ctx = makeCtx([honest, aggressive, both]);
+    const event = makeEvent('TEST_EVENT');
+
+    await engine.process(event, ctx);
+
+    // Find which rule got which targets
+    const honestResult = fired.find(f => f.type === 'HONEST_RESULT');
+    const aggressiveResult = fired.find(f => f.type === 'AGGRESSIVE_RESULT');
+
+    expect(honestResult).toBeTruthy();
+    expect(honestResult!.targets).toContain('aldric'); // honest → high priority
+    expect(honestResult!.targets).toContain('ted');    // both → high wins
+    expect(honestResult!.targets).not.toContain('hilda'); // not honest
+
+    expect(aggressiveResult).toBeTruthy();
+    expect(aggressiveResult!.targets).toContain('hilda'); // aggressive → low priority (unclaimed)
+    expect(aggressiveResult!.targets).not.toContain('ted'); // ted claimed by high
+    expect(aggressiveResult!.targets).not.toContain('aldric'); // aldric claimed by high
+  });
 });
 
 describe('CG v2: Trigger Index', () => {

@@ -80,15 +80,20 @@ export class ConsequenceEngine {
       if (targets.length > 0) toFire.push({ rule, targets });
     }
 
-    // Exclusive groups: sort by priority desc, fire first that passes
+    // Exclusive groups: per-target priority resolution.
+    // Each target gets the highest-priority rule that matches them.
+    // E.g., Ted (friend) gets cover-up, Hilda (honest) gets eager-report.
     for (const [, group] of exclusiveGroups) {
       group.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+      const claimed = new Set<string>(); // targets already assigned to higher-priority rules
       for (const rule of group) {
         if (rule.consequence.probability < 1.0 && Math.random() > rule.consequence.probability) continue;
         const targets = this.evaluateConditions(rule, event, ctx);
-        if (targets.length > 0) {
-          toFire.push({ rule, targets });
-          break; // only highest-priority match in exclusive group
+        // Only include targets not yet claimed by a higher-priority rule
+        const unclaimed = targets.filter(t => !claimed.has(t));
+        if (unclaimed.length > 0) {
+          toFire.push({ rule, targets: unclaimed });
+          for (const t of unclaimed) claimed.add(t);
         }
       }
     }
@@ -106,10 +111,10 @@ export class ConsequenceEngine {
         gameDay: event.gameDay + rule.consequence.delayDays,
         importance: rule.consequence.importance,
         payload: {
+          ...event.payload,
           sourceEvent: event.id,
           sourceRule: rule.id,
           affectedTargets: targets,
-          ...event.payload,
           originalEventType: (event.payload?.originalEventType as string) ?? event.type,
         },
       };
