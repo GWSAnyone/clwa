@@ -436,11 +436,9 @@ async function createGameContext(
         broadcast({ type: 'conversation:line', data: line });
       },
       onConversation: (result) => {
-        const initId = [...agents.entries()].find(([, a]) => a.profile.name === result.initiator)?.[0];
-        const respId = [...agents.entries()].find(([, a]) => a.profile.name === result.responder)?.[0];
         let approachPoints = null;
-        if (initId && respId) {
-          approachPoints = positionManager.computeApproachPoints(initId, respId);
+        if (agents.has(result.initiator) && agents.has(result.responder)) {
+          approachPoints = positionManager.computeApproachPoints(result.initiator, result.responder);
         }
         broadcast({ type: 'conversation:complete', data: { ...result, approachPoints } });
       },
@@ -581,7 +579,9 @@ async function main() {
     onEvent: (event) => {
       ctx.eventStore.append(event);
       broadcast({ type: 'event', data: event });
-      ctx.world?.handleEventForGoals(event);
+      // handleEventForGoals NOT called here — all World callers (checkBodyDiscovery,
+      // processKill, _handleGoalStep) already call it for cascade results with proper await.
+      // Calling it here would double-process events AND violate INV-02 (unawaited async).
     },
   });
   console.log(`  [+] Consequence engine — ${CRIME_CG_RULES.length} rules`);

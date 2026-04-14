@@ -339,6 +339,7 @@ export function startServer(
             const npcLocation = agent.state.location;
             for (const [otherId, otherAgent] of agents) {
               if (otherId === msg.agentId) continue;
+              if (otherAgent.profile.isPlayer) continue;
               if (!otherAgent.state.alive) continue;
               if (otherAgent.state.location !== npcLocation) continue;
               if (Math.random() > 0.6) continue;
