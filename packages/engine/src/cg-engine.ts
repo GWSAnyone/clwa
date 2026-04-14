@@ -367,16 +367,17 @@ export class ConsequenceEngine {
     const agent = ctx.agents.get(targetId);
     if (!agent?.state.beliefs) return;
 
-    const suspect = (event.payload?.perpetratorName as string) ?? null;
-    const victim = event.object ? ctx.agents.get(event.object) : null;
-    const affectedName = (event.payload?.affectedName as string)
-      ?? (victim ? `${victim.profile.name} the ${victim.profile.role}` : null)
-      ?? event.object ?? null;
+    // Resolve perpetrator/victim to agent IDs for belief fields (INV-11: internal = ID, display = name)
+    const perpetratorName = (event.payload?.perpetratorName as string) ?? null;
+    const suspectId = perpetratorName
+      ? (Array.from(ctx.agents.entries()).find(([, a]) => a.profile.name === perpetratorName)?.[0] ?? perpetratorName)
+      : event.subject ?? null;
+    const affectedId = event.object ?? null;
     const crimeEventType = (event.payload?.originalEventType as string) ?? event.type;
 
     const creator = getBeliefCreator(rule.consequence.type);
     if (creator) {
-      creator(agent, event, rule, crimeEventType, suspect, affectedName);
+      creator(agent, event, rule, crimeEventType, suspectId, affectedId);
     }
   }
 

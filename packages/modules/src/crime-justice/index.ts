@@ -447,10 +447,6 @@ export function registerCrimeJusticeModule(): void {
   registerBeliefCreator('REVENGE_IMPULSE', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
     // Grief → REVENGE_DESIRE motive toward the perpetrator
     if (!perpetrator) return;
-    // Find perpetrator agent ID
-    const killerEntry = Array.from(
-      (agent.state.beliefs?.getAllBeliefs() ?? []).entries()
-    );
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: 'REVENGE_DESIRE',
       subject: null, object: event.subject, // object = perpetrator ID (perpetrator)
@@ -1149,7 +1145,7 @@ export function registerCrimeJusticeModule(): void {
         const rumorEvent = {
           id: crypto.randomUUID(),
           type: 'RUMOR_SPREAD',
-          subject: criminalName,
+          subject: criminalId ?? criminalName,
           object: targetId,
           location: target.state.location,
           gameDay: ctx.currentDay,
@@ -1176,7 +1172,7 @@ export function registerCrimeJusticeModule(): void {
           const wantedEvent = {
             id: crypto.randomUUID(),
             type: 'WANTED_STATUS',
-            subject: criminalName,
+            subject: criminalId ?? criminalName,
             object: targetId,
             location: target.state.location,
             gameDay: ctx.currentDay,

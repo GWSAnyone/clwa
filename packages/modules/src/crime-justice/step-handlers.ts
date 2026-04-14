@@ -335,8 +335,8 @@ export function registerCrimeStepHandlers(): void {
       owner.state.beliefs.addBelief({
         id: crypto.randomUUID(),
         eventType: e.eventType,
-        subject: e.subjectName,
-        object: e.objectName ?? '',
+        subject: e.subjectId ?? e.subjectName,
+        object: e.objectId ?? e.objectName ?? '',
         location: owner.state.location,
         confidence: e.weight,
         source: 'evidence',
@@ -598,7 +598,7 @@ export function registerCrimeStepHandlers(): void {
     // Target gets THREAT_PERCEIVED motive belief (defensive reaction)
     target.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: 'THREAT_PERCEIVED',
-      subject: owner.profile.name, object: target.profile.id,
+      subject: goal.ownerId, object: target.profile.id,
       location: owner.state.location, confidence: 0.7,
       source: 'personal_motive', sourceNpcId: null,
       gameDay: goal.createdAtMinute ? Math.floor(goal.createdAtMinute / 1440) + 1 : 1,
