@@ -182,7 +182,7 @@ bad mood → crime → witness shock (-0.3) → gossip → more shock
 **Статус**: NEEDS DATA — generic concerns, не CLWA-specific баги
 
 **Наблюдения** (generic для любой LLM-game системы):
-- Utility score ≠ guaranteed choice. LLM has final say (by design — invariant #13)
+- Utility score ≠ guaranteed choice. LLM has final say (by design — philosophy #3: PM = Instinct, LLM = Consciousness)
 - 9B model less reliable than 70B+ at nuanced extraction
 - Conversation semantic drift possible over 4 exchanges
 

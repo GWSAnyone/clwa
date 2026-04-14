@@ -161,8 +161,6 @@ export class Agent {
         baseUrl: this.baseUrl,
         model: this.model,
       });
-    } catch (err) {
-      throw err;
     } finally {
       llmSemaphore.release();
     }

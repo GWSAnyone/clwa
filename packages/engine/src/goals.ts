@@ -70,7 +70,6 @@ export type GoalStep = MoveStep | InteractStep | InteractPresentStep | AnnounceS
 // ─── NPC Filter ───
 
 export interface NpcFilter {
-  role?: string;           // only this role
   excludeIds?: string[];   // skip these NPC IDs
   excludeOwner?: boolean;  // skip the goal owner (default: true)
   onlyAlive?: boolean;     // only alive NPCs (default: true)
@@ -644,7 +643,7 @@ export class GoalManager {
       if (excludeIds.has(id)) return false;
       if (filter?.onlyAlive !== false && !agent.state.alive) return false;
       if (agent.state.location !== owner.state.location) return false;
-      if (filter?.role && agent.profile.role !== filter.role) return false;
+      // role-based filtering removed (INV-14: use capability flags, not role strings)
       return true;
     });
   }

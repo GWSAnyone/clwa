@@ -2240,7 +2240,7 @@
     section.className = 'dash-section';
     const heading = document.createElement('h2');
     heading.className = 'dash-section-title';
-    heading.textContent = 'Engine Invariants (' + (invData?.total || 0) + ')';
+    heading.textContent = 'Invariants & Decisions (' + (invData?.total || 0) + ')';
     section.appendChild(heading);
 
     if (!invData?.invariants?.length) {
@@ -2255,10 +2255,11 @@
       const item = document.createElement('div');
       item.className = 'dash-invariant-item';
 
-      const num = document.createElement('span');
-      num.className = 'dash-invariant-num';
-      num.textContent = '#' + inv.num;
-      item.appendChild(num);
+      const id = document.createElement('span');
+      id.className = 'dash-invariant-num';
+      id.textContent = inv.id;
+      id.style.color = inv.type === 'invariant' ? 'var(--accent-red, #e74c3c)' : 'var(--accent-amber, #f39c12)';
+      item.appendChild(id);
 
       const text = document.createElement('span');
       text.className = 'dash-invariant-text';

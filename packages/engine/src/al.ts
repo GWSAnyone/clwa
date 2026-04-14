@@ -3,7 +3,7 @@ import type { Belief } from './beliefs';
 import type { WorldEvent } from './cg-types';
 import type { LocationGraph } from './world-types';
 import type { TimePeriod } from './schedule';
-import { getEventLabelSafe, isTransferable } from './event-registry';
+import { getEventLabelSafe, isTransferable, isStatusAbsent } from './event-registry';
 import type { NpcFilter } from './goals';
 
 // ─── Affordance Data Model ───
@@ -30,8 +30,6 @@ export interface AffordanceRequirement {
   isGuard?: boolean;
   /** NPC must have investigator flag */
   isInvestigator?: boolean;
-  /** NPC must have this role */
-  role?: string;
   /** NPC must be the criminal (subject of NPC_KILLED/GOODS_STOLEN event matching their name) */
   isCriminal?: boolean;
   /** NPC must be wanted (WANTED_STATUS event exists for them) */
@@ -68,8 +66,6 @@ export interface EventBoost {
   boost: number;
   /** Only apply if NPC has a close relationship with the victim */
   requiresRelationToVictim?: boolean;
-  /** Only apply if NPC has this role */
-  role?: string;
 }
 
 /**
@@ -253,7 +249,7 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
 
   for (const [otherId, other] of ctx.agents) {
     if (otherId === npcId || !other.state.alive) continue;
-    if (other.state.status) continue; // any non-default status blocks targeting
+    if (isStatusAbsent(other.state.status)) continue;
     if (other.profile.role === role) {
       let distance: number;
       if (other.state.location === agent.state.location) {
@@ -337,7 +333,6 @@ export function checkRequirements(
   if (req.isGuard && !agent.profile.investigator) return null;
   if (req.isInvestigator && !agent.profile.investigator) return null;
   if (req.canSentence && !agent.profile.canSentence) return null;
-  if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
   if (req.moodBelow !== undefined && agent.state.mood >= req.moodBelow) return null;
   if (aff.suppressNearPlayer && ctx.playerLocation === agent.state.location) return null;
@@ -371,7 +366,6 @@ export function checkRequirementsReactive(
   if (req.isGuard && !agent.profile.investigator) return null;
   if (req.isInvestigator && !agent.profile.investigator) return null;
   if (req.canSentence && !agent.profile.canSentence) return null;
-  if (req.role && agent.profile.role !== req.role) return null;
   if (req.period && !req.period.includes(ctx.period)) return null;
   // mood intentionally skipped for reactive (event urgency overrides mood gate)
   if (aff.suppressNearPlayer && ctx.playerLocation === agent.state.location) return null;

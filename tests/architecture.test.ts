@@ -356,7 +356,134 @@ describe('Engine Behavioral Purity', () => {
   });
 });
 
-// ─── 9. Registry Pattern — No Hardcoded Domain Strings in Engine ───
+// ─── 9. Status Registry Compliance ───
+
+describe('Status Registry Compliance', () => {
+  test('no truthy status checks in engine — use isStatusAbsent/isStatusActive (INV registry)', () => {
+    const violations: string[] = [];
+    // Allowlist: agent-types.ts (type declaration), world-types.ts (interface), event-registry.ts (registry impl)
+    const allowFiles = new Set(['agent-types.ts', 'world-types.ts', 'event-registry.ts']);
+    for (const f of engineFiles) {
+      const filename = f.split(/[\\/]/).pop()!;
+      if (allowFiles.has(filename)) continue;
+      for (const { lineNum, code } of codeLines(f)) {
+        // Catch: !!status, !!agent.state.status, .status) as boolean, .status && , .status ||
+        // But not: .status === , .status !== (explicit comparison — may be OK if compared to registry value)
+        // And not: .status? (optional chaining), .status: (object literal/type), statusTag, statusAbsent, statusActive
+        if (/!!.*\.status\b/.test(code) && !/isStatus/.test(code)) {
+          violations.push(`${relative(ROOT, f)}:${lineNum}: !!status — use isStatusAbsent()`);
+        }
+        // agent.state.status used as boolean in conditional (without registry call)
+        if (/if\s*\(.*\.status\s*\)/.test(code) && !/isStatus|===|!==/.test(code)) {
+          violations.push(`${relative(ROOT, f)}:${lineNum}: truthy status check — use isStatusAbsent()`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ─── 10. Relationship Mutation Safety (INV-18) ───
+
+describe('Relationship Mutation Safety', () => {
+  test('no direct .sentiment = assignment outside RelationshipGraph', () => {
+    const violations: string[] = [];
+    const allowFiles = new Set(['relationships.ts', 'world-types.ts', 'agent-types.ts']);
+    for (const f of [...engineFiles, ...moduleFiles]) {
+      const filename = f.split(/[\\/]/).pop()!;
+      if (allowFiles.has(filename)) continue;
+      for (const { lineNum, code } of codeLines(f)) {
+        // .sentiment = <value> but NOT sentiment: (object literal), sentimentBoost, sentimentValence, etc.
+        if (/\.sentiment\s*=\s/.test(code) && !/sentiment[A-Z]/.test(code) && !/sentiment:/.test(code) && !/interface|type /.test(code)) {
+          violations.push(`${relative(ROOT, f)}:${lineNum}: direct .sentiment = — use adjustSentiment()`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('no direct .trust = assignment outside RelationshipGraph', () => {
+    const violations: string[] = [];
+    const allowFiles = new Set(['relationships.ts', 'world-types.ts', 'agent-types.ts']);
+    for (const f of [...engineFiles, ...moduleFiles]) {
+      const filename = f.split(/[\\/]/).pop()!;
+      if (allowFiles.has(filename)) continue;
+      for (const { lineNum, code } of codeLines(f)) {
+        if (/\.trust\s*=\s/.test(code) && !/trust[A-Z]/.test(code) && !/trust:/.test(code) && !/interface|type /.test(code)) {
+          violations.push(`${relative(ROOT, f)}:${lineNum}: direct .trust = — use adjustTrust()`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ─── 11. Belief Transfer Guard (INV-08) ───
+
+describe('Belief Transfer Guard', () => {
+  test('rumor belief creation has isTransferable check nearby (INV-08)', () => {
+    const violations: string[] = [];
+    for (const f of engineFiles) {
+      const content = readFileSync(f, 'utf-8');
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (isCommentLine(lines[i])) continue;
+        // Find addBelief with source: 'rumor' (gossip/conversation spread)
+        if (/source:\s*'rumor'/.test(lines[i])) {
+          // Check 30 lines before for isTransferable (covers both sides of bidirectional transfer)
+          const context = lines.slice(Math.max(0, i - 30), i + 1).join('\n');
+          if (!/isTransferable/.test(context)) {
+            violations.push(`${relative(ROOT, f)}:${i + 1}: rumor belief without isTransferable guard`);
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ─── 12. No Role Mechanism in Engine Interfaces (INV-14) ───
+
+describe('No Role Mechanism in Engine', () => {
+  test('AffordanceRequirement has no role field', () => {
+    const violations: string[] = [];
+    const alFile = engineFiles.find(f => f.endsWith('al.ts'));
+    if (!alFile) return;
+    const content = readFileSync(alFile, 'utf-8');
+    // Find AffordanceRequirement interface body
+    const match = content.match(/interface AffordanceRequirement\s*\{([\s\S]*?)\}/);
+    if (match && /\brole\??:\s*string/.test(match[1])) {
+      violations.push('al.ts: AffordanceRequirement still has role field — use capability flags');
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('NpcFilter has no role field', () => {
+    const violations: string[] = [];
+    const goalsFile = engineFiles.find(f => f.endsWith('goals.ts'));
+    if (!goalsFile) return;
+    const content = readFileSync(goalsFile, 'utf-8');
+    const match = content.match(/interface NpcFilter\s*\{([\s\S]*?)\}/);
+    if (match && /\brole\??:\s*string/.test(match[1])) {
+      violations.push('goals.ts: NpcFilter still has role field — use capability flags');
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('EventBoost has no role field', () => {
+    const violations: string[] = [];
+    const alFile = engineFiles.find(f => f.endsWith('al.ts'));
+    if (!alFile) return;
+    const content = readFileSync(alFile, 'utf-8');
+    const match = content.match(/interface EventBoost\s*\{([\s\S]*?)\}/);
+    if (match && /\brole\??:\s*string/.test(match[1])) {
+      violations.push('al.ts: EventBoost still has role field — removed as dead code');
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
+// ─── 13. Registry Pattern — No Hardcoded Domain Strings ───
 
 describe('Registry Pattern Enforcement', () => {
   test('engine never checks specific role strings (Invariant #4)', () => {

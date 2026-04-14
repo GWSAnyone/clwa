@@ -366,7 +366,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact_present', purpose: 'seek comfort about the {crimeType:tragedy} involving {affectedName:someone}, who was {relationshipDesc:someone close}. You are deeply troubled', importance: 5, filter: { role: 'priest' } },
+      { action: 'interact_present', purpose: 'seek comfort about the {crimeType:tragedy} involving {affectedName:someone}, who was {relationshipDesc:someone close}. You are deeply troubled', importance: 5 },
       { action: 'wait', ticks: 2 },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
@@ -674,7 +674,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     targetFinder: 'detained',
     category: 'duty',
     severity: 3,
-    requires: { role: 'judge', hasDetainedNpc: true },
+    requires: { canSentence: true, hasDetainedNpc: true },
     minimumScore: 0.7,
     weights: [
       { trait: 'C', direction: 'high', multiplier: 0.3 },
@@ -691,7 +691,6 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     eventBoost: {
       eventTypes: ['NPC_ARRESTED'],
       boost: 0.5,
-      role: 'judge',
     },
     stepTemplates: [
       { action: 'move_to', location: '$home', skipIfAt: true },

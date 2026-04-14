@@ -17,7 +17,7 @@ export class VectorMemory {
   private embeddingModel: string;
   private vectorSize: number;
   private _memoryLog: MemoryEntry[] = [];
-  private _qdrantAvailable: boolean = true;
+  private _qdrantAvailable: boolean = false; // set to true by init() if Qdrant responds
   private _maxCapacity: number;
 
   constructor(
@@ -271,7 +271,11 @@ export class VectorMemory {
   private evictIfNeeded(): void {
     if (this._memoryLog.length <= this._maxCapacity) return;
 
-    const currentDay = Math.max(...this._memoryLog.map((e) => e.gameDay));
+    // Single-pass: find currentDay and worst entry simultaneously
+    let currentDay = 0;
+    for (const e of this._memoryLog) {
+      if (e.gameDay > currentDay) currentDay = e.gameDay;
+    }
     let worstIdx = -1;
     let worstScore = Infinity;
     for (let i = 0; i < this._memoryLog.length; i++) {

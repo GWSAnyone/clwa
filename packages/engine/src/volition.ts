@@ -79,7 +79,7 @@ export function createGoalFromRequest(
   requestedTarget?: string,
 ): NpcGoal | null {
   const agent = ctx.agents.get(npcId);
-  if (!agent || !agent.state.alive || !!agent.state.status) return null;
+  if (!agent || !agent.state.alive || isStatusAbsent(agent.state.status)) return null;
 
   const aff = AFFORDANCE_REGISTRY.find((a) => a.id === affordanceId);
   if (!aff) return null;
@@ -139,7 +139,7 @@ export async function evaluateAllVolition(
     if (filterSet && !filterSet.has(npcId)) continue;
     if (agent.profile.isPlayer) continue; // Player makes own decisions
     if (agent.state.inPlayerChat) continue; // NPC frozen in conversation with player
-    if (!agent.state.alive || !!agent.state.status) continue; // any non-default status blocks proactive volition
+    if (!agent.state.alive || isStatusAbsent(agent.state.status)) continue;
     if (ctx.hasActiveGoalAbove(npcId, 4)) continue;
     if (ctx.isArrestTarget?.(npcId)) continue; // someone is arresting this NPC — skip evaluation
 
@@ -226,7 +226,7 @@ export function evaluateReactiveVolition(
 
   for (const npcId of reactors) {
     const agent = ctx.agents.get(npcId);
-    if (!agent || !agent.state.alive || !!agent.state.status) continue;
+    if (!agent || !agent.state.alive || isStatusAbsent(agent.state.status)) continue;
     if (agent.profile.isPlayer) continue; // Player makes own decisions
 
     // Find reactive affordances matching this event

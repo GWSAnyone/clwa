@@ -384,12 +384,10 @@ export class World {
       console.error('  [MasterClock] _advanceTransits error:', err);
     }
 
-    if (this._gameMinute % 1 === 0) {
-      try {
-        this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, this.getCurrentDay());
-      } catch (err) {
-        console.error('  [MasterClock] onTimeUpdate error:', err);
-      }
+    try {
+      this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, this.getCurrentDay());
+    } catch (err) {
+      console.error('  [MasterClock] onTimeUpdate error:', err);
     }
 
     if (this._gameMinute % 5 === 0) {
@@ -514,12 +512,10 @@ export class World {
         target = Math.max(-1, -(stress * ps * SS_RATE));
       }
       const existing = mods.find(m => m.category === 'social_stress');
-      if (existing) {
-        existing.magnitude += (target - existing.magnitude) * SS_DRIFT;
-      } else if (target !== 0) {
-        mods.push({ id: 'social_stress', source: 'social_stress', category: 'social_stress',
-          magnitude: target * SS_DRIFT, remaining: 0, duration: 0, decay: 'none' });
-      }
+      const driftedMag = existing
+        ? existing.magnitude + (target - existing.magnitude) * SS_DRIFT
+        : target * SS_DRIFT;
+      this._upsertPermanent(mods, 'social_stress', driftedMag);
     }
 
     // 3. Compute effectiveMood = baseMood + Σ decayed magnitudes
@@ -552,19 +548,15 @@ export class World {
       const loneMag = (this._gameMinute - lastInteraction >= LONE_THRESHOLD)
         ? -(LONE_RATE * (agent.profile.bigFive.extraversion * 1.5 + 0.5))
         : 0;
-      const loneExisting = agent.state.moodModifiers.find(m => m.category === 'loneliness');
-      if (loneExisting) { loneExisting.magnitude = loneMag; }
-      else if (loneMag !== 0) {
-        agent.state.moodModifiers.push({ id: 'loneliness', source: 'loneliness', category: 'loneliness',
-          magnitude: loneMag, remaining: 0, duration: 0, decay: 'none' });
-      }
+      this._upsertPermanent(agent.state.moodModifiers, 'loneliness', loneMag);
 
-      // Recompute with loneliness included
+      // Recompute effectiveMood with loneliness included
       if (loneMag !== 0) {
         let sum = 0;
         for (const m of agent.state.moodModifiers) sum += modifierEffective(m);
         agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
       }
+
 
       if (Math.abs(agent.state.mood - oldMood) > 0.0005) {
         this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, agent.state.mood);
@@ -608,6 +600,17 @@ export class World {
     }
 
     mods.push(full);
+  }
+
+  /** Upsert a singleton permanent modifier (duration=0). Used by mood tick for social_stress/loneliness. */
+  private _upsertPermanent(mods: import('./world-types').MoodModifier[], category: string, magnitude: number, source?: string): void {
+    if (!Number.isFinite(magnitude)) return;
+    const existing = mods.find(m => m.category === category);
+    if (existing) {
+      existing.magnitude = magnitude;
+    } else if (magnitude !== 0) {
+      mods.push({ id: category, source: source ?? category, category, magnitude, remaining: 0, duration: 0, decay: 'none' });
+    }
   }
 
   /** Remove all modifiers matching a category for an NPC */
@@ -999,17 +1002,22 @@ export class World {
     if (this.goalManager.hasActiveGoal(npcId)) return; // got a goal while waiting in queue
 
     agent.state.processingState = 'awaiting_decision';
-    const ctx = this.buildAffordanceContext();
+    try {
+      const ctx = this.buildAffordanceContext();
 
-    const goals = await evaluateAllVolition(ctx, this.callbacks.onLlmCall, this.callbacks.onDecision, [npcId]);
-    for (const goal of goals) {
-      this.goalManager.addGoal(goal);
+      const goals = await evaluateAllVolition(ctx, this.callbacks.onLlmCall, this.callbacks.onDecision, [npcId]);
+      for (const goal of goals) {
+        this.goalManager.addGoal(goal);
+      }
+      // Set decision cooldown even if no affordances passed — prevents per-minute re-evaluation spam
+      if (!this.decisionCooldowns.has(npcId) || this._gameMinute >= (this.decisionCooldowns.get(npcId) ?? 0)) {
+        this.decisionCooldowns.set(npcId, this._gameMinute + (this.config.decisionCooldownMinutes ?? 60));
+      }
+      agent.state.processingState = this.goalManager.hasActiveGoal(npcId) ? 'executing_goal' : 'idle';
+    } catch (err) {
+      agent.state.processingState = 'idle';
+      throw err; // re-throw for _handleTask to log
     }
-    // Set decision cooldown even if no affordances passed — prevents per-minute re-evaluation spam
-    if (!this.decisionCooldowns.has(npcId) || this._gameMinute >= (this.decisionCooldowns.get(npcId) ?? 0)) {
-      this.decisionCooldowns.set(npcId, this._gameMinute + (this.config.decisionCooldownMinutes ?? 60));
-    }
-    agent.state.processingState = this.goalManager.hasActiveGoal(npcId) ? 'executing_goal' : 'idle';
   }
 
   private async _handleGoalStep(npcId: string): Promise<void> {
@@ -1134,8 +1142,8 @@ export class World {
       conversation.topicGroup = getTopicGroup(topic.category);
       this.callbacks.onConversation?.(conversation);
 
-      // Belief transfer — skip if sender has concealment belief (cover-up suppression)
-      if (topic.beliefTransfer) {
+      // Belief transfer — skip if event type is non-transferable or sender has concealment belief
+      if (topic.beliefTransfer && isTransferable(topic.beliefTransfer.eventType)) {
         const bt = topic.beliefTransfer;
         // Check if initiator is suppressed (concealment = covering up, perpetrator = committed the crime)
         const initSuppressed = initiator.state.beliefs?.getAllBeliefs().some(
@@ -1220,19 +1228,7 @@ export class World {
   /** Debug: force one processing cycle. Enqueues work and waits for queue to drain. */
   async tick(): Promise<TickResult> {
     this._enqueueWork();
-    // Wait for queue to finish processing all enqueued tasks
-    await new Promise<void>((resolve) => {
-      if (!this.processingQueue.isProcessing && this.processingQueue.length === 0) {
-        resolve();
-        return;
-      }
-      const check = setInterval(() => {
-        if (!this.processingQueue.isProcessing && this.processingQueue.length === 0) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 50);
-    });
+    await this.processingQueue.drain();
     return {
       tickNumber: this.tickCount,
       gameMinute: this._gameMinute,
@@ -1271,7 +1267,7 @@ export class World {
 
       // Belief transfer from overheard conversation (weaker than direct: ×0.3)
       let overheardClaim = '';
-      if (topic.beliefTransfer && initiator && agent.state.beliefs) {
+      if (topic.beliefTransfer && isTransferable(topic.beliefTransfer.eventType) && initiator && agent.state.beliefs) {
         const bt = topic.beliefTransfer;
         const sourceBelief = initiator.state.beliefs?.getAllBeliefs().find(
           b => b.eventType === bt.eventType && b.object === (bt.object ?? b.object),

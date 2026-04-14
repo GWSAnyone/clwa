@@ -101,13 +101,9 @@ export class ProcessingQueue {
     this.queue.length = 0;
   }
 
-  /**
-   * Wait for the currently in-flight task to finish.
-   * Resolves immediately if nothing is processing.
-   * Does NOT consume pending tasks — call clear() first to drop them.
-   */
+  /** Wait for all pending and in-flight tasks to complete. Resolves immediately if idle. */
   async drain(): Promise<void> {
-    if (!this._processing) return;
+    if (!this._processing && this.queue.length === 0) return;
     return new Promise<void>(resolve => {
       const prev = this._onEmpty;
       this._onEmpty = () => { prev?.(); resolve(); };

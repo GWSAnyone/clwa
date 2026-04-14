@@ -127,7 +127,7 @@ registerSecretDirectiveBuilder(({ agent, eventStore }) => {
 });
 ```
 
-**Gradual breakdown**: директива не запрещает говорить — она создаёт шкалу сопротивления. Мягкий вопрос → уклончивый ответ. Сильное давление → может сломаться. Trustworthy + powerful собеседник → может открыться. Это сохраняет принцип "LLM = consciousness" (invariant A5): directive = instinct, LLM решает.
+**Gradual breakdown**: директива не запрещает говорить — она создаёт шкалу сопротивления. Мягкий вопрос → уклончивый ответ. Сильное давление → может сломаться. Trustworthy + powerful собеседник → может открыться. Это сохраняет принцип "LLM = consciousness" (philosophy #3: PM = Instinct, LLM = Consciousness): directive = instinct, LLM решает.
 
 ---
 

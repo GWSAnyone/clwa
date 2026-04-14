@@ -79,15 +79,6 @@ function parseDialogue(raw: string): string {
   }
 }
 
-/** Extract only speech portion (for memory storage, impact analysis) */
-function extractSpeech(raw: string): string {
-  try {
-    return (JSON.parse(raw).speech ?? '').trim() || raw;
-  } catch {
-    return raw;
-  }
-}
-
 /**
  * Run an NPC-to-NPC conversation: initiator speaks, responder replies.
  * Each exchange = 2 LLM calls. Returns the full conversation result.

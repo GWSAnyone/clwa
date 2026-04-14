@@ -26,6 +26,7 @@ registerCrimeJusticeModule();
 
 const DOCS_DIR = resolve(import.meta.dir, "../../docs");
 const CLAUDE_MD = resolve(import.meta.dir, "../../CLAUDE.md");
+const SERENA_DIR = resolve(import.meta.dir, "../../../.serena/memories/clwa");
 const WORLD_DIR = resolve(import.meta.dir, "../../worlds/millhaven");
 const PROJECT_ROOT = resolve(import.meta.dir, "../..");
 const SPECS_DIR = resolve(DOCS_DIR, "specs");
@@ -360,13 +361,12 @@ async function getHealth(): Promise<HealthData> {
     }
   } catch {}
 
-  // Invariant count: numbered lines in CLAUDE.md engine invariants section
+  // Invariant count: INV-NN entries in Serena invariants memory
   let invariantCount = 0;
-  if (claudeContent) {
-    const lines = claudeContent.split('\n');
-    for (const line of lines) {
-      if (/^\d+\.\s/.test(line.trim())) invariantCount++;
-    }
+  const invContent = await safeReadFile(join(SERENA_DIR, 'invariants.md'));
+  if (invContent) {
+    const matches = invContent.match(/^### INV-\d+:/gm);
+    if (matches) invariantCount = matches.length;
   }
 
   // Registry count: count `export function register` in event-registry.ts
@@ -500,6 +500,18 @@ const server = Bun.serve({
       const tree = await buildDocTree(DOCS_DIR);
       // Add CLAUDE.md as top-level entry
       tree.unshift({ name: 'CLAUDE', path: '__CLAUDE_MD__', type: 'file' });
+      // Add Serena memories as virtual section
+      try {
+        const serenaFiles = (await readdir(SERENA_DIR)).filter(f => f.endsWith('.md')).sort();
+        if (serenaFiles.length > 0) {
+          const children = serenaFiles.map(f => ({
+            name: f.replace('.md', ''),
+            path: `__SERENA__/${f}`,
+            type: 'file' as const,
+          }));
+          tree.push({ name: 'Serena Memories', path: '__SERENA__', type: 'directory', children });
+        }
+      } catch {}
       return Response.json(tree, { headers: cors });
     }
 
@@ -510,10 +522,15 @@ const server = Bun.serve({
 
       const fullPath = docPath === '__CLAUDE_MD__'
         ? CLAUDE_MD
-        : resolve(DOCS_DIR, docPath);
+        : docPath.startsWith('__SERENA__/')
+          ? resolve(SERENA_DIR, docPath.replace('__SERENA__/', ''))
+          : resolve(DOCS_DIR, docPath);
 
-      // Security: must be within docs dir or be CLAUDE.md
-      if (docPath !== '__CLAUDE_MD__' && !fullPath.startsWith(DOCS_DIR)) {
+      // Security: must be within docs dir, CLAUDE.md, or serena memories dir
+      if (docPath !== '__CLAUDE_MD__' && !docPath.startsWith('__SERENA__/') && !fullPath.startsWith(DOCS_DIR)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      if (docPath.startsWith('__SERENA__/') && !fullPath.startsWith(SERENA_DIR)) {
         return new Response('Forbidden', { status: 403 });
       }
 
@@ -539,9 +556,14 @@ const server = Bun.serve({
 
       const fullPath = docPath === '__CLAUDE_MD__'
         ? CLAUDE_MD
-        : resolve(DOCS_DIR, docPath);
+        : docPath.startsWith('__SERENA__/')
+          ? resolve(SERENA_DIR, docPath.replace('__SERENA__/', ''))
+          : resolve(DOCS_DIR, docPath);
 
-      if (docPath !== '__CLAUDE_MD__' && !fullPath.startsWith(DOCS_DIR)) {
+      if (docPath !== '__CLAUDE_MD__' && !docPath.startsWith('__SERENA__/') && !fullPath.startsWith(DOCS_DIR)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      if (docPath.startsWith('__SERENA__/') && !fullPath.startsWith(SERENA_DIR)) {
         return new Response('Forbidden', { status: 403 });
       }
 
@@ -601,6 +623,21 @@ const server = Bun.serve({
             .slice(0, 3)
             .map(l => l.trim().substring(0, 120));
           results.push({ path: '__CLAUDE_MD__', name: 'CLAUDE', matches });
+        }
+      } catch {}
+
+      // Also search Serena memories
+      try {
+        const serenaFiles = (await readdir(SERENA_DIR)).filter(f => f.endsWith('.md'));
+        for (const file of serenaFiles) {
+          const content = await Bun.file(join(SERENA_DIR, file)).text();
+          if (content.toLowerCase().includes(query)) {
+            const matches = content.split('\n')
+              .filter(l => l.toLowerCase().includes(query))
+              .slice(0, 3)
+              .map(l => l.trim().substring(0, 120));
+            results.push({ path: `__SERENA__/${file}`, name: `serena: ${file.replace('.md', '')}`, matches });
+          }
         }
       } catch {}
 
@@ -755,19 +792,30 @@ const server = Bun.serve({
       return Response.json({ rules }, { headers: cors });
     }
 
-    // GET /api/dashboard/invariants — parsed from CLAUDE.md
+    // GET /api/dashboard/invariants — parsed from Serena memories (invariants + design-decisions)
     if (pathname === '/api/dashboard/invariants' && method === 'GET') {
-      const claudeContent = await safeReadFile(CLAUDE_MD);
-      const invariants: Array<{ num: number; text: string }> = [];
-      if (claudeContent) {
-        const lines = claudeContent.split('\n');
-        for (const line of lines) {
-          const m = line.match(/^(\d+)\.\s+\*\*(.+?)\*\*\s*:\s*(.+)/);
-          if (m) {
-            invariants.push({ num: parseInt(m[1]), text: m[2] + ': ' + m[3].substring(0, 120) });
-          }
+      const invariants: Array<{ id: string; text: string; type: 'invariant' | 'decision' }> = [];
+
+      // Parse hard invariants: ### INV-NN: Title
+      const invContent = await safeReadFile(join(SERENA_DIR, 'invariants.md'));
+      if (invContent) {
+        const re = /^### (INV-\d+): (.+)$/gm;
+        let m;
+        while ((m = re.exec(invContent)) !== null) {
+          invariants.push({ id: m[1], text: m[2].substring(0, 120), type: 'invariant' });
         }
       }
+
+      // Parse design decisions: ### DD-NN: Title
+      const ddContent = await safeReadFile(join(SERENA_DIR, 'design-decisions.md'));
+      if (ddContent) {
+        const re = /^### (DD-\d+): (.+)$/gm;
+        let m;
+        while ((m = re.exec(ddContent)) !== null) {
+          invariants.push({ id: m[1], text: m[2].substring(0, 120), type: 'decision' });
+        }
+      }
+
       return Response.json({ invariants, total: invariants.length }, { headers: cors });
     }
 
@@ -819,22 +867,19 @@ const server = Bun.serve({
         }
       }
 
-      // Tier 1d: Engine invariant names from CLAUDE.md (N. **Term**: description)
-      if (claudeContent) {
-        const re = /^\d+\.\s+\*\*(.+?)\*\*\s*:/gm;
+      // Tier 1d: Engine invariant names from Serena invariants memory (### INV-NN: Term)
+      const invGlossaryContent = await safeReadFile(join(SERENA_DIR, 'invariants.md'));
+      if (invGlossaryContent) {
+        const re = /^### (INV-\d+): (.+)$/gm;
         let m;
-        while ((m = re.exec(claudeContent)) !== null) {
-          const term = m[1].trim();
-          // Only clean multi-word terms, skip code-like patterns
-          if (term.length < 12 || term.length > 30) continue;
-          if (term.split(/\s+/).length < 2) continue;
-          if (/[=+(),`]/.test(term)) continue; // skip code-like: "All types = string", "ILConfig + ConversationConfig"
-          if (/^[a-z]/.test(term)) continue; // skip camelCase starts: "handleEventForGoals", "addMoodModifier"
+        while ((m = re.exec(invGlossaryContent)) !== null) {
+          const term = m[2].trim();
+          if (term.length < 8 || term.length > 50) continue;
           terms.push({
             term,
             tier: 1,
-            description: 'Engine invariant (CLAUDE.md)',
-            doc: '__CLAUDE_MD__',
+            description: `Hard invariant ${m[1]}`,
+            doc: '__SERENA__/invariants.md',
           });
         }
       }

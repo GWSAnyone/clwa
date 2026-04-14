@@ -60,7 +60,7 @@
 ### 7. Legacy 'free' string in loadState
 - **File**: `packages/engine/src/world.ts:1803`
 - Backward compat: `status === 'free' ? undefined : status`
-- Invariant #9 says null/undefined = free. This is migration code.
+- INV-07 (null = unknown) says null/undefined = free. This is migration code.
 - Can be removed after next major version
 
 ---

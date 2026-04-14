@@ -9,10 +9,10 @@
 
 ## On Session Start
 
-1. Read Serena memories: `clwa/overview` (codebase navigation), `clwa/engine-invariants` (81 rules — **mandatory**, things break if forgotten)
-2. Read `clwa/bilateral-design` when touching player/NPC parity
-3. Read `clwa/dev-tools` when using debug API
-4. Read `clwa/godot-client` when working on Godot
+1. **Always**: `clwa/overview` (codebase navigation) + `clwa/invariants` (21 hard rules — violate = crash/corrupt/deadlock)
+2. **On demand**: `clwa/design-decisions` (16 anti-reversion docs) — when modifying behavior logic
+3. **On demand**: `clwa/subsystem-reference` (20 implementation details) — when touching specific subsystem
+4. **On demand**: `clwa/bilateral-design` | `clwa/dev-tools` | `clwa/godot-client` — when relevant
 
 ## Design Philosophy (ALWAYS FOLLOW)
 
@@ -67,25 +67,20 @@ Tools   (tools/)           — docs-reader, world-editor, kill-port
 ```
 Dependencies: `modules → engine`, `server → engine + modules`. Engine **never** depends on modules.
 
-## Critical Rules (will crash / corrupt / fail audit)
+## Critical Rules
 
-> Full list of 81 invariants → Serena memory `clwa/engine-invariants`. Below = top 15 that MUST be in your head always.
+> **21 hard invariants** (INV-01..21) → Serena memory `clwa/invariants`. Violate any = crash, deadlock, corrupt state.
+> **16 design decisions** (DD-01..16) → Serena memory `clwa/design-decisions`. Don't revert without discussion.
+> **20 subsystem details** → Serena memory `clwa/subsystem-reference`. Consult when touching specific subsystem.
+>
+> IDs are stable — use them in specs and audits (e.g. "see INV-13", "per DD-01").
 
-1. **LLM semaphore**: acquire() → call → release() in **finally**. Forgetting finally = deadlock.
-2. **Null semantics**: null = unknown. Never empty string as null substitute. addBelief merges null→concrete.
-3. **Registry pattern**: engine has empty registries. Modules fill them. Engine never references module-specific values. Zero hardcoded strings.
-4. **Capability flags**: investigator/detersCrime/canSentence on profile. Never role strings for logic.
-5. **No fallback strings**: registry returns null → skip, throw, or generic behavior. Never `?? 'HARDCODED'`.
-6. **handleEventForGoals is async**: all callers MUST await. Missing await = beliefs created after response sent.
-7. **No reflex bypass**: LLM always decides. Instinct builder provides pressure through vivid descriptions.
-8. **Belief dedup by source**: key = (eventType, object, source). Different sources coexist. Same source overwrites.
-9. **Player = Agent**: isPlayer flag. Same beliefs, relationships, mood, CG, perception. tick() skips volition/schedule/movement.
-10. **isPlayer guards**: every `for (agent of agents)` loop — decide include player or not.
-11. **IL bilateral parity**: Player claims → same `addBelief()` as NPC beliefTransfer. Change one = change both.
-12. **Mood via addModifier**: never `agent.state.mood +=`. mood = baseMood + Σ(modifiers). All changes structured.
-13. **Source/event flags**: engine checks `isTransferable()`/`isPerpetrator()` boolean flags, NOT string names. New type without flags = invisible.
-14. **Module boundary**: engine NEVER imports from modules. Zero module-specific string literals.
-15. **inPlayerChat cleanup**: MUST be in finally block. Exception during chat = NPC frozen forever.
+**Top 5 (always in your head):**
+1. **INV-01 LLM semaphore**: acquire() → call → release() in **finally**. Deadlock if forgotten.
+2. **INV-06 Mood via addModifier**: never direct mutation. mood = baseMood + Σ(modifiers).
+3. **INV-14 Module boundary**: engine NEVER imports modules. Zero module-specific strings.
+4. **INV-16 isPlayer guards**: every agent loop — decide include player or not.
+5. **INV-07 Null semantics**: null = unknown. Never empty string substitute.
 
 ## Tests
 
