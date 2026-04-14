@@ -8,7 +8,7 @@
  * This is CONTENT (what NPCs do/talk about), not ENGINE (how it's selected).
  */
 
-import { TOPIC_SOURCE_REGISTRY, AFFORDANCE_REGISTRY, TARGET_FINDERS, registerTopicGroupMapping } from '@clwa/engine';
+import { TOPIC_SOURCE_REGISTRY, AFFORDANCE_REGISTRY, TARGET_FINDERS, registerTopicGroupMapping, isStatusAbsent } from '@clwa/engine';
 import type { Agent, AffordanceContext, AffordanceTarget } from '@clwa/engine';
 import { SOCIAL_TOPIC_SOURCES } from './topic-sources';
 
@@ -17,7 +17,7 @@ function findSocializeTarget(npcId: string, agent: Agent, ctx: AffordanceContext
   // Prefer co-located NPC
   for (const [otherId, other] of ctx.agents) {
     if (otherId === npcId || !other.state.alive || other.profile.isPlayer) continue;
-    if (other.state.status) continue;
+    if (isStatusAbsent(other.state.status)) continue;
     if (other.state.location === agent.state.location) {
       return { targetId: otherId, targetName: other.profile.name, targetLocation: other.state.location };
     }
@@ -28,7 +28,7 @@ function findSocializeTarget(npcId: string, agent: Agent, ctx: AffordanceContext
     for (const connId of loc.connections) {
       for (const [otherId, other] of ctx.agents) {
         if (otherId === npcId || !other.state.alive || other.profile.isPlayer) continue;
-        if (other.state.status) continue;
+        if (isStatusAbsent(other.state.status)) continue;
         if (other.state.location === connId) {
           return { targetId: otherId, targetName: other.profile.name, targetLocation: connId };
         }

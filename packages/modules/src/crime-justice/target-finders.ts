@@ -369,10 +369,10 @@ export function findSurveillanceTarget(npcId: string, agent: Agent, ctx: Afforda
   }
   if (!bestName) return null;
 
-  // Resolve name → agent
+  // Resolve subject → agent (handles both ID and display name)
   for (const [id, a] of ctx.agents) {
-    if (a.profile.name === bestName && a.state.alive && !isStatusAbsent(a.state.status)) {
-      return { targetId: id, targetName: bestName, targetLocation: a.state.location };
+    if (matchesNpc(bestName, a) && a.state.alive && !isStatusAbsent(a.state.status)) {
+      return { targetId: id, targetName: a.profile.name, targetLocation: a.state.location };
     }
   }
   return null;

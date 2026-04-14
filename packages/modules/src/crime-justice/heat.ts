@@ -40,7 +40,9 @@ export function computeHeat(agent: Agent, ctx: HeatContext): number {
   // Criminal knows witnesses exist if they received witness-type beliefs about their own crime
   // (e.g., they saw people at the crime scene, or learned through rumors)
   const crimeEventType = perpetratorBelief.eventType;
+  const selfId = agent.profile.id;
   const selfName = agent.profile.name;
+  const matchesSelf = (subject: string | null) => subject === selfId || subject === selfName;
 
   // Check if criminal has any beliefs suggesting others know about the crime
   const informedBeliefs = beliefs.filter(b =>
@@ -55,7 +57,7 @@ export function computeHeat(agent: Agent, ctx: HeatContext): number {
   // ─── Overheard rumors ───
   // Criminal heard rumors where THEY are the subject
   const selfRumors = beliefs.filter(b =>
-    b.source === 'rumor' && b.subject === selfName,
+    b.source === 'rumor' && matchesSelf(b.subject),
   );
   heat += Math.min(0.25, selfRumors.length * 0.12);
 
@@ -69,7 +71,7 @@ export function computeHeat(agent: Agent, ctx: HeatContext): number {
   // ─── Wanted status awareness ───
   // Criminal received testimony-source beliefs about themselves (from WANTED_STATUS cascade)
   const wantedBeliefs = beliefs.filter(b =>
-    b.source === 'testimony' && b.subject === selfName,
+    b.source === 'testimony' && matchesSelf(b.subject),
   );
   if (wantedBeliefs.length > 0) {
     heat += 0.30;
