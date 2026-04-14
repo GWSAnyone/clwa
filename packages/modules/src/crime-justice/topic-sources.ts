@@ -74,7 +74,7 @@ export const justiceTopics: TopicSource = (init, resp, ctx) => {
           responderHook: `This is the first you're hearing of this. React with genuine surprise.`,
           category: 'justice',
           minImportance: 6,
-          beliefTransfer: { eventType: 'NPC_ARRESTED', object: name, confidenceMultiplier: 0.5 },
+          beliefTransfer: { eventType: 'NPC_ARRESTED', object: targetId, confidenceMultiplier: 0.5 },
         });
       } else {
         proposals.push({
@@ -87,7 +87,7 @@ export const justiceTopics: TopicSource = (init, resp, ctx) => {
           responderHook: `${name} was arrested. Decide if you tell ${init.profile.name} — and how much.`,
           category: 'justice',
           minImportance: 6,
-          beliefTransfer: { eventType: 'NPC_ARRESTED', object: name, confidenceMultiplier: 0.5 },
+          beliefTransfer: { eventType: 'NPC_ARRESTED', object: targetId, confidenceMultiplier: 0.5 },
         });
       }
     }
@@ -116,7 +116,7 @@ export const justiceTopics: TopicSource = (init, resp, ctx) => {
           responderHook: `First you're hearing of the verdict. React honestly.`,
           category: 'justice',
           minImportance: 6,
-          beliefTransfer: { eventType: 'NPC_SENTENCED', object: name, confidenceMultiplier: 0.5 },
+          beliefTransfer: { eventType: 'NPC_SENTENCED', object: targetId, confidenceMultiplier: 0.5 },
         });
       } else {
         proposals.push({
@@ -129,7 +129,7 @@ export const justiceTopics: TopicSource = (init, resp, ctx) => {
           responderHook: `${name} was sentenced. Share the verdict with ${init.profile.name}.`,
           category: 'justice',
           minImportance: 6,
-          beliefTransfer: { eventType: 'NPC_SENTENCED', object: name, confidenceMultiplier: 0.5 },
+          beliefTransfer: { eventType: 'NPC_SENTENCED', object: targetId, confidenceMultiplier: 0.5 },
         });
       }
     }
@@ -336,7 +336,7 @@ export const suspicionTopics: TopicSource = (init, resp, ctx) => {
         mentionedNpcId: belief.subject!,
         sentimentValence: -0.05,
         weight: 5,
-        beliefTransfer: { eventType: belief.eventType, object: affectedName ?? undefined, confidenceMultiplier: 0.6 },
+        beliefTransfer: { eventType: belief.eventType, object: belief.object ?? undefined, confidenceMultiplier: 0.6 },
         initiatorHook: `You suspect ${perpetratorName} is involved in the ${crimeLabel}${affectedName ? ` of ${affectedName}` : ''}. ${resp.profile.name} seems to know something too. Compare notes carefully.`,
         responderHook: `You also have suspicions about ${perpetratorName}. Share what you know, but be careful.`,
         category: 'conflict',
@@ -350,7 +350,7 @@ export const suspicionTopics: TopicSource = (init, resp, ctx) => {
         mentionedNpcId: belief.subject!,
         sentimentValence: -0.03,
         weight: 4,
-        beliefTransfer: { eventType: belief.eventType, object: affectedName ?? undefined, confidenceMultiplier: 0.3 },
+        beliefTransfer: { eventType: belief.eventType, object: belief.object ?? undefined, confidenceMultiplier: 0.3 },
         initiatorHook: `You have your suspicions about the ${crimeLabel}${affectedName ? ` involving ${affectedName}` : ''}. Hint at what you think without naming names directly — feel out whether ${resp.profile.name} might know something.`,
         responderHook: `${init.profile.name} seems to be hinting at something about recent events. Try to understand what they know.`,
         category: 'conflict',
