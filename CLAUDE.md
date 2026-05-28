@@ -47,7 +47,7 @@ Do NOT rationalize keeping module knowledge in engine. Every violation sets a pr
 bun clwa    # Game server → http://localhost:3000
 bun world   # World editor → http://localhost:3001
 bun docs    # Docs reader + intelligence dashboard → http://localhost:3002
-bun test    # 151 tests (8 files)
+bun test    # run test suite
 ```
 - **Runtime**: Bun | **LLM**: LM Studio, `qwen3.5-9b-abliterated` | **Embeddings**: raw fetch
 - **Web UI**: `http://localhost:3000/game.html` — Canvas2D, Tiny Swords sprites, A* pathfinding
@@ -59,8 +59,8 @@ bun test    # 151 tests (8 files)
 ```
 Engine  (packages/engine/)  — universal subsystems, 40+ empty registries, ZERO module-specific content
 Modules (packages/modules/) — world content via registration functions
-  ├── social/              — 13 topic sources + socialize affordance
-  └── crime-justice/       — 23 affordances, 20 CG rules, step handlers
+  ├── social/              — topic sources + socialize affordance
+  └── crime-justice/       — affordances, CG rules, step handlers
 Server  (packages/server/)  — HTTP/WS, world-loader, bootstrap
 Worlds  (worlds/millhaven/) — JSON world data (NPC profiles, locations, relationships)
 Tools   (tools/)           — docs-reader, world-editor, kill-port
@@ -69,9 +69,9 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Critical Rules
 
-> **21 hard invariants** (INV-01..21) → Serena memory `clwa/invariants`. Violate any = crash, deadlock, corrupt state.
-> **16 design decisions** (DD-01..16) → Serena memory `clwa/design-decisions`. Don't revert without discussion.
-> **20 subsystem details** → Serena memory `clwa/subsystem-reference`. Consult when touching specific subsystem.
+> **Hard invariants** (stable IDs INV-NN) → Serena memory `clwa/invariants`. Violate any = crash, deadlock, corrupt state.
+> **Design decisions** (stable IDs DD-NN) → Serena memory `clwa/design-decisions`. Don't revert without discussion.
+> **Subsystem reference details** → Serena memory `clwa/subsystem-reference`. Consult when touching specific subsystem.
 >
 > IDs are stable — use them in specs and audits (e.g. "see INV-13", "per DD-01").
 
@@ -84,14 +84,12 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 
 ## Tests
 
-- `bun test` — 151 tests (8 files): architecture, boot-smoke, save-load, cg-v2, heat, m3-systems, cg-integration, regression, world-data
+- `bun test` — full test suite (architecture, boot-smoke, save-load, cg-v2, heat, m3-systems, cg-integration, regression, world-data)
 - `bun x tsc --noEmit` — 0 errors target
 - Run before commits.
 
 ## Current Status
 
-v0.13.2 (M3 complete). M1 done. M2 done. M2.5 done. **M3 (Living Opposition) done**. Next: M4 (Complete Session).
+Live status (version, milestone, drift) — invoke `/start-ledevia CLWA`. Do not duplicate facts here that the skill regenerates from code.
 
-14 engine subsystems, 40+ registries, 23 affordances, 29 specs. 151 tests, 0 TS errors. Engine/module boundary clean.
-
-See `docs/ROADMAP.md` for milestone details, `docs/specs/AUDIT-npc-systems-v0.13.md` for system quality audit.
+See `docs/ROADMAP.md` for milestone details and current cursor, `docs/specs/AUDIT-npc-systems-v0.13.md` for the latest system-quality audit.

@@ -13,7 +13,7 @@
  *   emotionalPressure → mood + relationship + event store
  */
 
-import { llmSemaphore } from './agent';
+// llmSemaphore более не используется — classify внутри façade сам управляет семафором
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
 import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs, getRegisteredQuestionTopics, getDefaultSpeechAct } from './event-registry';
@@ -21,7 +21,7 @@ import type { PressureHandlerContext } from './event-registry';
 import type { ILConfig } from './world-types';
 import type { PlayerJournal, CaseSummary } from './journal';
 import { DEFAULT_IL_CONFIG } from './world-types';
-import { llmCall } from './llm-client';
+import { classify } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
 
 // Question topics registered dynamically via registerQuestionTopics() — no hardcoded array.
@@ -182,11 +182,13 @@ export interface ILContext {
   knownEventTypes: string[];
   /** Available action verbs NPC can perform (from ACTION_VERB_MAP) */
   availableActions: string[];
-  /** NPC being talked to */
+  /** NPC being talked to — display name (for prompt) */
   targetNpcName: string;
-  /** LLM base URL (default: http://127.0.0.1:1234) */
+  /** NPC being talked to — agent id (для ClaudeCodeProvider per-NPC папки) */
+  targetNpcId?: string;
+  /** @deprecated Use route in llm config. Will be removed in v0.15. */
   llmBaseUrl?: string;
-  /** LLM model name (default: from DEFAULT_WORLD_CONFIG) */
+  /** @deprecated Use route in llm config. Will be removed in v0.15. */
   llmModel?: string;
 }
 
@@ -244,31 +246,26 @@ export async function extractDialogueMeaning(
     `Respond ONLY with valid JSON. Omit fields that don't apply (don't include empty arrays).`,
   ].join('\n');
 
-  await llmSemaphore.acquire();
+  // classify сам управляет семафором + retry + null-on-error.
+  const schema = buildILSchema(ctx);
+  const raw = await classify<Record<string, unknown>>('il', {
+    system: 'You are a dialogue meaning extractor. Extract structured information from player speech.',
+    user: prompt,
+    schema: { name: schema.name ?? 'il_extraction', schema: schema.schema },
+    agentContext: ctx.targetNpcId ? { id: ctx.targetNpcId } : undefined,
+  });
+
+  if (!raw) {
+    console.warn(`  [IL] LLM returned null — falling back to ${getDefaultSpeechAct()}`);
+    return { speechAct: getDefaultSpeechAct(), extractionConfidence: 0, _fallback: 'empty_response' };
+  }
+
   try {
-    const content = await llmCall({
-      system: 'You are a dialogue meaning extractor. Extract structured information from player speech.',
-      user: prompt,
-      temperature: 0.15,
-      maxTokens: 400,
-      baseUrl: ctx.llmBaseUrl,
-      model: ctx.llmModel,
-      jsonSchema: buildILSchema(ctx),
-    });
-
-    if (!content) {
-      console.warn(`  [IL] LLM returned empty content — falling back to ${getDefaultSpeechAct()}`);
-      return { speechAct: getDefaultSpeechAct(), extractionConfidence: 0, _fallback: 'empty_response' };
-    }
-
-    const raw = JSON.parse(content) as Record<string, unknown>;
     console.log(`  [IL] Raw LLM output: ${JSON.stringify(raw)}`);
     return validateAndResolve(raw, ctx);
   } catch (err) {
-    console.error(`  [IL] Extraction failed:`, err);
+    console.error(`  [IL] Validation failed:`, err);
     return { speechAct: getDefaultSpeechAct(), extractionConfidence: 0, _fallback: 'extraction_error' };
-  } finally {
-    llmSemaphore.release();
   }
 }
 

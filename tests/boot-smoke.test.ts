@@ -6,6 +6,8 @@
  * Run: bun test tests/boot-smoke.test.ts
  */
 import { describe, test, expect, beforeAll } from 'bun:test';
+import { setupFakeLlm } from './fixtures/fake-llm-provider';
+beforeAll(setupFakeLlm);
 import { readFileSync, readdirSync } from 'fs';
 import { join, relative } from 'path';
 import {

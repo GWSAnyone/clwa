@@ -1,4 +1,4 @@
-import { registerStepHandler, registerTickPhaseHandler, getEventLabel, getBeliefSourceLabel, isFirsthand, nextHop, llmCall, llmSemaphore } from '@clwa/engine';
+import { registerStepHandler, registerTickPhaseHandler, getEventLabel, getBeliefSourceLabel, isFirsthand, nextHop, classify } from '@clwa/engine';
 import type { Agent, StepExecutionContext, LlmJsonSchema, GoalActionResult, Belief, NpcGoal, GoalManager } from '@clwa/engine';
 import type { CrimeScene } from '@clwa/engine';
 
@@ -454,30 +454,23 @@ export function registerCrimeStepHandlers(): void {
       },
     };
 
-    // 8. LLM call with structured output (retry once on failure)
+    // 8. LLM call via façade. classify ловит exceptions → null, façade оборачивает acquire/release.
     let chosenVerdict = 'release';
     let reasoning = '';
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await llmSemaphore.acquire();
-      try {
-        const content = await llmCall({ system, user, temperature: 0.4, maxTokens: attempt === 0 ? 200 : 300, jsonSchema: verdictSchema });
-        if (content) {
-          try {
-            const parsed = JSON.parse(content);
-            if (verdictIds.includes(parsed.verdict)) {
-              chosenVerdict = parsed.verdict;
-              reasoning = parsed.reasoning ?? '';
-              break;
-            }
-          } catch { /* retry */ }
-        }
-      } finally {
-        llmSemaphore.release();
-      }
-      if (attempt === 0) console.warn(`[Verdict] Attempt 1 failed for ${target.profile.name}, retrying with higher maxTokens`);
-    }
-    if (chosenVerdict === 'release' && reasoning === '') {
-      console.warn(`[Verdict:ERROR] Both attempts failed for ${target.profile.name}, fallback=release`);
+    const result = await classify<{ verdict: string; reasoning: string }>('verdict', {
+      system,
+      user,
+      schema: verdictSchema,
+      agentContext: { id: owner.profile.id }, // magistrate's per-NPC folder (for ClaudeCodeProvider)
+      maxTokensOverride: 300,
+      samplingOverride: { temperature: 0.4 },
+    });
+    if (result && verdictIds.includes(result.verdict)) {
+      chosenVerdict = result.verdict;
+      reasoning = result.reasoning ?? '';
+    } else {
+      const reason = result === null ? 'classify returned null' : `invalid verdict '${result.verdict}'`;
+      console.warn(`[Verdict:ERROR] ${reason} for ${target.profile.name}, fallback=release`);
     }
 
     // 9. Apply verdict effects

@@ -1,8 +1,7 @@
 import type { Agent } from './agent';
-import { llmSemaphore } from './agent';
 import type { WorldEvent } from './cg-types';
 import type { NpcGoal, GoalStep } from './goals';
-import { llmCall } from './llm-client';
+import { classify } from './llm-client';
 import { buildInstinctDescription, getTierName } from './instinct-builder';
 import { getAllRegisteredVerbs, subjectReacts } from './event-registry';
 import { bigFiveToDescription, getStressGrowthDirective } from './personality-prose';
@@ -657,23 +656,17 @@ function resolveDecision(
 
 async function callLlm(agent: Agent, system: string, user: string, volitionTemp?: number): Promise<string | null> {
   const temperature = volitionTemp ?? 0.35;
-
-  await llmSemaphore.acquire();
-  try {
-    const result = await llmCall({
-      system,
-      user,
-      temperature,
-      maxTokens: 100,
-      jsonSchema: getVolitionSchema(),
-    });
-    return result;
-  } catch (err) {
-    console.error(`  [AL:llm] LLM call failed:`, err);
-    return null;
-  } finally {
-    llmSemaphore.release();
-  }
+  // classify внутри façade: семафор/retry/null-on-error
+  const result = await classify<unknown>('volition', {
+    system,
+    user,
+    schema: getVolitionSchema(),
+    agentContext: { id: agent.profile.id },
+    samplingOverride: { temperature },
+    maxTokensOverride: 100,
+  });
+  // Caller'ы ждут строку — возвращаем JSON.stringify (façade уже распарсил, нам надо вернуть как строку)
+  return result === null ? null : JSON.stringify(result);
 }
 
 /** Exact case-insensitive match against a list of valid names */

@@ -1,203 +1,321 @@
 /**
- * Centralized LLM client — single point for all LLM calls.
+ * LLM façade — engine code calls these primitives, never providers directly.
  *
- * Uses OpenAI-compatible endpoint (/v1/chat/completions).
- * Supports structured output via response_format: json_schema.
- * Does NOT manage semaphore — callers handle concurrency.
+ * Все вызовы проходят через router (task → provider+model) и per-provider семафор.
+ * acquire/release живёт ВНУТРИ примитивов — call-sites больше не пишут try/finally вручную.
+ * INV-01 обеспечивается архитектурно: нет публичного acquire().
+ *
+ * Контракт ошибок: facade ВСЕГДА возвращает `T | null` / `string | null` / `number[] | null`,
+ * НИКОГДА не throws. Network / schema_violation / provider exception — все сводятся к `null`,
+ * логируются. Call-sites обрабатывают `null` как «модель не дала ответа».
  */
 
-import { DEFAULT_WORLD_CONFIG } from './world-types';
+import {
+  _resolveRoute,
+  _getLlmProvider,
+  _getLlmSemaphore,
+  _emitUsage,
+  _checkCostGate,
+  callWithSchemaRetry,
+} from './llm-registry';
+import type {
+  LlmTask,
+  LlmJsonSchema,
+  LlmRoute,
+  SamplingHints,
+  LlmCallResponse,
+  FinishReason,
+} from './llm-types';
 
-// ─── Types ───
-
-export interface LlmCallOptions {
-  system: string;
-  user: string;
-  temperature?: number;
-  maxTokens?: number;
-  /** If provided, model MUST return JSON conforming to this schema */
-  jsonSchema?: LlmJsonSchema;
-  /** Base URL override (default: from DEFAULT_WORLD_CONFIG) */
-  baseUrl?: string;
-  /** Model override (default: from DEFAULT_WORLD_CONFIG) */
-  model?: string;
-  /** Penalize repeated tokens (1.0 = none, >1.0 = penalty). Default from WorldConfig. */
-  repeatPenalty?: number;
-  /** Penalize tokens proportional to frequency. 0.0-2.0. Default from WorldConfig. */
-  frequencyPenalty?: number;
-  /** Penalize any token already present. 0.0-2.0. Default from WorldConfig. */
-  presencePenalty?: number;
+/** Helper: emit a usage event after a façade call. Always called, even on error/null response. */
+function emitUsage(
+  task: LlmTask,
+  agentId: string | undefined,
+  startMs: number,
+  resp: LlmCallResponse | null,
+  hadSchema: boolean,
+  fallbackProvider: string,
+  fallbackModel: string,
+  finishReason: FinishReason,
+): void {
+  _emitUsage({
+    timestamp: Date.now(),
+    task,
+    agentId,
+    providerId: resp?.providerId ?? fallbackProvider,
+    modelId: resp?.modelId ?? fallbackModel,
+    finishReason: resp?.finishReason ?? finishReason,
+    promptTokens: resp?.usage?.promptTokens ?? 0,
+    completionTokens: resp?.usage?.completionTokens ?? 0,
+    cacheReadTokens: resp?.usage?.cacheReadTokens ?? 0,
+    cacheCreationTokens: resp?.usage?.cacheCreationTokens ?? 0,
+    costUsd: resp?.usage?.costUsd ?? 0,
+    latencyMs: Date.now() - startMs,
+    hadSchema,
+  });
 }
 
-export interface LlmJsonSchema {
-  name: string;
-  strict?: boolean;
-  schema: Record<string, unknown>;
-}
+// ─── New façade: classify / generate / generateStream / embed ──────
 
-export interface LlmStreamOptions {
+export interface ClassifyRequest<T> {
   system: string;
   user: string;
-  onToken: (token: string) => void;
-  temperature?: number;
-  maxTokens?: number;
-  /** Additional messages for multi-turn (chat history) */
+  schema: LlmJsonSchema;
   history?: Array<{ role: 'user' | 'assistant'; content: string }>;
-  baseUrl?: string;
-  model?: string;
+  /** Phantom — выводится тип T из вызова, в runtime ничего не делает. */
+  _phantomType?: T;
+  /** Локальный override — обычно НЕ нужен, всё живёт в роуте. Использовать в исключениях:
+   *  per-NPC LlmPersonality в Agent.chat/chatStream (миграция Stage 2). */
+  maxTokensOverride?: number;
+  samplingOverride?: SamplingHints;
+  abortSignal?: AbortSignal;
+  /** Контекст агента — для провайдеров с per-NPC изоляцией (ClaudeCodeProvider). */
+  agentContext?: { id: string };
 }
 
-// ─── JSON utilities ───
-
-/**
- * Truncate raw LLM output to first complete JSON object.
- * Handles multi-object output (e.g. {"speech":"..."} {"name":"..."})
- * by brace-matching with proper string/escape awareness.
- */
-export function truncateToFirstJsonObject(raw: string): string {
-  const trimmed = raw.trim().replace(/,\s*}/g, '}').replace(/,\s*$/g, '');
-  if (!trimmed.startsWith('{')) return trimmed;
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = 0; i < trimmed.length; i++) {
-    const ch = trimmed[i];
-    if (escaped) { escaped = false; continue; }
-    if (ch === '\\' && inString) { escaped = true; continue; }
-    if (ch === '"') { inString = !inString; continue; }
-    if (inString) continue;
-    if (ch === '{') depth++;
-    if (ch === '}') { depth--; if (depth === 0) return trimmed.slice(0, i + 1); }
-  }
-  return trimmed; // no matching close brace — return as-is, let JSON.parse handle
+/** Structured classification. Гарантия: возвращённый T валидно соответствует schema. */
+export async function classify<T>(task: LlmTask, req: ClassifyRequest<T>): Promise<T | null> {
+  return classifyWithRoute<T>(_resolveRoute(task), req, task);
 }
 
-// ─── Single call ───
-
-export async function llmCall(options: LlmCallOptions): Promise<string | null> {
-  const baseUrl = options.baseUrl ?? DEFAULT_WORLD_CONFIG.lmStudioUrl;
-  const model = options.model ?? DEFAULT_WORLD_CONFIG.model;
-
-  const body: Record<string, unknown> = {
-    model,
-    messages: [
-      { role: 'system', content: options.system },
-      { role: 'user', content: options.user },
-    ],
-    temperature: options.temperature ?? 0.7,
-    max_tokens: options.maxTokens ?? 200,
-    repeat_penalty: options.repeatPenalty ?? DEFAULT_WORLD_CONFIG.repeatPenalty ?? 1.0,
-    frequency_penalty: options.frequencyPenalty ?? DEFAULT_WORLD_CONFIG.frequencyPenalty ?? 0,
-    presence_penalty: options.presencePenalty ?? DEFAULT_WORLD_CONFIG.presencePenalty ?? 0,
-  };
-
-  if (options.jsonSchema) {
-    body.response_format = {
-      type: 'json_schema',
-      json_schema: {
-        name: options.jsonSchema.name,
-        strict: options.jsonSchema.strict ?? true,
-        schema: options.jsonSchema.schema,
-      },
-    };
-  }
-
-  try {
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      console.error(`  [LLM] Error ${res.status}: ${await res.text().catch(() => 'unknown')}`);
-      return null;
-    }
-
-    const data = await res.json() as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-
-    return data.choices?.[0]?.message?.content?.trim() || null;
-  } catch (err) {
-    console.error(`  [LLM] Call failed:`, err);
+async function classifyWithRoute<T>(
+  route: LlmRoute,
+  req: ClassifyRequest<T>,
+  task: LlmTask = 'classify',
+): Promise<T | null> {
+  // Stage 7b cost gate — checked BEFORE seizing semaphore + provider. Universal across all providers.
+  const blocked = await _checkCostGate(task, req.agentContext?.id);
+  if (blocked) {
+    console.warn(`[LLM:classify] cost gate blocked task='${task}': ${blocked.reason}`);
+    emitUsage(task, req.agentContext?.id, Date.now(), null, true, route.provider, route.model, 'error');
     return null;
   }
-}
-
-// ─── Streaming call ───
-
-export async function llmStream(options: LlmStreamOptions): Promise<string> {
-  const baseUrl = options.baseUrl ?? DEFAULT_WORLD_CONFIG.lmStudioUrl;
-  const model = options.model ?? DEFAULT_WORLD_CONFIG.model;
-
-  const messages: Array<{ role: string; content: string }> = [
-    { role: 'system', content: options.system },
-  ];
-
-  if (options.history) {
-    messages.push(...options.history);
-  }
-
-  messages.push({ role: 'user', content: options.user });
-
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 250,
-      stream: true,
-      repeat_penalty: DEFAULT_WORLD_CONFIG.repeatPenalty ?? 1.1,
-      frequency_penalty: DEFAULT_WORLD_CONFIG.frequencyPenalty ?? 0.3,
-      presence_penalty: DEFAULT_WORLD_CONFIG.presencePenalty ?? 0.2,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`LLM stream error ${res.status}: ${text}`);
-  }
-
-  let fullReply = '';
-  if (!res.body) throw new Error('LLM stream response has no body');
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
+  const provider = _getLlmProvider(route.provider);
+  const sem = _getLlmSemaphore(route.provider);
+  await sem.acquire();
+  const startMs = Date.now();
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') continue;
-
-        try {
-          const parsed = JSON.parse(data);
-          // OpenAI SSE format: { choices: [{ delta: { content: "..." } }] }
-          const token = parsed.choices?.[0]?.delta?.content;
-          if (token) {
-            fullReply += token;
-            options.onToken(token);
-          }
-        } catch {
-          // skip unparseable SSE lines
-        }
-      }
+    let resp: LlmCallResponse | null = null;
+    try {
+      resp = await callWithSchemaRetry(provider, {
+        model: route.model,
+        system: req.system,
+        user: req.user,
+        history: req.history,
+        maxTokens: req.maxTokensOverride ?? route.maxTokens,
+        sampling: { ...route.sampling, ...req.samplingOverride },
+        jsonSchema: req.schema,
+        abortSignal: req.abortSignal,
+        agentContext: req.agentContext,
+      });
+    } catch (err) {
+      console.error(`[LLM:classify] provider '${route.provider}' threw:`, err);
+      emitUsage(task, req.agentContext?.id, startMs, null, true, route.provider, route.model, 'error');
+      return route.fallback ? classifyWithRoute<T>(route.fallback, req, task) : null;
+    }
+    emitUsage(task, req.agentContext?.id, startMs, resp, true, route.provider, route.model, resp.finishReason);
+    if (
+      resp.finishReason === 'error' ||
+      resp.finishReason === 'schema_violation' ||
+      !resp.content
+    ) {
+      return route.fallback ? classifyWithRoute<T>(route.fallback, req, task) : null;
+    }
+    try {
+      return JSON.parse(resp.content) as T;
+    } catch (err) {
+      console.error(
+        `[LLM:classify] JSON.parse failed for provider='${route.provider}':`,
+        err,
+        resp.content.slice(0, 200),
+      );
+      return null;
     }
   } finally {
-    reader.releaseLock();
+    sem.release();
   }
-
-  return fullReply || '...';
 }
+
+export interface GenerateRequest {
+  system: string;
+  user: string;
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  maxTokensOverride?: number;
+  samplingOverride?: SamplingHints;
+  abortSignal?: AbortSignal;
+  /** Контекст агента — для провайдеров с per-NPC изоляцией (ClaudeCodeProvider). */
+  agentContext?: { id: string };
+}
+
+/** Свободный текстовый ответ. Никакой схемы. Возвращает null на любую инфраструктурную ошибку. */
+export async function generate(task: LlmTask, req: GenerateRequest): Promise<string | null> {
+  const route = _resolveRoute(task);
+  const blocked = await _checkCostGate(task, req.agentContext?.id);
+  if (blocked) {
+    console.warn(`[LLM:generate] cost gate blocked task='${task}': ${blocked.reason}`);
+    emitUsage(task, req.agentContext?.id, Date.now(), null, false, route.provider, route.model, 'error');
+    return null;
+  }
+  const provider = _getLlmProvider(route.provider);
+  const sem = _getLlmSemaphore(route.provider);
+  await sem.acquire();
+  const startMs = Date.now();
+  try {
+    let resp: LlmCallResponse | null = null;
+    try {
+      resp = await provider.call({
+        model: route.model,
+        system: req.system,
+        user: req.user,
+        history: req.history,
+        maxTokens: req.maxTokensOverride ?? route.maxTokens,
+        sampling: { ...route.sampling, ...req.samplingOverride },
+        abortSignal: req.abortSignal,
+        agentContext: req.agentContext,
+      });
+    } catch (err) {
+      console.error(`[LLM:generate] provider '${route.provider}' threw:`, err);
+      emitUsage(task, req.agentContext?.id, startMs, null, false, route.provider, route.model, 'error');
+      return null;
+    }
+    emitUsage(task, req.agentContext?.id, startMs, resp, false, route.provider, route.model, resp.finishReason);
+    return resp.finishReason === 'error' ? null : resp.content;
+  } finally {
+    sem.release();
+  }
+}
+
+export interface GenerateStreamRequest extends GenerateRequest {
+  onToken: (token: string) => void;
+}
+
+/**
+ * Streaming free text. На любую ошибку — резолвится строкой "..." (graceful degradation,
+ * call-site Agent.chatStream УЖЕ ждёт string не string|null).
+ */
+export async function generateStream(
+  task: LlmTask,
+  req: GenerateStreamRequest,
+): Promise<string> {
+  const route = _resolveRoute(task);
+  const blocked = await _checkCostGate(task, req.agentContext?.id);
+  if (blocked) {
+    console.warn(`[LLM:generateStream] cost gate blocked task='${task}': ${blocked.reason}`);
+    return '...';
+  }
+  const provider = _getLlmProvider(route.provider);
+  const sem = _getLlmSemaphore(route.provider);
+  await sem.acquire();
+  let full = '';
+  const startMs = Date.now();
+  let finishReason: FinishReason = 'stop';
+  try {
+    try {
+      for await (const chunk of provider.stream({
+        model: route.model,
+        system: req.system,
+        user: req.user,
+        history: req.history,
+        maxTokens: req.maxTokensOverride ?? route.maxTokens,
+        sampling: { ...route.sampling, ...req.samplingOverride },
+        abortSignal: req.abortSignal,
+        agentContext: req.agentContext,
+      })) {
+        if (chunk.type === 'error' && chunk.error) {
+          console.error(
+            `[LLM:generateStream] provider '${route.provider}' streamed error:`,
+            chunk.error,
+          );
+          finishReason = 'error';
+          break;
+        }
+        if (chunk.type === 'token' && chunk.content) {
+          full += chunk.content;
+          req.onToken(chunk.content);
+        }
+      }
+    } catch (err) {
+      console.error(`[LLM:generateStream] provider '${route.provider}' threw:`, err);
+      finishReason = 'error';
+    }
+    // Stream не возвращает usage напрямую; approx по completionTokens=length/4
+    _emitUsage({
+      timestamp: Date.now(),
+      task,
+      agentId: req.agentContext?.id,
+      providerId: route.provider,
+      modelId: route.model,
+      finishReason,
+      promptTokens: 0,
+      completionTokens: Math.ceil(full.length / 4),
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUsd: 0, // streaming не даёт cost; для LM Studio = 0; если кто-то роутит stream на Claude, нужно patch
+      latencyMs: Date.now() - startMs,
+      hadSchema: false,
+    });
+    return full || '...';
+  } finally {
+    sem.release();
+  }
+}
+
+/** Embeddings — отдельный примитив, всегда роутится через task='embeddings'. */
+export async function embed(text: string): Promise<number[] | null> {
+  const route = _resolveRoute('embeddings');
+  const blocked = await _checkCostGate('embeddings', undefined);
+  if (blocked) {
+    console.warn(`[LLM:embed] cost gate blocked: ${blocked.reason}`);
+    return null;
+  }
+  const provider = _getLlmProvider(route.provider);
+  const sem = _getLlmSemaphore(route.provider);
+  await sem.acquire();
+  const startMs = Date.now();
+  try {
+    try {
+      const resp = await provider.embed({ model: route.model, input: text });
+      _emitUsage({
+        timestamp: Date.now(),
+        task: 'embeddings',
+        providerId: route.provider,
+        modelId: resp.modelId,
+        finishReason: 'stop',
+        promptTokens: resp.usage?.promptTokens ?? 0,
+        completionTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUsd: resp.usage?.costUsd ?? 0,
+        latencyMs: Date.now() - startMs,
+        hadSchema: false,
+      });
+      return resp.vector;
+    } catch (err) {
+      console.error(`[LLM:embed] provider '${route.provider}' threw:`, err);
+      _emitUsage({
+        timestamp: Date.now(),
+        task: 'embeddings',
+        providerId: route.provider,
+        modelId: route.model,
+        finishReason: 'error',
+        promptTokens: 0,
+        completionTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUsd: 0,
+        latencyMs: Date.now() - startMs,
+        hadSchema: false,
+      });
+      return null;
+    }
+  } finally {
+    sem.release();
+  }
+}
+
+// ─── Re-exports for backward compatibility ─────────────────────────
+
+export { truncateToFirstJsonObject } from './llm-json-utils';
+export type { LlmJsonSchema } from './llm-types';
+
+// (Legacy llmCall/llmStream shim removed in Stage 4 — Stage 2 migrated all call-sites)

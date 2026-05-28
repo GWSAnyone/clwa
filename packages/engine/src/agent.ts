@@ -1,63 +1,41 @@
 import { VectorMemory } from './memory';
 import { ReflectionTracker } from './reflection';
 import type { ReflectionConfig } from './reflection';
-import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality } from './agent-types';
+import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality, NpcMemoryState } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
 import { bigFiveToDescription } from './personality-prose';
 import { getEventLabel, getEventLabelSafe, isPursuitEvent, isTransferable, isPerpetrator, isFirsthand } from './event-registry';
 import { DEFAULT_WORLD_CONFIG } from './world-types';
-import { llmCall, llmStream } from './llm-client';
+import { classify, generate, generateStream } from './llm-client';
 
-/**
- * Global LLM semaphore — prevents overloading LM Studio with concurrent requests.
- * All Agent instances share this queue so only `maxConcurrent` requests run at a time.
- */
-class LlmSemaphore {
-  private running = 0;
-  private queue: Array<() => void> = [];
-
-  constructor(private maxConcurrent: number = 1) {}
-
-  async acquire(): Promise<void> {
-    if (this.running < this.maxConcurrent) {
-      this.running++;
-      return;
-    }
-    return new Promise<void>((resolve) => {
-      this.queue.push(() => { this.running++; resolve(); });
-    });
-  }
-
-  release(): void {
-    this.running--;
-    const next = this.queue.shift();
-    if (next) next();
-  }
-
-  get pending(): number { return this.queue.length; }
-}
-
-export const llmSemaphore = new LlmSemaphore(2);
+// LlmSemaphore вынесен в llm-semaphore.ts и теперь per-provider (управляется façade).
+// Старый global semaphore + acquire/release удалены — INV-01 enforced архитектурно.
 
 export interface AgentOptions {
-  lmStudioUrl?: string;
-  model?: string;
   reflection?: Partial<ReflectionConfig>;
   onReflection?: (agentName: string, text: string) => void;
   /** Resolve location ID to display name for LLM prompts */
   locationResolver?: (id: string) => string;
   /** Resolve NPC ID to display name for LLM prompts */
   nameResolver?: (id: string) => string;
+  /**
+   * Hook вызывается из observe() ПОСЛЕ записи в VectorMemory. Server использует это
+   * чтобы дописывать observation в `data/claude-npcs/<id>/memory/observations.md` для
+   * ClaudeCodeProvider'а — Claude видит свежие observations через @-import в CLAUDE.md.
+   *
+   * `gameMinute` приходит как currentDay × 1440 (грубая аппроксимация — нужен точный
+   * gameMinute из World, пока используем currentDay × 1440 как stable ordering).
+   */
+  onObserve?: (text: string, importance: number, gameMinute: number, isProtected?: boolean) => void | Promise<void>;
 }
 
 export class Agent {
-  private baseUrl: string;
   readonly memory: VectorMemory;
   profile: AgentProfile;
   state: AgentState;
-  private model: string;
   private reflectionTracker: ReflectionTracker;
   private onReflection?: (agentName: string, text: string) => void;
+  private onObserveHook?: AgentOptions['onObserve'];
   private locationResolver: (id: string) => string;
   /** Resolve NPC ID to display name (e.g. "bess" → "Old Bess") */
   readonly nameResolver: (id: string) => string;
@@ -78,16 +56,13 @@ export class Agent {
     this.profile = profile;
     this.state = state;
     this.memory = memory;
-    this.model = options?.model ?? DEFAULT_WORLD_CONFIG.model;
-    this.baseUrl = options?.lmStudioUrl ?? 'http://localhost:1234';
     this.locationResolver = options?.locationResolver ?? ((id) => id);
     this.nameResolver = options?.nameResolver ?? ((id) => id);
     this.reflectionTracker = new ReflectionTracker({
-      lmStudioUrl: this.baseUrl,
-      model: this.model,
       ...options?.reflection,
     });
     this.onReflection = options?.onReflection;
+    this.onObserveHook = options?.onObserve;
   }
 
   /** Resolved per-NPC LLM settings */
@@ -103,21 +78,16 @@ export class Agent {
     const memories = await this.memory.recall(userMessage, this.state.currentDay, 5);
     const systemPrompt = this.buildSystemPrompt(memories);
 
-    await llmSemaphore.acquire();
-    let reply: string;
-    try {
-      const result = await llmCall({
-        system: systemPrompt,
-        user: userMessage,
-        temperature: this.llmConfig.temperature,
-        maxTokens: this.llmConfig.maxTokens,
-        baseUrl: this.baseUrl,
-        model: this.model,
-      });
-      reply = result ?? '...';
-    } finally {
-      llmSemaphore.release();
-    }
+    // generate() через façade: per-provider семафор + try/catch внутри. Per-NPC personality
+    // передаётся через samplingOverride/maxTokensOverride. agentContext.id — для
+    // ClaudeCodeProvider per-NPC папок.
+    const reply = await generate('dialogue', {
+      system: systemPrompt,
+      user: userMessage,
+      samplingOverride: { temperature: this.llmConfig.temperature },
+      maxTokensOverride: this.llmConfig.maxTokens,
+      agentContext: { id: this.profile.id },
+    }) ?? '...';
 
     const conversationText = `Player said: "${userMessage}". I replied: "${reply}"`;
     await this.memory.store(conversationText, 2, this.state.currentDay);
@@ -145,25 +115,17 @@ export class Agent {
       this._chatHistory = this._chatHistory.slice(-12);
     }
 
-    await llmSemaphore.acquire();
-    let fullReply: string;
-    try {
-      // Build chat history for multi-turn continuity
-      const history = this._chatHistory.slice(0, -1) as Array<{ role: 'user' | 'assistant'; content: string }>;
-
-      fullReply = await llmStream({
-        system: systemPrompt,
-        user: userMessage,
-        onToken,
-        temperature: this.llmConfig.temperature,
-        maxTokens: this.llmConfig.maxTokens,
-        history: history.length > 0 ? history : undefined,
-        baseUrl: this.baseUrl,
-        model: this.model,
-      });
-    } finally {
-      llmSemaphore.release();
-    }
+    // generateStream() через façade: семафор + try/catch внутри.
+    const history = this._chatHistory.slice(0, -1) as Array<{ role: 'user' | 'assistant'; content: string }>;
+    const fullReply = await generateStream('dialogue', {
+      system: systemPrompt,
+      user: userMessage,
+      onToken,
+      history: history.length > 0 ? history : undefined,
+      samplingOverride: { temperature: this.llmConfig.temperature },
+      maxTokensOverride: this.llmConfig.maxTokens,
+      agentContext: { id: this.profile.id },
+    });
 
     // Add NPC reply to conversation history for multi-turn continuity
     this._chatHistory.push({ role: 'assistant', content: fullReply });
@@ -180,6 +142,15 @@ export class Agent {
   async observe(event: string, importance: number, isProtected?: boolean): Promise<void> {
     await this.memory.store(event, importance, this.state.currentDay, isProtected);
 
+    // Server-side hook: дописать в file-based memory (для ClaudeCodeProvider)
+    if (this.onObserveHook) {
+      try {
+        await this.onObserveHook(event, importance, this.state.currentDay * 1440, isProtected);
+      } catch (err) {
+        console.error(`[Agent ${this.profile.name}] onObserve hook failed:`, err);
+      }
+    }
+
     const shouldReflect = this.reflectionTracker.track(event, importance);
     if (shouldReflect) {
       await this.reflect();
@@ -189,20 +160,16 @@ export class Agent {
   /** Trigger reflection: LLM generates insight from accumulated memories */
   private async reflect(): Promise<void> {
     try {
-      await llmSemaphore.acquire();
-      let summary: string;
-      try {
-        const bf = this.profile.bigFive;
-        const enn = this.profile.enneagram;
-        const personalityDesc = `Your nature: ${bigFiveToDescription(bf)}. Your deepest fear: ${enn.coreFear}. Your deepest desire: ${enn.coreDesire}.`;
-        summary = await this.reflectionTracker.generateReflection(
-          this.profile.name,
-          this.profile.role,
-          personalityDesc,
-        );
-      } finally {
-        llmSemaphore.release();
-      }
+      const bf = this.profile.bigFive;
+      const enn = this.profile.enneagram;
+      const personalityDesc = `Your nature: ${bigFiveToDescription(bf)}. Your deepest fear: ${enn.coreFear}. Your deepest desire: ${enn.coreDesire}.`;
+      // generateReflection() уже идёт через façade (semaphore + try/catch внутри).
+      const summary = await this.reflectionTracker.generateReflection(
+        this.profile.id,
+        this.profile.name,
+        this.profile.role,
+        personalityDesc,
+      );
       const reflectionText = `[Reflection] ${summary}`;
       await this.memory.store(
         reflectionText,
@@ -235,29 +202,100 @@ export class Agent {
     const memories = await this.memory.recall(prompt, this.state.currentDay, 5);
     const systemPrompt = this.buildSystemPrompt(memories, options?.additionalContext);
 
-    await llmSemaphore.acquire();
-    try {
-      const result = await llmCall({
+    if (options?.jsonSchema) {
+      // Structured request → classify (façade сам управляет семафором + retry)
+      const result = await classify<unknown>('npc-dialogue', {
         system: systemPrompt,
         user: prompt,
-        temperature: this.llmConfig.temperature,
-        maxTokens: options?.maxTokens ?? this.llmConfig.maxTokens,
-        baseUrl: this.baseUrl,
-        model: this.model,
-        jsonSchema: options?.jsonSchema,
+        schema: options.jsonSchema,
+        samplingOverride: { temperature: this.llmConfig.temperature },
+        maxTokensOverride: options.maxTokens ?? this.llmConfig.maxTokens,
+        agentContext: { id: this.profile.id },
       });
-      if (!result) {
-        console.error(`  [LLM:FAIL] ${this.profile.name}: null response — model may have crashed or timed out`);
+      if (result === null) {
+        console.error(`  [LLM:FAIL] ${this.profile.name}: classify returned null`);
         return '';
       }
-      return result;
-    } finally {
-      llmSemaphore.release();
+      return JSON.stringify(result);
     }
+    // Free text → generate
+    const result = await generate('npc-dialogue', {
+      system: systemPrompt,
+      user: prompt,
+      samplingOverride: { temperature: this.llmConfig.temperature },
+      maxTokensOverride: options?.maxTokens ?? this.llmConfig.maxTokens,
+      agentContext: { id: this.profile.id },
+    });
+    if (!result) {
+      console.error(`  [LLM:FAIL] ${this.profile.name}: generate returned null`);
+      return '';
+    }
+    return result;
   }
 
   getMemories(): ScoredMemory[] {
     return this.memory.getAllMemories(this.state.currentDay);
+  }
+
+
+  /**
+   * Сериализовать engine-state в `NpcMemoryState` для projection в файлы.
+   * Используется ClaudeCodeProvider.onBeforeCall → NpcMemoryManager.snapshotState.
+   *
+   * Top-N beliefs выбираются по composite score (confidence × recency factor) — самый
+   * актуальный и уверенный belief'ов наверх. По умолчанию 30 — достаточно для контекста
+   * Claude, не перегружая prompt.
+   */
+  serializeMemoryState(
+    currentGameMinute: number,
+    nameResolver: (id: string) => string,
+    options?: { beliefsTopN?: number },
+  ): NpcMemoryState {
+    const beliefsTopN = options?.beliefsTopN ?? 30;
+    const allBeliefs = this.state.beliefs?.getAllBeliefs() ?? [];
+    const allRelationships = this.state.relationships?.getAllRelationships() ?? [];
+
+    // composite score: confidence × recency_factor (newer beliefs weighted higher)
+    const currentDay = this.state.currentDay;
+    const scoredBeliefs = allBeliefs
+      .map(b => {
+        const daysSinceUpdate = Math.max(0, currentDay - b.lastUpdated);
+        const recencyFactor = 1 / (1 + daysSinceUpdate * 0.1); // 0.91 at 1d, 0.5 at 10d
+        return { belief: b, score: b.confidence * recencyFactor };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, beliefsTopN);
+
+    return {
+      gameMinute: currentGameMinute,
+      location: this.state.location,
+      mood: this.state.mood,
+      baseMood: this.state.baseMood ?? 0,
+      status: this.state.status,
+      currentActivity: this.state.currentActivity,
+      inTransit: this.state.inTransit ?? false,
+      transitTo: this.state.transitTo,
+      alive: this.state.alive,
+      relationships: allRelationships.map(r => ({
+        targetId: r.targetId,
+        targetName: nameResolver(r.targetId),
+        type: r.type,
+        sentiment: r.sentiment,
+        trust: r.trust,
+      })),
+      beliefs: scoredBeliefs.map(({ belief: b }) => ({
+        eventType: b.eventType,
+        subject: b.subject,
+        subjectName: b.subject ? nameResolver(b.subject) : undefined,
+        object: b.object,
+        objectName: b.object ? nameResolver(b.object) : undefined,
+        location: b.location,
+        confidence: b.confidence,
+        source: String(b.source),
+        gameDay: b.gameDay,
+        lastUpdated: b.lastUpdated,
+      })),
+    };
   }
 
   advanceDay(): number {

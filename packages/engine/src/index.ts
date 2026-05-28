@@ -1,5 +1,5 @@
 // ─── Agent ───
-export { Agent, llmSemaphore } from './agent';
+export { Agent } from './agent';
 export type { AgentOptions } from './agent';
 export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, MemoryEntry, ScoredMemory, ShopItem, NpcProcessingState } from './agent-types';
 export { DEFAULT_LLM_PERSONALITY } from './agent-types';
@@ -70,12 +70,51 @@ export { canSee, canInteract, canHear, getCoPresent, getWitnesses, getPlayerAgen
 
 // ─── Volition ───
 export { evaluateAllVolition, evaluateReactiveVolition, createGoalFromRequest, forceGoalFromAffordance } from './volition';
-export { llmCall, llmStream, truncateToFirstJsonObject } from './llm-client';
-export type { LlmCallOptions, LlmStreamOptions, LlmJsonSchema } from './llm-client';
 export type { ParsedIntention } from './volition';
 export { resetConsideration } from './volition';
 export { buildInstinctDescription, getTierName } from './instinct-builder';
 export type { InstinctInput } from './instinct-builder';
+
+// ─── LLM façade & provider system ───
+export { classify, generate, generateStream, embed } from './llm-client';
+export type { ClassifyRequest, GenerateRequest, GenerateStreamRequest } from './llm-client';
+// JSON utility:
+export { truncateToFirstJsonObject } from './llm-json-utils';
+// Provider interface and types — для packages/providers/* реализаций:
+export type {
+  LlmProvider,
+  LlmCapabilities,
+  LlmCallRequest,
+  LlmCallResponse,
+  LlmStreamRequest,
+  LlmStreamChunk,
+  LlmEmbedRequest,
+  LlmEmbedResponse,
+  LlmJsonSchema,
+  LlmTask,
+  LlmTaskRequirements,
+  LlmRoute,
+  LlmRouterConfig,
+  SamplingHints,
+  StructuredOutputMode,
+  FinishReason,
+  LlmUsageEvent,
+  LlmCostGate,
+} from './llm-types';
+// NPC memory snapshot (Stage 5):
+export type { NpcMemoryState } from './agent-types';
+// Public registry API — для server boot:
+export {
+  registerLlmProvider,
+  registerLlmTask,
+  registerLlmRouter,
+  registerLlmUsageRecorder,
+  registerLlmCostGate,
+  validateLlmRouterContract,
+  callWithSchemaRetry,
+  disposeAllLlmProviders,
+} from './llm-registry';
+// NOTE: _getLlmProvider/_getLlmSemaphore/_resolveRoute — internal, НЕ экспортируются.
 
 // ─── Goals ───
 export { GoalManager } from './goals';

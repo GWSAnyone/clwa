@@ -15,6 +15,55 @@ export interface LlmPersonality {
   maxTokens: number;
 }
 
+
+/**
+ * NPC Memory Snapshot — серилизуемое представление engine state для LLM-провайдеров с
+ * per-NPC изоляцией (ClaudeCodeProvider). Engine собирает через Agent.serializeMemoryState(),
+ * server рендерит в markdown файлы (current-state.md / relationships.md / beliefs.md)
+ * через NpcMemoryManager.snapshotState(). Pure data, ZERO file I/O в engine.
+ */
+export interface NpcMemoryState {
+  /** Absolute game minute snapshot was taken */
+  gameMinute: number;
+  /** Current location id */
+  location: string;
+  /** Effective mood (-1..1) — already includes modifiers */
+  mood: number;
+  /** Base mood without modifiers */
+  baseMood: number;
+  /** Current status (free|detained|imprisoned|exiled|fled|dead) — undefined = free */
+  status: string | undefined;
+  /** Current activity from schedule (e.g. "trading goods") */
+  currentActivity: string | undefined;
+  /** True если NPC в transit между локациями */
+  inTransit: boolean;
+  /** Destination location id (если inTransit) */
+  transitTo?: string;
+  /** Alive flag */
+  alive: boolean;
+  /** Все relationships агента к другим NPC, с display names резолвенными */
+  relationships: Array<{
+    targetId: string;
+    targetName: string;
+    type: string;
+    sentiment: number;
+    trust: number;
+  }>;
+  /** Top-N beliefs by composite score (confidence × recency). Resolved subject/object → display names. */
+  beliefs: Array<{
+    eventType: string;
+    subject: string | null;
+    subjectName?: string;
+    object: string | null;
+    objectName?: string;
+    location: string | null;
+    confidence: number;
+    source: string;
+    gameDay: number;
+    lastUpdated: number;
+  }>;
+}
+
 export const DEFAULT_LLM_PERSONALITY: LlmPersonality = {
   temperature: 0.8,
   maxTokens: 250,

@@ -1680,6 +1680,12 @@ export class World {
     return 1;
   }
 
+
+  /** Absolute game minute since world start (для NPC memory snapshots, cooldown'ов). */
+  getCurrentGameMinute(): number {
+    return this._gameMinute;
+  }
+
   /** Serializable snapshot of world state */
   /** Debug: evaluate affordances for an NPC without calling LLM */
   debugVolition(npcId: string): { id: string; passed: boolean; score?: number; target?: string; targetLocation?: string; wouldAppear?: boolean }[] {

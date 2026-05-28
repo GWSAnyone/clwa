@@ -4,6 +4,8 @@ import { broadcast } from './ws';
 import type { GameContext } from './game-context';
 
 /** Build all REST route handlers */
+import { llmUsageTracker } from './index';
+
 export async function handleRequest(
   req: Request,
   ctx: GameContext,
@@ -676,6 +678,27 @@ export async function handleRequest(
       source, sourceNpcId: null, location: agent.state.location, gameDay, lastUpdated: gameDay,
     });
     return Response.json({ id: beliefMatch[1], eventType, subject, object: objectName, confidence, source }, { headers: cors });
+  }
+
+  // ─── GET /api/debug/llm-usage[?since=ms&until=ms] — aggregate cost/usage stats ───
+  if (method === 'GET' && path === '/api/debug/llm-usage') {
+    const sinceParam = url.searchParams.get('since');
+    const untilParam = url.searchParams.get('until');
+    const stats = await llmUsageTracker.getStats({
+      sinceMs: sinceParam ? Number(sinceParam) : undefined,
+      untilMs: untilParam ? Number(untilParam) : undefined,
+    });
+    return new Response(JSON.stringify(stats, null, 2), {
+      headers: { 'Content-Type': 'application/json', ...cors },
+    });
+  }
+
+  // ─── GET /api/debug/llm-usage/raw — full JSONL log (for offline analysis) ───
+  if (method === 'GET' && path === '/api/debug/llm-usage/raw') {
+    const events = await llmUsageTracker.readAll();
+    return new Response(JSON.stringify(events), {
+      headers: { 'Content-Type': 'application/json', ...cors },
+    });
   }
 
   // ─── GET /api/debug/snapshot ───

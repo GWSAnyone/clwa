@@ -5,7 +5,9 @@
   "main": "src/index.ts",
   "dependencies": {
     "@clwa/engine": "workspace:*",
-    "@clwa/modules": "workspace:*"
+    "@clwa/modules": "workspace:*",
+    "@clwa/provider-lm-studio": "workspace:*",
+    "@clwa/provider-claude-code": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.3.10"

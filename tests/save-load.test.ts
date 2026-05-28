@@ -6,6 +6,8 @@
  * Run: bun test tests/save-load.test.ts
  */
 import { describe, test, expect, beforeAll } from 'bun:test';
+import { setupFakeLlm } from './fixtures/fake-llm-provider';
+beforeAll(setupFakeLlm);
 import {
   World,
   Agent,
@@ -381,7 +383,7 @@ describe('Serialization Format', () => {
 
 describe('VectorMemory round-trip (requires Qdrant)', () => {
   test('store + toJSON + loadState preserves memories', async () => {
-    const mem = new VectorMemory('test-roundtrip-' + Date.now());
+    const mem = new VectorMemory('test-roundtrip');
     await mem.init({ reset: true });
 
     await mem.store('I saw Mark steal from the shop.', 8, 1);
@@ -398,7 +400,7 @@ describe('VectorMemory round-trip (requires Qdrant)', () => {
     expect(json[0].text).toBe('I saw Mark steal from the shop.');
 
     // Recreate and load
-    const mem2 = new VectorMemory('test-roundtrip-load-' + Date.now());
+    const mem2 = new VectorMemory('test-roundtrip-load');
     await mem2.init({ reset: true });
     await mem2.loadState(json);
 
@@ -413,7 +415,7 @@ describe('VectorMemory round-trip (requires Qdrant)', () => {
   });
 
   test('recall finds relevant memories by semantic similarity', async () => {
-    const mem = new VectorMemory('test-recall-' + Date.now());
+    const mem = new VectorMemory('test-recall');
     await mem.init({ reset: true });
 
     await mem.store('Mark committed murder at the tavern.', 9, 1);
@@ -427,7 +429,9 @@ describe('VectorMemory round-trip (requires Qdrant)', () => {
   });
 
   test('protected memories survive eviction', async () => {
-    const mem = new VectorMemory('test-eviction-' + Date.now(), { maxCapacity: 3 });
+    // Fixed name (not Date.now()) — init({reset:true}) already isolates the run.
+    // A unique name per run leaked a new Qdrant collection every test invocation.
+    const mem = new VectorMemory('test-eviction', { maxCapacity: 3 });
     await mem.init({ reset: true });
 
     await mem.store('This is a critical fact about the case.', 10, 1, true);

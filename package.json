@@ -1,7 +1,7 @@
 {
   "name": "clwa-prototype",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": ["packages/*", "packages/providers/*"],
   "scripts": {
     "test": "bun test tests/boot-smoke.test.ts tests/save-load.test.ts && bun test tests/architecture.test.ts && bun test tests/cg-v2.test.ts && bun test tests/heat.test.ts && bun test tests/m3-systems.test.ts && bun test tests/cg-integration.test.ts && bun test tests/regression.test.ts && bun test tests/world-data.test.ts",
     "test:arch": "bun test tests/architecture.test.ts",

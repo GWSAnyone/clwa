@@ -29,6 +29,7 @@ import {
   registerRelationshipLabels,
   registerSecretDirectiveBuilder,
   registerConsequencePostHandler,
+  registerLlmTask,
 } from '@clwa/engine';
 import type { Belief, WorldEvent } from '@clwa/engine';
 import { buildHeatDirective, computeHeat } from './heat';
@@ -44,6 +45,15 @@ export { CRIME_EVIDENCE_RULES } from './evidence-rules';
 export { isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
 
 export function registerCrimeJusticeModule(): void {
+  // LLM tasks которые модуль использует — модуль сам декларирует свои потребности (Stage 8c).
+  // 'embeddings' уже зарегистрирована engine bootstrap'ом, не повторяем.
+  registerLlmTask('volition',     { requiresStructuredOutput: true });   // engine/volition.ts:callLlm
+  registerLlmTask('il',           { requiresStructuredOutput: true });   // engine/il.ts:extractDialogueMeaning
+  registerLlmTask('verdict',      { requiresStructuredOutput: true });   // module: step-handlers.ts:sentence_npc
+  registerLlmTask('dialogue',     { requiresStreaming: true });           // engine/agent.ts:chatStream
+  registerLlmTask('npc-dialogue', {});                                    // engine/agent.ts:generateResponse
+  registerLlmTask('reflection',   {});                                    // engine/reflection.ts:generateReflection
+
   AFFORDANCE_REGISTRY.push(...CRIME_AFFORDANCES);
   registerCrimeTargetFinders();
 

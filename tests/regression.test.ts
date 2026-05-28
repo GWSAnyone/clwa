@@ -5,7 +5,9 @@
  *
  * Run: bun test tests/regression.test.ts
  */
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeAll, beforeEach, afterEach } from 'bun:test';
+import { setupFakeLlm } from './fixtures/fake-llm-provider';
+beforeAll(setupFakeLlm);
 import type { ConsequenceRule } from '@clwa/engine';
 import { ConsequenceEngine, Agent, VectorMemory, BeliefManager, RelationshipGraph } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
@@ -37,8 +39,8 @@ function makeAgent(id: string, opts?: { location?: string; honesty?: number; agr
       inTransit: false, transitTo: undefined, transitPath: undefined, transitProgress: 0,
       transitStartMinute: 0, transitDuration: 0, lastInteractionMinute: undefined,
     },
-    new VectorMemory(id, { lmStudioUrl: 'http://localhost:1234/v1' }),
-    { lmStudioUrl: 'http://localhost:1234/v1', model: 'test' },
+    new VectorMemory(id),
+    {},
   );
 }
 

@@ -9,6 +9,22 @@ import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
 import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerILTradeVerbs, registerQuestionTopics, registerDefaultSpeechAct } from '@clwa/engine';
+import {
+  registerLlmProvider,
+  registerLlmTask,
+  registerLlmRouter,
+  registerLlmUsageRecorder,
+  registerLlmCostGate,
+  registerTickPhaseHandler,
+  validateLlmRouterContract,
+  generate,
+} from '@clwa/engine';
+import { LMStudioProvider } from '@clwa/provider-lm-studio';
+import { ClaudeCodeProvider } from '@clwa/provider-claude-code';
+import { NpcMemoryManager } from './npc-memory-manager';
+import { buildNpcSystemPrompt, buildNpcRelationships, buildNpcSecrets } from './llm-npc-prompt-builder';
+import { buildDefaultRouter, migrateLegacyWorldConfig } from './llm-defaults';
+import { LlmUsageTracker } from './llm-usage-tracker';
 
 // Player action vocabulary — module-level constants, NOT engine
 const PLAYER_ACTION_EVENT = 'PLAYER_ACTION';
@@ -26,6 +42,92 @@ import { join, dirname } from 'path';
 registerSocialModule();          // universal social topic sources
 registerCrimeJusticeModule();    // crime & justice affordances, CG rules, topic sources
 registerEventCategory('player_action', [PLAYER_ACTION_EVENT]);
+
+// ─── Memory consolidation tick handler (Stage 7a) ───
+// Каждые N game-min проходим у каждого NPC observations.md. Если копится
+// >keepRecent+consolidateOldest entries, oldest LLM-консолидируются в reflections.md.
+// Config приоритет: worldData.config.memorySystem → env vars → defaults.
+// Реальные значения резолвятся per-tick — config может измениться через /api/new-game.
+registerTickPhaseHandler(async (ctx) => {
+  const cfg = (ctx as unknown as { memorySystemConfig?: { consolidationIntervalMinutes?: number; observationsKeepRecent?: number; observationsConsolidateOldest?: number } }).memorySystemConfig;
+  const intervalMin = cfg?.consolidationIntervalMinutes ?? Number(process.env.CLWA_CONSOLIDATION_INTERVAL ?? '60');
+  const keepRecent = cfg?.observationsKeepRecent ?? Number(process.env.CLWA_OBS_KEEP_RECENT ?? '25');
+  const consolidateOldest = cfg?.observationsConsolidateOldest ?? Number(process.env.CLWA_OBS_CONSOLIDATE ?? '25');
+  if (ctx.gameMinute % intervalMin !== 0) return;
+  for (const [npcId, agent] of ctx.agents) {
+    if (!agent.state.alive || agent.profile.isPlayer) continue;
+    try {
+      const did = await npcMemory.consolidateObservations(
+        npcId,
+        async (prompt) =>
+          await generate('reflection', {
+            system: `You are the inner mind of ${agent.profile.name}, a ${agent.profile.role}. Distill experiences into wisdom.`,
+            user: prompt,
+            agentContext: { id: npcId },
+          }),
+        { keepRecent, consolidateOldest, gameMinute: ctx.gameMinute },
+      );
+      if (did) {
+        console.log(`  [Memory] Consolidated ${consolidateOldest} observations for ${agent.profile.name} → reflections.md`);
+      }
+    } catch (err) {
+      console.error(`  [Memory] Consolidation failed for ${npcId}:`, err);
+    }
+  }
+});
+
+// LLM tasks регистрируются МОДУЛЯМИ (Stage 8c). Server только wireup'ит infrastructure.
+// Engine bootstrap уже зарегистрировал 'embeddings'. Crime-justice module — все остальные.
+
+// ─── Register LLM providers (subscription auth: no ANTHROPIC_API_KEY needed) ───
+const NPCS_ROOT = join(import.meta.dir, '../data/claude-npcs');
+
+// LLM usage tracker — append JSONL log всех вызовов для cost/observability
+export const llmUsageTracker = new LlmUsageTracker(join(import.meta.dir, '../data/llm-usage.jsonl'));
+registerLlmUsageRecorder((event) => llmUsageTracker.record(event));
+
+registerLlmProvider(new LMStudioProvider({
+  baseUrl: process.env.LMSTUDIO_URL ?? 'http://localhost:1234',
+}));
+
+const npcMemory = new NpcMemoryManager(NPCS_ROOT);
+// agentsByActiveCtx — позволяет ClaudeCodeProvider.onBeforeCall достать Agent по id.
+// Заполняется в createGameContext после построения agents map.
+let agentsByActiveCtx: Map<string, Agent> | null = null;
+let worldByActiveCtx: World | null = null;
+export function _setActiveCtxForLlmProvider(agents: Map<string, Agent>, world: World): void {
+  agentsByActiveCtx = agents;
+  worldByActiveCtx = world;
+}
+
+registerLlmProvider(new ClaudeCodeProvider({
+  npcsRoot: NPCS_ROOT,
+  maxConcurrency: Number(process.env.CLAUDE_CODE_MAX_CONCURRENCY ?? '4'),
+  onBeforeCall: async (agentId) => {
+    if (!agentsByActiveCtx || !worldByActiveCtx) return;  // boot not finished yet
+    const agent = agentsByActiveCtx.get(agentId);
+    if (!agent) return;  // unknown agent (e.g., '_default') — skip
+    const gameMinute = worldByActiveCtx.getCurrentGameMinute?.() ?? agent.state.currentDay * 1440;
+    const nameResolver = (id: string) => agentsByActiveCtx?.get(id)?.profile.name ?? id;
+    const state = agent.serializeMemoryState(gameMinute, nameResolver);
+    await npcMemory.snapshotState(agentId, state);
+  },
+}));
+
+// ─── Stage 7b: cost gate (façade-level, universal across providers) ───
+// env CLWA_MAX_LLM_USD_PER_BOOT=10 — façade блокирует все calls (любой task, любой провайдер)
+// если cumulative cost за boot >= limit. 0 / unset = unlimited.
+const MAX_LLM_USD = Number(process.env.CLWA_MAX_LLM_USD_PER_BOOT ?? '0');
+if (MAX_LLM_USD > 0) {
+  registerLlmCostGate(async (_task, _agentId) => {
+    const { costUsd } = llmUsageTracker.getCumulativeCostSinceBoot();
+    if (costUsd >= MAX_LLM_USD) {
+      return { reason: `cumulative $${costUsd.toFixed(2)} ≥ limit $${MAX_LLM_USD}` };
+    }
+    return null;
+  });
+  console.log(`  [+] LLM cost gate enabled: $${MAX_LLM_USD} per boot`);
+}
 
 // ─── IL Vocabulary — speech acts, claim sources, trade verbs ───
 registerSpeechActs([
@@ -250,6 +352,13 @@ async function createGameContext(
 ): Promise<Omit<GameContext, 'resetting'>> {
   const worldData = loadWorld(worldPath);
 
+  // ─── LLM Router (idempotent — re-register on new-game with same config) ───
+  // worldData.config — narrow subset; cast для миграционного helper'а.
+  const llmConfig = (worldData.config as { llm?: ReturnType<typeof buildDefaultRouter> }).llm;
+  registerLlmRouter(llmConfig ?? buildDefaultRouter());
+  validateLlmRouterContract();
+  console.log('  [+] LLM Router configured + validated');
+
   // ─── Randomization ───
   if (worldData.traitRanges.size > 0) {
     randomizeTraits(worldData.profiles, seed, worldData.traitRanges);
@@ -265,6 +374,17 @@ async function createGameContext(
   const eventStore = new InMemoryEventStore();
   console.log('  [+] Event Store');
 
+  // ─── Per-NPC Claude folders (for ClaudeCodeProvider) ───
+  const nameById = (id: string) => worldData.profiles.find(p => p.id === id)?.name ?? id;
+  for (const profile of worldData.profiles) {
+    await npcMemory.ensureNpcDir(profile.id, {
+      personality: buildNpcSystemPrompt(profile),
+      relationships: buildNpcRelationships(profile.id, profile.name, worldData.relationships, nameById),
+      secrets: buildNpcSecrets(profile),
+    });
+  }
+  console.log(`  [+] NPC Claude folders prepared (${worldData.profiles.length} NPCs)`);
+
   // ─── Agents ───
   const agents = new Map<string, Agent>();
   for (const profile of worldData.profiles) {
@@ -277,6 +397,12 @@ async function createGameContext(
       onReflection: (name, text) => {
         console.log(`  [Reflection] ${name}: "${text}"`);
         broadcast({ type: 'reflection', data: { agentName: name, text } });
+        // Reflection — это значимая «эпифания» NPC, дописываем в reflections.md
+        npcMemory.appendMemory(profile.id, 'reflection', text, agent.state.currentDay * 1440).catch(() => {});
+      },
+      // Observations → file memory для ClaudeCodeProvider'а (Claude видит через @-import в CLAUDE.md)
+      onObserve: (text, _importance, gameMinute) => {
+        npcMemory.appendMemory(profile.id, 'observation', text, gameMinute).catch(() => {});
       },
       locationResolver: (id) => locationGraph.get(id)?.name ?? id,
       nameResolver: (id) => agents.get(id)?.profile.name ?? id,
@@ -544,6 +670,9 @@ async function createGameContext(
   console.log('  [+] World orchestrator');
   console.log(`  [+] NPC schedules: ${worldData.schedules.length} entries for ${new Set(worldData.schedules.map((s) => s.npcId)).size} NPCs`);
   console.log(`  [+] Mobile NPCs: ${Array.from(worldData.mobileNpcs).join(', ')}`);
+
+  // Stage 5: wire active agents/world для ClaudeCodeProvider.onBeforeCall snapshot
+  _setActiveCtxForLlmProvider(agents, world);
 
   return { world, eventStore, agents, positionManager, approachContexts, locationHistory, seed };
 }

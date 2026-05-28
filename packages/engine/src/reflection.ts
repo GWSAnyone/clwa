@@ -1,21 +1,14 @@
-import { DEFAULT_WORLD_CONFIG } from './world-types';
-import { llmCall } from './llm-client';
+import { generate } from './llm-client';
 
 export interface ReflectionConfig {
   /** Cumulative importance threshold to trigger reflection (default: 30) */
   threshold: number;
-  /** LM Studio base URL (default: http://localhost:1234) */
-  lmStudioUrl: string;
-  /** Model identifier (from DEFAULT_WORLD_CONFIG) */
-  model: string;
   /** Importance assigned to reflection memories (default: 9) */
   reflectionImportance: number;
 }
 
 const DEFAULT_CONFIG: ReflectionConfig = {
   threshold: 50,
-  lmStudioUrl: 'http://localhost:1234',
-  model: DEFAULT_WORLD_CONFIG.model,
   reflectionImportance: 9,
 };
 
@@ -54,8 +47,16 @@ export class ReflectionTracker {
     };
   }
 
-  /** Generate reflection via LLM. Returns the summary text. */
-  async generateReflection(agentName: string, agentRole: string, personalityDesc?: string): Promise<string> {
+  /**
+   * Generate reflection via LLM. Returns the summary text.
+   * `agentId` нужен для провайдеров с per-agent изоляцией (ClaudeCodeProvider).
+   */
+  async generateReflection(
+    agentId: string,
+    agentName: string,
+    agentRole: string,
+    personalityDesc?: string,
+  ): Promise<string> {
     const memoriesList = this.unreflectedMemories
       .map((m) => `- [importance: ${m.importance}] ${m.text}`)
       .join('\n');
@@ -68,13 +69,10 @@ Respond with ONLY the insight, nothing else. No quotes, no prefixes.`;
 
     const input = `My recent experiences:\n${memoriesList}\n\nWhat is the deepest realization I draw from all of this?`;
 
-    const result = await llmCall({
+    const result = await generate('reflection', {
       system: systemPrompt,
       user: input,
-      temperature: 0.7,
-      maxTokens: 150,
-      baseUrl: this.config.lmStudioUrl,
-      model: this.config.model,
+      agentContext: { id: agentId },
     });
 
     return result ?? 'Something has changed, but I cannot put it into words.';

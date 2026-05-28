@@ -1,6 +1,7 @@
 import { QdrantClient } from '@qdrant/js-client-rest';
 import { decayedImportance, freshness, compositeScore } from './decay';
 import type { MemoryEntry, ScoredMemory } from './agent-types';
+import { embed } from './llm-client';
 
 const DEFAULT_VECTOR_SIZE = 768; // nomic-embed-text-v1.5 full Matryoshka (raw fetch bypasses SDK truncation)
 const DEFAULT_EMBEDDING_MODEL = 'text-embedding-nomic-embed-text-v1.5@q8_0';
@@ -104,19 +105,12 @@ export class VectorMemory {
   // ─── Embed ──────────────────────────────────────────────────────
 
   private async embed(text: string): Promise<number[]> {
-    // Raw fetch instead of OpenAI SDK — SDK sends extra params that cause LM Studio
-    // to truncate Matryoshka embeddings from 768d to 192d
-    const res = await fetch(`${this.lmStudioUrl}/embeddings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: this.embeddingModel, input: text }),
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Embedding error ${res.status}: ${errText}`);
+    // Идёт через façade → embeddings route → LMStudioProvider (raw fetch внутри, Matryoshka сохраняется)
+    const vec = await embed(text);
+    if (!vec) {
+      throw new Error(`[Memory] embed() returned null — LM Studio down? Check provider logs.`);
     }
-    const data = await res.json() as { data: Array<{ embedding: number[] }> };
-    return data.data[0].embedding;
+    return vec;
   }
 
   // ─── Store: dual write ──────────────────────────────────────────

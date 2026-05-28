@@ -1,4 +1,5 @@
 import type { Agent } from './agent';
+import type { LlmRouterConfig } from './llm-types';
 
 // ─── Mood Modifiers (SPEC-mood-modifiers) ───
 
@@ -181,10 +182,9 @@ export interface WorldConfig {
   npcConversationCooldownMinutes: number;
   /** Number of exchanges per conversation: 1 = each speaks once (default: 1) */
   exchangeCount: number;
-  /** LM Studio base URL */
-  lmStudioUrl: string;
-  /** Model identifier */
-  model: string;
+  /** LLM-роутинг: задача → провайдер + модель + сэмплинг.
+   *  Провайдеры регистрируются на boot через registerLlmProvider() из server. */
+  llm?: LlmRouterConfig;
   /** Public gathering places where information spreads (used by day advance handlers) */
   publicPlaces?: Set<string>;
   /** Cooldown in game minutes before same NPC can use the same affordance again (default: 180 = 3h) */
@@ -242,6 +242,15 @@ export interface WorldConfig {
   speechConstraint?: string;
   /** Max memories per NPC before eviction (default: 200) */
   memoryCapacity?: number;
+  /** Memory consolidation tick handler config (Stage 7a) — observations → reflections compression */
+  memorySystem?: {
+    /** Каждые N game-min consolidation handler пробуждается (default: 60) */
+    consolidationIntervalMinutes?: number;
+    /** Сколько последних observations оставляем не тронутыми (default: 25) */
+    observationsKeepRecent?: number;
+    /** Сколько oldest observations LLM-резюмируется → reflection при каждой консолидации (default: 25) */
+    observationsConsolidateOldest?: number;
+  };
   /** Trust thresholds for NPC chat response style (SPEC-detective-toolkit) */
   trustDirective?: {
     /** Below this: deeply distrustful, evasive (default: 0.2) */
@@ -356,8 +365,6 @@ export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   pairCooldownMinutes: 240,
   npcConversationCooldownMinutes: 30,
   exchangeCount: 1,
-  lmStudioUrl: 'http://localhost:1234',
-  model: 'qwen3.5-9b-abliterated',
   affordanceCooldownMinutes: 180,
   decisionCooldownMinutes: 60,
   gameSpeed: 1,

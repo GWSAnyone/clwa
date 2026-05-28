@@ -3,7 +3,9 @@
  *
  * Run: bun test tests/heat.test.ts
  */
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeAll } from 'bun:test';
+import { setupFakeLlm } from './fixtures/fake-llm-provider';
+beforeAll(setupFakeLlm);
 import { Agent, VectorMemory, BeliefManager, RelationshipGraph } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule } from '@clwa/modules';
 import { computeHeat, getHeatLevel } from '../packages/modules/src/crime-justice/heat';
@@ -19,7 +21,7 @@ function makeTestAgent(id: string, overrides?: {
 }): Agent {
   const beliefs = new BeliefManager();
   const relationships = new RelationshipGraph();
-  const memory = new VectorMemory(id, { lmStudioUrl: 'http://localhost:1234/v1' });
+  const memory = new VectorMemory(id);
   return new Agent(
     {
       id,
@@ -55,7 +57,7 @@ function makeTestAgent(id: string, overrides?: {
       lastInteractionMinute: undefined,
     },
     memory,
-    { lmStudioUrl: 'http://localhost:1234/v1', model: 'test' },
+    {},
   );
 }
 

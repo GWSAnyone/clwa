@@ -284,6 +284,42 @@ describe('LLM Safety', () => {
     expect(violations).toEqual([]);
   });
 
+  test('semaphore.acquire() exists ONLY in llm-client.ts (façade)', () => {
+    // INV-01 enforced architecturally: только façade берёт семафор. Call-sites не имеют публичного доступа.
+    const violations: string[] = [];
+    for (const f of engineFiles) {
+      const filename = f.split(/[\\/]/).pop()!;
+      if (filename === 'llm-client.ts' || filename === 'llm-semaphore.ts') continue;
+      for (const { lineNum, code } of codeLines(f)) {
+        if (/\.acquire\s*\(\s*\)/.test(code) && /semaphore|Semaphore/i.test(code)) {
+          violations.push(`${relative(ROOT, f)}:${lineNum}: acquire() outside llm-client.ts`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('internal _-prefixed registry helpers used ONLY in llm-client.ts', () => {
+    // _getLlmProvider / _getLlmSemaphore / _resolveRoute / _emitUsage / _checkCostGate —
+    // internal API. Только façade имеет право их звать. Если call-site вытянет — обходит façade
+    // (теряется семафор, usage tracking, cost gate, etc.).
+    const internals = ['_getLlmProvider', '_getLlmSemaphore', '_resolveRoute', '_emitUsage', '_checkCostGate'];
+    const violations: string[] = [];
+    const allFiles = [...engineFiles, ...moduleFiles, ...serverFiles];
+    for (const f of allFiles) {
+      const filename = f.split(/[\\/]/).pop()!;
+      if (filename === 'llm-client.ts' || filename === 'llm-registry.ts') continue;
+      for (const { lineNum, code } of codeLines(f)) {
+        for (const fn of internals) {
+          if (new RegExp(`\\b${fn}\\s*\\(`).test(code)) {
+            violations.push(`${relative(ROOT, f)}:${lineNum}: uses internal ${fn}()`);
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
   test('handleEventForGoals calls are awaited (Invariant #7)', () => {
     const violations: string[] = [];
     for (const f of engineFiles) {

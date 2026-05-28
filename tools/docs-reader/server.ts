@@ -583,8 +583,9 @@ const server = Bun.serve({
 
     // GET /api/search?q=keyword — full-text search
     if (pathname === '/api/search' && method === 'GET') {
-      const query = url.searchParams.get('q')?.toLowerCase();
-      if (!query || query.length < 2) return Response.json([], { headers: cors });
+      const queryRaw = url.searchParams.get('q')?.toLowerCase();
+      if (!queryRaw || queryRaw.length < 2) return Response.json([], { headers: cors });
+      const query: string = queryRaw; // narrow string for nested closures
 
       const results: Array<{ path: string; name: string; matches: string[] }> = [];
 
@@ -915,17 +916,22 @@ const server = Bun.serve({
         const npcFiles = await readdir(npcsDir);
         for (const f of npcFiles) {
           if (!f.endsWith('.json')) continue;
-          const npc = await safeReadJSON(join(npcsDir, f));
+          interface NpcJson {
+            name?: string;
+            role?: string;
+            bigFive?: Record<string, number>;
+          }
+          const npc = await safeReadJSON<NpcJson>(join(npcsDir, f));
           if (!npc?.name) continue;
-          const bf = npc.bigFive || {};
+          const bf: Record<string, number> = npc.bigFive ?? {};
           // Find dominant trait
           let maxTrait = '', maxVal = 0;
           for (const [k, v] of Object.entries(bf)) {
-            if (typeof v === 'number' && v > maxVal) { maxVal = v as number; maxTrait = k; }
+            if (typeof v === 'number' && v > maxVal) { maxVal = v; maxTrait = k; }
           }
-          const traitStr = maxTrait ? ` (${maxTrait.charAt(0).toUpperCase()}=${(maxVal as number).toFixed(1)})` : '';
-          const fullName = npc.name as string;
-          const desc = `${npc.role || 'NPC'}${traitStr}`;
+          const traitStr = maxTrait ? ` (${maxTrait.charAt(0).toUpperCase()}=${maxVal.toFixed(1)})` : '';
+          const fullName: string = npc.name;
+          const desc = `${npc.role ?? 'NPC'}${traitStr}`;
           const docPath = `NPC/${fullName}.md`;
           terms.push({ term: fullName, tier: 2, description: desc, doc: docPath });
           // Also add short name (last word) for multi-word names like "Old Bess" → "Bess"

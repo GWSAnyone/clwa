@@ -8,16 +8,18 @@
  *
  * Run: bun test tests/cg-v2.test.ts
  */
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeAll } from 'bun:test';
 import type { ConsequenceRule, WorldEvent, RuleCondition } from '@clwa/engine';
 import { ConsequenceEngine } from '@clwa/engine';
 import type { WorldContext } from '@clwa/engine';
 import { Agent, VectorMemory, BeliefManager, RelationshipGraph } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule } from '@clwa/modules';
+import { setupFakeLlm } from './fixtures/fake-llm-provider';
 
-// ─── Register modules once ───
+// ─── Register modules + fake LLM once ───
 registerSocialModule();
 registerCrimeJusticeModule();
+beforeAll(setupFakeLlm);
 
 // ─── Test helpers ───
 
@@ -30,7 +32,7 @@ function makeAgent(id: string, overrides?: {
 }): Agent {
   const beliefs = new BeliefManager();
   const relationships = new RelationshipGraph();
-  const memory = new VectorMemory(id, { lmStudioUrl: 'http://localhost:1234/v1', maxCapacity: 200 });
+  const memory = new VectorMemory(id, { maxCapacity: 200 });
   const agent = new Agent(
     {
       id,
@@ -74,7 +76,7 @@ function makeAgent(id: string, overrides?: {
       lastInteractionMinute: undefined,
     },
     memory,
-    { lmStudioUrl: 'http://localhost:1234/v1', model: 'test' },
+    {},
   );
   return agent;
 }
