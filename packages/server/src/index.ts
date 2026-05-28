@@ -103,6 +103,9 @@ export function _setActiveCtxForLlmProvider(agents: Map<string, Agent>, world: W
 registerLlmProvider(new ClaudeCodeProvider({
   npcsRoot: NPCS_ROOT,
   maxConcurrency: Number(process.env.CLAUDE_CODE_MAX_CONCURRENCY ?? '4'),
+  // Persistent session idle TTL for streaming player↔NPC dialogue (default 10 min; 0 = ephemeral).
+  // Streaming on/off is the `dialogue` route in buildDefaultRouter / world.json config.llm.
+  sessionIdleMs: Number(process.env.CLWA_CLAUDE_SESSION_IDLE_MS ?? '600000'),
   onBeforeCall: async (agentId) => {
     if (!agentsByActiveCtx || !worldByActiveCtx) return;  // boot not finished yet
     const agent = agentsByActiveCtx.get(agentId);

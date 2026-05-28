@@ -47,15 +47,14 @@ export function buildDefaultRouter(): LlmRouterConfig {
         sampling: { temperature: 0.7 },
       },
       dialogue: {
-        provider: 'lm-studio',
-        model: DEFAULT_LM_STUDIO_MODEL,
+        // Player↔NPC chat → Claude Sonnet for quality (streaming + persistent per-NPC session).
+        // Low volume (one conversation at a time) so latency doesn't freeze the world — unlike
+        // volition/npc-dialogue which stay on local Qwen. Toggle off: set provider 'lm-studio'
+        // here or override routes.dialogue in world.json config.llm.
+        provider: 'claude-code',
+        model: 'sonnet',
         maxTokens: 250,
-        sampling: {
-          temperature: 0.7,
-          repeatPenalty: 1.1,
-          frequencyPenalty: 0.3,
-          presencePenalty: 0.2,
-        },
+        sampling: { temperature: 0.7 },
       },
       'npc-dialogue': {
         provider: 'lm-studio',

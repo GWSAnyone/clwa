@@ -25,6 +25,7 @@ import type {
   LlmStreamChunk,
   LlmStreamRequest,
 } from '@clwa/engine';
+import { ClaudeSession, ClaudeSessionPool } from './session';
 
 export interface ClaudeCodeProviderOptions {
   /** Корень с папками NPC. CLWA создаёт <npcsRoot>/<agentId>/ через NpcMemoryManager. */
@@ -44,6 +45,13 @@ export interface ClaudeCodeProviderOptions {
    * какие есть (stale, но рабочие).
    */
   onBeforeCall?: (agentId: string) => Promise<void>;
+  /**
+   * Persistent session idle TTL in ms. >0: keep a warm per-NPC `claude` process between the
+   * player's turns, evict after this much inactivity (default 600000 = 10 min). 0: ephemeral —
+   * spawn a fresh process per turn (still streams, but pays cold-spawn every message).
+   * Env: CLWA_CLAUDE_SESSION_IDLE_MS. Streaming on/off is the `dialogue` route in config.llm.
+   */
+  sessionIdleMs?: number;
 }
 
 interface ClaudeCodeOutput {
@@ -77,18 +85,27 @@ function stripApiKeyEnv(env: Record<string, string | undefined>): Record<string,
   return out;
 }
 
+/** Compact transcript to seed a freshly-(re)spawned session with prior conversation turns. */
+function formatHistorySeed(history: Array<{ role: 'user' | 'assistant'; content: string }>): string {
+  const lines = history.map((h) => `${h.role === 'user' ? 'Player' : 'You'}: ${h.content}`);
+  return `[Earlier in this conversation:\n${lines.join('\n')}]`;
+}
+
 export class ClaudeCodeProvider implements LlmProvider {
   readonly id = 'claude-code';
   readonly capabilities: LlmCapabilities;
   private readonly claudeBinary: string;
   private readonly fallbackAgentDir: string;
+  private readonly sessionIdleMs: number;
+  private readonly pool = new ClaudeSessionPool();
 
   constructor(private readonly opts: ClaudeCodeProviderOptions) {
     this.claudeBinary = opts.claudeBinary ?? 'claude';
     this.fallbackAgentDir = opts.fallbackAgentDir ?? '_default';
+    this.sessionIdleMs = opts.sessionIdleMs ?? 600_000;
     this.capabilities = {
       structuredOutput: 'json_schema', // через --json-schema (под капотом StructuredOutput tool с retry)
-      streaming: false, // -p --output-format json = single result. Streaming не поддерживается.
+      streaming: true, // stream-json + --include-partial-messages; persistent sessions per NPC. Toggle via config.llm route.
       embeddings: false, // Claude не даёт embeddings — роутить на lm-studio
       multiTurnHistory: false, // каждый -p вызов изолирован. История — через CLAUDE.md @-импорты memory/
       sampler: {
@@ -128,6 +145,11 @@ export class ClaudeCodeProvider implements LlmProvider {
       // output is unaffected. Variadic flag: keep it before non-variadic flags.
       '--tools',
       '',
+      // Pin low reasoning effort: NPC decisions/verdicts are fast in-character calls, not
+      // deep agentic reasoning. Default is already ~low, but pinning guards against a future
+      // CLI default flipping to high (which measured ~25% slower with no quality gain here).
+      '--effort',
+      'low',
       '--setting-sources',
       'project,local',
       '--output-format',
@@ -218,16 +240,107 @@ export class ClaudeCodeProvider implements LlmProvider {
     };
   }
 
-  async *stream(_req: LlmStreamRequest): AsyncIterable<LlmStreamChunk> {
-    yield {
-      type: 'error',
-      error: new Error(
-        'ClaudeCodeProvider does not support streaming. Route dialogue/npc-dialogue to lm-studio.',
-      ),
-    };
+  /**
+   * Streaming player↔NPC dialogue. Reuses a warm per-NPC session (persistent mode) so only
+   * the first turn pays cold-spawn; subsequent turns stream immediately. The session's
+   * (model, systemPrompt) is fixed at creation — a change discards and respawns it.
+   */
+  async *stream(req: LlmStreamRequest): AsyncIterable<LlmStreamChunk> {
+    const agentId = req.agentContext?.id ?? this.fallbackAgentDir;
+    const npcDir = path.join(this.opts.npcsRoot, agentId);
+    // Persist only for real agents; anonymous (fallback) calls stay ephemeral.
+    const persistent = this.sessionIdleMs > 0 && !!req.agentContext?.id;
+
+    let session = persistent ? this.pool.get(agentId) : undefined;
+    // A conversation's persona/model is fixed at start — respawn if either changed.
+    if (session && (session.model !== req.model || session.systemPrompt !== req.system)) {
+      await session.kill();
+      this.pool.remove(agentId);
+      session = undefined;
+    }
+    const reusedWarm = !!session; // a warm session already holds the conversation in-process
+
+    if (!session) {
+      // Fresh session — snapshot memory once, right before spawn (Claude reads CLAUDE.md + @-imports at startup).
+      if (this.opts.onBeforeCall && req.agentContext?.id) {
+        try {
+          await this.opts.onBeforeCall(req.agentContext.id);
+        } catch (err) {
+          console.warn(`[claude-code] onBeforeCall failed for agent='${agentId}':`, err);
+        }
+      }
+      try {
+        session = new ClaudeSession(
+          {
+            binary: this.claudeBinary,
+            args: this.buildStreamArgs(req),
+            cwd: npcDir,
+            env: stripApiKeyEnv({ ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }),
+          },
+          req.model,
+          req.system,
+          persistent ? this.sessionIdleMs : 0,
+          () => this.pool.remove(agentId),
+        );
+      } catch (err) {
+        console.error(`[claude-code] stream spawn failed for agent='${agentId}':`, err);
+        yield { type: 'error', error: err instanceof Error ? err : new Error(String(err)) };
+        return;
+      }
+      if (persistent) this.pool.set(agentId, session);
+    }
+
+    // A warm session already remembers the conversation (claude keeps it in-process), so we send
+    // only the new turn. A freshly (re)spawned session does not — seed it with prior turns so the
+    // NPC keeps continuity after an idle-eviction respawn. The first-ever turn has empty history.
+    const userText =
+      !reusedWarm && req.history && req.history.length > 0
+        ? `${formatHistorySeed(req.history)}\n\n${req.user}`
+        : req.user;
+    try {
+      yield* session.send(userText);
+    } finally {
+      // Ephemeral sessions are one-shot — tear down after the turn.
+      if (!persistent) await session.kill();
+    }
+  }
+
+  /** Spawn args for a streaming session. Mirrors call()'s Stage 10 optimization (--system-prompt + --tools ""). */
+  private buildStreamArgs(req: LlmStreamRequest): string[] {
+    const args = [
+      '-p',
+      '--input-format',
+      'stream-json',
+      '--output-format',
+      'stream-json',
+      '--include-partial-messages',
+      '--verbose',
+      '--strict-mcp-config',
+      '--mcp-config',
+      '{"mcpServers":{}}',
+      '--tools',
+      '',
+      '--effort',
+      'low', // fast conversational replies — no extended thinking (see call())
+      '--setting-sources',
+      'project,local',
+      '--permission-mode',
+      'acceptEdits',
+      '--model',
+      req.model,
+    ];
+    if (req.system) {
+      args.push('--system-prompt', req.system);
+    }
+    return args;
   }
 
   async embed(_req: LlmEmbedRequest): Promise<LlmEmbedResponse> {
     throw new Error('ClaudeCodeProvider does not support embeddings. Route embeddings to lm-studio.');
+  }
+
+  /** Kill all warm sessions on shutdown. Called by disposeAllLlmProviders(). */
+  async dispose(): Promise<void> {
+    await this.pool.disposeAll();
   }
 }

@@ -113,6 +113,14 @@ export interface LlmStreamChunk {
   type: 'token' | 'done' | 'error';
   content?: string;
   error?: Error;
+  /** Present on the final `done` chunk for providers that report it (e.g. Claude stream-json result). */
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    costUsd: number;
+  };
 }
 
 export interface LlmEmbedRequest {

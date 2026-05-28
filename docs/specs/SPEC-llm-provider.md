@@ -1,7 +1,7 @@
 # SPEC: LLM Provider Abstraction — Registry, Capability Adaptation, Semantic Façade
 
 > **Milestone**: M2.5 / Infrastructure (вне игрового milestone roadmap — инфраструктурный)
-> **Status**: **✅ COMPLETE** — Stages 1–10 done. Production CLWA boots с full LLM abstraction + per-NPC memory + cost tracking + consolidation + façade-level cost gate. Stage 9 gameplay verification пройдена вживую (verdict через Claude, cost tracking, cross-NPC gossip, consolidation — 0 ошибок). Stage 10 — context optimization (`--system-prompt` + `--tools ""`, 28k→4.4k токенов/verdict). 189/189 unit-тестов зелёные.
+> **Status**: **✅ COMPLETE** — Stages 1–11 done. Stage 11: streaming + persistent per-NPC sessions for player↔NPC dialogue on Claude Sonnet (hybrid: dialogue+verdict → Claude, остальное → Qwen). Production CLWA boots с full LLM abstraction + per-NPC memory + cost tracking + consolidation + façade-level cost gate. Stage 9 gameplay verification пройдена вживую (verdict через Claude, cost tracking, cross-NPC gossip, consolidation — 0 ошибок). Stage 10 — context optimization (`--system-prompt` + `--tools ""`, 28k→4.4k токенов/verdict). 189/189 unit-тестов зелёные.
 > **Depends on**: None (engine-only, не блокирует и не блокируется gameplay specs)
 > **Engine changes**: новый модуль `llm-registry.ts`, переписан `llm-client.ts`, перенесён семафор. 7 call-sites переходят с прямого `llmCall(options)` на семантические примитивы.
 > **Created**: 2026-05-28
@@ -166,6 +166,19 @@ RUNTIME DATA (gitignored):
 - prompt передаётся через **stdin**, а не позиционным аргументом: variadic `--tools`/`--mcp-config` иначе «съедают» позиционный промпт (`claude -p` без позиционного аргумента читает stdin).
 
 **Результат**: 28214 → **4447 prompt-токенов (−84%)**, $0.128 → **$0.048/verdict (−63%, cold cache; на warm ещё ~6x дешевле)**. Качество verdict'а сохранено/улучшено. **`--bare` отвергнут** — форсит `ANTHROPIC_API_KEY` вместо OAuth-подписки (нарушает запрет на платный API) и рубит CLAUDE.md auto-discovery.
+
+## Stage 11 — DONE ✅: streaming + persistent sessions for player↔NPC dialogue (2026-05-29)
+
+**Замер all-Claude показал** (на Sonnet): качество диалогов/решений резко выше Qwen (Disco-Elysium уровень), но латентность убивает throughput — volition 13.7с vs Qwen 1.3с (×10.5), npc-dialogue 7.8с vs 1.9с (×4.1). При 8 NPC мир застывает. **Вывод: гибрид правильный** — high-frequency на Qwen, а вот **player↔NPC диалог → Claude Sonnet** (объём=1 разговор за раз, латентность бьёт только по нему, фон крутится на Qwen).
+
+**Реализовано**:
+- `ClaudeCodeProvider.stream()` — настоящий стриминг через `--output-format stream-json --include-partial-messages` (раньше `capabilities.streaming=false`, throw). Парсит `stream_event → content_block_delta → text_delta` → токены; `result` event → usage/cost. `capabilities.streaming=true`.
+- **Persistent session** (`packages/providers/claude-code/src/session.ts`): `ClaudeSession` = один долгоживущий `claude --input-format stream-json` процесс на разговор. Тёплый между ходами игрока → cold-spawn только на первой реплике (TTFT 2.9с cold → 1.4с warm, проверено). `ClaudeSessionPool` = Map по agentId, idle-eviction после `sessionIdleMs` (default 10 мин). Разные NPC = разные сессии, сосуществуют. `dispose()` гасит все.
+- **History на respawn**: тёплая сессия помнит разговор в процессе; свежая (после idle-eviction) подсеивается транскриптом prior turns (`formatHistorySeed`).
+- **`LlmStreamChunk.usage`** добавлено — `done`-чанк несёт cost/tokens, `generateStream` эмитит реальный `LlmUsageEvent` (раньше costUsd=0 хардкод).
+- **`--effort low`** закреплён в `call()` + стриме. Исследование (claude-code-guide): полностью отключить thinking в `-p` нельзя (только через запрещённый API/SDK `thinking:{disabled}`); `--effort low` — пол headless-режима и официальная рекомендация для chat/latency-sensitive. На простых репликах low пропускает thinking. Дефолт ≈ low; high был бы ~25% медленнее.
+
+**Тогглы** (бриллиант — всё в data/config, не в коде): on/off = роут `dialogue` в `buildDefaultRouter`/`world.json config.llm` (`claude-code` = Claude streaming; `lm-studio` = Qwen). Persistence TTL = env `CLWA_CLAUDE_SESSION_IDLE_MS` (0 = ephemeral spawn/ход). **Дефолт-гибрид теперь**: `dialogue` + `verdict` → Claude Sonnet; volition/npc-dialogue/reflection/il/embeddings → Qwen.
 
 ## Permanently out of scope (rejected by user)
 

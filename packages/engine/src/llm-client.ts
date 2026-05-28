@@ -209,6 +209,10 @@ export async function generateStream(
   let full = '';
   const startMs = Date.now();
   let finishReason: FinishReason = 'stop';
+  // Заполняется из финального `done` чанка, если провайдер его отдаёт (Claude stream-json result).
+  let streamedUsage:
+    | { promptTokens: number; completionTokens: number; cacheReadTokens: number; cacheCreationTokens: number; costUsd: number }
+    | undefined;
   try {
     try {
       for await (const chunk of provider.stream({
@@ -233,12 +237,15 @@ export async function generateStream(
           full += chunk.content;
           req.onToken(chunk.content);
         }
+        if (chunk.type === 'done' && chunk.usage) {
+          streamedUsage = chunk.usage;
+        }
       }
     } catch (err) {
       console.error(`[LLM:generateStream] provider '${route.provider}' threw:`, err);
       finishReason = 'error';
     }
-    // Stream не возвращает usage напрямую; approx по completionTokens=length/4
+    // Реальный usage из `done` чанка (Claude), иначе approx completionTokens=length/4, cost=0 (LM Studio local).
     _emitUsage({
       timestamp: Date.now(),
       task,
@@ -246,11 +253,11 @@ export async function generateStream(
       providerId: route.provider,
       modelId: route.model,
       finishReason,
-      promptTokens: 0,
-      completionTokens: Math.ceil(full.length / 4),
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-      costUsd: 0, // streaming не даёт cost; для LM Studio = 0; если кто-то роутит stream на Claude, нужно patch
+      promptTokens: streamedUsage?.promptTokens ?? 0,
+      completionTokens: streamedUsage?.completionTokens ?? Math.ceil(full.length / 4),
+      cacheReadTokens: streamedUsage?.cacheReadTokens ?? 0,
+      cacheCreationTokens: streamedUsage?.cacheCreationTokens ?? 0,
+      costUsd: streamedUsage?.costUsd ?? 0,
       latencyMs: Date.now() - startMs,
       hadSchema: false,
     });
