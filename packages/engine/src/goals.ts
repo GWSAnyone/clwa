@@ -90,6 +90,10 @@ export interface NpcGoal {
   homeLocation?: string;   // where to return after goal (optional)
   waitTicks?: number;      // how many ticks spent waiting for target (timeout at 3)
   isRoutine?: boolean;     // true for schedule/routine goals — no mood boost on completion
+  // Goal watchdog bookkeeping (sweepStuckGoals): last observed step + game-minute it last advanced.
+  // Lazily initialized; used to detect a goal making no step progress for too long.
+  lastProgressStep?: number;
+  lastProgressMinute?: number;
 }
 
 // ─── Goal Action Result ───
@@ -225,6 +229,50 @@ export class GoalManager {
 
     top.state = 'active';
     return top;
+  }
+
+  /**
+   * Goal watchdog. Aborts any ACTIVE goal that has made no step progress for more than
+   * `stuckMinutes` game-minutes, freeing the NPC to re-evaluate via volition. No-progress based
+   * (tracks currentStep advances), so legitimately long-but-progressing goals are spared — only
+   * genuinely stuck ones (unreachable target, dead-end) are cut. Frozen owners (e.g. player chat)
+   * reset the clock and are never aborted. Returns aborted goals; caller clears motive + logs.
+   */
+  sweepStuckGoals(
+    gameMinute: number,
+    stuckMinutes: number,
+    skipOwner?: (ownerId: string) => boolean,
+  ): Array<{ ownerId: string; goalType: string; goalId: string }> {
+    if (stuckMinutes <= 0) return [];
+    const aborted: Array<{ ownerId: string; goalType: string; goalId: string }> = [];
+    for (const [ownerId, goals] of this.goals) {
+      const active = goals.find((g) => g.state === 'active');
+      if (!active) continue;
+      // Lazy init bookkeeping on first sighting — start the clock when first seen active.
+      if (active.lastProgressStep === undefined || active.lastProgressMinute === undefined) {
+        active.lastProgressStep = active.currentStep;
+        active.lastProgressMinute = gameMinute;
+        continue;
+      }
+      // Frozen (player chat etc.) — don't count this time against the goal.
+      if (skipOwner?.(ownerId)) {
+        active.lastProgressMinute = gameMinute;
+        continue;
+      }
+      // Step advanced — reset the stuck clock.
+      if (active.currentStep > active.lastProgressStep) {
+        active.lastProgressStep = active.currentStep;
+        active.lastProgressMinute = gameMinute;
+        continue;
+      }
+      // No progress for too long — abort the goal.
+      if (gameMinute - active.lastProgressMinute > stuckMinutes) {
+        active.state = 'failed';
+        this.onGoalChange?.({ npcId: ownerId, goalType: active.type, status: 'failed' });
+        aborted.push({ ownerId, goalType: active.type, goalId: active.id });
+      }
+    }
+    return aborted;
   }
 
   /** Check if an NPC has any active goals */

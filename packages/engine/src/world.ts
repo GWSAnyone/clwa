@@ -396,6 +396,35 @@ export class World {
       } catch (err) {
         console.error('  [MasterClock] _tickMoodSystem error:', err);
       }
+
+      // Goal watchdog (F3): abort goals stuck with no step progress, freeing the NPC to re-evaluate.
+      try {
+        const stuckMin = this.config.goalStuckMinutes ?? 45;
+        if (stuckMin > 0) {
+          const aborted = this.goalManager.sweepStuckGoals(
+            this._gameMinute,
+            stuckMin,
+            // Freeze the stuck-clock while the NPC legitimately can't advance steps:
+            //  - inTransit: walking a multi-hop path (move_to advances the step only on arrival)
+            //  - inPlayerChat: goal paused during player conversation
+            //  - isPlayer: player has no engine goals
+            (id) => {
+              const a = this.agents.get(id);
+              return !!a && (a.state.inPlayerChat === true || a.profile.isPlayer === true || a.state.inTransit === true);
+            },
+          );
+          for (const ab of aborted) {
+            const a = this.agents.get(ab.ownerId);
+            if (a) {
+              a.state.currentMotive = undefined;
+              a.state.processingState = this.goalManager.hasActiveGoal(ab.ownerId) ? 'executing_goal' : 'idle';
+            }
+            console.warn(`  [Goal:watchdog] aborted stuck goal '${ab.goalType}' for ${a?.profile.name ?? ab.ownerId} — no step progress for ${stuckMin}+ game-min`);
+          }
+        }
+      } catch (err) {
+        console.error('  [MasterClock] goal watchdog error:', err);
+      }
     }
 
     try {

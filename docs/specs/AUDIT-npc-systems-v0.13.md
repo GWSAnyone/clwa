@@ -89,6 +89,13 @@ bad mood → crime → witness shock (-0.3) → gossip → more shock
 - Schedule breaks — NPC покидают пост на 30-60 min в обед/вечер → hub locations
 - Lower socialize threshold: E > 0.5 вместо E > 0.7 (охватит больше NPC)
 
+**RESOLUTION (v0.14.2, runtime-verified)**: ⚠️ CLAIM OVERSTATED — понижено с CONFIRMED/High до NOT-A-SYSTEMIC-BUG. Сверка кода + живой прогон опровергли механизм:
+- Премиса «C(1,2)=0» неверна — schedule намеренно кластеризует NPC в hub каждый период (вечером **5 NPC** в таверне 240 мин, днём 3 в Town Square).
+- Порога «socialize E>0.7» **не существует** — socialize это weighted instinct (multiplier 0.4), не hard-threshold; `minConversationScore=1` при base score 3 пропускает почти любую co-located пару.
+- Runtime (~6.5 game-часов): **все 8 NPC** участвовали в беседах, включая garrett. Ноль starvation.
+- Единственный реально изолированный — garrett (guard), by design (см. F3).
+→ **Действий не требуется.** Реальный (мягкий) лимитёр — throughput (1 беседа/cycle + per-NPC cooldown 30 + pair cooldown 240), тюнится через config при необходимости. Social-gravity engine-фикс отвергнут (преждевременен, риск INV-14).
+
 ---
 
 ### F3. Goal Preemption — Guard Robot Problem — VERIFIED architecturally
@@ -111,6 +118,12 @@ bad mood → crime → witness shock (-0.3) → gossip → more shock
 - Interruptible goals: player chat → pause current goal, resume after
 - Priority layering: player interaction = priority 10 (overrides all)
 - Goal timeout: если goal не продвигается 30+ min → abort + log
+
+**RESOLUTION (v0.14.2, runtime-verified)**: ✅ PARTIALLY CONFIRMED → реализован goal-watchdog, claim уточнён:
+- ПОДТВЕРЖДЕНО: занятый guard (priority-9 цель) оффлайн к новым crimes; goal timeout/abort отсутствовал. → **ИСПРАВЛЕНО**: `GoalManager.sweepStuckGoals` (`WorldConfig.goalStuckMinutes`, default 45, no-progress-based; clock замораживается в transit / player-chat). Застрявшая цель абортируется → NPC возвращается в volition.
+- ОПРОВЕРГНУТО: «guard не разговаривает с player» — ложно. Чат работает независимо от цели через `inPlayerChat` freeze (де-факто пауза); ограничивает только физическая co-location (intended bilateral). **Priority-10 interrupt НЕ реализован** — решал бы несуществующую проблему, риск INV-04.
+- Размер timeout выверен замером: норм. investigate ~51 game-min (5 шагов, ~10 мин/шаг); 30 убивал бы легитимные → 45 + transit-freeze безопасен (подтверждено: ложных abort'ов в runtime нет).
+- НЕ сделано (опционально): emergency-preemption (guard реагирует на убийство немедленно, не дожидаясь timeout) — отдельный event-flag фикс на будущее.
 
 ---
 
@@ -255,8 +268,8 @@ bad mood → crime → witness shock (-0.3) → gossip → more shock
 | # | Finding | Severity | Confidence | Effort | Action |
 |---|---------|----------|------------|--------|--------|
 | F1 | Mood feedback loop | HYPOTHESIS | Low (unverified) | Medium | **Verify first** — run empirical test before any code changes |
-| F2 | Conversation starvation | CONFIRMED | High | Low | Add social gravity / schedule breaks |
-| F3 | Goal preemption (guard robot) | CONFIRMED | High | Low | Player chat interrupts active goal |
+| F2 | Conversation starvation | ~~CONFIRMED~~ → OVERSTATED (v0.14.2) | — | — | NO-OP — runtime: all 8 NPC converse; not a bug |
+| F3 | Goal preemption (guard robot) | PARTIAL → FIXED (v0.14.2) | High | Low | DONE — goal-watchdog (goalStuckMinutes); chat-block claim refuted |
 | F4 | Memory eviction | CONFIRMED | Medium | Low | Protect player-interaction memories |
 | F5 | Information spread | DESIGN | High | Medium | Revisit at scale (20+ NPC), OK for 8 |
 | F6 | Escalation linearity | DESIGN | High | Medium | Add de-escalation + event spikes, keep linear base |
@@ -268,8 +281,8 @@ bad mood → crime → witness shock (-0.3) → gossip → more shock
 
 **Immediate (before M4)**:
 1. **Empirical verification** of F1 (mood spiral) — server run, snapshot analysis
-2. **F2 fix** — social gravity or schedule breaks (prevents stagnation)
-3. **F3 fix** — player chat interrupts guard goals (QoL)
+2. ~~F2 fix~~ — ✅ runtime-verified as NOT a bug (v0.14.2); no action
+3. ~~F3 fix~~ — ✅ DONE (v0.14.2): goal-watchdog implemented; "chat blocked by goal" refuted
 4. **F7 measurement** — decision audit logging
 
 **M4 scope**:

@@ -197,6 +197,12 @@ export interface WorldConfig {
   gameSpeed?: number;
   /** Game minutes per pathfinding hop for NPC transit (default: 30 = 30 min per hop) */
   minutesPerHop?: number;
+  /** Goal watchdog: abort an active goal that makes NO step progress for this many game minutes
+   *  (default 45; 0 = disabled). Frees an NPC stuck on an unreachable target / dead-end goal so it
+   *  returns to volition. No-progress based (not total age), so legitimately long goals are unaffected;
+   *  the stuck-clock is also frozen while the NPC is in transit / player chat. Note: at gameSpeed > 1
+   *  a slow LLM step (verdict) compresses into more game-minutes — raise this if running fast-forward. */
+  goalStuckMinutes?: number;
   /** Mood bias applied to every conversation mood_impact. Negative = darker world, positive = lighter.
    *  Default 0 (neutral). Demo: -0.02 (crime within ~1 day). Peaceful: +0.02. */
   moodBias?: number;
