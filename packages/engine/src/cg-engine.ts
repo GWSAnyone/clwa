@@ -388,16 +388,16 @@ export class ConsequenceEngine {
     _targetId: string,
     ctx: WorldContext,
   ): string {
-    const suspect = (event.payload?.perpetratorName as string) ?? 'someone unknown';
-    const victim = event.object ? ctx.agents.get(event.object) : null;
+    const actor = (event.payload?.perpetratorName as string) ?? 'someone unknown';
+    const affectedAgent = event.object ? ctx.agents.get(event.object) : null;
     const affectedName = (event.payload?.affectedName as string)
-      ?? (victim ? victim.profile.name : null)
+      ?? (affectedAgent ? affectedAgent.profile.name : null)
       ?? event.object ?? 'someone';
 
     const builder = getMemoryTextBuilder(rule.consequence.type);
-    if (builder) return builder(event, suspect, affectedName);
+    if (builder) return builder(event, actor, affectedName);
 
     console.warn(`[CG] No memory text builder for consequence type: ${rule.consequence.type}`);
-    return `Something significant happened involving ${suspect}.`;
+    return `Something significant happened involving ${actor}.`;
   }
 }

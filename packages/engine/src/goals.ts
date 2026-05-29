@@ -21,7 +21,7 @@ export interface MoveStep {
 export interface InteractStep {
   action: 'interact';
   targetId: string;        // specific NPC id
-  purpose: string;         // e.g. "interrogate about the murder", "trade goods"
+  purpose: string;         // e.g. "ask about the incident", "trade goods"
   importance: number;      // memory importance for both participants
   /** After interaction, transfer relevant crime beliefs between participants */
   beliefTransfer?: boolean;

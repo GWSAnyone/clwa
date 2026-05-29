@@ -108,6 +108,69 @@ describe('Engine Boundary', () => {
   });
 });
 
+// ─── 1b. Engine Semantic Neutrality (INV-14 — zero module-specific vocabulary) ───
+// Regression guard for the Phase A genre-neutralization (M5). The engine must carry NO crime-justice
+// prose or crime-named primitives. Two files are CONSCIOUSLY EXCLUDED — the investigation/accusation/
+// journal subsystem (journal.ts, il.ts) is a documented deferred extraction (A10+A4b).
+describe('Engine Semantic Neutrality (INV-14)', () => {
+  const DEFERRED = new Set(['journal.ts', 'il.ts']); // A10+A4b — tracked extraction, excluded from the guard
+  const neutralEngineFiles = engineFiles.filter((f) => !DEFERRED.has(f.split(/[\\/]/).pop()!));
+
+  // Crime-domain words that must not appear in engine PROSE (string literals). 'kill'/'death' excluded
+  // (death is a universal event), 'guard'/'victim' excluded (appear as universal identifiers, not prose).
+  const CRIME_PROSE = /\b(murder|crime|criminal|arrest|theft|robbery|suspect|perpetrator)\b/i;
+
+  /** Extract the inner content of all quoted string literals on a code line. */
+  function stringLiterals(code: string): string[] {
+    const out: string[] = [];
+    const re = /(['"`])((?:\\.|(?!\1).)*)\1/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(code)) !== null) out.push(m[2]);
+    return out;
+  }
+
+  test('no crime-justice prose in engine string literals', () => {
+    const violations: string[] = [];
+    for (const f of neutralEngineFiles) {
+      for (const { lineNum, code } of codeLines(f)) {
+        for (const lit of stringLiterals(code)) {
+          if (CRIME_PROSE.test(lit)) {
+            violations.push(`${relative(ROOT, f)}:${lineNum}: "${lit.slice(0, 60)}"`);
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('renamed crime primitives never reappear in engine code', () => {
+    // After A1/A6/A8/A9 these crime-named symbols are gone from the engine. Reintroducing any = regression.
+    const FORBIDDEN: Array<{ re: RegExp; what: string }> = [
+      { re: /\bCrimeScene\b/, what: 'CrimeScene (→ SceneResidue)' },
+      { re: /\bprocessKill\b/, what: 'processKill (→ processAgentDeath)' },
+      { re: /\bmarkCrimeScene\b/, what: 'markCrimeScene (→ markSceneResidue)' },
+      { re: /\bcreateCrimeScene\b/, what: 'createCrimeScene (→ createSceneResidue)' },
+      { re: /\bcrimeScenes\b/, what: 'crimeScenes (→ sceneResidues)' },
+      { re: /\bbodyDiscoveries\b/, what: 'bodyDiscoveries (→ deathDiscoveries)' },
+      { re: /\bonMurder\b/, what: 'onMurder (→ onAgentDeath)' },
+      { re: /\bonCrimeScene\b/, what: 'onCrimeScene (→ onSceneResidue)' },
+      { re: /\bonCrimeEvent\b/, what: 'onCrimeEvent (→ onEmitEvent)' },
+      { re: /\bCRIME_SCENE_TEMPLATES\b/, what: 'CRIME_SCENE_TEMPLATES (→ SCENE_RESIDUE_TEMPLATES)' },
+      { re: /source:\s*['"]rumor['"]/, what: "source: 'rumor' (→ BELIEF_SOURCE.GOSSIP)" },
+      { re: /\b(investigator|detersCrime|canSentence)\s*\?\s*:\s*boolean/, what: 'typed crime capability flag (→ capabilities map)' },
+    ];
+    const violations: string[] = [];
+    for (const f of engineFiles) {
+      for (const { lineNum, code } of codeLines(f)) {
+        for (const { re, what } of FORBIDDEN) {
+          if (re.test(code)) violations.push(`${relative(ROOT, f)}:${lineNum}: ${what}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+});
+
 // ─── 2. No Direct Mood Mutation (Invariant #73) ───
 
 describe('No Direct Mood Mutation', () => {
