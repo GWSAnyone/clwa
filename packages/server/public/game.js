@@ -240,7 +240,7 @@ const state = {
   events: [],
   chatOpen: false, chatNpcId: null, chatMessages: [], _pendingILEffects: null,
   crimeScenes: [], approachingNpc: null, actionEffects: [],
-  autoTick: false, gameSpeed: 1,
+  autoTick: false,
   hoveredNpc: null,
 };
 
@@ -384,8 +384,6 @@ async function init() {
     if (!timeRes.ok) throw new Error(`time: ${timeRes.status}`);
     const timeData = await timeRes.json();
     state.day = timeData.gameDay; state.time = timeData.hour; state.period = timeData.period;
-    state.gameSpeed = timeData.gameSpeed ?? 1;
-    syncSpeedButtons(state.gameSpeed);
     updateHUD();
   } catch (e) {
     showToast('Server unavailable — retrying...', 'info', 4000);
@@ -537,7 +535,7 @@ function handleWSMovement(data) {
       npc.waypoints = (m.waypoints && m.waypoints.length) ? m.waypoints : astarPath(npc.x, npc.y, m.targetX ?? 0, m.targetY ?? 0);
       npc.wpIdx = 0;
       npc.moving = true;
-      npc.walkSpeed = m.speed || NPC_SPEED; // px per GAME-minute (scaled by gameSpeed in the anim loop)
+      npc.walkSpeed = m.speed || NPC_SPEED; // px per GAME-minute (1 game-min = 1 real-sec)
       addEvent('movement', `${m.agentName} → ${LOCATIONS[m.to]?.label || m.to}`);
     }
   }
@@ -612,10 +610,6 @@ function handleWS(type, data) {
       state.time = data.hour;
       state.period = data.period;
       state.day = data.gameDay;
-      if (data.gameSpeed != null && data.gameSpeed !== state.gameSpeed) {
-        state.gameSpeed = data.gameSpeed;
-        syncSpeedButtons(state.gameSpeed);
-      }
       updateHUD();
       break;
 
@@ -792,11 +786,11 @@ function updateHUD() {
   document.getElementById('hud-day').textContent = state.day;
   document.getElementById('hud-time').textContent = state.time;
   document.getElementById('hud-period').textContent = state.period;
-  // Speed indicator
+  // Clock indicator — run/stop is controlled by autoTick (no speed multiplier)
   const speedEl = document.getElementById('hud-speed');
   if (speedEl) {
-    speedEl.textContent = state.gameSpeed > 0 ? `${state.gameSpeed}x` : 'paused';
-    speedEl.style.color = state.gameSpeed >= 3 ? '#ea5' : state.gameSpeed === 0 ? '#e55' : '#8a8';
+    speedEl.textContent = state.autoTick ? 'running' : 'paused';
+    speedEl.style.color = state.autoTick ? '#8a8' : '#e55';
   }
   // Investigation progress — clues + suspects in HUD
   const clueEl = document.getElementById('hud-clues');
@@ -2067,10 +2061,6 @@ function appendChatToken(token) {
   growChatArea();
 }
 
-function syncSpeedButtons(speed) {
-  // Speed controls removed — always 1x
-}
-
 // ─── AUTO TICK (server-authoritative) ───
 async function toggleAuto() {
   const res = await fetch('/api/auto', { method: 'POST' });
@@ -2363,8 +2353,8 @@ function update(dt) {
           a.moving = false;
         }
       } else {
-        // Server speed is px per GAME-minute; client px/real-sec = walkSpeed × gameSpeed (Item 2).
-        const spd = (a.walkSpeed ?? NPC_SPEED) * Math.max(0.1, state.gameSpeed || 1);
+        // Server speed is px per GAME-minute; at fixed 1 game-min/real-sec that's px/real-sec.
+        const spd = a.walkSpeed ?? NPC_SPEED;
         a.x += (dx/dist) * spd * dt;
         a.y += (dy/dist) * spd * dt;
         if (Math.abs(dx) > 2) a.flipH = dx < 0;

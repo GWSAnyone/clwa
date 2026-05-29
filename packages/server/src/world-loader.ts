@@ -69,7 +69,6 @@ interface WorldJson {
     startMinute?: number;
     exchangeCount?: number;
     moodBias?: number;
-    gameSpeed?: number;
   };
 }
 

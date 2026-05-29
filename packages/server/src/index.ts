@@ -667,7 +667,7 @@ async function createGameContext(
         const { arrivals, intermediates } = positionManager.advancePositions(1);
         if (arrivals.length > 0) world.handleArrivals(arrivals);
         for (const it of intermediates) world.handleIntermediateLocationUpdate(it.entityId, it.location);
-        broadcast({ type: 'time_update', data: { minuteOfDay, hour, period, gameDay, gameSpeed: world.gameSpeed } });
+        broadcast({ type: 'time_update', data: { minuteOfDay, hour, period, gameDay } });
         // Record NPC locations for alibi checking (every game minute via time update)
         const gameMinute = (gameDay - 1) * 1440 + minuteOfDay;
         for (const [id, agent] of agents) {

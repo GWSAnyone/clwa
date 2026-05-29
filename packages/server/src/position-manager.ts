@@ -275,7 +275,7 @@ export class PositionManager {
    * Transitions are WAYPOINT-DRIVEN, not raw pixel-in-polygon: each logical hop is tied to a path
    * waypoint index (hopWaypointIdx), so an A* route that geometrically clips an off-route zone does NOT
    * false-fire, and the final zone is not arrived early. Motion is segment-sampled (sub-steps ≤ one tile)
-   * so a zone narrower than transitSpeed*dt is not overshot at high gameSpeed.
+   * so a zone narrower than transitSpeed*dt is not overshot.
    */
   advancePositions(dtMinutes: number): { arrivals: ArrivalEvent[]; intermediates: { entityId: string; location: string }[] } {
     const arrivals: ArrivalEvent[] = [];

@@ -159,7 +159,6 @@ export async function handleRequest(
       ...(sm ? sm.getTimeInfo(minuteOfDay) : { minuteOfDay, period: world.currentPeriod, hour: world.currentHour }),
       gameDay: agents.values().next().value?.state.currentDay ?? 1,
       gameMinute: world.gameMinute,
-      gameSpeed: world.gameSpeed,
     }, { headers: cors });
   }
 
@@ -557,7 +556,6 @@ export async function handleRequest(
   if (method === 'GET' && path === '/api/auto-state') {
     return Response.json({
       running: world.isAutoTicking,
-      gameSpeed: world.gameSpeed,
       queueLength: world.processingQueue.length,
       queueProcessing: world.processingQueue.isProcessing,
     }, { headers: cors });
@@ -570,7 +568,7 @@ export async function handleRequest(
       return Response.json({ running: false }, { headers: cors });
     }
     world.startMasterClock();
-    return Response.json({ running: true, gameSpeed: world.gameSpeed }, { headers: cors });
+    return Response.json({ running: true }, { headers: cors });
   }
 
   // ─── POST /api/player/location ───

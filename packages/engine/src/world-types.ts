@@ -201,13 +201,10 @@ export interface WorldConfig {
   decisionCooldownMinutes?: number;
   /** Starting game minute (default 420 = 07:00). Absolute minute of day. */
   startMinute?: number;
-  /** Game speed multiplier: 1 = 1 game min per real sec, 2 = 2/sec, 3 = 3/sec, 0 = paused */
-  gameSpeed?: number;
   /** Goal watchdog: abort an active goal that makes NO step progress for this many game minutes
    *  (default 45; 0 = disabled). Frees an NPC stuck on an unreachable target / dead-end goal so it
    *  returns to volition. No-progress based (not total age), so legitimately long goals are unaffected;
-   *  the stuck-clock is also frozen while the NPC is in transit / player chat. Note: at gameSpeed > 1
-   *  a slow LLM step (verdict) compresses into more game-minutes — raise this if running fast-forward. */
+   *  the stuck-clock is also frozen while the NPC is in transit / player chat. */
   goalStuckMinutes?: number;
   /** Mood bias applied to every conversation mood_impact. Negative = darker world, positive = lighter.
    *  Default 0 (neutral). Demo: -0.02 (crime within ~1 day). Peaceful: +0.02. */
@@ -379,7 +376,6 @@ export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   exchangeCount: 1,
   affordanceCooldownMinutes: 180,
   decisionCooldownMinutes: 60,
-  gameSpeed: 1,
   repeatPenalty: 1.1,
   frequencyPenalty: 0.3,
   presencePenalty: 0.2,

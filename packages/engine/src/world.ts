@@ -101,7 +101,6 @@ export interface WorldSaveAgentData {
 export interface WorldSaveData {
   tickCount: number;
   gameMinute: number;
-  gameSpeed: number;
   affordanceCooldowns: Record<string, Record<string, number>>;
   decisionCooldowns: Record<string, number>;
   bodyDiscoveries: string[];
@@ -131,8 +130,6 @@ export class World {
   private tickCount: number = 0;
   /** Absolute game minute counter (grows indefinitely). minuteOfDay = gameMinute % 1440. */
   private _gameMinute: number = 0;
-  /** Game speed multiplier: 1=1min/sec, 2=2min/sec, 3=3min/sec, 0=paused */
-  private _gameSpeed: number = 1;
   /** Game Clock timer — advances gameMinute independently of processing ticks */
   private _gameClockTimer: ReturnType<typeof setInterval> | null = null;
   /** Last known day number — for detecting day boundary in processing loop */
@@ -187,7 +184,6 @@ export class World {
     this.resolvedILConfig = resolveILConfig(this.config.il);
     this.resolvedConversationConfig = resolveConversationConfig(this.config.conversationBehavior);
     this._gameMinute = this.config.startMinute ?? 420; // default 07:00
-    this._gameSpeed = this.config.gameSpeed ?? 1;
     this._lastKnownDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
     this.callbacks = callbacks ?? {};
     this.scheduler = new ConversationScheduler(this.config);
@@ -335,11 +331,6 @@ export class World {
     return this._gameMinute;
   }
 
-  /** Get current game speed (0=paused, 1=1x, 2=2x, 3=3x) */
-  get gameSpeed(): number {
-    return this._gameSpeed;
-  }
-
   /** Get current time period */
   get currentPeriod(): string {
     return getTimePeriod(this.minuteOfDay);
@@ -355,10 +346,9 @@ export class World {
   /** Start the Master Clock — advances time and triggers processing when needed */
   startMasterClock(): void {
     if (this._gameClockTimer) return;
-    if (this._gameSpeed <= 0) return;
-    const intervalMs = Math.round(1000 / this._gameSpeed);
-    this._gameClockTimer = setInterval(() => this._onClockTick(), intervalMs);
-    console.log(`  [MasterClock] Started (speed=${this._gameSpeed}x, interval=${intervalMs}ms)`);
+    // Fixed cadence: 1 game-minute per real second. Run/stop is via start/stopMasterClock (autoTick).
+    this._gameClockTimer = setInterval(() => this._onClockTick(), 1000);
+    console.log(`  [MasterClock] Started (1 game-min/sec)`);
   }
 
   /** Stop the Master Clock — freezes time and processing */
@@ -1775,7 +1765,6 @@ export class World {
     return {
       tickCount: this.tickCount,
       gameMinute: this._gameMinute,
-      gameSpeed: this._gameSpeed,
       affordanceCooldowns: Object.fromEntries(
         Array.from(this.affordanceCooldowns.entries()).map(([npcId, map]) =>
           [npcId, Object.fromEntries(map.entries())]),
@@ -1796,7 +1785,6 @@ export class World {
     this._moodHistory.clear();
     this.tickCount = data.tickCount;
     this._gameMinute = data.gameMinute ?? (data.tickCount * 15);
-    this._gameSpeed = data.gameSpeed ?? 1;
     this._lastKnownDay = Math.floor(this._gameMinute / MINUTES_PER_DAY);
 
     // Restore cooldowns
