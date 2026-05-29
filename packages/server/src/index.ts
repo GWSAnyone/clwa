@@ -343,6 +343,9 @@ function buildRelationshipsFromData(npcId: string, profiles: AgentProfile[], rel
 // ─── Bootstrap ───
 
 const PORT = parseInt(process.env.PORT ?? '3000');
+// Auto-tick (Master Clock) is OFF by default — the world starts paused; the player advances it via the
+// Tick/Auto buttons (or POST /api/tick · /api/auto). Set CLWA_AUTOTICK=1 to auto-start ticking on boot/new-game.
+const AUTOTICK_ON_BOOT = process.env.CLWA_AUTOTICK === '1';
 
 /**
  * Create a fresh game world. Repeatable — called on boot and on POST /api/new-game.
@@ -832,7 +835,7 @@ async function main() {
       broadcast({ type: 'new_game', data: { seed: newSeed } });
       // Atomic swap (newCtx does NOT contain resetting)
       Object.assign(ctx, newCtx);
-      ctx.world.startMasterClock();
+      if (AUTOTICK_ON_BOOT) ctx.world.startMasterClock(); // else start paused (default)
       // Delete old save
       try { unlinkSync(SAVE_PATH); } catch {}
       console.log('  [+] New game ready\n');
@@ -869,8 +872,13 @@ async function main() {
   console.log();
   console.log('  Server ready. Waiting for connections...');
 
-  // Start Master Clock
-  ctx.world.startMasterClock();
+  // Master Clock: paused by default (auto-tick off). Player drives time via Tick/Auto or /api/auto.
+  if (AUTOTICK_ON_BOOT) {
+    ctx.world.startMasterClock();
+    console.log('  [Clock] Auto-tick ON (CLWA_AUTOTICK=1).');
+  } else {
+    console.log('  [Clock] Paused — auto-tick off by default. Use Tick/Auto in the UI or POST /api/auto.');
+  }
 
   const shutdown = async () => {
     if (ctx.resetting) { console.log('\n  Reset in progress, exiting'); process.exit(0); return; }
