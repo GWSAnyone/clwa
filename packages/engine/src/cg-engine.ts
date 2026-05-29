@@ -373,11 +373,11 @@ export class ConsequenceEngine {
       ? (Array.from(ctx.agents.entries()).find(([, a]) => a.profile.name === perpetratorName)?.[0] ?? perpetratorName)
       : event.subject ?? null;
     const affectedId = event.object ?? null;
-    const crimeEventType = (event.payload?.originalEventType as string) ?? event.type;
+    const resolvedEventType = (event.payload?.originalEventType as string) ?? event.type;
 
     const creator = getBeliefCreator(rule.consequence.type);
     if (creator) {
-      creator(agent, event, rule, crimeEventType, suspectId, affectedId);
+      creator(agent, event, rule, resolvedEventType, suspectId, affectedId);
     }
   }
 

@@ -104,9 +104,9 @@ export interface TickResult {
   /** Idle reason if no conversation happened */
   idleReason?: string;
   /** Murder that happened this tick (NPC-on-NPC, motivation system) */
-  murder?: { killerId: string; victimId: string; killerName: string; affectedName: string };
+  death?: { killerId: string; victimId: string; killerName: string; affectedName: string };
   /** New crime scene created this tick */
-  crimeScene?: { id: string; locationId: string; crimeType: string; pointCount: number };
+  sceneResidue?: { id: string; locationId: string; crimeType: string; pointCount: number };
   /** NPCs that want to approach the player this tick */
   approaches?: ApproachEvent[];
 }
@@ -125,10 +125,10 @@ export interface ExaminationPoint {
 }
 
 /** Crime scene marker on a location */
-export interface CrimeScene {
+export interface SceneResidue {
   id: string;
   locationId: string;
-  crimeType: string;
+  sceneType: string;
   /** EventType that triggered this scene (e.g. 'NPC_KILLED', 'GOODS_STOLEN') */
   eventType?: string;
   /** Points the player can examine */
@@ -142,26 +142,26 @@ export interface CrimeScene {
   /** Whether the scene is still active (evidence not cleaned up) */
   active: boolean;
   /** Who committed the crime (if known to the system) */
-  perpetratorId?: string;
+  actorId?: string;
   /** Victim of the crime */
-  victimId?: string;
+  affectedId?: string;
   /** All NPCs present at the location when the crime occurred (includes perpetrator) */
   personsPresent: string[];
 }
 
-/** Serialized CrimeScene for persistence (Set → array) */
-export interface CrimeSceneJSON {
+/** Serialized SceneResidue for persistence (Set → array) */
+export interface SceneResidueJSON {
   id: string;
   locationId: string;
-  crimeType: string;
+  sceneType: string;
   eventType?: string;
   points: ExaminationPoint[];
   gameDay: number;
   gameMinute: number;
   noticedBy: string[];
   active: boolean;
-  perpetratorId?: string;
-  victimId?: string;
+  actorId?: string;
+  affectedId?: string;
   personsPresent: string[];
 }
 

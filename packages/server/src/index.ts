@@ -624,7 +624,7 @@ async function createGameContext(
         console.log(`  [Goal] ${action.ownerName}: ${action.description}`);
         broadcast({ type: 'goal:action', data: action });
       },
-      onMurder: (killerId, victimId, killerName, affectedName) => {
+      onAgentDeath: (killerId, victimId, killerName, affectedName) => {
         console.log(`  [MURDER] ${killerName} killed ${affectedName}!`);
         broadcast({ type: 'murder', data: { killerId, victimId, killerName, affectedName } });
       },
@@ -656,9 +656,9 @@ async function createGameContext(
         console.log(`  [Decision] ${data.npcName} → ${data.action}${data.target ? ' ' + data.target : ''} (${data.instinctTier}, ${data.topScore.toFixed(2)})`);
         broadcast({ type: 'npc_thought', data });
       },
-      onCrimeScene: (scene) => {
+      onSceneResidue: (scene) => {
         broadcast({ type: 'crime:scene', data: {
-          id: scene.id, locationId: scene.locationId, crimeType: scene.crimeType, pointCount: scene.points.length,
+          id: scene.id, locationId: scene.locationId, crimeType: scene.sceneType, pointCount: scene.points.length,
         }});
       },
       onTimeUpdate: (minuteOfDay, hour, period, gameDay) => {

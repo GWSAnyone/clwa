@@ -7,7 +7,7 @@ import {
   registerBodyDiscoveryEventType, registerRumorEventType, registerDiscoveryHandler, BELIEF_SOURCE,
   registerBeliefCreator, registerMemoryTextBuilder,
   registerSourceCategory,
-  registerCrimeSceneTemplate,
+  registerSceneResidueTemplate,
   registerInteractionResultHook,
   getRumorEventType,
   registerTickPhaseHandler,
@@ -342,7 +342,7 @@ export function registerCrimeJusticeModule(): void {
     herbalist: { description: 'Crushed dried herbs underfoot, fragrant and out of place.', clueText: 'Dried herbs scattered around — an herbalist or healer was present.' },
   };
 
-  registerCrimeSceneTemplate('murder', {
+  registerSceneResidueTemplate('murder', {
     points: [
       { type: 'body', description: 'A lifeless body lies on the ground, face frozen in shock.', clueText: 'The victim was killed here. No signs they tried to flee — the attack was sudden.' },
       { type: 'bloodstain', description: 'Dark stains spread across the floor, still damp in places.', clueText: 'A large pool of blood. The wound was severe — this was no accident.' },
@@ -364,7 +364,7 @@ export function registerCrimeJusticeModule(): void {
       return [{ type: 'profession_clue', description: profClue.description, clueText: profClue.clueText }];
     },
   });
-  registerCrimeSceneTemplate('robbery', {
+  registerSceneResidueTemplate('robbery', {
     points: [
       { type: 'damage', description: 'A lock has been forced open, the mechanism bent and broken.', clueText: 'The lock was broken with considerable force — someone strong or with the right tools.' },
       { type: 'stolen_goods', description: 'Shelves are bare and containers emptied, their contents gone.', clueText: 'Goods were taken deliberately — the thief knew what they were after.' },
@@ -378,7 +378,7 @@ export function registerCrimeJusticeModule(): void {
       return [{ type: 'profession_clue', description: profClue.description, clueText: profClue.clueText }];
     },
   });
-  registerCrimeSceneTemplate('assault', {
+  registerSceneResidueTemplate('assault', {
     points: [
       { type: 'bloodstain', description: 'Spots of blood on the ground, as if from a wound.', clueText: 'Someone was hurt here, but not fatally. They likely walked away.' },
       { type: 'struggle', description: 'The area is disturbed — a scuffle clearly took place.', clueText: 'A fight happened here. From the marks, it was between two people.' },
@@ -834,16 +834,16 @@ export function registerCrimeJusticeModule(): void {
   registerCrimeStepHandlers();
 
   // Interact post-hooks (suspect evaluation after interrogation)
-  registerInteractPostHook((owner, target, step, _agents, crimeScenes) => {
-    if (!(step as import('@clwa/engine').InteractStep).evaluateSuspect || !owner.state.beliefs || !crimeScenes) return;
+  registerInteractPostHook((owner, target, step, _agents, sceneResidues) => {
+    if (!(step as import('@clwa/engine').InteractStep).evaluateSuspect || !owner.state.beliefs || !sceneResidues) return;
     // Evaluate suspect: check guilt + honesty trait → update deduction belief confidence
     const deductionBelief = owner.state.beliefs.getAllBeliefs().find(
       (b: Belief) => b.source === 'deduction' && b.subject === target.profile.id,
     );
     if (!deductionBelief) return;
 
-    const isGuilty = Array.from(crimeScenes.values()).flat()
-      .some(s => s.active && s.perpetratorId === target.profile.id);
+    const isGuilty = Array.from(sceneResidues.values()).flat()
+      .some(s => s.active && s.actorId === target.profile.id);
     const honesty = target.profile.bigFive.honesty;
     const currentDay = owner.state.currentDay;
 
@@ -987,7 +987,7 @@ export function registerCrimeJusticeModule(): void {
 
   // Crime scene awareness: NPCs at crime scene locations passively notice evidence
   registerTickPhaseHandler(async (ctx) => {
-    for (const [locationId, scenes] of ctx.crimeScenes) {
+    for (const [locationId, scenes] of ctx.sceneResidues) {
       for (const scene of scenes) {
         if (!scene.active) continue;
         // Find display name for location
@@ -1006,9 +1006,9 @@ export function registerCrimeJusticeModule(): void {
 
           agent.state.beliefs?.addBelief({
             id: crypto.randomUUID(),
-            eventType: scene.eventType ?? scene.crimeType,
-            subject: scene.perpetratorId ? (ctx.agents.get(scene.perpetratorId)?.profile.name ?? null) : null,
-            object: scene.victimId ? (ctx.agents.get(scene.victimId)?.profile.name ?? null) : null,
+            eventType: scene.eventType ?? scene.sceneType,
+            subject: scene.actorId ? (ctx.agents.get(scene.actorId)?.profile.name ?? null) : null,
+            object: scene.affectedId ? (ctx.agents.get(scene.affectedId)?.profile.name ?? null) : null,
             location: locationId,
             confidence: 0.8,
             source: 'scene_notice',
@@ -1016,7 +1016,7 @@ export function registerCrimeJusticeModule(): void {
             gameDay: ctx.currentDay,
             lastUpdated: ctx.currentDay,
           });
-          console.log(`  [CrimeScene] ${agent.profile.name} noticed ${scene.crimeType} scene at ${locationName}`);
+          console.log(`  [CrimeScene] ${agent.profile.name} noticed ${scene.sceneType} scene at ${locationName}`);
         }
       }
     }

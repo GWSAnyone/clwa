@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from 'bun';
-import type { ConversationLine, ConversationResult, TickResult, MovementResult, GoalActionResult, CrimeScene, JournalEntry } from '@clwa/engine';
+import type { ConversationLine, ConversationResult, TickResult, MovementResult, GoalActionResult, SceneResidue, JournalEntry } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
 
 /** Server-enriched movement broadcast: engine MovementResult + pixel data for the client renderer

@@ -169,7 +169,7 @@ export function registerCrimeEventHandlers(): void {
 
   // EVIDENCE_DESTROYED: degrade crime scene
   registerEventHandler('EVIDENCE_DESTROYED', (event: WorldEvent, ctx: EventHandlerContext) => {
-    const scenes = ctx.crimeScenes.get(event.location);
+    const scenes = ctx.sceneResidues.get(event.location);
     if (!scenes) return;
     for (const scene of scenes) {
       if (!scene.active) continue;
@@ -252,10 +252,10 @@ export function registerCrimeEventHandlers(): void {
         // FULL resolution: zero transferable beliefs + deactivate crime scenes
         // Collect victim IDs from crime scenes linked to this suspect
         const victimIds = new Set<string>();
-        for (const [, scenes] of ctx.crimeScenes) {
+        for (const [, scenes] of ctx.sceneResidues) {
           for (const scene of scenes) {
-            if (scene.perpetratorId === suspectId && scene.victimId) {
-              victimIds.add(scene.victimId);
+            if (scene.actorId === suspectId && scene.affectedId) {
+              victimIds.add(scene.affectedId);
             }
           }
         }
@@ -272,13 +272,13 @@ export function registerCrimeEventHandlers(): void {
           }
         }
         // Deactivate crime scenes + mark bodies discovered (prevents post-resolution loops)
-        for (const [, scenes] of ctx.crimeScenes) {
+        for (const [, scenes] of ctx.sceneResidues) {
           for (const scene of scenes) {
-            if (scene.perpetratorId !== suspectId) continue;
+            if (scene.actorId !== suspectId) continue;
             scene.active = false;
-            if (scene.victimId) {
+            if (scene.affectedId) {
               for (const [agentId] of ctx.agents) {
-                ctx.bodyDiscoveries.add(`${agentId}:${scene.victimId}`);
+                ctx.deathDiscoveries.add(`${agentId}:${scene.affectedId}`);
               }
             }
           }

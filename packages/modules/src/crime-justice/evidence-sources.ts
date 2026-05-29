@@ -29,11 +29,11 @@ function interpolateDescription(template: string, vars: Record<string, string>):
 
 function findPersonsPresent(template: EvidenceTemplate, ctx: EvidenceContext): EvidenceCandidate[] {
   const candidates: EvidenceCandidate[] = [];
-  const scenes = ctx.crimeScenes?.get(ctx.event.location) ?? [];
+  const scenes = ctx.sceneResidues?.get(ctx.event.location) ?? [];
   const activeScene = scenes.find((s) => s.active);
   if (!activeScene) return candidates;
 
-  const victimId = activeScene.victimId;
+  const victimId = activeScene.affectedId;
   const victimAgent = victimId ? ctx.agents.get(victimId) : null;
 
   for (const personId of activeScene.personsPresent) {

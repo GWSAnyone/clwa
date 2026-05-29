@@ -1,12 +1,13 @@
 import type { Agent } from './agent';
-import type { CrimeScene, ExaminationPoint } from './world-types';
-import { getCrimeSceneTemplate } from './event-registry';
+import type { SceneResidue, ExaminationPoint } from './world-types';
+import { getSceneResidueTemplate } from './event-registry';
 
 /**
- * Create a crime scene with examination points from registered templates.
- * Templates are registered by modules via registerCrimeSceneTemplate().
+ * Create a scene residue (the inspectable state an event leaves at a location) with examination
+ * points from registered templates. Templates are registered by modules via registerSceneResidueTemplate().
+ * Genre-neutral: a crime scene, a fraud audit trail, a battlefield aftermath are all scene residues.
  */
-export function createCrimeScene(
+export function createSceneResidue(
   locationId: string,
   sceneType: string,
   gameDay: number,
@@ -14,10 +15,10 @@ export function createCrimeScene(
   perpetrator?: Agent,
   victim?: Agent,
   witnesses?: string[],
-): CrimeScene {
-  const template = getCrimeSceneTemplate(sceneType);
+): SceneResidue {
+  const template = getSceneResidueTemplate(sceneType);
   if (!template) {
-    throw new Error(`No crime scene template registered for type: ${sceneType}`);
+    throw new Error(`No scene-residue template registered for type: ${sceneType}`);
   }
 
   const points: ExaminationPoint[] = template.points.map((t) => ({
@@ -50,14 +51,14 @@ export function createCrimeScene(
   return {
     id: crypto.randomUUID(),
     locationId,
-    crimeType: sceneType,
+    sceneType: sceneType,
     points,
     gameDay,
     gameMinute,
     noticedBy,
     active: true,
-    perpetratorId: perpetrator?.profile.id,
-    victimId: victim?.profile.id,
+    actorId: perpetrator?.profile.id,
+    affectedId: victim?.profile.id,
     personsPresent: [
       ...(perpetrator ? [perpetrator.profile.id] : []),
       ...(witnesses ?? []),
@@ -65,9 +66,9 @@ export function createCrimeScene(
   };
 }
 
-/** Text that an NPC gets when passively noticing a crime scene */
-export function getPassiveNoticeText(scene: CrimeScene, locationName: string): string {
-  const template = getCrimeSceneTemplate(scene.crimeType);
+/** Text that an NPC gets when passively noticing a scene residue */
+export function getPassiveNoticeText(scene: SceneResidue, locationName: string): string {
+  const template = getSceneResidueTemplate(scene.sceneType);
   if (template?.passiveNoticeText) {
     return template.passiveNoticeText.replace('{locationName}', locationName);
   }

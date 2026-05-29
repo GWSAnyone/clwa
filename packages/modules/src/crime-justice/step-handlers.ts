@@ -1,6 +1,6 @@
 import { registerStepHandler, registerTickPhaseHandler, getEventLabel, getBeliefSourceLabel, isFirsthand, nextHop, classify } from '@clwa/engine';
 import type { Agent, StepExecutionContext, LlmJsonSchema, GoalActionResult, Belief, NpcGoal, GoalManager } from '@clwa/engine';
-import type { CrimeScene } from '@clwa/engine';
+import type { SceneResidue } from '@clwa/engine';
 
 // ─── Module Step Types (typed shapes for engine's generic ModuleStep) ─────
 interface StealFromStep { action: 'steal_from'; targetId: string; importance: number; [k: string]: unknown }
@@ -156,25 +156,25 @@ function buildCommunityPressure(suspect: Agent, victimId: string | null, agents:
 }
 
 /** Check if suspect is guilty (perpetrator of an active crime scene) */
-function checkGuilt(suspectId: string, crimeScenes?: Map<string, CrimeScene[]>): boolean {
-  if (!crimeScenes) return false;
-  for (const scenes of crimeScenes.values()) {
+function checkGuilt(suspectId: string, sceneResidues?: Map<string, SceneResidue[]>): boolean {
+  if (!sceneResidues) return false;
+  for (const scenes of sceneResidues.values()) {
     for (const scene of scenes) {
-      if (scene.active && scene.perpetratorId === suspectId) return true;
+      if (scene.active && scene.actorId === suspectId) return true;
     }
   }
   return false;
 }
 
 /** Evaluate interrogation outcome based on guilt + honesty trait */
-function evaluateInterrogationOutcome(owner: Agent, target: Agent, currentDay: number, crimeScenes: Map<string, CrimeScene[]>): void {
+function evaluateInterrogationOutcome(owner: Agent, target: Agent, currentDay: number, sceneResidues: Map<string, SceneResidue[]>): void {
   if (!owner.state.beliefs) return;
   const deductionBelief = owner.state.beliefs.getAllBeliefs().find(
     (b: Belief) => b.source === 'deduction' && b.subject === target.profile.id,
   );
   if (!deductionBelief) return;
 
-  const isGuilty = checkGuilt(target.profile.id, crimeScenes);
+  const isGuilty = checkGuilt(target.profile.id, sceneResidues);
   const honesty = target.profile.bigFive.honesty;
   const HONESTY_THRESHOLD = 0.6;
   const CONFESSION_CONFIDENCE = 0.85;
@@ -214,11 +214,11 @@ export function registerCrimeStepHandlers(): void {
     }
     goal.waitTicks = 0;
     await owner.observe(`I stole goods from ${target.profile.name}'s shop. I was desperate — I had no choice. The guilt weighs on me.`, step.importance);
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: 'GOODS_STOLEN', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role } });
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({ type: 'GOODS_STOLEN', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role } });
     }
     goal.currentStep++;
-    return { ...baseResult, action: 'steal_from', description: `${owner.profile.name} stole from ${target.profile.name}'s shop`, crimeEvent: { type: 'GOODS_STOLEN', targetId: step.targetId, targetName: target.profile.name } };
+    return { ...baseResult, action: 'steal_from', description: `${owner.profile.name} stole from ${target.profile.name}'s shop`, emittedEvent: { type: 'GOODS_STOLEN', targetId: step.targetId, targetName: target.profile.name } };
   });
 
   registerStepHandler('attack_npc', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
@@ -248,11 +248,11 @@ export function registerCrimeStepHandlers(): void {
     }
     if (target.state.relationships) { target.state.relationships.adjustSentiment(goal.ownerId, -0.5); target.state.relationships.adjustTrust(goal.ownerId, -0.6); }
     if (owner.state.relationships) { owner.state.relationships.adjustSentiment(step.targetId, -0.2); }
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: eventType, subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: isLethal ? 10 : step.importance, payload: isLethal ? { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role } : { attackerName: owner.profile.name, affectedName: target.profile.name, reason: step.reason } });
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({ type: eventType, subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: isLethal ? 10 : step.importance, payload: isLethal ? { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role } : { attackerName: owner.profile.name, affectedName: target.profile.name, reason: step.reason } });
     }
     goal.currentStep++;
-    return { ...baseResult, action: 'attack_npc', description: isLethal ? `${owner.profile.name} killed ${target.profile.name}` : `${owner.profile.name} attacked ${target.profile.name}`, crimeEvent: { type: eventType, targetId: step.targetId, targetName: target.profile.name } };
+    return { ...baseResult, action: 'attack_npc', description: isLethal ? `${owner.profile.name} killed ${target.profile.name}` : `${owner.profile.name} attacked ${target.profile.name}`, emittedEvent: { type: eventType, targetId: step.targetId, targetName: target.profile.name } };
   });
 
   registerStepHandler('arrest_npc', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
@@ -282,8 +282,8 @@ export function registerCrimeStepHandlers(): void {
     await owner.observe(`I arrested ${target.profile.name} and escorted them to the Courthouse. Justice will be served.`, step.importance);
     await target.observe(`${owner.profile.name} arrested me. I am being held at the Courthouse awaiting judgment.`, step.importance);
     ctx.addMoodModifier(step.targetId, { source: 'arrest_shock', category: 'event', magnitude: -0.4, remaining: 720, duration: 720, decay: 'exponential' });
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: 'NPC_ARRESTED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { guardName: owner.profile.name, perpetratorName: target.profile.name, suspectRole: target.profile.role, affectedTargets: Array.from(agents.keys()) } });
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({ type: 'NPC_ARRESTED', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { guardName: owner.profile.name, perpetratorName: target.profile.name, suspectRole: target.profile.role, affectedTargets: Array.from(agents.keys()) } });
     }
     goal.currentStep++;
     return { ...baseResult, action: 'arrest_npc', description: `${owner.profile.name} arrested ${target.profile.name}` };
@@ -295,8 +295,8 @@ export function registerCrimeStepHandlers(): void {
     const baseResult = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
     const destroyed = ctx.evidenceLayer?.destroyAt(owner.state.location, ['trace']) ?? 0;
     await owner.observe(`I destroyed evidence at ${owner.state.location}. ${destroyed > 0 ? `Removed ${destroyed} piece(s).` : 'Nothing to destroy.'} I hope no one saw me.`, step.importance);
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: 'EVIDENCE_DESTROYED', subject: goal.ownerId, location: owner.state.location, importance: step.importance, payload: { criminalName: owner.profile.name, affectedTargets: Array.from(agents.entries()).filter(([id, a]) => id !== goal.ownerId && a.state.alive && a.state.location === owner.state.location).map(([id]) => id) } });
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({ type: 'EVIDENCE_DESTROYED', subject: goal.ownerId, location: owner.state.location, importance: step.importance, payload: { criminalName: owner.profile.name, affectedTargets: Array.from(agents.entries()).filter(([id, a]) => id !== goal.ownerId && a.state.alive && a.state.location === owner.state.location).map(([id]) => id) } });
     }
     goal.currentStep++;
     return { ...baseResult, action: 'destroy_evidence', description: `${owner.profile.name} destroyed evidence` };
@@ -309,8 +309,8 @@ export function registerCrimeStepHandlers(): void {
     owner.state.status = 'fled';
     await owner.observe(`I fled the town through the gate. I can never return. Everything I had here is gone.`, step.importance);
     ctx.addMoodModifier(goal.ownerId, { source: 'fled_town', category: 'event', magnitude: -0.3, remaining: 1440, duration: 1440, decay: 'exponential' });
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({ type: 'NPC_FLED', subject: goal.ownerId, location: owner.state.location, importance: step.importance, payload: { fledName: owner.profile.name, fledRole: owner.profile.role, affectedTargets: Array.from(agents.keys()) } });
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({ type: 'NPC_FLED', subject: goal.ownerId, location: owner.state.location, importance: step.importance, payload: { fledName: owner.profile.name, fledRole: owner.profile.role, affectedTargets: Array.from(agents.keys()) } });
     }
     goal.state = 'completed';
     goal.currentStep++;
@@ -346,10 +346,10 @@ export function registerCrimeStepHandlers(): void {
       });
       suspectCount++;
     }
-    const scenes = ctx.crimeScenes?.get(owner.state.location) ?? [];
-    const activeScene = scenes.find((s: CrimeScene) => s.active);
-    const affectedName = activeScene?.victimId ? agents.get(activeScene.victimId)?.profile.name ?? 'unknown' : 'unknown';
-    const crimeLabel = activeScene?.crimeType ? (getEventLabel(activeScene.eventType ?? activeScene.crimeType) ?? 'crime') : 'crime';
+    const scenes = ctx.sceneResidues?.get(owner.state.location) ?? [];
+    const activeScene = scenes.find((s: SceneResidue) => s.active);
+    const affectedName = activeScene?.affectedId ? agents.get(activeScene.affectedId)?.profile.name ?? 'unknown' : 'unknown';
+    const crimeLabel = activeScene?.sceneType ? (getEventLabel(activeScene.eventType ?? activeScene.sceneType) ?? 'crime') : 'crime';
     await owner.observe(`I examined the crime scene. ${suspectCount > 0 ? `Found ${suspectCount} suspect(s) in the ${crimeLabel} of ${affectedName}.` : `Reinforced suspicions about ${affectedName}.`}`, step.importance);
     goal.currentStep++;
     return { ...baseResult, action: 'examine_scene', description: `${owner.profile.name} examined evidence: ${undiscovered.length} clue(s), ${suspectCount} suspect(s)` };
@@ -367,15 +367,15 @@ export function registerCrimeStepHandlers(): void {
     let affectedName: string | null = null;
     let victimId: string | null = null;
     let crimeEventType: string | null = null;
-    if (ctx.crimeScenes) {
-      for (const scenes of ctx.crimeScenes.values()) {
+    if (ctx.sceneResidues) {
+      for (const scenes of ctx.sceneResidues.values()) {
         for (const scene of scenes) {
-          if (scene.perpetratorId === step.targetId && scene.active !== false) {
-            crimeEventType = scene.eventType ?? scene.crimeType ?? null;
+          if (scene.actorId === step.targetId && scene.active !== false) {
+            crimeEventType = scene.eventType ?? scene.sceneType ?? null;
             if (crimeEventType && CRIME_SEVERITY[crimeEventType]) {
               crimeSeverity = CRIME_SEVERITY[crimeEventType];
             }
-            victimId = scene.victimId ?? null;
+            victimId = scene.affectedId ?? null;
             if (victimId) {
               affectedName = agents.get(victimId)?.profile.name ?? null;
             }
@@ -516,8 +516,8 @@ export function registerCrimeStepHandlers(): void {
       }
     }
 
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({
         type: 'NPC_SENTENCED', subject: goal.ownerId, object: step.targetId as string,
         location: owner.state.location, importance: step.importance as number,
         payload: {
@@ -558,8 +558,8 @@ export function registerCrimeStepHandlers(): void {
     target.state.relationships?.adjustSentiment(goal.ownerId, -0.10);
 
     // Fire event for witnesses and CG cascade
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({
         type: 'ARGUMENT_WITNESSED', subject: goal.ownerId, object: step.targetId,
         location: owner.state.location, importance: step.importance,
         payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name },
@@ -610,8 +610,8 @@ export function registerCrimeStepHandlers(): void {
     });
 
     // Fire event for witnesses
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({
         type: 'THREAT_WITNESSED', subject: goal.ownerId, object: step.targetId,
         location: owner.state.location, importance: step.importance,
         payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name },
@@ -651,8 +651,8 @@ export function registerCrimeStepHandlers(): void {
     });
 
     // Fire WITNESS_INTIMIDATED event — activates CG cascade + intimidated witness directive
-    if (ctx.onCrimeEvent) {
-      await ctx.onCrimeEvent({
+    if (ctx.onEmitEvent) {
+      await ctx.onEmitEvent({
         type: 'WITNESS_INTIMIDATED', subject: goal.ownerId, object: step.targetId,
         location: owner.state.location, importance: step.importance,
         payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name },

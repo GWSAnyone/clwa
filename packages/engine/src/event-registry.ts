@@ -163,7 +163,7 @@ export function getGoalCleanupForEvent(eventType: string): string[] {
 // ─── Belief Zeroing Events ───
 // Events that should zero out investigator beliefs about the suspect (case resolved)
 // Belief zeroing moved to module event handlers (verdict-conditional).
-// Modules call ctx.bodyDiscoveries / iterate ctx.crimeScenes directly.
+// Modules call ctx.deathDiscoveries / iterate ctx.sceneResidues directly.
 
 // ─── Event → Scene Type mapping ───
 // Maps eventType to crime scene type string (modules define what scene types exist)
@@ -214,7 +214,7 @@ import type { WorldEvent, ConsequenceRule } from './cg-types';
 import type { ILEffect } from './il';
 import type { GoalManager } from './goals';
 import type { NpcGoal, GoalStep, GoalActionResult } from './goals';
-import type { CrimeScene, LocationGraph } from './world-types';
+import type { SceneResidue, LocationGraph } from './world-types';
 import type { ExaminationPoint } from './world-types';
 import type { EvidenceLayer } from './evidence';
 import type { IEventStore } from './event-types';
@@ -222,10 +222,10 @@ import type { IEventStore } from './event-types';
 export interface EventHandlerContext {
   agents: Map<string, Agent>;
   goalManager: GoalManager;
-  crimeScenes: Map<string, CrimeScene[]>;
+  sceneResidues: Map<string, SceneResidue[]>;
   getCurrentDay: () => number;
   /** Body discovery tracking — module can mark bodies as discovered to prevent re-discovery loops */
-  bodyDiscoveries: Set<string>;
+  deathDiscoveries: Set<string>;
   /** Trigger reactive affordance evaluation for a specific NPC on this event. Engine handles AL mechanics. */
   triggerReactiveEvaluation: (npcId: string, event: WorldEvent) => Promise<void>;
   /** Add a mood modifier to an NPC (SPEC-mood-modifiers) */
@@ -275,7 +275,7 @@ export function getSecretEventType(): string | null { return _secretEventType; }
 
 // ─── Crime Scene Templates ───
 // Modules register examination point templates per scene type.
-export interface CrimeSceneTemplate {
+export interface SceneResidueTemplate {
   points: Omit<ExaminationPoint, 'id' | 'examined'>[];
   /** Prose text for NPCs who passively notice this scene. {locationName} is interpolated. */
   passiveNoticeText?: string;
@@ -285,14 +285,14 @@ export interface CrimeSceneTemplate {
   additionalPoints?: (ctx: { victim?: Agent; perpetrator?: Agent }) => Omit<ExaminationPoint, 'id' | 'examined'>[];
 }
 
-const CRIME_SCENE_TEMPLATES: Map<string, CrimeSceneTemplate> = new Map();
+const SCENE_RESIDUE_TEMPLATES: Map<string, SceneResidueTemplate> = new Map();
 
-export function registerCrimeSceneTemplate(sceneType: string, template: CrimeSceneTemplate): void {
-  CRIME_SCENE_TEMPLATES.set(sceneType, template);
+export function registerSceneResidueTemplate(sceneType: string, template: SceneResidueTemplate): void {
+  SCENE_RESIDUE_TEMPLATES.set(sceneType, template);
 }
 
-export function getCrimeSceneTemplate(sceneType: string): CrimeSceneTemplate | null {
-  return CRIME_SCENE_TEMPLATES.get(sceneType) ?? null;
+export function getSceneResidueTemplate(sceneType: string): SceneResidueTemplate | null {
+  return SCENE_RESIDUE_TEMPLATES.get(sceneType) ?? null;
 }
 
 // ─── Relationship Display Labels ───
@@ -392,8 +392,8 @@ export interface StepExecutionContext {
   agents: Map<string, Agent>;
   locations: LocationGraph;
   runInteraction: InteractionRunner;
-  onCrimeEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>;
-  crimeScenes?: Map<string, CrimeScene[]>;
+  onEmitEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>;
+  sceneResidues?: Map<string, SceneResidue[]>;
   evidenceLayer?: EvidenceLayer;
   /** GoalManager for clearing goals (arrest → clear target goals, flee → clear own goals) */
   goalManager: GoalManager;
@@ -440,7 +440,7 @@ export function isStatusAbsent(status: string | null | undefined): boolean {
 
 // ─── Interact Post-Hooks ───
 // Modules register hooks that run after an interact step (e.g., suspect evaluation)
-export type InteractPostHookFn = (owner: Agent, target: Agent, step: GoalStep, agents: Map<string, Agent>, crimeScenes?: Map<string, CrimeScene[]>) => void;
+export type InteractPostHookFn = (owner: Agent, target: Agent, step: GoalStep, agents: Map<string, Agent>, sceneResidues?: Map<string, SceneResidue[]>) => void;
 
 const INTERACT_POST_HOOKS: InteractPostHookFn[] = [];
 
@@ -482,9 +482,9 @@ export function getWitnessEventType(): string | null {
   return WITNESS_EVENT_TYPE;
 }
 
-export function runInteractPostHooks(owner: Agent, target: Agent, step: GoalStep, agents: Map<string, Agent>, crimeScenes?: Map<string, CrimeScene[]>): void {
+export function runInteractPostHooks(owner: Agent, target: Agent, step: GoalStep, agents: Map<string, Agent>, sceneResidues?: Map<string, SceneResidue[]>): void {
   for (const hook of INTERACT_POST_HOOKS) {
-    hook(owner, target, step, agents, crimeScenes);
+    hook(owner, target, step, agents, sceneResidues);
   }
 }
 
@@ -598,7 +598,7 @@ export function getRumorEventType(): string | null {
 
 // ─── CG Belief Creators ───
 // Modules register how beliefs are created from CG consequence types
-export type BeliefCreatorFn = (agent: Agent, event: WorldEvent, rule: ConsequenceRule, crimeEventType: string, perpetrator: string | null, affectedName: string | null) => void;
+export type BeliefCreatorFn = (agent: Agent, event: WorldEvent, rule: ConsequenceRule, eventType: string, actor: string | null, affected: string | null) => void;
 
 const BELIEF_CREATORS: Map<string, BeliefCreatorFn> = new Map();
 
@@ -611,7 +611,7 @@ export function getBeliefCreator(consequenceType: string): BeliefCreatorFn | nul
 }
 
 // ─── CG Memory Text Builders ───
-export type MemoryTextBuilderFn = (event: WorldEvent, perpetrator: string, affectedName: string) => string;
+export type MemoryTextBuilderFn = (event: WorldEvent, actor: string, affected: string) => string;
 
 const MEMORY_TEXT_BUILDERS: Map<string, MemoryTextBuilderFn> = new Map();
 
@@ -678,7 +678,7 @@ export interface TickPhaseContext {
   /** NPC approach events — tick phase handlers push to this array */
   approaches: import('./world-types').ApproachEvent[];
   /** Crime scenes — module tick handlers can check awareness, evidence */
-  crimeScenes: Map<string, import('./world-types').CrimeScene[]>;
+  sceneResidues: Map<string, import('./world-types').SceneResidue[]>;
   /** Location graph for spatial queries */
   locations: import('./world-types').LocationGraph;
   /** Goal manager — for creating defensive/reactive goals from tick handlers */

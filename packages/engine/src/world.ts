@@ -19,13 +19,13 @@ import {
 import type {
   WorldConfig, TickResult, ConversationLine, ConversationResult,
   LocationGraph, NpcMovementConfig, MovementResult, NpcHome,
-  CrimeScene, CrimeSceneJSON, MoodModifier, ArrivalEvent,
+  SceneResidue, SceneResidueJSON, MoodModifier, ArrivalEvent,
 } from './world-types';
 import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
 import type { ILConfig, ConversationConfig } from './world-types';
 import { ScheduleManager, MINUTES_PER_DAY, getTimePeriod, minuteToHour } from './schedule';
 import type { ScheduleEntry } from './schedule';
-import { createCrimeScene } from './crime-scene';
+import { createSceneResidue } from './scene-residue';
 import { PlayerJournal } from './journal';
 import { evaluateAllVolition, evaluateReactiveVolition } from './volition';
 import { AFFORDANCE_REGISTRY, checkRequirements, computeUtility, getBlockingGoalTypes } from './al';
@@ -50,9 +50,9 @@ export interface WorldCallbacks {
   /** Called when a goal action is executed */
   onGoalAction?: (action: GoalActionResult) => void;
   /** Called when an NPC commits murder (motivation system) */
-  onMurder?: (killerId: string, victimId: string, killerName: string, affectedName: string) => void;
+  onAgentDeath?: (killerId: string, victimId: string, killerName: string, affectedName: string) => void;
   /** Called when a new crime scene is created */
-  onCrimeScene?: (scene: CrimeScene) => void;
+  onSceneResidue?: (scene: SceneResidue) => void;
   /** Called before an LLM call (for debug UI) */
   onLlmCall?: (reason: string, target?: string) => void;
   /** Called when an NPC makes a volition decision (for overlay UI) */
@@ -103,8 +103,8 @@ export interface WorldSaveData {
   gameMinute: number;
   affordanceCooldowns: Record<string, Record<string, number>>;
   decisionCooldowns: Record<string, number>;
-  bodyDiscoveries: string[];
-  crimeScenes: Record<string, import('./world-types').CrimeSceneJSON[]>;
+  deathDiscoveries: string[];
+  sceneResidues: Record<string, import('./world-types').SceneResidueJSON[]>;
   journal: import('./journal').JournalEntry[] | { entries: import('./journal').JournalEntry[]; suspects: string[] };
   goals: Record<string, import('./goals').NpcGoal[]>;
   topicEngine: ReturnType<import('./topic-engine').TopicEngine['toJSON']>;
@@ -135,9 +135,9 @@ export class World {
   /** Last known day number — for detecting day boundary in processing loop */
   private _lastKnownDay: number = 0;
   /** Track which NPC has already discovered which body (to avoid repeats) */
-  private bodyDiscoveries: Set<string> = new Set(); // "discoverer:victim"
+  private deathDiscoveries: Set<string> = new Set(); // "discoverer:victim"
   /** Active crime scenes at locations */
-  readonly crimeScenes: Map<string, CrimeScene[]> = new Map();
+  readonly sceneResidues: Map<string, SceneResidue[]> = new Map();
   /** Player's investigation journal */
   journal: PlayerJournal = new PlayerJournal();
   /** Cached reference to the player Agent (resolved once, updated if agents change) */
@@ -269,7 +269,7 @@ export class World {
 
     // Belief zeroing, crime scene deactivation, and body marking are now handled
     // by module event handlers (crime-justice/event-handlers.ts) which know verdict-specific logic.
-    // Engine provides: agents, crimeScenes, bodyDiscoveries via EventHandlerContext.
+    // Engine provides: agents, sceneResidues, deathDiscoveries via EventHandlerContext.
 
     // Information spread sentiment + criminal reactive goals — moved to module event handlers.
     // Engine provides triggerReactiveEvaluation callback for modules that need AL reactive evaluation.
@@ -280,9 +280,9 @@ export class World {
       const handlerCtx: EventHandlerContext = {
         agents: this.agents,
         goalManager: this.goalManager,
-        crimeScenes: this.crimeScenes,
+        sceneResidues: this.sceneResidues,
         getCurrentDay: () => this.getCurrentDay(),
-        bodyDiscoveries: this.bodyDiscoveries,
+        deathDiscoveries: this.deathDiscoveries,
         triggerReactiveEvaluation: async (npcId: string, triggerEvent: WorldEvent) => {
           const modifiedEvent: WorldEvent = { ...triggerEvent, payload: { ...triggerEvent.payload, affectedTargets: [npcId] } };
           const goals = evaluateReactiveVolition(
@@ -708,7 +708,7 @@ export class World {
         if (victim.state.alive || victim.profile.isPlayer) continue;
         if (agent.state.location === victim.state.location) {
           const key = `${id}:${vid}`;
-          if (!this.bodyDiscoveries.has(key)) {
+          if (!this.deathDiscoveries.has(key)) {
             this.processingQueue.enqueue({ id: `body-${key}`, type: 'BODY_DISCOVERY', priority: 1, npcId: id, enqueuedAt: gm });
           }
         }
@@ -1059,28 +1059,28 @@ export class World {
       },
     });
 
-    const crimeHandler = async (crimeData: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => {
-      const crimeEvent: WorldEvent = {
-        id: crypto.randomUUID(), type: crimeData.type as WorldEvent['type'],
-        subject: crimeData.subject, object: crimeData.object,
-        location: crimeData.location, gameDay: this.getCurrentDay(),
-        importance: crimeData.importance,
-        payload: { ...crimeData.payload, sourceEvent: 'goal_execution' },
+    const emitEventHandler = async (eventData: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => {
+      const emittedEvent: WorldEvent = {
+        id: crypto.randomUUID(), type: eventData.type as WorldEvent['type'],
+        subject: eventData.subject, object: eventData.object,
+        location: eventData.location, gameDay: this.getCurrentDay(),
+        importance: eventData.importance,
+        payload: { ...eventData.payload, sourceEvent: 'goal_execution' },
       };
-      this.eventStore.append(crimeEvent);
+      this.eventStore.append(emittedEvent);
       const sceneWitnesses = Array.from(this.agents.entries())
-        .filter(([wid, a]) => wid !== crimeData.object && a.state.alive && a.state.location === crimeData.location)
+        .filter(([wid, a]) => wid !== eventData.object && a.state.alive && a.state.location === eventData.location)
         .map(([wid]) => wid);
-      const sceneType = getSceneTypeForEvent(crimeData.type);
-      if (sceneType) this.markCrimeScene(crimeData.location, sceneType, crimeData.subject, crimeData.object, sceneWitnesses, crimeData.type);
-      if (isDeathEvent(crimeData.type) && crimeData.object) {
-        this.callbacks.onMurder?.(crimeData.subject, crimeData.object,
-          crimeData.payload.perpetratorName as string, crimeData.payload.affectedName as string);
+      const sceneType = getSceneTypeForEvent(eventData.type);
+      if (sceneType) this.markSceneResidue(eventData.location, sceneType, eventData.subject, eventData.object, sceneWitnesses, eventData.type);
+      if (isDeathEvent(eventData.type) && eventData.object) {
+        this.callbacks.onAgentDeath?.(eventData.subject, eventData.object,
+          eventData.payload.perpetratorName as string, eventData.payload.affectedName as string);
       }
-      const elCtx: EvidenceContext = { event: crimeEvent, agents: this.agents, crimeScenes: this.crimeScenes };
-      this.evidence.generate(crimeEvent, elCtx);
-      const results = await this.processCascade(crimeEvent);
-      await this.handleEventForGoals(crimeEvent);
+      const elCtx: EvidenceContext = { event: emittedEvent, agents: this.agents, sceneResidues: this.sceneResidues };
+      this.evidence.generate(emittedEvent, elCtx);
+      const results = await this.processCascade(emittedEvent);
+      await this.handleEventForGoals(emittedEvent);
       for (const r of results) await this.handleEventForGoals(r.event);
     };
 
@@ -1090,7 +1090,7 @@ export class World {
     do {
       const action = await this.goalManager.processGoalTick(
         npcId, this.agents, this.locations, interactionRunner,
-        crimeHandler, this.crimeScenes, this.evidence,
+        emitEventHandler, this.sceneResidues, this.evidence,
         (npcId, mod) => this.addModifier(npcId, mod),
       );
       if (!action) break;
@@ -1229,8 +1229,8 @@ export class World {
         await this.handleEventForGoals(event);
         for (const r of results) await this.handleEventForGoals(r.event);
       },
-      discoveries: this.bodyDiscoveries, approaches: approachEvents,
-      crimeScenes: this.crimeScenes, locations: this.locations,
+      discoveries: this.deathDiscoveries, approaches: approachEvents,
+      sceneResidues: this.sceneResidues, locations: this.locations,
       goalManager: this.goalManager, npcHomes: this.npcHomes,
       addMoodModifier: (npcId: string, mod: Omit<import('./world-types').MoodModifier, 'id'>) => this.addModifier(npcId, mod),
     };
@@ -1374,16 +1374,16 @@ export class World {
 
       for (const dead of deadHere) {
         const key = `${id}:${dead.id}`;
-        if (this.bodyDiscoveries.has(key)) continue;
+        if (this.deathDiscoveries.has(key)) continue;
 
         // This NPC just discovered a body!
-        this.bodyDiscoveries.add(key);
+        this.deathDiscoveries.add(key);
 
         const affectedName = dead.agent.profile.name;
         // Find crime scene for this victim to get eventType
-        const victimScene = Array.from(this.crimeScenes.values()).flat()
-          .find(s => s.victimId === dead.id && s.active);
-        const deathEventType = victimScene?.eventType ?? victimScene?.crimeType;
+        const victimScene = Array.from(this.sceneResidues.values()).flat()
+          .find(s => s.affectedId === dead.id && s.active);
+        const deathEventType = victimScene?.eventType ?? victimScene?.sceneType;
 
         // BODY_DISCOVERED represents what the discoverer knows:
         // victim identity + location. perpetratorName unknown.
@@ -1482,51 +1482,51 @@ export class World {
   }
 
   /**
-   * Create a crime scene at a location.
-   * Called automatically from processKill; can also be called directly for robberies, assaults, etc.
+   * Create a scene residue (location-state left by an event) at a location.
+   * Called automatically from processAgentDeath; can also be called directly by modules.
    */
-  markCrimeScene(
+  markSceneResidue(
     locationId: string,
-    crimeType: string,
-    perpetratorId?: string,
-    victimId?: string,
+    sceneType: string,
+    actorId?: string,
+    affectedId?: string,
     witnessIds?: string[],
     eventType?: string,
-  ): CrimeScene {
-    const perpetrator = perpetratorId ? this.agents.get(perpetratorId) : undefined;
-    const victim = victimId ? this.agents.get(victimId) : undefined;
+  ): SceneResidue {
+    const actor = actorId ? this.agents.get(actorId) : undefined;
+    const affected = affectedId ? this.agents.get(affectedId) : undefined;
 
-    const scene = createCrimeScene(
+    const scene = createSceneResidue(
       locationId,
-      crimeType,
+      sceneType,
       this.getCurrentDay(),
       this._gameMinute,
-      perpetrator,
-      victim,
+      actor,
+      affected,
       witnessIds,
     );
 
-    scene.eventType = eventType ?? crimeType;
+    scene.eventType = eventType ?? sceneType;
 
-    const existing = this.crimeScenes.get(locationId) ?? [];
+    const existing = this.sceneResidues.get(locationId) ?? [];
     existing.push(scene);
-    this.crimeScenes.set(locationId, existing);
+    this.sceneResidues.set(locationId, existing);
 
-    console.log(`  [CrimeScene] ${crimeType} at ${locationId} — ${scene.points.length} examination points`);
-    this.callbacks.onCrimeScene?.(scene);
+    console.log(`  [SceneResidue] ${sceneType} at ${locationId} — ${scene.points.length} examination points`);
+    this.callbacks.onSceneResidue?.(scene);
 
     return scene;
   }
 
   /**
    * Crime scene awareness moved to module tick phase handler (crime-justice/index.ts).
-   * Engine provides crimeScenes + locations in TickPhaseContext.
+   * Engine provides sceneResidues + locations in TickPhaseContext.
    */
 
   /** Process a kill event through the consequence engine.
    *  killerId is optional — defaults to 'player'. Pass NPC id for NPC-on-NPC kills.
    *  eventType is the event type string registered by modules (e.g. 'NPC_KILLED'). */
-  async processKill(victimId: string, killerId?: string, eventType?: string): Promise<{ killEvent: WorldEvent; results: unknown[] }> {
+  async processAgentDeath(victimId: string, killerId?: string, eventType?: string): Promise<{ killEvent: WorldEvent; results: unknown[] }> {
     const victim = this.agents.get(victimId);
     if (!victim || !victim.state.alive) {
       throw new Error(`Cannot kill ${victimId}: not found or already dead`);
@@ -1574,7 +1574,7 @@ export class World {
       if (id === victimId) continue;
       if (!isPresent(agent)) continue;
       if (agent.state.location === victim.state.location) {
-        this.bodyDiscoveries.add(`${id}:${victimId}`);
+        this.deathDiscoveries.add(`${id}:${victimId}`);
       }
     }
 
@@ -1584,11 +1584,11 @@ export class World {
       .map(([id]) => id);
     const killSceneType = getSceneTypeForEvent(resolvedEventType);
     if (killSceneType) {
-      this.markCrimeScene(victim.state.location, killSceneType, killerId, victimId, witnessIds, resolvedEventType);
+      this.markSceneResidue(victim.state.location, killSceneType, killerId, victimId, witnessIds, resolvedEventType);
     }
 
     // Generate structured evidence at the crime scene
-    const elCtx: EvidenceContext = { event: killEvent, agents: this.agents, crimeScenes: this.crimeScenes };
+    const elCtx: EvidenceContext = { event: killEvent, agents: this.agents, sceneResidues: this.sceneResidues };
     this.evidence.generate(killEvent, elCtx);
 
     // Process consequences (CG cascade: WITNESS_MEMORY, RUMOR_SPREAD, etc.)
@@ -1754,9 +1754,9 @@ export class World {
     }
 
     // Serialize crime scenes (Set → array)
-    const crimeScenes: Record<string, import('./world-types').CrimeSceneJSON[]> = {};
-    for (const [locId, scenes] of this.crimeScenes) {
-      crimeScenes[locId] = scenes.map((s) => ({
+    const sceneResidues: Record<string, import('./world-types').SceneResidueJSON[]> = {};
+    for (const [locId, scenes] of this.sceneResidues) {
+      sceneResidues[locId] = scenes.map((s) => ({
         ...s,
         noticedBy: Array.from(s.noticedBy),
       }));
@@ -1770,8 +1770,8 @@ export class World {
           [npcId, Object.fromEntries(map.entries())]),
       ),
       decisionCooldowns: Object.fromEntries(this.decisionCooldowns.entries()),
-      bodyDiscoveries: Array.from(this.bodyDiscoveries),
-      crimeScenes,
+      deathDiscoveries: Array.from(this.deathDiscoveries),
+      sceneResidues,
       evidence: this.evidence.toJSON(),
       journal: this.journal.toJSON(),
       goals: this.goalManager.toJSON(),
@@ -1800,14 +1800,14 @@ export class World {
         this.decisionCooldowns.set(npcId, expiresAt);
       }
     }
-    this.bodyDiscoveries = new Set(data.bodyDiscoveries);
+    this.deathDiscoveries = new Set(data.deathDiscoveries);
     this.goalManager.loadFromJSON(data.goals);
 
     // Restore crime scenes (array → Set)
-    this.crimeScenes.clear();
-    if (data.crimeScenes) {
-      for (const [locId, scenes] of Object.entries(data.crimeScenes)) {
-        this.crimeScenes.set(
+    this.sceneResidues.clear();
+    if (data.sceneResidues) {
+      for (const [locId, scenes] of Object.entries(data.sceneResidues)) {
+        this.sceneResidues.set(
           locId,
           scenes.map((s) => ({ ...s, noticedBy: new Set(s.noticedBy) })),
         );

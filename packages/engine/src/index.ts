@@ -144,9 +144,9 @@ export type { ProcessingTask, TaskType, TaskHandler } from './processing-queue';
 export type {
   ConversationLine,
   ConversationResult,
-  CrimeScene,
+  SceneResidue,
   ApproachEvent,
-  CrimeSceneJSON,
+  SceneResidueJSON,
   ExaminationPoint,
   LocationDef,
   MovementResult,
@@ -204,8 +204,8 @@ export type {
   EvidenceTemplate,
 } from './evidence';
 
-// ─── Crime Scene ───
-export { createCrimeScene, getPassiveNoticeText } from './crime-scene';
+// ─── Scene Residue (generic location-state from an event) ───
+export { createSceneResidue, getPassiveNoticeText } from './scene-residue';
 
 // ─── Journal ───
 export { PlayerJournal } from './journal';
@@ -227,7 +227,7 @@ export {
   registerPursuitEvents, isPursuitEvent,
   registerEventHandler, getEventHandlers,
   registerActionVerbs, getAffordanceIdsForVerb,
-  registerCrimeSceneTemplate, getCrimeSceneTemplate,
+  registerSceneResidueTemplate, getSceneResidueTemplate,
   registerRelationshipLabels, getRelationshipLabel,
   registerBeliefSourceLabels, getBeliefSourceLabel,
   registerSourceTransferWeights, getSourceTransferWeight,
@@ -266,4 +266,4 @@ export {
 export type { TickPhaseContext, TickPhaseHandlerFn } from './event-registry';
 export type { StepExecutionContext, StepHandlerFn, InteractionRunner as StepInteractionRunner } from './event-registry';
 export type { PressureHandlerContext, PressureHandlerFn } from './event-registry';
-export type { EventHandlerContext, EventHandlerFn, CrimeSceneTemplate, BeliefCreatorFn, MemoryTextBuilderFn, DayAdvanceHandlerFn, DayAdvanceContext, DiscoveryContext, DiscoveryHandlerFn, MoodModifierCallback } from './event-registry';
+export type { EventHandlerContext, EventHandlerFn, SceneResidueTemplate, BeliefCreatorFn, MemoryTextBuilderFn, DayAdvanceHandlerFn, DayAdvanceContext, DiscoveryContext, DiscoveryHandlerFn, MoodModifierCallback } from './event-registry';

@@ -1,6 +1,6 @@
 import type { Agent } from './agent';
 import type { WorldEvent } from './cg-types';
-import type { LocationGraph, MovementResult, CrimeScene } from './world-types';
+import type { LocationGraph, MovementResult, SceneResidue } from './world-types';
 import type { EvidenceLayer } from './evidence';
 import { findPath } from './pathfinding';
 import { getEventLabel, getBeliefSourceLabel, getSourceTransferWeight, getStepHandler, runInteractPostHooks, isTransferable, BELIEF_SOURCE } from './event-registry';
@@ -117,7 +117,7 @@ export interface GoalActionResult {
     message: string;
     recipients: string[];
   };
-  crimeEvent?: {
+  emittedEvent?: {
     type: string;          // EventType that was emitted
     targetId: string;
     targetName: string;
@@ -371,8 +371,8 @@ export class GoalManager {
     agents: Map<string, Agent>,
     locations: LocationGraph,
     runInteraction: InteractionRunner,
-    onCrimeEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>,
-    crimeScenes?: Map<string, import('./world-types').CrimeScene[]>,
+    onEmitEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>,
+    sceneResidues?: Map<string, import('./world-types').SceneResidue[]>,
     evidenceLayer?: EvidenceLayer,
     addMoodModifier?: MoodModifierCallback,
   ): Promise<GoalActionResult | null> {
@@ -408,7 +408,7 @@ export class GoalManager {
     }
 
     const step = goal.steps[goal.currentStep];
-    return this.executeStep(goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer, addMoodModifier);
+    return this.executeStep(goal, step, ownerId, owner, agents, locations, runInteraction, onEmitEvent, sceneResidues, evidenceLayer, addMoodModifier);
   }
 
   private async executeStep(
@@ -419,8 +419,8 @@ export class GoalManager {
     agents: Map<string, Agent>,
     locations: LocationGraph,
     runInteraction: InteractionRunner,
-    onCrimeEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>,
-    crimeScenes?: Map<string, import('./world-types').CrimeScene[]>,
+    onEmitEvent?: (event: { type: string; subject: string; object?: string; location: string; importance: number; payload: Record<string, unknown> }) => Promise<void>,
+    sceneResidues?: Map<string, import('./world-types').SceneResidue[]>,
     evidenceLayer?: EvidenceLayer,
     addMoodModifier?: MoodModifierCallback,
   ): Promise<GoalActionResult | null> {
@@ -520,8 +520,8 @@ export class GoalManager {
           const { transferred } = transferBeliefs(sender, receiver, senderId, owner.state.currentDay);
 
           // Emit event if step declares an event type (module-registered via emitEventType)
-          if (onCrimeEvent && s.emitEventType && transferred.length > 0) {
-            await onCrimeEvent({
+          if (onEmitEvent && s.emitEventType && transferred.length > 0) {
+            await onEmitEvent({
               type: s.emitEventType,
               subject: goal.ownerId,
               object: s.targetId,
@@ -538,7 +538,7 @@ export class GoalManager {
         }
 
         // Module-registered post-interaction hooks (e.g., suspect evaluation)
-        runInteractPostHooks(owner, target, step, agents, crimeScenes);
+        runInteractPostHooks(owner, target, step, agents, sceneResidues);
 
         // Unified initiator memory: beliefs + outcome in one entry (no double observe)
         const purposeShort = (s.purpose ?? '').replace(/\[[A-Z_]+[^\]]*\]\s*/g, '');
@@ -659,7 +659,7 @@ export class GoalManager {
       default: {
         const handler = getStepHandler(step.action);
         if (handler) {
-          return handler({ goal, step, ownerId, owner, agents, locations, runInteraction, onCrimeEvent, crimeScenes, evidenceLayer, goalManager: this,
+          return handler({ goal, step, ownerId, owner, agents, locations, runInteraction, onEmitEvent, sceneResidues, evidenceLayer, goalManager: this,
             addMoodModifier: addMoodModifier ?? ((id, m) => console.warn(`[Goals] addMoodModifier not provided for ${id}, modifier ${m.source} lost`)) });
         }
         return null;

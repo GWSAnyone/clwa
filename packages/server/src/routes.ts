@@ -353,17 +353,17 @@ export async function handleRequest(
       pointCount: number; gameDay: number; active: boolean;
       perpetrator?: string; victim?: string;
     }> = [];
-    for (const [, scenes] of world.crimeScenes) {
+    for (const [, scenes] of world.sceneResidues) {
       for (const scene of scenes) {
         allScenes.push({
           id: scene.id,
           locationId: scene.locationId,
-          crimeType: scene.crimeType,
+          crimeType: scene.sceneType,
           pointCount: scene.points.length,
           gameDay: scene.gameDay,
           active: scene.active,
-          perpetrator: scene.perpetratorId ? agents.get(scene.perpetratorId)?.profile.name : undefined,
-          victim: scene.victimId ? agents.get(scene.victimId)?.profile.name : undefined,
+          perpetrator: scene.actorId ? agents.get(scene.actorId)?.profile.name : undefined,
+          victim: scene.affectedId ? agents.get(scene.affectedId)?.profile.name : undefined,
         });
       }
     }
@@ -373,7 +373,7 @@ export async function handleRequest(
   // ─── GET /api/crime-scene/:locationId ───
   if (method === 'GET' && path.startsWith('/api/crime-scene/')) {
     const locationId = decodeURIComponent(path.slice('/api/crime-scene/'.length));
-    const scenes = world.crimeScenes.get(locationId);
+    const scenes = world.sceneResidues.get(locationId);
     if (!scenes || scenes.length === 0) {
       return Response.json({ error: 'No crime scene at this location' }, { status: 404, headers: cors });
     }
@@ -382,12 +382,12 @@ export async function handleRequest(
     return Response.json({
       id: scene.id,
       locationId: scene.locationId,
-      crimeType: scene.crimeType,
+      crimeType: scene.sceneType,
       gameDay: scene.gameDay,
       active: scene.active,
       points: scene.points,
-      perpetrator: scene.perpetratorId ? agents.get(scene.perpetratorId)?.profile.name : undefined,
-      victim: scene.victimId ? agents.get(scene.victimId)?.profile.name : undefined,
+      perpetrator: scene.actorId ? agents.get(scene.actorId)?.profile.name : undefined,
+      victim: scene.affectedId ? agents.get(scene.affectedId)?.profile.name : undefined,
     }, { headers: cors });
   }
 
@@ -400,7 +400,7 @@ export async function handleRequest(
     const locationId = decodeURIComponent(parts[0]);
     const pointId = parts[1];
 
-    const scenes = world.crimeScenes.get(locationId);
+    const scenes = world.sceneResidues.get(locationId);
     if (!scenes) {
       return Response.json({ error: 'No crime scene at this location' }, { status: 404, headers: cors });
     }
@@ -411,8 +411,8 @@ export async function handleRequest(
         point.examined = true;
 
         const relatedNpcs: string[] = [];
-        if (scene.victimId) relatedNpcs.push(scene.victimId);
-        if (scene.perpetratorId) relatedNpcs.push(scene.perpetratorId);
+        if (scene.affectedId) relatedNpcs.push(scene.affectedId);
+        if (scene.actorId) relatedNpcs.push(scene.actorId);
         const journalEntry = world.journal.addClue(
           point.clueText,
           locationId,
@@ -425,8 +425,8 @@ export async function handleRequest(
         // Note: point.type is display type ('bloodstain', 'body'), NOT evidence category.
         // evidenceCategory comes from EL evidence entries below, not from examination points.
         journalEntry.eventType = scene.eventType;
-        journalEntry.suspectId = scene.perpetratorId;
-        journalEntry.victimId = scene.victimId;
+        journalEntry.suspectId = scene.actorId;
+        journalEntry.victimId = scene.affectedId;
         broadcast({ type: 'journal:entry', data: journalEntry });
 
         // Also discover any undiscovered EL evidence at this location for player
@@ -469,7 +469,7 @@ export async function handleRequest(
     const parts = path.split('/');
     const killerId = parts[3];
     const victimId = parts[4];
-    return world.processKill(victimId, killerId).then(({ killEvent, results }) => {
+    return world.processAgentDeath(victimId, killerId).then(({ killEvent, results }) => {
       broadcast({ type: 'event', data: killEvent });
       return Response.json({
         killEvent,
@@ -491,7 +491,7 @@ export async function handleRequest(
   // ─── POST /api/kill/:id ───
   if (method === 'POST' && path.startsWith('/api/kill/')) {
     const victimId = path.split('/').pop() ?? '';
-    return world.processKill(victimId).then(({ killEvent, results }) => {
+    return world.processAgentDeath(victimId).then(({ killEvent, results }) => {
       broadcast({ type: 'event', data: killEvent });
       return Response.json({
         killEvent,
@@ -822,8 +822,8 @@ export async function handleRequest(
       e.type === 'NPC_KILLED' || e.type === 'GOODS_STOLEN' || e.type === 'SELF_JUSTICE');
     crimeCount = crimes.length;
 
-    const scenes = Array.from(world.crimeScenes.entries()).flatMap(([loc, scenes]) =>
-      scenes.map(s => ({ location: loc, type: s.crimeType, active: s.active })));
+    const scenes = Array.from(world.sceneResidues.entries()).flatMap(([loc, scenes]) =>
+      scenes.map(s => ({ location: loc, type: s.sceneType, active: s.active })));
 
     return Response.json({
       gameMinute: world.gameMinute,

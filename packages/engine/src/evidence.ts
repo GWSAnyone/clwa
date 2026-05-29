@@ -1,6 +1,6 @@
 import type { WorldEvent } from './cg-types';
 import type { Agent } from './agent';
-import type { CrimeScene } from './world-types';
+import type { SceneResidue } from './world-types';
 
 // ─── Data Model ───
 
@@ -57,7 +57,7 @@ export interface EvidenceRule {
 export interface EvidenceContext {
   event: WorldEvent;
   agents: Map<string, Agent>;
-  crimeScenes?: Map<string, CrimeScene[]>;
+  sceneResidues?: Map<string, SceneResidue[]>;
 }
 
 export interface EvidenceCandidate {
