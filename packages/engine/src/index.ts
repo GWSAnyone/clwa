@@ -2,7 +2,7 @@
 export { Agent } from './agent';
 export type { AgentOptions } from './agent';
 export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, MemoryEntry, ScoredMemory, ShopItem, NpcProcessingState } from './agent-types';
-export { DEFAULT_LLM_PERSONALITY } from './agent-types';
+export { DEFAULT_LLM_PERSONALITY, hasCapability } from './agent-types';
 export type { NpcStatus } from './agent-types';
 
 // ─── Beliefs ───

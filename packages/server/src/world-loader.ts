@@ -26,7 +26,8 @@ interface NpcJson {
   };
   secret?: string;
   innerConflict?: string;
-  capabilities?: { investigator?: boolean; detersCrime?: boolean; canSentence?: boolean };
+  /** Open capability flags (e.g. investigator/detersCrime/canSentence for crime; isMerchant for economy). */
+  capabilities?: Record<string, boolean>;
   llm?: { temperature: number; maxTokens: number };
   home: string;
   startingLocation: string;
@@ -210,9 +211,7 @@ export function loadWorld(worldDir: string): LoadedWorld {
       enneagram: npc.enneagram,
       ...(npc.secret ? { secret: npc.secret } : {}),
       ...(npc.innerConflict ? { innerConflict: npc.innerConflict } : {}),
-      ...(npc.capabilities?.investigator ? { investigator: true } : {}),
-      ...(npc.capabilities?.detersCrime ? { detersCrime: true } : {}),
-      ...(npc.capabilities?.canSentence ? { canSentence: true } : {}),
+      ...(npc.capabilities ? { capabilities: { ...npc.capabilities } } : {}),
       ...(npc.llm ? { llm: npc.llm } : {}),
       ...(npc.shop ? { shop: npc.shop } : {}),
       ...(npc.motive ? { motive: npc.motive } : {}),

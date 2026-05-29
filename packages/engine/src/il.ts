@@ -15,6 +15,7 @@
 
 // llmSemaphore более не используется — classify внутри façade сам управляет семафором
 import type { Agent } from './agent';
+import { hasCapability } from './agent-types';
 import type { IEventStore } from './event-types';
 import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs, getRegisteredQuestionTopics, getDefaultSpeechAct, phraseBelief } from './event-registry';
 import type { PressureHandlerContext } from './event-registry';
@@ -666,13 +667,13 @@ function buildAccusationPrompt(acc: AccusationContext, npc: Agent): string {
   let personalityNote = '';
   const H = npc.profile.bigFive.honesty;
   const C = npc.profile.bigFive.conscientiousness;
-  if (npc.profile.investigator) {
+  if (hasCapability(npc.profile, 'investigator')) {
     personalityNote = C >= 0.7
       ? 'As a disciplined investigator, you need solid evidence before acting.'
       : H < 0.5
         ? 'You might be open to... alternative forms of persuasion.'
         : 'You want to do the right thing but need convincing evidence.';
-  } else if (npc.profile.canSentence) {
+  } else if (hasCapability(npc.profile, 'canSentence')) {
     personalityNote = 'You cannot arrest anyone. Tell the player to bring this to someone with the authority to make arrests.';
   }
 
@@ -767,7 +768,7 @@ export async function applyDialogueMeaning(
 
   // 1b. Accusation evaluation — only for authority NPCs (investigator/canSentence)
   if (isAccusationSpeechAct(meaning.speechAct) && meaning.claims && meaning.claims.length > 0) {
-    const isAuthority = npc.profile.investigator || npc.profile.canSentence;
+    const isAuthority = hasCapability(npc.profile, 'investigator') || hasCapability(npc.profile, 'canSentence');
     if (isAuthority && ctx.playerJournal) {
       const suspectClaim = meaning.claims.find((c) => c.subject);
       if (suspectClaim?.subject) {

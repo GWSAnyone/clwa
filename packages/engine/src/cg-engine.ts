@@ -281,7 +281,7 @@ export class ConsequenceEngine {
 
     if (cond.op === 'has_capability') {
       const capFlag = (cond.value ?? cond.field) as string;
-      return !!(agent.profile as unknown as Record<string, unknown>)[capFlag];
+      return agent.profile.capabilities?.[capFlag] === true;
     }
     if (cond.op === 'trait') {
       return this.checkTrait(agent, cond);

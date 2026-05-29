@@ -69,9 +69,7 @@ const theronProfile: AgentProfile = {
     coreFear: 'Being corrupt, defective, evil',
     coreDesire: 'To be just and morally upright',
   },
-  canSentence: true,
-  investigator: false,
-  detersCrime: true,
+  capabilities: { canSentence: true, detersCrime: true },
 };
 
 const memoryManager = new NpcMemoryManager(NPCS_ROOT);

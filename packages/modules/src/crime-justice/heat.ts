@@ -7,7 +7,7 @@
  */
 
 import type { Agent } from '@clwa/engine';
-import { isPerpetrator, BELIEF_SOURCE } from '@clwa/engine';
+import { isPerpetrator, BELIEF_SOURCE, hasCapability } from '@clwa/engine';
 
 export interface HeatContext {
   agents: Map<string, Agent>;
@@ -80,7 +80,7 @@ export function computeHeat(agent: Agent, ctx: HeatContext): number {
   // ─── Guard proximity ───
   // Investigator NPC at the same location = immediate danger spike
   for (const [, other] of ctx.agents) {
-    if (other.profile.investigator &&
+    if (hasCapability(other.profile, 'investigator') &&
         other.state.alive &&
         other.state.location === agent.state.location &&
         other.profile.id !== agent.profile.id) {

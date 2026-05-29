@@ -106,7 +106,7 @@ describe('Heat System', () => {
       gameDay: 1, lastUpdated: 1,
     });
     const guard = makeTestAgent('garrett', { location: 'market-square' });
-    (guard.profile as any).investigator = true;
+    (guard.profile as any).capabilities = { investigator: true };
 
     const agents = new Map([['mark', criminal], ['garrett', guard]]);
     const heatWithGuard = computeHeat(criminal, { agents });

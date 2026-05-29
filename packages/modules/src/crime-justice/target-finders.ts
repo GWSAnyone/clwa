@@ -1,7 +1,7 @@
 import type { Agent, AffordanceContext, AffordanceDefinition, AffordanceTarget } from '@clwa/engine';
 import type { Belief } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
-import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel, isTransferable, isStatusAbsent, isPerpetrator, isFirsthand } from '@clwa/engine';
+import { TARGET_FINDERS, REACTIVE_TARGET_FINDERS, findByRole, isEventCategory, getEventLabel, isTransferable, isStatusAbsent, isPerpetrator, isFirsthand, hasCapability } from '@clwa/engine';
 
 // ─── Helpers ───
 
@@ -288,7 +288,7 @@ function findWitnessTarget(npcId: string, agent: Agent, ctx: AffordanceContext):
   const adjacentLocations = agentLoc ? new Set(agentLoc.connections) : new Set<string>();
 
   for (const [otherId, other] of ctx.agents) {
-    if (otherId === npcId || !other.state.alive || other.profile.isPlayer || other.profile.investigator) continue;
+    if (otherId === npcId || !other.state.alive || other.profile.isPlayer || hasCapability(other.profile, 'investigator')) continue;
     if (isStatusAbsent(other.state.status)) continue; // only free NPCs can be intimidated
 
     const otherBeliefs = other.state.beliefs?.getAllBeliefs() ?? [];
@@ -419,7 +419,7 @@ export function registerCrimeTargetFinders(): void {
   });
 
   REACTIVE_TARGET_FINDERS.set('investigate', (npcId, agent, _ctx, event) => {
-    if (!agent.profile.investigator) return null;
+    if (!hasCapability(agent.profile, 'investigator')) return null;
     const crimeLocation = (event.payload?.crimeLocation as string) ?? event.location;
     const perpetratorName = (event.payload?.perpetratorName as string) ?? 'an unknown suspect';
     const affectedName = (event.payload?.affectedName as string) ?? 'the victim';
@@ -470,12 +470,12 @@ export function registerCrimeTargetFinders(): void {
   });
 
   REACTIVE_TARGET_FINDERS.set('interrogate', (npcId, agent, ctx, event) => {
-    if (!agent.profile.investigator) return null;
+    if (!hasCapability(agent.profile, 'investigator')) return null;
     return findInterrogationTarget(npcId, agent, ctx, event);
   });
 
   REACTIVE_TARGET_FINDERS.set('arrest', (npcId, agent, ctx, event) => {
-    if (!agent.profile.investigator) return null;
+    if (!hasCapability(agent.profile, 'investigator')) return null;
     return findArrestTarget(npcId, agent, ctx, event);
   });
 
@@ -515,7 +515,7 @@ export function registerCrimeTargetFinders(): void {
   });
 
   REACTIVE_TARGET_FINDERS.set('evaluate_case', (_npcId, agent, ctx) => {
-    if (!agent.profile.canSentence) return null;
+    if (!hasCapability(agent.profile, 'canSentence')) return null;
     return findDetainedTarget(ctx);
   });
 }

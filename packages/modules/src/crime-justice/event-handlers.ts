@@ -1,4 +1,4 @@
-import { registerEventHandler, isTransferable, BELIEF_SOURCE } from '@clwa/engine';
+import { registerEventHandler, isTransferable, BELIEF_SOURCE, hasCapability } from '@clwa/engine';
 import type { EventHandlerContext } from '@clwa/engine';
 import type { WorldEvent, Belief, Agent } from '@clwa/engine';
 
@@ -107,7 +107,7 @@ export function registerCrimeEventHandlers(): void {
 
     // All investigators get negative sentiment toward criminal
     for (const [, agent] of ctx.agents) {
-      if (agent.profile.investigator && agent.state.relationships) {
+      if (hasCapability(agent.profile, 'investigator') && agent.state.relationships) {
         agent.state.relationships.adjustSentiment(criminalId, -0.4);
         agent.state.relationships.adjustTrust(criminalId, -0.3);
       }

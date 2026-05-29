@@ -1,5 +1,5 @@
 import type { EventType, ConsequenceResult, WorldEvent } from '@clwa/engine';
-import { isEventCategory, findPath, BELIEF_SOURCE } from '@clwa/engine';
+import { isEventCategory, findPath, BELIEF_SOURCE, hasCapability } from '@clwa/engine';
 import { broadcast } from './ws';
 import type { GameContext } from './game-context';
 
@@ -90,7 +90,7 @@ export async function handleRequest(
           beliefCount: agent.state.beliefs?.getAllBeliefs().length ?? 0,
           relationshipCount: agent.state.relationships?.getAllRelationships().length ?? 0,
           hasShop: !!(agent.profile.shop && agent.profile.shop.length > 0),
-          investigator: agent.profile.investigator ?? false,
+          investigator: hasCapability(agent.profile, 'investigator'),
         };
       });
     return Response.json(list, { headers: cors });

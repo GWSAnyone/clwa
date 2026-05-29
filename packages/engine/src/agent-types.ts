@@ -98,16 +98,22 @@ export interface AgentProfile {
     targetId: string;
     reason: string;
   };
-  /** NPC investigates crimes (guards, sheriffs, etc.) — gets ACTIVE DUTY directive */
-  investigator?: boolean;
-  /** NPC presence at location deters crime attempts (guards, paladins, etc.) */
-  detersCrime?: boolean;
-  /** NPC can evaluate cases and pass judgment (judges, magistrates, elders) */
-  canSentence?: boolean;
+  /**
+   * Open capability flags — string-keyed so ANY genre declares its own roles without an engine
+   * edit (crime: investigator/detersCrime/canSentence; economy: isMerchant; politics: canGrantFavor).
+   * Read via hasCapability() or the CG `has_capability` op — the engine never reads a named crime
+   * capability as a typed field (INV-14).
+   */
+  capabilities?: Record<string, boolean>;
   /** Shop inventory — NPC can sell these items */
   shop?: ShopItem[];
   /** Player-controlled agent — skips volition, schedule, movement; includes beliefs, relationships, perception */
   isPlayer?: boolean;
+}
+
+/** Whether an agent profile has a given capability flag set. Single source of truth for capability reads. */
+export function hasCapability(profile: AgentProfile, key: string): boolean {
+  return profile.capabilities?.[key] === true;
 }
 
 export interface ShopItem {

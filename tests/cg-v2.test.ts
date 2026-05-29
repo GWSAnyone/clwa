@@ -49,7 +49,7 @@ function makeAgent(id: string, overrides?: {
         honesty: overrides?.honesty ?? 0.5,
       },
       enneagram: { type: 5, wing: 4, coreFear: 'test', coreDesire: 'test', stressType: 7, growthType: 8 },
-      investigator: overrides?.investigator,
+      ...(overrides?.investigator ? { capabilities: { investigator: true } } : {}),
     },
     {
       alive: overrides?.alive ?? true,

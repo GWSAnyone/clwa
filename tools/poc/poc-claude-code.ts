@@ -82,9 +82,6 @@ const markProfile: AgentProfile = {
     targetId: 'bess',
     reason: 'Old Bess figured out your exotic spices are common herbs. She hinted she might tell everyone.',
   },
-  investigator: false,
-  detersCrime: false,
-  canSentence: false,
 };
 
 const memoryManager = new NpcMemoryManager(NPCS_ROOT);

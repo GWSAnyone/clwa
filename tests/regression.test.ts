@@ -29,7 +29,7 @@ function makeAgent(id: string, opts?: { location?: string; honesty?: number; agr
       background: 'test', speechStyle: 'test',
       bigFive: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: opts?.agreeableness ?? 0.5, neuroticism: 0.5, honesty: opts?.honesty ?? 0.5 },
       enneagram: { type: 5, wing: 4, coreFear: 'test', coreDesire: 'test', stressType: 7, growthType: 8 },
-      investigator: opts?.investigator,
+      ...(opts?.investigator ? { capabilities: { investigator: true } } : {}),
     },
     {
       alive: true, location: opts?.location ?? 'market-square', mood: 0, baseMood: 0, moodModifiers: [],

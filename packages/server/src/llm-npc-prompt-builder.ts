@@ -7,6 +7,7 @@
  */
 
 import type { AgentProfile } from '@clwa/engine';
+import { hasCapability } from '@clwa/engine';
 
 interface RelationshipDef {
   from: string;
@@ -66,12 +67,12 @@ export function buildNpcSystemPrompt(npc: AgentProfile): string {
     lines.push('');
   }
 
-  if (npc.investigator) {
+  if (hasCapability(npc, 'investigator')) {
     lines.push('## My duty');
     lines.push('I investigate crimes — I notice details, question witnesses, follow leads.');
     lines.push('');
   }
-  if (npc.canSentence) {
+  if (hasCapability(npc, 'canSentence')) {
     lines.push('## My authority');
     lines.push('I judge cases and pass sentences. I weigh evidence carefully.');
     lines.push('');

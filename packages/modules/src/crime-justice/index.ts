@@ -19,6 +19,7 @@ import {
   isTransferable,
   isFirsthand,
   isConcealment,
+  hasCapability,
   isPerpetrator,
   isPursuitEvent,
   registerRoleDirectiveBuilder,
@@ -98,15 +99,15 @@ export function registerCrimeJusticeModule(): void {
 
   // Role-gate checkers — moved from engine inline branches in checkRequirements (genre-neutralization).
   // They read crime capability flags on the profile. (A6 generalizes flag storage into a capabilities map.)
-  REQUIREMENT_CHECKERS.set('notGuard', (agent) => !agent.profile.investigator);
-  REQUIREMENT_CHECKERS.set('isInvestigator', (agent) => !!agent.profile.investigator);
-  REQUIREMENT_CHECKERS.set('canSentence', (agent) => !!agent.profile.canSentence);
+  REQUIREMENT_CHECKERS.set('notGuard', (agent) => !hasCapability(agent.profile, 'investigator'));
+  REQUIREMENT_CHECKERS.set('isInvestigator', (agent) => !!hasCapability(agent.profile, 'investigator'));
+  REQUIREMENT_CHECKERS.set('canSentence', (agent) => !!hasCapability(agent.profile, 'canSentence'));
 
   // Post-target gate: no crime-deterring NPC (guard) co-located with the target — moved from engine.
   POST_TARGET_REQUIREMENT_CHECKERS.set('noGuardNearby', (_agent, ctx, target) => {
     for (const [, other] of ctx.agents) {
       if (!other.state.alive) continue;
-      if (other.profile.detersCrime && other.state.location === target.targetLocation) return false;
+      if (hasCapability(other.profile, 'detersCrime') && other.state.location === target.targetLocation) return false;
     }
     return true;
   });
@@ -127,10 +128,10 @@ export function registerCrimeJusticeModule(): void {
 
   // Accusation response — crime-justice policy for ALL evidence quality levels
   registerAccusationResponseHandler((quality, npc, _suspectId) => {
-    if (quality === 'strong' && (npc.profile.investigator || npc.profile.canSentence)) {
+    if (quality === 'strong' && (hasCapability(npc.profile, 'investigator') || hasCapability(npc.profile, 'canSentence'))) {
       return { goalType: 'arrest', affordanceId: 'arrest', trustDelta: 0.05 };
     }
-    if (quality === 'moderate' && npc.profile.investigator) {
+    if (quality === 'moderate' && hasCapability(npc.profile, 'investigator')) {
       return { goalType: 'investigate', affordanceId: 'investigate' };
     }
     if (quality === 'weak') {
@@ -646,7 +647,7 @@ export function registerCrimeJusticeModule(): void {
       (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
     );
 
-    if (agent.profile.investigator && crimeBeliefs.length > 0) {
+    if (hasCapability(agent.profile, 'investigator') && crimeBeliefs.length > 0) {
       const top = crimeBeliefs.sort((a, b) => b.confidence - a.confidence)[0];
       const suspect = top.subject ?? 'an unknown perpetrator';
       const crimeWord = getEventLabelSafe(top.eventType);
@@ -780,7 +781,7 @@ export function registerCrimeJusticeModule(): void {
 
   // Corrupt guard directive: guards with concealment beliefs are covering for someone
   registerSecretDirectiveBuilder(({ agent }) => {
-    if (!agent.profile.investigator) return [];
+    if (!hasCapability(agent.profile, 'investigator')) return [];
     const concealBeliefs = agent.state.beliefs?.getAllBeliefs().filter(
       b => b.source === 'cover_up',
     ) ?? [];
@@ -855,7 +856,7 @@ export function registerCrimeJusticeModule(): void {
 
   // Interaction result hook: crime report to guard → testimony belief + rumor event
   registerInteractionResultHook(async (ctx) => {
-    if (!ctx.target.profile.investigator) return;
+    if (!hasCapability(ctx.target.profile, 'investigator')) return;
 
     // Parse structured [CRIME] tag from purpose
     const match = ctx.purpose.match(/\[CRIME\s+(.+?)\]/);
@@ -1070,7 +1071,7 @@ export function registerCrimeJusticeModule(): void {
         (b) => isTransferable(b.eventType) && b.subject === playerAgent?.profile.id && b.confidence >= 0.4,
       ) ?? [];
 
-      if (suspicionBeliefs.length > 0 && npc.profile.investigator) {
+      if (suspicionBeliefs.length > 0 && hasCapability(npc.profile, 'investigator')) {
         ctx.approaches.push({
           npcId,
           npcName: npc.profile.name,
@@ -1087,7 +1088,7 @@ export function registerCrimeJusticeModule(): void {
       const threatBeliefs = npc.state.beliefs?.getAllBeliefs().filter(
         (b) => b.eventType === 'THREAT_PERCEIVED' && b.object === npcId && b.confidence >= 0.5,
       ) ?? [];
-      if (threatBeliefs.length > 0 && !npc.profile.investigator) {
+      if (threatBeliefs.length > 0 && !hasCapability(npc.profile, 'investigator')) {
         const threatenerName = threatBeliefs[0].subject ?? 'someone';
         ctx.approaches.push({
           npcId,
@@ -1191,7 +1192,7 @@ export function registerCrimeJusticeModule(): void {
       } else if (C > 0.6) {
         // Dutiful → report the threat to guard
         const guardId = Array.from(ctx.agents.entries()).find(
-          ([id, a]) => a.profile.investigator && a.state.alive && !isStatusAbsent(a.state.status) && id !== npcId,
+          ([id, a]) => hasCapability(a.profile, 'investigator') && a.state.alive && !isStatusAbsent(a.state.status) && id !== npcId,
         )?.[0];
         if (guardId) {
           const guard = ctx.agents.get(guardId);
@@ -1345,7 +1346,7 @@ export function registerCrimeJusticeModule(): void {
         ctx.eventStore.append(rumorEvent);
         ctx.onEvent?.(rumorEvent);
 
-        if (target.profile.investigator && !existingWanted.has(targetId)) {
+        if (hasCapability(target.profile, 'investigator') && !existingWanted.has(targetId)) {
           const wantedText = `URGENT: I received reports that ${criminalName} committed ${crimeLabel} of ${affectedName} at ${crimeLocation}. I must investigate immediately.`;
           await target.observe(wantedText, 7);
           ctx.addMoodModifier(targetId, { source: 'rumor_urgent', category: 'pressure', magnitude: -0.1, remaining: 240, duration: 240, decay: 'linear' });
