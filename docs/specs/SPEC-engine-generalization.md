@@ -40,6 +40,7 @@ Engine-level Item/Container: item-инстансы (owner+location+state refs, q
 step-примитив (move N of X from A to B с conservation). Заменяет dead-end `AgentProfile.shop` (убран в Phase A/здесь).
 Делает кражу/торговлю **реальным** перемещением состояния (сегодня `steal_from` эмитит событие, но не двигает state).
 `item.kind` — free string (не реинтродуцировать crime/trade вокабуляр в движок).
+**Дренирует A7b**: убирает из движка `AgentProfile.shop`/`ShopItem` (`agent-types.ts`) и `il.ts TradeIntent`/`tradeIntent`/trade-detection — это economy half-primitive, который B2 заменяет реальной inventory + переносит trade-intent в economy-модуль (IL-schema-extension hook). Затрагивает server (world-loader/routes/ws) + client shop-panel.
 
 ### B3 — Faction / group + relationship richness [size L, leverage medium]
 - Faction/group entity + membership на `AgentState` + `FACTION_TYPES` registry; group-scoped standing-скаляр (через B1).

@@ -146,7 +146,9 @@ export interface RequestedAction {
 }
 
 export interface EmotionalPressure {
-  type: 'threat' | 'bribe' | 'flattery' | 'guilt' | 'intimidation';
+  /** Registry-backed pressure kind — the LLM schema enum comes from getRegisteredPressureTypes(),
+   *  and getPressureHandler(type) dispatches the effect. Engine does not pin a closed set (INV-14). */
+  type: string;
   intensity: number; // 0-1
 }
 
