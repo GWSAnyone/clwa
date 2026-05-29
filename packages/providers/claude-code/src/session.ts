@@ -30,6 +30,8 @@ interface StreamJsonResult {
   is_error?: boolean;
   subtype?: string;
   result?: string;
+  /** Present when the session was spawned with --json-schema (structured output). */
+  structured_output?: unknown;
   total_cost_usd?: number;
   usage?: {
     input_tokens?: number;
@@ -156,6 +158,46 @@ export class ClaudeSession {
             return; // finally arms idle
           }
           // else: system / assistant / message_* / rate_limit_event — ignore
+        }
+      }
+    } finally {
+      this.busy = false;
+      if (this.alive) this.armIdle();
+    }
+  }
+
+  /**
+   * Send one user message and return the final result (no token streaming) — used by the warm
+   * structured-call path. If the session was spawned with --json-schema, returns the JSON-stringified
+   * structured_output; otherwise the result text. Keeps the session warm afterwards (idle armed).
+   */
+  async request(userText: string): Promise<{ content: string; finishReason: 'stop' | 'length' | 'error'; usage?: NonNullable<LlmStreamChunk['usage']> }> {
+    if (this.dead) return { content: '', finishReason: 'error' };
+    if (this.busy) return { content: '', finishReason: 'error' };
+    this.busy = true;
+    this.clearIdle();
+    try {
+      const msg = JSON.stringify({ type: 'user', message: { role: 'user', content: userText } }) + '\n';
+      this.stdin.write(msg);
+      this.stdin.flush();
+      while (true) {
+        const { done, value } = await this.reader.read();
+        if (done) { this.dead = true; return { content: '', finishReason: 'error' }; }
+        this.buffer += this.decoder.decode(value, { stream: true });
+        const lines = this.buffer.split('\n');
+        this.buffer = lines.pop() ?? '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let ev: Record<string, unknown>;
+          try { ev = JSON.parse(trimmed) as Record<string, unknown>; } catch { continue; }
+          if (ev.type !== 'result') continue; // ignore stream_event/assistant/system deltas
+          const res = ev as unknown as StreamJsonResult;
+          if (res.is_error) return { content: '', finishReason: 'error' };
+          const content = res.structured_output !== undefined
+            ? JSON.stringify(res.structured_output)
+            : (res.result ?? '');
+          return { content, finishReason: 'stop', usage: mapUsage(res) };
         }
       }
     } finally {

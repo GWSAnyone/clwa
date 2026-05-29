@@ -52,6 +52,14 @@ export interface ClaudeCodeProviderOptions {
    * Env: CLWA_CLAUDE_SESSION_IDLE_MS. Streaming on/off is the `dialogue` route in config.llm.
    */
   sessionIdleMs?: number;
+  /**
+   * OPTIONAL warm path for structured `call()` (classify/generate) — ADDITIVE, default OFF (0).
+   * >0: reuse a per-(agent, model, system, schema) warm `claude` session so only the first such call
+   * pays cold-spawn (~7s); subsequent same-identity calls run warm (~3-5s) instead of cold (~19s).
+   * Idle TTL in ms (e.g. 1800000 = 30 min): silent that long → session closes, respawns next call.
+   * 0: current behavior — a fresh `claude -p` per call. Env: CLWA_CLAUDE_WARM_SESSION_MS.
+   */
+  warmSessionMs?: number;
 }
 
 interface ClaudeCodeOutput {
@@ -97,12 +105,15 @@ export class ClaudeCodeProvider implements LlmProvider {
   private readonly claudeBinary: string;
   private readonly fallbackAgentDir: string;
   private readonly sessionIdleMs: number;
-  private readonly pool = new ClaudeSessionPool();
+  private readonly warmSessionMs: number;
+  private readonly pool = new ClaudeSessionPool();          // streaming dialogue sessions
+  private readonly structuredPool = new ClaudeSessionPool(); // warm structured-call sessions (opt-in)
 
   constructor(private readonly opts: ClaudeCodeProviderOptions) {
     this.claudeBinary = opts.claudeBinary ?? 'claude';
     this.fallbackAgentDir = opts.fallbackAgentDir ?? '_default';
     this.sessionIdleMs = opts.sessionIdleMs ?? 600_000;
+    this.warmSessionMs = opts.warmSessionMs ?? 0; // default OFF — cold-spawn per call (unchanged behavior)
     this.capabilities = {
       structuredOutput: 'json_schema', // через --json-schema (под капотом StructuredOutput tool с retry)
       streaming: true, // stream-json + --include-partial-messages; persistent sessions per NPC. Toggle via config.llm route.
@@ -122,6 +133,13 @@ export class ClaudeCodeProvider implements LlmProvider {
   }
 
   async call(req: LlmCallRequest): Promise<LlmCallResponse> {
+    // OPTIONAL warm path (additive; default off via warmSessionMs=0). Reuse a per-(agent,model,system,
+    // schema) warm session so repeat calls skip cold-spawn. On any miss/error fall through to cold below.
+    if (this.warmSessionMs > 0 && req.agentContext?.id) {
+      const warm = await this.callWarmStructured(req).catch(() => null);
+      if (warm) return warm;
+    }
+
     const agentId = req.agentContext?.id ?? this.fallbackAgentDir;
     const npcDir = path.join(this.opts.npcsRoot, agentId);
 
@@ -242,6 +260,72 @@ export class ClaudeCodeProvider implements LlmProvider {
     };
   }
 
+  /** Warm structured-call path (opt-in via warmSessionMs>0). Reuses a per-(agent,model,schema) warm
+   *  `claude` session; returns null on any miss/error so call() falls back to the cold-spawn path. */
+  private async callWarmStructured(req: LlmCallRequest): Promise<LlmCallResponse | null> {
+    const agentId = req.agentContext!.id;
+    const npcDir = path.join(this.opts.npcsRoot, agentId);
+    const key = `${agentId}::${req.model}::${req.jsonSchema?.name ?? '_text'}`;
+    let session = this.structuredPool.get(key);
+    // Identity is (model, systemPrompt) — a changed persona/model discards & respawns.
+    if (session && (session.model !== req.model || session.systemPrompt !== req.system)) {
+      await session.kill();
+      this.structuredPool.remove(key);
+      session = undefined;
+    }
+    if (!session) {
+      if (this.opts.onBeforeCall) {
+        try { await this.opts.onBeforeCall(agentId); }
+        catch (err) { console.warn(`[claude-code] onBeforeCall (warm) failed for '${agentId}':`, err); }
+      }
+      try {
+        session = new ClaudeSession(
+          {
+            binary: this.claudeBinary,
+            args: this.buildStructuredStreamArgs(req),
+            cwd: npcDir,
+            env: stripApiKeyEnv({ ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }),
+          },
+          req.model,
+          req.system,
+          this.warmSessionMs,
+          () => this.structuredPool.remove(key),
+        );
+      } catch (err) {
+        console.error(`[claude-code] warm spawn failed for '${agentId}':`, err);
+        return null;
+      }
+      this.structuredPool.set(key, session);
+    }
+    const res = await session.request(req.user);
+    if (res.finishReason === 'error') {
+      await session.kill();
+      this.structuredPool.remove(key);
+      return null; // fall back to cold spawn
+    }
+    return { content: res.content, finishReason: res.finishReason, usage: res.usage, providerId: this.id, modelId: req.model };
+  }
+
+  /** Spawn args for a warm structured-call session: stream-json I/O + --json-schema (schema pinned at
+   *  spawn), no --include-partial-messages (we only read the final result). Mirrors call()'s flags. */
+  private buildStructuredStreamArgs(req: LlmCallRequest): string[] {
+    const args = [
+      '-p',
+      '--input-format', 'stream-json',
+      '--output-format', 'stream-json',
+      '--verbose',
+      '--strict-mcp-config',
+      '--mcp-config', '{"mcpServers":{}}',
+      '--tools', '',
+      '--effort', 'low',
+      '--setting-sources', 'local',
+      '--model', req.model,
+    ];
+    if (req.system) args.push('--system-prompt', req.system);
+    if (req.jsonSchema) args.push('--json-schema', JSON.stringify(req.jsonSchema.schema));
+    return args;
+  }
+
   /**
    * Streaming player↔NPC dialogue. Reuses a warm per-NPC session (persistent mode) so only
    * the first turn pays cold-spawn; subsequent turns stream immediately. The session's
@@ -345,6 +429,6 @@ export class ClaudeCodeProvider implements LlmProvider {
 
   /** Kill all warm sessions on shutdown. Called by disposeAllLlmProviders(). */
   async dispose(): Promise<void> {
-    await this.pool.disposeAll();
+    await Promise.all([this.pool.disposeAll(), this.structuredPool.disposeAll()]);
   }
 }

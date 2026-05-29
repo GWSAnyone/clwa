@@ -106,6 +106,9 @@ registerLlmProvider(new ClaudeCodeProvider({
   // Persistent session idle TTL for streaming player↔NPC dialogue (default 10 min; 0 = ephemeral).
   // Streaming on/off is the `dialogue` route in buildDefaultRouter / world.json config.llm.
   sessionIdleMs: Number(process.env.CLWA_CLAUDE_SESSION_IDLE_MS ?? '600000'),
+  // OPT-IN warm structured-call path (default OFF). Set e.g. 1800000 (30 min) to reuse a warm session
+  // for classify/generate calls (npc-dialogue/volition on claude) — skips per-call cold-spawn.
+  warmSessionMs: Number(process.env.CLWA_CLAUDE_WARM_SESSION_MS ?? '0'),
   onBeforeCall: async (agentId) => {
     if (!agentsByActiveCtx || !worldByActiveCtx) return;  // boot not finished yet
     const agent = agentsByActiveCtx.get(agentId);
