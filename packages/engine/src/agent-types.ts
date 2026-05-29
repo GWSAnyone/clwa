@@ -145,6 +145,9 @@ export interface AgentState {
   baseMood: number;
   /** Active mood modifiers (SPEC-mood-modifiers) */
   moodModifiers: import('./world-types').MoodModifier[];
+  /** Open string-keyed numeric attributes (B1): module-defined quantified state — gold / HP / standing /
+   *  needs. base + clamped range + timed modifiers. Read via getAttributeValue / World.getAttribute. */
+  attributes?: Record<string, import('./attributes').ScalarAttribute>;
   currentDay: number;
   knownFacts: string[];
   /** Structured beliefs about events (who did what). Optional for backward compat */

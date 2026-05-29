@@ -431,6 +431,14 @@ function sentimentCurve(sentiment: number): number {
   return 0.60 + (absSent - 0.6) * 0.8;
 }
 
+/** Pluggable scoring contributors (B1) — modules add situational/resource channels beyond the engine's
+ *  five psychological inputs (e.g. score economy affordances by agent gold/debt, combat by HP, politics by
+ *  standing). Each returns a score delta for (aff, agent). The engine assigns no meaning to attributes. */
+export type ScoringContributorFn = (aff: AffordanceDefinition, agent: Agent) => number;
+const SCORING_CONTRIBUTORS: ScoringContributorFn[] = [];
+export function registerScoringContributor(fn: ScoringContributorFn): void { SCORING_CONTRIBUTORS.push(fn); }
+export function getScoringContributors(): readonly ScoringContributorFn[] { return SCORING_CONTRIBUTORS; }
+
 export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: AffordanceTarget): number {
   // 1. Personality (OCEAN+H weights)
   let personalityScore = 0;
@@ -468,7 +476,11 @@ export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: 
   // 5. Trust (direction from affordance data: negative = inhibits, positive = boosts)
   const trustContribution = (rel && aff.trustWeight) ? aff.trustWeight * rel.trust : 0;
 
-  const rawScore = personalityScore + moodContribution + relationshipContribution + situationalContribution + trustContribution;
+  // 6. Module scoring contributors (B1) — resource/situational channels (gold, HP, standing, needs)
+  let contributorScore = 0;
+  for (const c of SCORING_CONTRIBUTORS) contributorScore += c(aff, agent);
+
+  const rawScore = personalityScore + moodContribution + relationshipContribution + situationalContribution + trustContribution + contributorScore;
   const clamped = Math.max(0, Math.min(1, rawScore));
   return aff.minimumScore ? Math.max(clamped, aff.minimumScore) : clamped;
 }

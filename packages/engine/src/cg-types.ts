@@ -38,7 +38,7 @@ export interface ConsequenceRule {
 
 export interface RuleCondition {
   field?: string;          // for eq/gt/lt on event payload
-  op: string;              // 'trait', 'relationship', 'belief', 'has_capability', 'is_public_place', 'eq', 'gt', 'lt'
+  op: string;              // 'trait', 'relationship', 'belief', 'has_capability', 'attr', 'is_public_place', 'eq', 'gt', 'lt'
   value?: unknown;
   // ─── NPC-state condition fields (CG v2) ───
   /** Whose state to check: target (filter), subject/object (gate) */

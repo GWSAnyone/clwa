@@ -1,5 +1,6 @@
 import type { Agent } from './agent';
 import { hasCapability } from './agent-types';
+import { getAttributeValue } from './attributes';
 import type { WorldEvent, ConsequenceRule, ConsequenceResult, RuleCondition } from './cg-types';
 import { getEventMoodShift, getBeliefCreator, getMemoryTextBuilder, getConsequencePostHandlers } from './event-registry';
 
@@ -283,6 +284,19 @@ export class ConsequenceEngine {
     if (cond.op === 'has_capability') {
       const capFlag = (cond.value ?? cond.field) as string;
       return hasCapability(agent.profile, capFlag);
+    }
+    if (cond.op === 'attr') {
+      // Quantitative state gate (B1): compare a scalar attribute's effective value to cond.value.
+      const v = getAttributeValue(agent.state.attributes, cond.field ?? '');
+      if (v === undefined) return false;
+      const target = cond.value as number;
+      switch (cond.comparator) {
+        case '>': return v > target;
+        case '>=': return v >= target;
+        case '<': return v < target;
+        case '<=': return v <= target;
+        default: return v === target;
+      }
     }
     if (cond.op === 'trait') {
       return this.checkTrait(agent, cond);

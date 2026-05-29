@@ -22,6 +22,8 @@ import type {
   SceneResidue, SceneResidueJSON, MoodModifier, ArrivalEvent,
 } from './world-types';
 import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
+import { createAttribute, attributeEffective, getAttributeValue, decayAttribute } from './attributes';
+import type { AttributeModifier } from './attributes';
 import type { ILConfig, ConversationConfig } from './world-types';
 import { ScheduleManager, MINUTES_PER_DAY, getTimePeriod, minuteToHour } from './schedule';
 import type { ScheduleEntry } from './schedule';
@@ -90,6 +92,7 @@ export interface WorldSaveAgentData {
   mood: number;
   baseMood: number;
   moodModifiers: import('./world-types').MoodModifier[];
+  attributes?: Record<string, import('./attributes').ScalarAttribute>;
   currentDay: number;
   knownFacts: string[];
   beliefs: import('./beliefs').Belief[];
@@ -546,6 +549,11 @@ export class World {
     let sum = 0;
     for (const m of mods) sum += modifierEffective(m);
     agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
+
+    // 4. Decay scalar attributes (B1) — same cadence/model as mood modifiers
+    if (agent.state.attributes) {
+      for (const key in agent.state.attributes) decayAttribute(agent.state.attributes[key], 5);
+    }
   }
 
   private _tickMoodSystem(): void {
@@ -642,6 +650,54 @@ export class World {
     const agent = this.agents.get(npcId);
     if (!agent?.state.moodModifiers) return;
     agent.state.moodModifiers = agent.state.moodModifiers.filter(m => m.category !== category);
+  }
+
+  // ─── Scalar Attributes (B1) — universal quantified state: gold / HP / standing / needs ───
+
+  /** Effective value of an agent's attribute (base + decayed modifiers, clamped). undefined if not declared. */
+  getAttribute(npcId: string, key: string): number | undefined {
+    return getAttributeValue(this.agents.get(npcId)?.state.attributes, key);
+  }
+
+  /** Declare/replace a scalar attribute with a base value and clamped range. */
+  setAttribute(npcId: string, key: string, base: number, min = -Infinity, max = Infinity): void {
+    const agent = this.agents.get(npcId);
+    if (!agent) return;
+    if (!agent.state.attributes) agent.state.attributes = {};
+    agent.state.attributes[key] = createAttribute(base, min, max);
+  }
+
+  /** Permanent change to an attribute's base (clamped to its range). Auto-declares at base 0 if missing.
+   *  Returns the new effective value. */
+  adjustAttributeBase(npcId: string, key: string, delta: number): number {
+    const agent = this.agents.get(npcId);
+    if (!agent) return 0;
+    if (!agent.state.attributes) agent.state.attributes = {};
+    let attr = agent.state.attributes[key];
+    if (!attr) { attr = createAttribute(0); agent.state.attributes[key] = attr; }
+    attr.base = Math.max(attr.min, Math.min(attr.max, attr.base + delta));
+    return attributeEffective(attr);
+  }
+
+  /** Add a timed/decaying modifier to an attribute (mirrors addModifier for mood). */
+  addAttributeModifier(npcId: string, key: string, mod: Omit<AttributeModifier, 'id'>): void {
+    const agent = this.agents.get(npcId);
+    if (!agent) return;
+    if (!agent.state.attributes) agent.state.attributes = {};
+    let attr = agent.state.attributes[key];
+    if (!attr) { attr = createAttribute(0); agent.state.attributes[key] = attr; }
+    attr.modifiers.push({ ...mod, id: crypto.randomUUID() });
+  }
+
+  /** Atomic conserved transfer of base value between two agents (e.g. a sale, a theft of gold).
+   *  Returns false (no-op) if the source's effective value is below `amount`. */
+  transferAttribute(fromId: string, toId: string, key: string, amount: number): boolean {
+    if (amount <= 0) return false;
+    if (!this.agents.has(fromId) || !this.agents.has(toId)) return false;
+    if ((this.getAttribute(fromId, key) ?? 0) < amount) return false;
+    this.adjustAttributeBase(fromId, key, -amount);
+    this.adjustAttributeBase(toId, key, amount);
+    return true;
   }
 
   /** Get mood history for an NPC (time-series snapshots every 5 game minutes) */
@@ -1744,6 +1800,7 @@ export class World {
         mood: agent.state.mood,
         baseMood: agent.state.baseMood,
         moodModifiers: agent.state.moodModifiers ?? [],
+        ...(agent.state.attributes ? { attributes: agent.state.attributes } : {}),
         currentDay: agent.state.currentDay,
         knownFacts: agent.state.knownFacts,
         beliefs: agent.state.beliefs?.toJSON() ?? [],
@@ -1844,6 +1901,7 @@ export class World {
       agent.state.baseMood = saved.baseMood ?? (0.3 - agent.profile.bigFive.neuroticism * 0.4 + agent.profile.bigFive.extraversion * 0.2);
       agent.state.moodModifiers = (saved.moodModifiers ?? [])
         .filter((m) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
+      if (saved.attributes) agent.state.attributes = saved.attributes;
       agent.state.currentDay = saved.currentDay;
       agent.state.knownFacts = saved.knownFacts;
 

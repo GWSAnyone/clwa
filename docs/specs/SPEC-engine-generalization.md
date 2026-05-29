@@ -1,7 +1,7 @@
 # SPEC: Engine Max Generalization (universal capability subsystems)
 
 > **Milestone**: M5 (Engine Generalization) — Phase B (растим движок на нейтрализованной базе)
-> **Status**: **📋 PLANNED** (стартует после merge `SPEC-engine-neutralization` — Phase A)
+> **Status**: **🚧 IN PROGRESS** — B1 (scalar-attribute subsystem) ✅ DONE; B2/B3 далее. Branch `feature/engine-generalization`.
 > **Depends on**: SPEC-engine-neutralization (Phase A) — чистая genre-нейтральная база
 > **Source of truth**: `docs/workflow/engine-generalization-survey/2026-05-29-3d7ddc1c/report.md` (ranked
 >   investments) + per-agent maps; gap-анализ в `engine-self-sufficiency` (LEGIT GAPS секция).
@@ -25,8 +25,16 @@ Survey рекомендовал «сначала throwaway Economy spike». **О
 
 ## Последовательность (каждый — свой 4-step спек)
 
-### B1 — Generic scalar-attribute subsystem (the universal numeric layer) [size L, leverage high]
-Генерализовать паттерн `MoodModifier` (base + clamped range + timed/decaying modifiers + onChange-broadcast) в
+### B1 — Generic scalar-attribute subsystem (the universal numeric layer) [size L] — ✅ DONE
+**Реализовано** (`packages/engine/src/attributes.ts` + World API + tsc 0, 239/239, `tests/attributes.test.ts` 9 тестов):
+- `ScalarAttribute` {base, min, max, modifiers[]} + `AttributeModifier` (та же decay-модель, что MoodModifier) +
+  `attributeEffective`/`decayAttribute`/`createAttribute`/`getAttributeValue`. `AgentState.attributes?: Record<string,ScalarAttribute>`.
+- World API: `getAttribute`/`setAttribute`/`adjustAttributeBase`(clamped)/`addAttributeModifier`/**`transferAttribute`** (атомарный conserved-перенос — основа экономики/кражи). Decay в `_computeMoodTick` (та же cadence, что mood).
+- CG `RuleCondition` op **`attr`** (`field`+`comparator`+`value`) — гейт на количественном состоянии (`gold < 10`).
+- Pluggable **`registerScoringContributor`** channel в `computeUtility` — affordance scored на resource-драйверах (debt→smuggle).
+- Save/load: `attributes` сериализуются в `WorldSaveAgentData`. Один примитив backs Economy gold / Combat HP / Politics standing / Survival needs.
+
+Генерализует паттерн `MoodModifier` (base + clamped range + timed/decaying modifiers) в
 string-keyed слой числовых атрибутов на `AgentState`:
 - `attributes: Map<string, ScalarAttribute>` — base value, clamped [min,max], modifiers[] (как mood), computed effective.
 - `RuleCondition` op `attr` (`attr gt/lt/eq <key>`) — чтобы CG-правила гейтили на количественном состоянии (`target.gold < 10`).

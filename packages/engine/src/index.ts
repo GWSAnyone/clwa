@@ -3,6 +3,9 @@ export { Agent } from './agent';
 export type { AgentOptions } from './agent';
 export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, MemoryEntry, ScoredMemory, ShopItem, NpcProcessingState } from './agent-types';
 export { DEFAULT_LLM_PERSONALITY, hasCapability } from './agent-types';
+// ─── Scalar Attributes (B1) — universal quantified-state primitive ───
+export { createAttribute, attributeEffective, getAttributeValue, decayAttribute } from './attributes';
+export type { ScalarAttribute, AttributeModifier } from './attributes';
 export type { NpcStatus } from './agent-types';
 
 // ─── Beliefs ───
@@ -50,6 +53,7 @@ export {
   findByRole,
   validatePlayerAction,
   registerBlockingGoalTypes,
+  registerScoringContributor, getScoringContributors,
 } from './al';
 export type {
   AffordanceContext,
