@@ -1,5 +1,5 @@
 import {
-  AFFORDANCE_REGISTRY, EVIDENCE_RULES, REQUIREMENT_CHECKERS, TOPIC_SOURCE_REGISTRY,
+  AFFORDANCE_REGISTRY, EVIDENCE_RULES, REQUIREMENT_CHECKERS, POST_TARGET_REQUIREMENT_CHECKERS, registerTargetEnricher, TOPIC_SOURCE_REGISTRY,
   registerEventCategory, registerEventLabels, registerEventGoalCleanup, registerEventTypeFlags, registerEventTypeFlagsBatch, registerSourceFlags,
   registerEventSceneTypes, registerDeathEvents, registerPursuitEvents, registerActionVerbs,
   registerAbsentStatuses, registerStepHandler, registerInteractPostHook, registerTopicGroupMapping,
@@ -81,7 +81,7 @@ export function registerCrimeJusticeModule(): void {
   });
   REQUIREMENT_CHECKERS.set('hasCrimeBelief', (agent, _ctx, params) => {
     if (!agent.state.beliefs) return false;
-    const minConf = (params?.minConfidence as number) ?? 0.3;
+    const minConf = (params?.beliefConfidence as number) ?? 0.3;
     return agent.state.beliefs.getAllBeliefs().some(
       (b: Belief) => isTransferable(b.eventType) && b.confidence >= minConf && b.subject !== agent.profile.id,
     );
@@ -94,6 +94,35 @@ export function registerCrimeJusticeModule(): void {
       (b: Belief) => b.source === 'deduction' && b.confidence >= 0.7,
     );
     return deductions.length === 0; // true = can investigate (no high-conf deduction yet)
+  });
+
+  // Role-gate checkers — moved from engine inline branches in checkRequirements (genre-neutralization).
+  // They read crime capability flags on the profile. (A6 generalizes flag storage into a capabilities map.)
+  REQUIREMENT_CHECKERS.set('notGuard', (agent) => !agent.profile.investigator);
+  REQUIREMENT_CHECKERS.set('isInvestigator', (agent) => !!agent.profile.investigator);
+  REQUIREMENT_CHECKERS.set('canSentence', (agent) => !!agent.profile.canSentence);
+
+  // Post-target gate: no crime-deterring NPC (guard) co-located with the target — moved from engine.
+  POST_TARGET_REQUIREMENT_CHECKERS.set('noGuardNearby', (_agent, ctx, target) => {
+    for (const [, other] of ctx.agents) {
+      if (!other.state.alive) continue;
+      if (other.profile.detersCrime && other.state.location === target.targetLocation) return false;
+    }
+    return true;
+  });
+
+  // Target enricher: add crime-belief context vars to target.extra for step-template interpolation
+  // (perpetratorName/affectedName/crimeLocation/crimeType) — moved from engine findByRole.
+  registerTargetEnricher((target, agent) => {
+    const crimeBelief = (agent.state.beliefs?.getAllBeliefs() ?? []).find(
+      (b: Belief) => isTransferable(b.eventType) && b.confidence >= 0.3,
+    );
+    if (!crimeBelief) return;
+    const extra = target.extra as Record<string, string>;
+    if (crimeBelief.subject) extra.perpetratorName = crimeBelief.subject;
+    if (crimeBelief.object) extra.affectedName = crimeBelief.object;
+    if (crimeBelief.location) extra.crimeLocation = crimeBelief.location;
+    extra.crimeType = getEventLabelSafe(crimeBelief.eventType);
   });
 
   // Accusation response — crime-justice policy for ALL evidence quality levels

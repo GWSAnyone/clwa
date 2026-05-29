@@ -42,6 +42,8 @@ export {
   TARGET_FINDERS,
   REACTIVE_TARGET_FINDERS,
   REQUIREMENT_CHECKERS,
+  POST_TARGET_REQUIREMENT_CHECKERS,
+  registerTargetEnricher,
   computeUtility,
   checkRequirements,
   checkRequirementsReactive,

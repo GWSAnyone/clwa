@@ -1,51 +1,30 @@
 import type { Agent } from './agent';
-import type { Belief } from './beliefs';
 import type { WorldEvent } from './cg-types';
 import type { LocationGraph } from './world-types';
 import type { TimePeriod } from './schedule';
-import { getEventLabelSafe, isTransferable, isStatusAbsent } from './event-registry';
+import { isStatusAbsent } from './event-registry';
 import type { NpcFilter } from './goals';
 
 // ─── Affordance Data Model ───
 
 export interface AffordanceRequirement {
-  /** Allowed time periods (undefined = any time) */
+  /** Allowed time periods (undefined = any time) — universal */
   period?: TimePeriod[];
-  /** No guard NPC at the target's location */
-  noGuardNearby?: boolean;
-  /** Maximum number of other NPCs at location (undefined = no limit) */
-  maxWitnesses?: number;
-  /** Target must have a shop */
-  /** NPC must have a crime belief about someone (confidence >= threshold) */
-  hasCrimeBelief?: boolean;
-  /** Minimum confidence for crime belief */
-  beliefConfidence?: number;
-  /** NPC mood must be below this threshold */
+  /** NPC mood must be below this threshold — universal */
   moodBelow?: number;
-  /** NPC sentiment toward target must be below this */
+  /** NPC sentiment toward target must be below this — universal */
   sentimentBelow?: number;
-  /** NPC must NOT be a guard */
-  notGuard?: boolean;
-  /** NPC must be a guard */
-  isGuard?: boolean;
-  /** NPC must have investigator flag */
-  isInvestigator?: boolean;
-  /** NPC must be the criminal (subject of NPC_KILLED/GOODS_STOLEN event matching their name) */
-  isCriminal?: boolean;
-  /** NPC must be wanted (WANTED_STATUS event exists for them) */
-  isWanted?: boolean;
-  /** A detained NPC must exist somewhere */
-  hasDetainedNpc?: boolean;
-  /** NPC must have a witness belief that someone else doesn't know about */
-  hasWitnessBelief?: boolean;
-  /** NPC must NOT be a perpetrator of any crime (has no guilt-source beliefs) */
-  notPerpetrator?: boolean;
-  /** NPC must have canSentence capability (judges, magistrates) */
-  canSentence?: boolean;
-  /** NPC must have suspicion belief (for surveillance) */
-  hasSuspicionBelief?: boolean;
-  /** NPC deduction confidence must be below threshold (for investigate vs arrest) */
-  deductionBelowThreshold?: boolean;
+  /** Maximum number of other agents at the target's location (privacy/stealth gate) — universal */
+  maxWitnesses?: number;
+  /** Minimum belief confidence threshold (param for belief-gated checkers/finders) — universal */
+  beliefConfidence?: number;
+  /**
+   * Module-specific requirement keys → resolved ENTIRELY via the REQUIREMENT_CHECKERS (pre-target)
+   * and POST_TARGET_REQUIREMENT_CHECKERS (post-target) registries. The whole requirement object is
+   * passed to the checker as `params`, so a key may carry its own numeric/string parameter.
+   * The engine never enumerates a module's requirement vocabulary (INV-14).
+   */
+  [key: string]: unknown;
 }
 
 export type OceanHTrait = 'O' | 'C' | 'E' | 'A' | 'N' | 'H';
@@ -225,8 +204,20 @@ export const REACTIVE_TARGET_FINDERS: Map<string, ReactiveTargetFinderFn> = new 
 
 // ─── Requirement Checker Hooks (populated by modules) ───
 
-/** Module-provided requirement checkers. Key = requirement field name */
+/** Module-provided PRE-target requirement checkers. Key = requirement field name.
+ *  The whole AffordanceRequirement object is passed as `params`. */
 export const REQUIREMENT_CHECKERS: Map<string, (agent: Agent, ctx: AffordanceContext, params?: Record<string, unknown>) => boolean> = new Map();
+
+/** Module-provided POST-target requirement checkers (need the resolved target). Key = requirement field name. */
+export type PostTargetCheckerFn = (agent: Agent, ctx: AffordanceContext, target: AffordanceTarget, params?: Record<string, unknown>) => boolean;
+export const POST_TARGET_REQUIREMENT_CHECKERS: Map<string, PostTargetCheckerFn> = new Map();
+
+/** Module-provided target enrichers — populate target.extra with domain context (e.g. belief vars)
+ *  after a target is found by the generic role finder. Keeps crime/genre vocabulary out of the engine. */
+export type TargetEnricherFn = (target: AffordanceTarget, agent: Agent, ctx: AffordanceContext) => void;
+const TARGET_ENRICHERS: TargetEnricherFn[] = [];
+export function registerTargetEnricher(fn: TargetEnricherFn): void { TARGET_ENRICHERS.push(fn); }
+export function getTargetEnrichers(): readonly TargetEnricherFn[] { return TARGET_ENRICHERS; }
 
 // ─── Blocking Goal Types (populated by modules) ───
 
@@ -266,20 +257,10 @@ export function findByRole(role: string, npcId: string, agent: Agent, ctx: Affor
   candidates.sort((a, b) => a.distance - b.distance);
   const best = candidates[0];
 
-  // Enrich with crime details from NPC's own beliefs (universal — harmless if no beliefs)
-  const extra: Record<string, string> = {};
-  const beliefs = agent.state.beliefs?.getAllBeliefs() ?? [];
-  const crimeBelief = beliefs.find(
-    (b: Belief) => isTransferable(b.eventType) && b.confidence >= 0.3,
-  );
-  if (crimeBelief) {
-    if (crimeBelief.subject) { extra.perpetratorName = crimeBelief.subject; }
-    if (crimeBelief.object) extra.affectedName = crimeBelief.object;
-    if (crimeBelief.location) extra.crimeLocation = crimeBelief.location;
-    extra.crimeType = getEventLabelSafe(crimeBelief.eventType);
-  }
-
-  return { targetId: best.id, targetName: best.name, targetLocation: best.location, extra };
+  // Enrich target.extra via module-registered enrichers (e.g. crime belief context) — engine neutral
+  const target: AffordanceTarget = { targetId: best.id, targetName: best.name, targetLocation: best.location, extra: {} };
+  for (const enrich of getTargetEnrichers()) enrich(target, agent, ctx);
+  return target;
 }
 
 // ─── Requirement Checking ───
@@ -289,22 +270,15 @@ function checkRegistryRequirements(req: AffordanceRequirement, agent: Agent, ctx
   const reqRecord = req as Record<string, unknown>;
   for (const [key, checker] of REQUIREMENT_CHECKERS) {
     if (!reqRecord[key]) continue;
-    // Pass affordance-level params (e.g. beliefConfidence for hasCrimeBelief)
-    const params: Record<string, unknown> = {};
-    if (req.beliefConfidence !== undefined) params.minConfidence = req.beliefConfidence;
-    if (!checker(agent, ctx, params)) return false;
+    // Pass the whole requirement object as params — a key may carry its own param (e.g. beliefConfidence).
+    if (!checker(agent, ctx, reqRecord)) return false;
   }
   return true;
 }
 
 /** Post-target checks: noGuardNearby, maxWitnesses, sentimentBelow */
-function checkPostTargetRequirements(req: AffordanceRequirement, npcId: string, target: AffordanceTarget, ctx: AffordanceContext): boolean {
-  if (req.noGuardNearby) {
-    for (const [, other] of ctx.agents) {
-      if (!other.state.alive) continue;
-      if (other.profile.detersCrime && other.state.location === target.targetLocation) return false;
-    }
-  }
+function checkPostTargetRequirements(req: AffordanceRequirement, npcId: string, agent: Agent, target: AffordanceTarget, ctx: AffordanceContext): boolean {
+  // Universal post-target gates
   if (req.maxWitnesses !== undefined) {
     let witnessCount = 0;
     for (const [otherId, other] of ctx.agents) {
@@ -315,8 +289,14 @@ function checkPostTargetRequirements(req: AffordanceRequirement, npcId: string, 
     if (witnessCount > req.maxWitnesses) return false;
   }
   if (req.sentimentBelow !== undefined) {
-    const rel = ctx.agents.get(npcId)?.state.relationships?.getRelationship(target.targetId);
+    const rel = agent.state.relationships?.getRelationship(target.targetId);
     if (!rel || rel.sentiment >= req.sentimentBelow) return false;
+  }
+  // Module-provided post-target checks (e.g. noGuardNearby) — generic iteration over registry
+  const reqRecord = req as Record<string, unknown>;
+  for (const [key, checker] of POST_TARGET_REQUIREMENT_CHECKERS) {
+    if (!reqRecord[key]) continue;
+    if (!checker(agent, ctx, target, reqRecord)) return false;
   }
   return true;
 }
@@ -329,10 +309,7 @@ export function checkRequirements(
 ): AffordanceTarget | null {
   const req = aff.requires;
 
-  if (req.notGuard && agent.profile.investigator) return null;
-  if (req.isGuard && !agent.profile.investigator) return null;
-  if (req.isInvestigator && !agent.profile.investigator) return null;
-  if (req.canSentence && !agent.profile.canSentence) return null;
+  // Universal pre-target gates
   if (req.period && !req.period.includes(ctx.period)) return null;
   if (req.moodBelow !== undefined && agent.state.mood >= req.moodBelow) return null;
   if (aff.suppressNearPlayer && ctx.playerLocation === agent.state.location) return null;
@@ -343,7 +320,7 @@ export function checkRequirements(
   const target = findTarget(aff, npcId, agent, ctx);
   if (!target) return null;
 
-  if (!checkPostTargetRequirements(req, npcId, target, ctx)) return null;
+  if (!checkPostTargetRequirements(req, npcId, agent, target, ctx)) return null;
 
   return target;
 }
@@ -362,12 +339,8 @@ export function checkRequirementsReactive(
 ): AffordanceTarget | null {
   const req = aff.requires;
 
-  if (req.notGuard && agent.profile.investigator) return null;
-  if (req.isGuard && !agent.profile.investigator) return null;
-  if (req.isInvestigator && !agent.profile.investigator) return null;
-  if (req.canSentence && !agent.profile.canSentence) return null;
+  // Universal pre-target gates (mood intentionally skipped — event urgency overrides mood gate)
   if (req.period && !req.period.includes(ctx.period)) return null;
-  // mood intentionally skipped for reactive (event urgency overrides mood gate)
   if (aff.suppressNearPlayer && ctx.playerLocation === agent.state.location) return null;
 
   // Module-provided requirement checks — generic iteration over registry
@@ -376,7 +349,7 @@ export function checkRequirementsReactive(
   const target = findReactiveTarget(aff, npcId, agent, ctx, event);
   if (!target) return null;
 
-  if (!checkPostTargetRequirements(req, npcId, target, ctx)) return null;
+  if (!checkPostTargetRequirements(req, npcId, agent, target, ctx)) return null;
 
   return target;
 }
@@ -534,16 +507,13 @@ export function validatePlayerAction(
   if (req.period && !req.period.includes(ctx.period)) {
     return { allowed: false, reason: `Cannot ${actionId} during ${ctx.period}`, affordance: aff };
   }
-  if (req.isInvestigator && !playerAgent.profile.investigator) {
-    return { allowed: false, reason: `Only investigators can ${actionId}`, affordance: aff };
-  }
-  if (req.canSentence && !playerAgent.profile.canSentence) {
-    return { allowed: false, reason: `Only judges can ${actionId}`, affordance: aff };
-  }
 
-  // Module requirement checks
+  // Module requirement checks — SAME registry the NPC path uses (bilateral parity, INV-17).
+  // Pass the whole requirement object as params (role gates like isInvestigator/canSentence are
+  // module-registered checkers, not engine-hardcoded branches).
+  const reqRecord = req as Record<string, unknown>;
   for (const [key, checker] of REQUIREMENT_CHECKERS) {
-    if ((req as Record<string, unknown>)[key] && !checker(playerAgent, ctx)) {
+    if (reqRecord[key] && !checker(playerAgent, ctx, reqRecord)) {
       return { allowed: false, reason: `Requirement not met: ${key}`, affordance: aff };
     }
   }
