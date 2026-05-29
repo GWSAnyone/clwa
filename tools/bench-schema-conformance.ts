@@ -13,7 +13,7 @@ import { ClaudeCodeProvider } from '../packages/providers/claude-code/src/index'
 const MODEL = process.argv[2] ?? 'haiku';
 const REPS = Math.max(1, parseInt(process.argv[3] ?? '2', 10));
 const NPCS_ROOT = path.join(import.meta.dir, '../packages/server/data/claude-npcs');
-const provider = new ClaudeCodeProvider({ npcsRoot: NPCS_ROOT, warmSessionMs: 1_800_000 });
+const provider = new ClaudeCodeProvider({ npcsRoot: NPCS_ROOT, sessionIdleMs: 1_800_000 });
 
 type Schema = { schema: Record<string, any> };
 const suffix = (s: Schema) => `Respond with ONLY a single JSON object — no prose, no markdown fences — strictly conforming to this JSON Schema:\n${JSON.stringify(s.schema)}`;
@@ -68,7 +68,7 @@ for (const c of CASES) {
   for (const p of c.prompts) {
     for (let r = 0; r < REPS; r++) {
       total++;
-      const res = await provider.call({ model: MODEL, system: c.system, user: `${p}\n\n${suffix(c.schema)}`, agentContext: { id: 'mark' } });
+      const res = await provider.call({ model: MODEL, system: c.system, user: `${p}\n\n${suffix(c.schema)}`, agentContext: { id: 'mark' }, warm: true });
       const json = extractJson(res.content);
       let verdict = 'NO-JSON';
       if (json) { const err = validate(JSON.parse(json), c.schema.schema); verdict = err ? `BAD: ${err}` : 'OK'; if (!err) pass++; }

@@ -13,8 +13,8 @@ const N = Math.max(2, parseInt(process.argv[2] ?? '5', 10));
 const MODEL = process.argv[3] ?? 'haiku';
 const NPCS_ROOT = path.join(import.meta.dir, '../packages/server/data/claude-npcs');
 
-// warmSessionMs>0 turns the path ON (30 min idle here).
-const provider = new ClaudeCodeProvider({ npcsRoot: NPCS_ROOT, warmSessionMs: 1_800_000, maxConcurrency: 2 });
+// sessionIdleMs = warm-session idle TTL; `warm: true` per-call (below) opts the call into the warm path.
+const provider = new ClaudeCodeProvider({ npcsRoot: NPCS_ROOT, sessionIdleMs: 1_800_000, maxConcurrency: 2 });
 
 const SYSTEM = 'You are Mark, a gruff merchant in Millhaven. Reply in character.';
 const SCHEMA: LlmJsonSchema = {
@@ -33,7 +33,7 @@ const rows: { n: number; warm: boolean; ms: number; ok: boolean }[] = [];
 
 for (let i = 0; i < N; i++) {
   const start = Date.now();
-  const r = await provider.call({ model: MODEL, system: SYSTEM, user: PROMPTS[i % PROMPTS.length], jsonSchema: SCHEMA, agentContext: { id: 'mark' } });
+  const r = await provider.call({ model: MODEL, system: SYSTEM, user: PROMPTS[i % PROMPTS.length], jsonSchema: SCHEMA, agentContext: { id: 'mark' }, warm: true });
   const ms = Date.now() - start;
   let ok = false, preview = '';
   try { const o = JSON.parse(r.content); ok = typeof o.line === 'string' && !!o.mood; preview = `${o.mood}: ${String(o.line).slice(0, 44)}`; } catch { preview = r.content.slice(0, 44); }

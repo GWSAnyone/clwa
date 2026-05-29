@@ -77,6 +77,9 @@ export interface LlmCallRequest {
    * (e.g., ClaudeCodeProvider читает <npcsRoot>/<id>/ как cwd). Другие провайдеры игнорируют.
    */
   agentContext?: { id: string };
+  /** Per-route hints (from LlmRoute) — providers that support warm sessions / prompt-schema use these. */
+  warm?: boolean;
+  schemaInPrompt?: boolean;
 }
 
 export type FinishReason = 'stop' | 'length' | 'schema_violation' | 'error';
@@ -107,6 +110,8 @@ export interface LlmStreamRequest {
   sampling?: SamplingHints;
   abortSignal?: AbortSignal;
   agentContext?: { id: string };
+  /** Per-route hint (from LlmRoute): reuse a warm persistent session for this conversation. */
+  warm?: boolean;
 }
 
 export interface LlmStreamChunk {
@@ -200,6 +205,12 @@ export interface LlmRoute {
   sampling?: SamplingHints;
   /** Если primary провайдер бросает или возвращает finishReason='error' — engine пробует fallback. Рекурсивно. */
   fallback?: LlmRoute;
+  /** Reuse a warm persistent session for this task (provider-dependent; claude-code keeps the process warm
+   *  so repeat calls skip cold-spawn). Idle TTL is a provider tuning knob. Default off. */
+  warm?: boolean;
+  /** For structured calls: inject the JSON schema into the prompt (free text, faster) instead of the
+   *  provider's native schema enforcement. Provider-dependent. Default off (native). */
+  schemaInPrompt?: boolean;
 }
 
 export interface LlmRouterConfig {

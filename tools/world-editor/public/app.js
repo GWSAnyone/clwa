@@ -865,6 +865,8 @@ async function renderConfig() {
         h('td', {}, [selectInput(route.model || '', modelsFor(route.provider, route.model), v => route.model = v)]),
         h('td', {}, [numInput(route.maxTokens ?? 0, v => { if (v > 0) route.maxTokens = v; else delete route.maxTokens; }, { style: { width: '64px' } })]),
         h('td', {}, [numInput(route.sampling.temperature ?? 0.7, v => route.sampling.temperature = v, { step: '0.05', style: { width: '60px' } })]),
+        h('td', { title: 'Reuse a warm claude session (skips ~7-19s cold-spawn). claude-code only.' }, [checkbox(!!route.warm, '', v => { if (v) route.warm = true; else delete route.warm; })]),
+        h('td', { title: 'Inject schema into prompt (fast ~3-5s) instead of native --json-schema (~11s). claude-code structured calls.' }, [checkbox(!!route.schemaInPrompt, '', v => { if (v) route.schemaInPrompt = true; else delete route.schemaInPrompt; })]),
         h('td', {}, [route.fallback
           ? h('span', { class: 'flex-row gap-sm' }, [
               selectInput(route.fallback.provider || '', reg.llmProviders || [], v => { route.fallback.provider = v; if (!provModels(v).includes(route.fallback.model)) route.fallback.model = provModels(v)[0] || ''; renderLlm(); }),
@@ -888,7 +890,7 @@ async function renderConfig() {
       if (!llm.default) llm.default = { provider: (reg.llmProviders || [])[0] || '', model: (reg.llmModels || [])[0] || '' };
       if (!llm.routes) llm.routes = {};
       const tbl = h('table');
-      tbl.append(h('thead', {}, [h('tr', {}, ['Task', 'Provider', 'Model', 'MaxTok', 'Temp', 'Fallback', ''].map(t => h('th', { text: t })))]));
+      tbl.append(h('thead', {}, [h('tr', {}, ['Task', 'Provider', 'Model', 'MaxTok', 'Temp', 'Warm', 'Schema', 'Fallback', ''].map(t => h('th', { text: t })))]));
       const tb = h('tbody');
       tb.append(h('tr', {}, [h('td', { html: '<b>default</b>' }), ...routeCells(llm.default)]));
       (reg.llmTasks || []).forEach(task => {
@@ -899,7 +901,7 @@ async function renderConfig() {
         } else {
           tb.append(h('tr', { style: { opacity: '0.55' } }, [
             h('td', { text: task }),
-            h('td', { colspan: '5', html: '<span style="font-size:0.72rem;color:var(--muted)">inherits default</span>' }),
+            h('td', { colspan: '7', html: '<span style="font-size:0.72rem;color:var(--muted)">inherits default</span>' }),
             h('td', {}, [h('button', { class: 'btn btn-ghost', text: '+ override', onclick: () => { llm.routes[task] = JSON.parse(JSON.stringify(llm.default)); renderLlm(); } })]),
           ]));
         }

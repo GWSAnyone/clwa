@@ -107,6 +107,8 @@ async function classifyWithRoute<T>(
         jsonSchema: req.schema,
         abortSignal: req.abortSignal,
         agentContext: req.agentContext,
+        warm: route.warm,
+        schemaInPrompt: route.schemaInPrompt,
       });
     } catch (err) {
       console.error(`[LLM:classify] provider '${route.provider}' threw:`, err);
@@ -172,6 +174,8 @@ export async function generate(task: LlmTask, req: GenerateRequest): Promise<str
         sampling: { ...route.sampling, ...req.samplingOverride },
         abortSignal: req.abortSignal,
         agentContext: req.agentContext,
+        warm: route.warm,
+        schemaInPrompt: route.schemaInPrompt,
       });
     } catch (err) {
       console.error(`[LLM:generate] provider '${route.provider}' threw:`, err);
@@ -224,6 +228,7 @@ export async function generateStream(
         sampling: { ...route.sampling, ...req.samplingOverride },
         abortSignal: req.abortSignal,
         agentContext: req.agentContext,
+        warm: route.warm,
       })) {
         if (chunk.type === 'error' && chunk.error) {
           console.error(

@@ -28,15 +28,16 @@ const EMBED_MODEL = 'text-embedding-nomic-embed-text-v1.5@q8_0';
 // Provider/model per "interactive" route, overridable by env so you can flip lm-studio↔claude-code
 // (and the model) at launch without touching code. Default = the tuned hybrid.
 const env = (k: string, d: string) => process.env[k] ?? d;
-const PLAYER_DIALOGUE: LlmRoute = { provider: env('CLWA_DIALOGUE_PROVIDER', 'claude-code'), model: env('CLWA_DIALOGUE_MODEL', 'sonnet'), maxTokens: 250, sampling: { temperature: 0.7 } };
-const VERDICT: LlmRoute = { provider: env('CLWA_VERDICT_PROVIDER', 'claude-code'), model: env('CLWA_VERDICT_MODEL', 'sonnet'), maxTokens: 800, sampling: { temperature: 0.4 },
+// warm: reuse a per-NPC warm claude session (skips cold-spawn). schemaInPrompt: inject schema as free text
+// (fast, ~3-5s) for structured calls instead of native --json-schema (~11s). Both are no-ops for lm-studio.
+const PLAYER_DIALOGUE: LlmRoute = { provider: env('CLWA_DIALOGUE_PROVIDER', 'claude-code'), model: env('CLWA_DIALOGUE_MODEL', 'sonnet'), maxTokens: 250, sampling: { temperature: 0.7 }, warm: true };
+const VERDICT: LlmRoute = { provider: env('CLWA_VERDICT_PROVIDER', 'claude-code'), model: env('CLWA_VERDICT_MODEL', 'sonnet'), maxTokens: 800, sampling: { temperature: 0.4 }, warm: true, schemaInPrompt: true,
   fallback: { provider: 'lm-studio', model: QWEN, maxTokens: 300, sampling: { temperature: 0.4 } } };
-const REFLECTION: LlmRoute = { provider: env('CLWA_REFLECTION_PROVIDER', 'claude-code'), model: env('CLWA_REFLECTION_MODEL', 'sonnet'), maxTokens: 150, sampling: { temperature: 0.7 },
+const REFLECTION: LlmRoute = { provider: env('CLWA_REFLECTION_PROVIDER', 'claude-code'), model: env('CLWA_REFLECTION_MODEL', 'sonnet'), maxTokens: 150, sampling: { temperature: 0.7 }, warm: true,
   fallback: { provider: 'lm-studio', model: QWEN, maxTokens: 150, sampling: { temperature: 0.7 } } };
-// NPC↔NPC dialogue: would love it on Haiku, but it runs via cold-spawn classify/generate (~19s/line) —
-// stays on Qwen until the warm structured-call path exists. Flip via env CLWA_NPC_DIALOGUE_PROVIDER/MODEL
-// (claude-code/haiku) ONCE that lands. Has a fallback so flipping is safe.
-const NPC_DIALOGUE: LlmRoute = { provider: env('CLWA_NPC_DIALOGUE_PROVIDER', 'lm-studio'), model: env('CLWA_NPC_DIALOGUE_MODEL', QWEN), maxTokens: 200, sampling: { temperature: 0.7 },
+// NPC↔NPC dialogue: warm + schemaInPrompt make Haiku viable (~3-5s vs ~19s cold). Defaults to Qwen here;
+// flip to claude-code/haiku per-world in config.llm / the World Editor (warm/schema toggles are right there).
+const NPC_DIALOGUE: LlmRoute = { provider: env('CLWA_NPC_DIALOGUE_PROVIDER', 'lm-studio'), model: env('CLWA_NPC_DIALOGUE_MODEL', QWEN), maxTokens: 200, sampling: { temperature: 0.7 }, warm: true, schemaInPrompt: true,
   fallback: { provider: 'lm-studio', model: QWEN, maxTokens: 200, sampling: { temperature: 0.7 } } };
 
 /** Pure-default router (used if world.json config.llm is absent). The table below is the control panel. */

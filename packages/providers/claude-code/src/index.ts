@@ -49,26 +49,12 @@ export interface ClaudeCodeProviderOptions {
    * Persistent session idle TTL in ms. >0: keep a warm per-NPC `claude` process between the
    * player's turns, evict after this much inactivity (default 600000 = 10 min). 0: ephemeral —
    * spawn a fresh process per turn (still streams, but pays cold-spawn every message).
-   * Env: CLWA_CLAUDE_SESSION_IDLE_MS. Streaming on/off is the `dialogue` route in config.llm.
+   * Env: CLWA_CLAUDE_SESSION_IDLE_MS. WHETHER a task uses a warm session is per-route (config.llm `warm`),
+   * not a global flag — this is only the idle-TTL tuning knob (default 30 min). A warm route reuses a
+   * per-(agent,model,schema) `claude` process so only the first call pays cold-spawn (~7s); the rest run
+   * ~3-5s instead of ~19s. Silent past the TTL → the session closes and respawns on the next call.
    */
   sessionIdleMs?: number;
-  /**
-   * OPTIONAL warm path for structured `call()` (classify/generate) — ADDITIVE, default OFF (0).
-   * >0: reuse a per-(agent, model, system, schema) warm `claude` session so only the first such call
-   * pays cold-spawn (~7s); subsequent same-identity calls run warm (~3-5s) instead of cold (~19s).
-   * Idle TTL in ms (e.g. 1800000 = 30 min): silent that long → session closes, respawns next call.
-   * 0: current behavior — a fresh `claude -p` per call. Env: CLWA_CLAUDE_WARM_SESSION_MS.
-   */
-  warmSessionMs?: number;
-  /**
-   * Warm-path schema strategy (only when warmSessionMs>0 and a jsonSchema is present):
-   *   false (default) — native `--json-schema` (hard-enforced, but the StructuredOutput tool round-trip
-   *                     is slow, ~11s even warm) and pins the session to that schema.
-   *   true            — inject the schema into the prompt as free text + parse the reply (best-effort,
-   *                     ~3-5s warm, retry-on-parse handled by the engine). The session is NOT schema-pinned,
-   *                     so ONE warm session per (agent, model) serves every task. Env: CLWA_CLAUDE_WARM_SCHEMA_PROMPT=1.
-   */
-  warmSchemaInPrompt?: boolean;
 }
 
 interface ClaudeCodeOutput {
@@ -148,17 +134,13 @@ export class ClaudeCodeProvider implements LlmProvider {
   private readonly claudeBinary: string;
   private readonly fallbackAgentDir: string;
   private readonly sessionIdleMs: number;
-  private readonly warmSessionMs: number;
-  private readonly warmSchemaInPrompt: boolean;
   private readonly pool = new ClaudeSessionPool();          // streaming dialogue sessions
   private readonly structuredPool = new ClaudeSessionPool(); // warm structured-call sessions (opt-in)
 
   constructor(private readonly opts: ClaudeCodeProviderOptions) {
     this.claudeBinary = opts.claudeBinary ?? 'claude';
     this.fallbackAgentDir = opts.fallbackAgentDir ?? '_default';
-    this.sessionIdleMs = opts.sessionIdleMs ?? 600_000;
-    this.warmSessionMs = opts.warmSessionMs ?? 0; // default OFF — cold-spawn per call (unchanged behavior)
-    this.warmSchemaInPrompt = opts.warmSchemaInPrompt ?? false;
+    this.sessionIdleMs = opts.sessionIdleMs ?? 1_800_000; // 30 min idle TTL for warm sessions
     this.capabilities = {
       structuredOutput: 'json_schema', // через --json-schema (под капотом StructuredOutput tool с retry)
       streaming: true, // stream-json + --include-partial-messages; persistent sessions per NPC. Toggle via config.llm route.
@@ -178,9 +160,9 @@ export class ClaudeCodeProvider implements LlmProvider {
   }
 
   async call(req: LlmCallRequest): Promise<LlmCallResponse> {
-    // OPTIONAL warm path (additive; default off via warmSessionMs=0). Reuse a per-(agent,model,system,
+    // Warm path is per-ROUTE (req.warm, set from config.llm) — not a global flag. Reuse a per-(agent,model,
     // schema) warm session so repeat calls skip cold-spawn. On any miss/error fall through to cold below.
-    if (this.warmSessionMs > 0 && req.agentContext?.id) {
+    if (req.warm && req.agentContext?.id) {
       const warm = await this.callWarmStructured(req).catch(() => null);
       if (warm) return warm;
     }
@@ -312,7 +294,7 @@ export class ClaudeCodeProvider implements LlmProvider {
     const npcDir = path.join(this.opts.npcsRoot, agentId);
     // Prompt-mode (schema injected as free text): the session is NOT schema-pinned, so ONE warm session
     // per (agent, model) serves every task. Native mode pins the schema → key includes its name.
-    const promptMode = this.warmSchemaInPrompt && !!req.jsonSchema;
+    const promptMode = !!req.schemaInPrompt && !!req.jsonSchema;
     const key = `${agentId}::${req.model}::${promptMode ? '_prompt' : (req.jsonSchema?.name ?? '_text')}`;
     let session = this.structuredPool.get(key);
     // Identity is (model, systemPrompt) — a changed persona/model discards & respawns.
@@ -336,7 +318,7 @@ export class ClaudeCodeProvider implements LlmProvider {
           },
           req.model,
           req.system,
-          this.warmSessionMs,
+          this.sessionIdleMs,
           () => this.structuredPool.remove(key),
         );
       } catch (err) {
@@ -389,8 +371,8 @@ export class ClaudeCodeProvider implements LlmProvider {
   async *stream(req: LlmStreamRequest): AsyncIterable<LlmStreamChunk> {
     const agentId = req.agentContext?.id ?? this.fallbackAgentDir;
     const npcDir = path.join(this.opts.npcsRoot, agentId);
-    // Persist only for real agents; anonymous (fallback) calls stay ephemeral.
-    const persistent = this.sessionIdleMs > 0 && !!req.agentContext?.id;
+    // Persist only when the route opts in (req.warm) and we have a real agent. Idle TTL = sessionIdleMs.
+    const persistent = !!req.warm && this.sessionIdleMs > 0 && !!req.agentContext?.id;
 
     let session = persistent ? this.pool.get(agentId) : undefined;
     // A conversation's persona/model is fixed at start — respawn if either changed.

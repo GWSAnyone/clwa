@@ -105,12 +105,9 @@ registerLlmProvider(new ClaudeCodeProvider({
   // External API (subscription) — NOT a single local model, so it parallelizes. The cap is just a
   // subprocess/rate-limit safety; default to the NPC count. Raise via CLAUDE_CODE_MAX_CONCURRENCY.
   maxConcurrency: Number(process.env.CLAUDE_CODE_MAX_CONCURRENCY ?? '8'),
-  // Persistent session idle TTL for streaming player↔NPC dialogue (default 10 min; 0 = ephemeral).
-  // Streaming on/off is the `dialogue` route in buildDefaultRouter / world.json config.llm.
-  sessionIdleMs: Number(process.env.CLWA_CLAUDE_SESSION_IDLE_MS ?? '600000'),
-  // OPT-IN warm structured-call path (default OFF). Set e.g. 1800000 (30 min) to reuse a warm session
-  // for classify/generate calls (npc-dialogue/volition on claude) — skips per-call cold-spawn.
-  warmSessionMs: Number(process.env.CLWA_CLAUDE_WARM_SESSION_MS ?? '0'),
+  // Idle TTL for warm sessions (default 30 min). WHICH tasks use a warm session is per-route in
+  // config.llm (`warm: true`), edited in the World Editor — NOT a global env flag. This only tunes the TTL.
+  sessionIdleMs: Number(process.env.CLWA_CLAUDE_SESSION_IDLE_MS ?? '1800000'),
   onBeforeCall: async (agentId) => {
     if (!agentsByActiveCtx || !worldByActiveCtx) return;  // boot not finished yet
     const agent = agentsByActiveCtx.get(agentId);
