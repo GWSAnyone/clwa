@@ -7,7 +7,7 @@ import { InMemoryEventStore } from '@clwa/engine';
 import { World, findPath } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
-import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
+import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES, PlayerJournal } from '@clwa/modules';
 import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerILTradeVerbs, registerQuestionTopics, registerDefaultSpeechAct } from '@clwa/engine';
 import {
   registerLlmProvider,
@@ -252,6 +252,7 @@ interface SaveData {
   world: ReturnType<World['toJSON']>;
   events: ReturnType<InMemoryEventStore['toJSON']>;
   positions?: Record<string, { x: number; y: number }>;
+  journal?: ReturnType<PlayerJournal['toJSON']>;
 }
 
 function saveToDisk(ctx: GameContext): void {
@@ -263,6 +264,7 @@ function saveToDisk(ctx: GameContext): void {
     world: ctx.world.toJSON(),
     events: ctx.eventStore.toJSON(),
     positions: ctx.positionManager?.toJSON(),
+    journal: ctx.journal.toJSON(),
   };
   mkdirSync(SAVE_DIR, { recursive: true });
   // Compact stringify — vectors in memories make pretty-print ~4x larger
@@ -547,6 +549,7 @@ async function createGameContext(
   // ─── World ───
   const approachContexts = new Map<string, string>();
   const locationHistory = new LocationHistory();
+  const journal = new PlayerJournal(); // server-owned (crime-justice); persisted in save, fed into IL
 
   const world = new World(
     agents, eventStore, cgEngine,
@@ -642,7 +645,8 @@ async function createGameContext(
           }});
         }
       },
-      onJournalEntry: (entry) => {
+      onPlayerObserve: (data) => {
+        const entry = journal.addObservation(data.text, data.locationId, data.gameDay, data.tick);
         broadcast({ type: 'journal:entry', data: entry });
       },
       onGoalChange: (data) => {
@@ -689,7 +693,7 @@ async function createGameContext(
   // Stage 5: wire active agents/world для ClaudeCodeProvider.onBeforeCall snapshot
   _setActiveCtxForLlmProvider(agents, world);
 
-  return { world, eventStore, agents, positionManager, approachContexts, locationHistory, seed };
+  return { world, eventStore, agents, positionManager, journal, approachContexts, locationHistory, seed };
 }
 
 async function main() {
@@ -740,6 +744,7 @@ async function main() {
     console.log(`  [+] Event Store — restored ${savedData.events.length} events`);
     ctx.world.loadState(savedData.world);
     console.log(`  [Save] World state restored (gameMinute ${savedData.world.gameMinute ?? 'N/A'}, ${Object.keys(savedData.world.agents).length} agents)`);
+    if (savedData.journal) { ctx.journal = PlayerJournal.fromJSON(savedData.journal); }
     if (savedData.positions) {
       const pending = ctx.positionManager.loadFromJSON(savedData.positions);
       console.log(`  [+] Positions restored from save`);

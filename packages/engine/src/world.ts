@@ -26,7 +26,6 @@ import type { ILConfig, ConversationConfig } from './world-types';
 import { ScheduleManager, MINUTES_PER_DAY, getTimePeriod, minuteToHour } from './schedule';
 import type { ScheduleEntry } from './schedule';
 import { createSceneResidue } from './scene-residue';
-import { PlayerJournal } from './journal';
 import { evaluateAllVolition, evaluateReactiveVolition } from './volition';
 import { AFFORDANCE_REGISTRY, checkRequirements, computeUtility, getBlockingGoalTypes } from './al';
 import type { AffordanceContext } from './al';
@@ -67,8 +66,9 @@ export interface WorldCallbacks {
   onRelationshipChange?: (fromId: string, fromName: string, toId: string, toName: string, field: 'trust' | 'sentiment', oldVal: number, newVal: number) => void;
   /** Called every game minute by the Game Clock (for WS time broadcast + HUD) */
   onTimeUpdate?: (minuteOfDay: number, hour: string, period: string, gameDay: number) => void;
-  /** Called when a journal entry is created from engine events (overhear, discovery) */
-  onJournalEntry?: (entry: import('./journal').JournalEntry) => void;
+  /** Called when the player passively observes something (overhear) — a module/server records it
+   *  (crime-justice routes it into the player journal). Engine owns no journal. */
+  onPlayerObserve?: (data: { text: string; locationId: string; gameDay: number; tick: number }) => void;
 }
 
 /** Check if NPC can act: alive AND no special status (null = default/free = active) */
@@ -105,7 +105,7 @@ export interface WorldSaveData {
   decisionCooldowns: Record<string, number>;
   deathDiscoveries: string[];
   sceneResidues: Record<string, import('./world-types').SceneResidueJSON[]>;
-  journal: import('./journal').JournalEntry[] | { entries: import('./journal').JournalEntry[]; suspects: string[] };
+  playerState?: Record<string, unknown>;
   goals: Record<string, import('./goals').NpcGoal[]>;
   topicEngine: ReturnType<import('./topic-engine').TopicEngine['toJSON']>;
   evidence?: ReturnType<import('./evidence').EvidenceLayer['toJSON']>;
@@ -138,8 +138,9 @@ export class World {
   private deathDiscoveries: Set<string> = new Set(); // "discoverer:victim"
   /** Active crime scenes at locations */
   readonly sceneResidues: Map<string, SceneResidue[]> = new Map();
-  /** Player's investigation journal */
-  journal: PlayerJournal = new PlayerJournal();
+  /** Opaque module-owned player state (e.g. crime-justice player journal), round-tripped in save.
+   *  The engine never reads its shape — it only persists it (A10). */
+  playerState: Record<string, unknown> = {};
   /** Cached reference to the player Agent (resolved once, updated if agents change) */
   private _playerAgent: Agent | null = null;
   /** Topic engine for NPC-NPC conversations */
@@ -1321,15 +1322,14 @@ export class World {
         overheardImportance,
       );
 
-      // Player overhear → auto-journal observation entry (detective clue)
-      if (agent.profile.isPlayer && overheardClaim && this.journal) {
-        const entry = this.journal.addObservation(
-          `Overheard ${initiatorName} and ${responderName} discussing ${topic.subject}.${overheardClaim}`,
-          location,
-          conversation.gameDay,
-          this.gameMinute,
-        );
-        this.callbacks.onJournalEntry?.(entry);
+      // Player overhear → generic observe callback (module/server records it; engine owns no journal)
+      if (agent.profile.isPlayer && overheardClaim) {
+        this.callbacks.onPlayerObserve?.({
+          text: `Overheard ${initiatorName} and ${responderName} discussing ${topic.subject}.${overheardClaim}`,
+          locationId: location,
+          gameDay: conversation.gameDay,
+          tick: this.gameMinute,
+        });
       }
     }
   }
@@ -1773,7 +1773,7 @@ export class World {
       deathDiscoveries: Array.from(this.deathDiscoveries),
       sceneResidues,
       evidence: this.evidence.toJSON(),
-      journal: this.journal.toJSON(),
+      playerState: this.playerState,
       goals: this.goalManager.toJSON(),
       topicEngine: this.topicEngine.toJSON(),
       agents,
@@ -1824,10 +1824,8 @@ export class World {
       this.topicEngine.loadState(data.topicEngine);
     }
 
-    // Restore player journal
-    if (data.journal) {
-      this.journal = PlayerJournal.fromJSON(data.journal);
-    }
+    // Restore opaque module-owned player state (e.g. crime journal — reconstructed by the module/server)
+    this.playerState = data.playerState ?? {};
 
     for (const [id, saved] of Object.entries(data.agents)) {
       const agent = this.agents.get(id);

@@ -5,7 +5,8 @@ import type { Agent } from '@clwa/engine';
 import type { World } from '@clwa/engine';
 import type { IEventStore } from '@clwa/engine';
 import { buildSecretDirectives, extractDialogueMeaning, applyDialogueMeaning, getAllRegisteredEventTypes, getAllRegisteredVerbs, createGoalFromRequest } from '@clwa/engine';
-import type { ILContext, ILEffectContext, PresentedEvidence, ConversationSession } from '@clwa/engine';
+import type { ILContext, ILEffectContext } from '@clwa/engine';
+import type { PresentedEvidence, ConversationSession } from '@clwa/modules';
 import { handleRequest } from './routes';
 import { addClient, removeClient, broadcast, sendTo, clientCount } from './ws';
 import type { WSClientMessage } from './ws';
@@ -83,7 +84,7 @@ export function startServer(
         if (ctx.resetting) return; // drop messages during reset
         let chatAgentId: string | null = null; // track for finally cleanup
         try {
-          const { world, agents, eventStore, positionManager, approachContexts } = ctx;
+          const { world, agents, eventStore, positionManager, approachContexts, journal } = ctx;
           const msg: WSClientMessage = JSON.parse(
             typeof raw === 'string' ? raw : raw.toString(),
           );
@@ -191,8 +192,8 @@ export function startServer(
             if (msg.evidenceIds && Array.isArray(msg.evidenceIds) && msg.evidenceIds.length > 0) {
               presentedEvidence = [];
               for (const entryId of msg.evidenceIds.slice(0, 5)) { // max 5 per message
-                if (!world.journal.canPresent(entryId, msg.agentId)) continue;
-                const entry = world.journal.getEntry(entryId);
+                if (!journal.canPresent(entryId, msg.agentId)) continue;
+                const entry = journal.getEntry(entryId);
                 if (!entry) continue;
                 const perpetratorName = entry.suspectId ? agents.get(entry.suspectId)?.profile.name : undefined;
                 presentedEvidence.push({
@@ -205,7 +206,7 @@ export function startServer(
                   perpetratorName,
                   victimId: entry.victimId,
                 });
-                world.journal.markPresented(entryId, msg.agentId);
+                journal.markPresented(entryId, msg.agentId);
               }
               if (presentedEvidence.length > 0) {
                 console.log(`  [Evidence] ${presentedEvidence.length} entries presented to ${agent.profile.name}`);
@@ -230,7 +231,7 @@ export function startServer(
                 effects: ilEffects,
                 ilConfig: world.resolvedILConfig,
                 presentedEvidence,
-                playerJournal: world.journal,
+                playerJournal: journal,
                 chatSession,
                 goalCreator: (npcId, action, target) => {
                   const goal = createGoalFromRequest(npcId, action, world.buildAffordanceContext(), target);
@@ -323,7 +324,7 @@ export function startServer(
                   }
                 }
               }
-              const entry = world.journal.addTestimony(
+              const entry = journal.addTestimony(
                 fullReply,
                 agent.profile.name,
                 msg.agentId,

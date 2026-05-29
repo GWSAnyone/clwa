@@ -1,9 +1,10 @@
 # SPEC: Engine Genre-Neutralization (drain all crime-justice leaks)
 
 > **Milestone**: M5 (Engine Generalization) — Phase A (cleanliness, prerequisite for Phase B)
-> **Status**: **✅ Phase A COMPLETE** (A1–A9 + A4a drained & verified; A10+A4b consciously deferred — turn-key spec below).
->   Branch `feature/engine-neutralization`. tsc 0, **222/222** tests (was 210; +genre-neutrality guard + Economy Module Test).
->   `clwa-auditor`: 95% — import boundary PERFECT, INV-08/09/10/12/17 intact, all blocking/major leaks gone.
+> **Status**: **✅ Phase A FULLY COMPLETE** (A1–A10 + A4a+A4b drained & verified — investigation/accusation/journal
+>   fully extracted; engine genre-neutral with ZERO deferred files). Branch `feature/engine-neutralization`.
+>   tsc 0, **230/230** tests (was 210; +genre-neutrality guard + Economy Module Test + investigation tests).
+>   `clwa-auditor`: import boundary PERFECT, INV-08/09/10/12/17 intact; genre-neutrality guard passes the WHOLE engine (0 exclusions).
 > **Depends on**: SPEC-position-movement (v0.15.0), SPEC-remove-gamespeed (v0.15.1)
 > **Source of truth**: `docs/workflow/engine-self-sufficiency/2026-05-29-28aeb820/` (verdict + leak list) and
 >   `docs/workflow/engine-generalization-survey/2026-05-29-3d7ddc1c/` (per-subsystem maps). All 9 per-agent
@@ -50,7 +51,7 @@ goals, volition, mood) — действительно универсальна; 
 | **A7b** | TradeIntent + shop/ShopItem (economy half-subsystem) | `il.ts:153,166,72,214,237,281`; `agent-types.ts:107-119` | **→ Phase B (B2 inventory)**: рабочая shop-фича (panel/ws/steal); Phase-B inventory заменяет shop/ShopItem и переносит TradeIntent в economy-модуль. Вырывать сейчас = сломать фичу или scaffold | type leak | ⏭ Phase B |
 | **A8** | Pre-seeded crime defaults | `event-registry.ts` BELIEF_SOURCE_LABELS/SOURCE_TRANSFER_WEIGHTS/BELIEF_SOURCE; `beliefs.ts` SOURCE_CONFIDENCE | label/weight maps — только universal (testimony/observation); body_discovery/evidence/deduction → crime (идентичные значения); `BELIEF_SOURCE` без BODY_DISCOVERY/DEDUCTION (EVIDENCE остаётся — engine IL ссылается); мёртвый `SOURCE_CONFIDENCE` удалён | dead leak | ✅ |
 | **A9** | CrimeScene → generic primitive (rename) | engine: `world-types.ts`, `world.ts`, `event-registry.ts`, `scene-residue.ts`(↤crime-scene.ts), `goals.ts`, `cg-engine.ts`, `index.ts` | `CrimeScene→SceneResidue`(+JSON/Template), поля `crimeType→sceneType`/`perpetratorId→actorId`/`victimId→affectedId`, `processKill→processAgentDeath`, `markCrimeScene→markSceneResidue`, `createCrimeScene→createSceneResidue`, `crimeScenes→sceneResidues`, `bodyDiscoveries→deathDiscoveries`, callbacks `onMurder→onAgentDeath`/`onCrimeScene→onSceneResidue`/`onCrimeEvent→onEmitEvent`, `crimeEvent→emittedEvent`, `TickResult.murder→death/crimeScene→sceneResidue`, const `CRIME_SCENE_TEMPLATES→SCENE_RESIDUE_TEMPLATES`, BeliefCreator/MemoryBuilder params, файл переименован. Убраны backward-compat алиасы из index. Client/server-msg `crime:scene`+`crimeType` — game/wiring-слой (не движок), оставлен; payload-ключи `perpetratorName/affectedName` — graceful-degrading residual | naming leak | ✅ |
-| **A10+A4b** | PlayerJournal + accusation/evidence-presentation подсистема в движке | `journal.ts`, `il.ts` (PresentedEvidence/ConversationSession/AccusationContext/buildAccusationContext/buildAccusationPrompt/processEvidencePresentation + accusation-ветка в applyDialogueMeaning), `world.ts` (journal field/save/auto-obs) | **⏸ ОТЛОЖЕНО** — turn-key дизайн ниже; требует live investigate→accuse прогона | minor (journal) / major (accusation prose) | ⏸ |
+| **A10+A4b** | PlayerJournal + accusation/evidence-presentation подсистема в движке | engine `journal.ts`(удалён), `il.ts`, `world.ts`; server + module | извлечено в `crime-justice/investigation.ts` (PlayerJournal+accusation+evidence+policy); движок: `registerDialogueEffectHandler` hook + opaque `playerState` + `onPlayerObserve`; server владеет journal (save/load + IL ctx). Guard теперь проходит по ВСЕМУ движку (0 исключений) | minor/major | ✅ |
 
 **Borderline (нейтрализуется только проза-коммент, механика — универсальная психология, не трогаем мат):**
 `al.ts:430` moodCurve коммент «more crime-prone»; `volition.ts:488-497` DUTY-blocks-talk проза. Instinct

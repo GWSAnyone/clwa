@@ -186,8 +186,8 @@ export type { TopicContext, TopicProposal } from './topic-engine';
 
 
 // ─── IL (Intent Layer) — Dialogue Meaning Extraction ───
-export { extractDialogueMeaning, applyDialogueMeaning, processEvidencePresentation, buildAccusationContext, registerAccusationResponseHandler } from './il';
-export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect, PresentedEvidence, AccusationContext, ConversationSession } from './il';
+export { extractDialogueMeaning, applyDialogueMeaning, registerDialogueEffectHandler, getDialogueEffectHandlers } from './il';
+export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect, DialogueEffectHandlerFn } from './il';
 
 // ─── Interaction ───
 export { createInteractionRunner } from './interaction';
@@ -207,9 +207,7 @@ export type {
 // ─── Scene Residue (generic location-state from an event) ───
 export { createSceneResidue, getPassiveNoticeText } from './scene-residue';
 
-// ─── Journal ───
-export { PlayerJournal } from './journal';
-export type { JournalEntry, CaseSummary } from './journal';
+// ─── Journal/investigation moved to crime-justice module (A10+A4b) — engine carries no journal. ───
 
 // ─── Secret Directives ───
 export { buildSecretDirectives } from './secret-directives';

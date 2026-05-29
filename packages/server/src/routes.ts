@@ -258,7 +258,7 @@ export async function handleRequest(
     const groupBy = url.searchParams.get('groupBy');
 
     if (groupBy === 'suspect') {
-      const entries = world.journal.getEntries(typeFilter ? { type: typeFilter } : undefined);
+      const entries = ctx.journal.getEntries(typeFilter ? { type: typeFilter } : undefined);
       const grouped: Record<string, { name: string; isSuspect: boolean; entries: typeof entries; evidenceCount: number }> = {};
       const unrelated: typeof entries = [];
 
@@ -272,7 +272,7 @@ export async function handleRequest(
             const npcAgent = agents.get(npcId);
             grouped[npcId] = {
               name: npcAgent?.profile.name ?? npcId,
-              isSuspect: world.journal.isSuspect(npcId),
+              isSuspect: ctx.journal.isSuspect(npcId),
               entries: [],
               evidenceCount: 0,
             };
@@ -284,7 +284,7 @@ export async function handleRequest(
       return Response.json({ suspects: grouped, unrelated }, { headers: cors });
     }
 
-    const entries = world.journal.getEntries(typeFilter ? { type: typeFilter } : undefined);
+    const entries = ctx.journal.getEntries(typeFilter ? { type: typeFilter } : undefined);
     return Response.json(entries, { headers: cors });
   }
 
@@ -295,7 +295,7 @@ export async function handleRequest(
     if (!npcAgent) {
       return Response.json({ error: 'NPC not found' }, { status: 404, headers: cors });
     }
-    const summary = world.journal.getCaseSummary(npcId, npcAgent.profile.name);
+    const summary = ctx.journal.getCaseSummary(npcId, npcAgent.profile.name);
     return Response.json(summary, { headers: cors });
   }
 
@@ -306,13 +306,13 @@ export async function handleRequest(
     if (!npcAgent) {
       return Response.json({ error: 'NPC not found' }, { status: 404, headers: cors });
     }
-    const isNowSuspect = world.journal.markSuspect(npcId);
+    const isNowSuspect = ctx.journal.markSuspect(npcId);
     return Response.json({ npcId, name: npcAgent.profile.name, isSuspect: isNowSuspect }, { headers: cors });
   }
 
   // ─── GET /api/journal/suspects ───
   if (method === 'GET' && path === '/api/journal/suspects') {
-    const suspectIds = world.journal.getSuspects();
+    const suspectIds = ctx.journal.getSuspects();
     const suspects = suspectIds.map((id) => ({
       id,
       name: agents.get(id)?.profile.name ?? id,
@@ -413,7 +413,7 @@ export async function handleRequest(
         const relatedNpcs: string[] = [];
         if (scene.affectedId) relatedNpcs.push(scene.affectedId);
         if (scene.actorId) relatedNpcs.push(scene.actorId);
-        const journalEntry = world.journal.addClue(
+        const journalEntry = ctx.journal.addClue(
           point.clueText,
           locationId,
           scene.gameDay,
@@ -434,7 +434,7 @@ export async function handleRequest(
         const evidenceEntries = [];
         for (const e of discovered) {
           world.evidence.discover(e.id, 'player');
-          const evEntry = world.journal.addClue(
+          const evEntry = ctx.journal.addClue(
             e.description,
             locationId,
             e.gameDay,

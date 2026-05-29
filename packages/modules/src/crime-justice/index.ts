@@ -31,7 +31,6 @@ import {
   getPassiveNoticeText,
   getAffordanceIdsForVerb,
   registerSecretEventType,
-  registerAccusationResponseHandler,
   registerBlockingGoalTypes,
   registerRelationshipLabels,
   registerSecretDirectiveBuilder,
@@ -47,6 +46,9 @@ import { registerCrimeEvidenceSources } from './evidence-sources';
 import { justiceTopics, playerRumorTopics, suspicionTopics } from './topic-sources';
 import { registerCrimeEventHandlers } from './event-handlers';
 import { registerCrimeStepHandlers, imprisonmentTimers } from './step-handlers';
+import { registerInvestigationModule } from './investigation';
+export { PlayerJournal, registerInvestigationModule } from './investigation';
+export type { JournalEntry, CaseSummary, PresentedEvidence, ConversationSession } from './investigation';
 export { CRIME_CG_RULES } from './cg-rules';
 export { CRIME_EVIDENCE_RULES } from './evidence-rules';
 export { isCriminalNpc, isWantedNpc, hasDetainedNpc, hasWitnessBelief } from './target-finders';
@@ -126,22 +128,9 @@ export function registerCrimeJusticeModule(): void {
     extra.crimeType = getEventLabelSafe(crimeBelief.eventType);
   });
 
-  // Accusation response — crime-justice policy for ALL evidence quality levels
-  registerAccusationResponseHandler((quality, npc, _suspectId) => {
-    if (quality === 'strong' && (hasCapability(npc.profile, 'investigator') || hasCapability(npc.profile, 'canSentence'))) {
-      return { goalType: 'arrest', affordanceId: 'arrest', trustDelta: 0.05 };
-    }
-    if (quality === 'moderate' && hasCapability(npc.profile, 'investigator')) {
-      return { goalType: 'investigate', affordanceId: 'investigate' };
-    }
-    if (quality === 'weak') {
-      return { trustDelta: -0.03 };
-    }
-    if (quality === 'insufficient') {
-      return { trustDelta: -0.08, rejectReason: 'insufficient_evidence' };
-    }
-    return null;
-  });
+  // Investigation subsystem (PlayerJournal + evidence-presentation + formal accusation) — registers a
+  // dialogue-effect handler. Moved out of the engine (A10+A4b); accusation policy lives in investigation.ts.
+  registerInvestigationModule();
 
   // Goal types that block volition re-evaluation of target NPC
   registerBlockingGoalTypes(['arrest']);

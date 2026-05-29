@@ -109,11 +109,11 @@ describe('Engine Boundary', () => {
 });
 
 // ─── 1b. Engine Semantic Neutrality (INV-14 — zero module-specific vocabulary) ───
-// Regression guard for the Phase A genre-neutralization (M5). The engine must carry NO crime-justice
-// prose or crime-named primitives. Two files are CONSCIOUSLY EXCLUDED — the investigation/accusation/
-// journal subsystem (journal.ts, il.ts) is a documented deferred extraction (A10+A4b).
+// Regression guard for the M5 genre-neutralization. The engine must carry NO crime-justice prose or
+// crime-named primitives. After A10+A4b the investigation/accusation/journal subsystem moved entirely to
+// the crime-justice module, so NOTHING is excluded — the whole engine is held to the neutral bar.
 describe('Engine Semantic Neutrality (INV-14)', () => {
-  const DEFERRED = new Set(['journal.ts', 'il.ts']); // A10+A4b — tracked extraction, excluded from the guard
+  const DEFERRED = new Set<string>(); // A10+A4b extracted → no deferred files remain
   const neutralEngineFiles = engineFiles.filter((f) => !DEFERRED.has(f.split(/[\\/]/).pop()!));
 
   // Crime-domain words that must not appear in engine PROSE (string literals). 'kill'/'death' excluded

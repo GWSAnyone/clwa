@@ -7,6 +7,7 @@
  */
 
 import type { World, Agent, InMemoryEventStore } from '@clwa/engine';
+import type { PlayerJournal } from '@clwa/modules';
 import type { PositionManager } from './position-manager';
 
 /** Location history entry — where an NPC was at a given game minute */
@@ -63,6 +64,8 @@ export interface GameContext {
   eventStore: InMemoryEventStore;
   agents: Map<string, Agent>;
   positionManager: PositionManager;
+  /** Player's investigation journal (crime-justice module concept; server-owned, persisted in save). */
+  journal: PlayerJournal;
   approachContexts: Map<string, string>;
   locationHistory: LocationHistory;
   seed: number;

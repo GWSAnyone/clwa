@@ -20,7 +20,6 @@ import type { IEventStore } from './event-types';
 import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs, getRegisteredQuestionTopics, getDefaultSpeechAct, phraseBelief } from './event-registry';
 import type { PressureHandlerContext } from './event-registry';
 import type { ILConfig } from './world-types';
-import type { PlayerJournal, CaseSummary } from './journal';
 import { DEFAULT_IL_CONFIG } from './world-types';
 import { classify } from './llm-client';
 import type { LlmJsonSchema } from './llm-client';
@@ -81,32 +80,17 @@ function buildILSchema(ctx: ILContext): LlmJsonSchema {
   };
 }
 
-// ─── Accusation Response Registry (modules fill) ───
-
-export interface AccusationResponse {
-  goalType?: string;
-  affordanceId?: string;
-  trustDelta?: number;
-  rejectReason?: string;
+// ─── Dialogue Effect Handlers (modules fill) ───
+// Generic hook: after the engine applies UNIVERSAL dialogue meaning (claims → beliefs, questions,
+// pressure), it calls registered handlers for genre-specific effects. The crime-justice module
+// registers evidence-presentation + formal-accusation here. The engine owns no investigation concept.
+export type DialogueEffectHandlerFn = (meaning: DialogueMeaning, ctx: ILEffectContext) => string[];
+const DIALOGUE_EFFECT_HANDLERS: DialogueEffectHandlerFn[] = [];
+export function registerDialogueEffectHandler(handler: DialogueEffectHandlerFn): void {
+  DIALOGUE_EFFECT_HANDLERS.push(handler);
 }
-
-/** Module registers how authority NPCs respond to accusations based on evidence quality + capabilities */
-const ACCUSATION_RESPONSE_HANDLERS: Array<(
-  quality: string, npc: Agent, suspectId: string
-) => AccusationResponse | null> = [];
-
-export function registerAccusationResponseHandler(
-  handler: (quality: string, npc: Agent, suspectId: string) => AccusationResponse | null,
-): void {
-  ACCUSATION_RESPONSE_HANDLERS.push(handler);
-}
-
-export function getAccusationResponse(quality: string, npc: Agent, suspectId: string): AccusationResponse | null {
-  for (const handler of ACCUSATION_RESPONSE_HANDLERS) {
-    const result = handler(quality, npc, suspectId);
-    if (result) return result;
-  }
-  return null;
+export function getDialogueEffectHandlers(): readonly DialogueEffectHandlerFn[] {
+  return DIALOGUE_EFFECT_HANDLERS;
 }
 
 // ─── IL Output Types ───
@@ -456,32 +440,8 @@ export type ILEffect =
   | { type: 'event_stored'; eventType: string; action: string }
   | { type: 'memory_stored'; text: string; importance: number };
 
-/** Journal evidence entry attached to chat message for Evidence Presentation */
-export interface PresentedEvidence {
-  entryId: string;
-  text: string;
-  evidenceCategory?: string;
-  evidenceWeight?: number;
-  eventType?: string;
-  suspectId?: string;
-  perpetratorName?: string;
-  victimId?: string;
-}
-
-/** Per-chat transient state for multi-turn detective interaction */
-export interface ConversationSession {
-  npcId: string;
-  startedAt: number; // gameMinute
-  messageCount: number;
-  /** Tracks repeated accusations per suspect within this chat */
-  accusationHistory: Map<string, {
-    count: number;
-    /** Journal entry count for suspect at time of accusation — detects new evidence */
-    lastJournalHash: number;
-  }>;
-  /** Log of formal accusations made in this chat — detects scatter-accusing */
-  formalAccusations: Array<{ suspectId: string; perpetratorName: string; gameDay: number }>;
-}
+// PresentedEvidence + ConversationSession moved to crime-justice/investigation.ts (A4b).
+// ILEffectContext carries them as opaque module-supplied state (see fields below).
 
 export interface ILEffectContext {
   /** The NPC being talked to */
@@ -500,199 +460,19 @@ export interface ILEffectContext {
   effects: ILEffect[];
   /** Behavioral parameters (thresholds, multipliers). Defaults from DEFAULT_IL_CONFIG. */
   ilConfig?: ILConfig;
-  /** Evidence entries from journal attached to this message */
-  presentedEvidence?: PresentedEvidence[];
-  /** Player journal — needed for accusation evidence aggregation */
-  playerJournal?: PlayerJournal;
-  /** Per-chat session state — repetition tracking, multiple suspect detection */
-  chatSession?: ConversationSession;
+  /** Opaque module-supplied evidence entries attached to this message (crime: PresentedEvidence[]). */
+  presentedEvidence?: unknown[];
+  /** Opaque module-supplied player state (crime: PlayerJournal) — passed through to dialogue-effect handlers. */
+  playerJournal?: unknown;
+  /** Opaque module-supplied per-chat session state (crime: ConversationSession). */
+  chatSession?: unknown;
   /** Add a mood modifier to an NPC (SPEC-mood-modifiers) */
   addMoodModifier?: (npcId: string, mod: { source: string; category: string; magnitude: number; remaining: number; duration: number; decay: 'exponential' | 'linear' | 'none' }) => void;
 }
 
-/**
- * Process evidence entries attached to a chat message.
- * Creates beliefs with source EVIDENCE — physical evidence is NOT trust-scaled.
- * Returns prompt context string describing the presented evidence.
- */
-export function processEvidencePresentation(ctx: ILEffectContext): string {
-  const evidence = ctx.presentedEvidence;
-  if (!evidence || evidence.length === 0) return '';
-
-  const npc = ctx.targetAgent;
-  const playerId = ctx.playerAgent.profile.id;
-  const playerTrust = npc.state.relationships?.getRelationship(playerId)?.trust ?? 0;
-  const lines: string[] = [];
-
-  for (const ev of evidence) {
-    if (!ev.eventType) continue;
-
-    // Evidence confidence from weight field — no category string checks in engine.
-    // Modules set evidenceWeight at creation time: physical=0.15-0.25, witness=0.5, etc.
-    // Entries without evidenceWeight (player observations): trust-scaled fallback.
-    const confidence = ev.evidenceWeight != null
-      ? ev.evidenceWeight
-      : 0.4 * playerTrust;
-
-    if (confidence < 0.05) continue;
-
-    npc.state.beliefs?.addBelief({
-      id: crypto.randomUUID(),
-      eventType: ev.eventType,
-      subject: ev.suspectId ?? null,
-      object: null,
-      location: null,
-      confidence,
-      source: BELIEF_SOURCE.EVIDENCE,
-      sourceNpcId: playerId,
-      gameDay: ctx.gameDay,
-      lastUpdated: ctx.gameDay,
-    });
-
-    ctx.effects.push({
-      type: 'belief_created',
-      eventType: ev.eventType,
-      subject: ev.perpetratorName ?? null,
-      confidence: +confidence.toFixed(2),
-      trust: +playerTrust.toFixed(2),
-    });
-
-    const catLabel = ev.evidenceCategory ?? 'evidence';
-    lines.push(`- "${ev.text}" (${catLabel}${ev.perpetratorName ? `, pointing to ${ev.perpetratorName}` : ''})`);
-    console.log(`  [IL] Evidence belief: ${ev.eventType} suspect=${ev.perpetratorName} conf=${confidence.toFixed(2)} cat=${catLabel} (NOT trust-scaled)`);
-  }
-
-  if (lines.length === 0) return '';
-
-  return [
-    '[EVIDENCE PRESENTED]',
-    'The player shows you documented evidence:',
-    ...lines,
-    'This is tangible evidence from the crime scene investigation, not just hearsay.',
-    'Consider it alongside your own knowledge.',
-  ].join('\n');
-}
-
-// ─── Accusation System ───
-
-export interface AccusationContext {
-  suspectId: string;
-  perpetratorName: string;
-  crimeLabel: string;
-  journalEvidence: CaseSummary;
-  npcMaxConfidence: number;
-  npcHasOwnEvidence: boolean;
-  playerTrust: number;
-  combinedScore: number;
-  combinedQuality: 'strong' | 'moderate' | 'weak' | 'insufficient';
-}
-
-function computeTrustBonus(trust: number): number {
-  if (trust >= 0.7) return 1.0;
-  if (trust >= 0.4) return 0.6;
-  return 0.2;
-}
-
-/**
- * Build accusation context for authority NPCs (investigator/canSentence).
- * Evidence quality is computed DETERMINISTICALLY — LLM provides voice, engine provides logic.
- */
-export function buildAccusationContext(
-  suspectId: string,
-  claimEventType: string,
-  npc: Agent,
-  playerJournal: PlayerJournal,
-  playerTrust: number,
-  agents: Map<string, Agent>,
-): AccusationContext {
-  const suspectAgent = agents.get(suspectId);
-  const perpetratorName = suspectAgent?.profile.name ?? suspectId;
-  const crimeLabel = getEventLabelSafe(claimEventType, 'wrongdoing');
-
-  // Player's journal evidence
-  const journalEvidence = playerJournal.getCaseSummary(suspectId, perpetratorName);
-
-  // NPC's own beliefs about suspect
-  let npcMaxConfidence = 0;
-  let npcHasOwnEvidence = false;
-  if (npc.state.beliefs) {
-    for (const b of npc.state.beliefs.getAllBeliefs()) {
-      if (b.subject === suspectId && isTransferable(b.eventType)) {
-        if (b.confidence > npcMaxConfidence) npcMaxConfidence = b.confidence;
-        if (b.source !== BELIEF_SOURCE.TESTIMONY) npcHasOwnEvidence = true;
-      }
-    }
-  }
-
-  // Combined score: journal 50% + NPC beliefs 35% + trust bonus 15%
-  const trustBonus = computeTrustBonus(playerTrust);
-  const combinedScore = journalEvidence.totalScore * 0.5
-    + npcMaxConfidence * 0.35
-    + trustBonus * 0.15;
-
-  const combinedQuality: AccusationContext['combinedQuality'] =
-    combinedScore >= 0.7 ? 'strong' :
-    combinedScore >= 0.4 ? 'moderate' :
-    combinedScore >= 0.2 ? 'weak' :
-    'insufficient';
-
-  return {
-    suspectId, perpetratorName, crimeLabel,
-    journalEvidence, npcMaxConfidence, npcHasOwnEvidence,
-    playerTrust, combinedScore, combinedQuality,
-  };
-}
-
-/** Build NPC prompt section for formal accusation. */
-function buildAccusationPrompt(acc: AccusationContext, npc: Agent): string {
-  const ev = acc.journalEvidence.evidence;
-  const evParts = Object.entries(ev).filter(([, n]) => n > 0).map(([cat, n]) => `${n} ${cat}`);
-  const evDesc = evParts.length ? evParts.join(', ') : 'none';
-
-  const npcConfDesc = acc.npcMaxConfidence >= 0.6 ? 'significant suspicion'
-    : acc.npcMaxConfidence >= 0.3 ? 'some suspicion'
-    : acc.npcMaxConfidence > 0 ? 'faint suspicion'
-    : 'no independent findings';
-
-  const trustDesc = acc.playerTrust >= 0.7 ? 'well-established'
-    : acc.playerTrust >= 0.4 ? 'moderate'
-    : 'low';
-
-  const qualityGuidance: Record<string, string> = {
-    strong: 'This evidence warrants immediate action.',
-    moderate: 'Worth investigating further. Tell the player what additional evidence would help.',
-    weak: 'Not enough to act on. Explain what is missing.',
-    insufficient: 'This accusation has no real basis. Warn the player about making unfounded accusations.',
-  };
-
-  // Personality modulation
-  let personalityNote = '';
-  const H = npc.profile.bigFive.honesty;
-  const C = npc.profile.bigFive.conscientiousness;
-  if (hasCapability(npc.profile, 'investigator')) {
-    personalityNote = C >= 0.7
-      ? 'As a disciplined investigator, you need solid evidence before acting.'
-      : H < 0.5
-        ? 'You might be open to... alternative forms of persuasion.'
-        : 'You want to do the right thing but need convincing evidence.';
-  } else if (hasCapability(npc.profile, 'canSentence')) {
-    personalityNote = 'You cannot arrest anyone. Tell the player to bring this to someone with the authority to make arrests.';
-  }
-
-  return [
-    '[FORMAL ACCUSATION]',
-    `The player formally accuses ${acc.perpetratorName} of ${acc.crimeLabel}.`,
-    '',
-    'Evidence assessment:',
-    `- Player documented evidence: ${acc.journalEvidence.quality} (${evDesc})`,
-    `- Your own findings: ${npcConfDesc}`,
-    `- Player trustworthiness: ${trustDesc}`,
-    `- Combined evidence quality: ${acc.combinedQuality.toUpperCase()}`,
-    '',
-    qualityGuidance[acc.combinedQuality],
-    personalityNote,
-  ].join('\n');
-}
+// processEvidencePresentation, AccusationContext, computeTrustBonus, buildAccusationContext and
+// buildAccusationPrompt moved to crime-justice/investigation.ts (A4b). The engine now dispatches a
+// generic registerDialogueEffectHandler hook (see applyDialogueMeaning) instead of owning this logic.
 
 /**
  * Apply the extracted dialogue meaning to engine systems.
@@ -713,10 +493,6 @@ export async function applyDialogueMeaning(
   const playerName = ctx.playerAgent.profile.name;
   const sections: string[] = [];
   const cfg = ctx.ilConfig ?? DEFAULT_IL_CONFIG;
-
-  // 0. Evidence presentation → beliefs with source EVIDENCE (NOT trust-scaled)
-  const evidenceContext = processEvidencePresentation(ctx);
-  if (evidenceContext) sections.push(evidenceContext);
 
   // 1. Claims → create beliefs in NPC (consistent with NPC-NPC beliefTransfer)
   if (meaning.claims && meaning.claims.length > 0) {
@@ -768,110 +544,10 @@ export async function applyDialogueMeaning(
     }
   }
 
-  // 1b. Accusation evaluation — only for authority NPCs (investigator/canSentence)
-  if (isAccusationSpeechAct(meaning.speechAct) && meaning.claims && meaning.claims.length > 0) {
-    const isAuthority = hasCapability(npc.profile, 'investigator') || hasCapability(npc.profile, 'canSentence');
-    if (isAuthority && ctx.playerJournal) {
-      const suspectClaim = meaning.claims.find((c) => c.subject);
-      if (suspectClaim?.subject) {
-        const suspectAgent = findAgentByName(suspectClaim.subject, ctx.agents);
-        if (suspectAgent) {
-          // Guards: can't accuse dead NPCs, yourself, or the authority you're talking to
-          if (!suspectAgent.state.alive) {
-            sections.push(`${suspectAgent.profile.name} is dead. This accusation makes no sense.`);
-          } else if (suspectAgent.profile.isPlayer) {
-            sections.push(`You cannot accuse yourself.`);
-          } else if (suspectAgent.profile.id === npc.profile.id) {
-            sections.push(`You are accusing ME? That is absurd. I am the law here.`);
-            npc.state.relationships?.adjustSentiment(playerId, -0.2);
-            npc.state.relationships?.adjustTrust(playerId, -0.15);
-            ctx.effects.push({ type: 'relationship_change', field: 'sentiment', delta: -0.2 });
-            ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.15 });
-          } else {
-          const playerTrust = npc.state.relationships?.getRelationship(playerId)?.trust ?? 0;
-          const acc = buildAccusationContext(
-            suspectAgent.profile.id, suspectClaim.eventType ?? '', npc,
-            ctx.playerJournal, playerTrust, ctx.agents,
-          );
-
-          // Prompt injection with structured evidence assessment
-          sections.push(buildAccusationPrompt(acc, npc));
-
-          // Session-based repetition + multiple suspect tracking
-          if (ctx.chatSession) {
-            const session = ctx.chatSession;
-            const suspId = suspectAgent.profile.id;
-            const suspName = suspectAgent.profile.name;
-            const currentHash = ctx.playerJournal.getEntriesForSuspect(suspId).length;
-            const history = session.accusationHistory.get(suspId);
-
-            if (history) {
-              if (currentHash !== history.lastJournalHash) {
-                // New evidence found — reset
-                history.count = 1;
-                history.lastJournalHash = currentHash;
-              } else {
-                // Same evidence, repeated accusation
-                history.count++;
-                if (history.count === 2) {
-                  sections.push(`The player has already accused ${suspName} of this. They haven't presented new evidence.`);
-                } else {
-                  sections.push(`The player keeps repeating the same accusation against ${suspName} without new evidence. This is becoming tiresome and undermining their credibility.`);
-                }
-                const penalty = history.count === 2 ? -0.10 : -0.12;
-                npc.state.relationships?.adjustTrust(playerId, penalty);
-                ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: penalty });
-              }
-            } else {
-              session.accusationHistory.set(suspId, { count: 1, lastJournalHash: currentHash });
-            }
-
-            // Multiple suspect detection — unique suspects only
-            const prevSuspects = session.formalAccusations.filter(a => a.suspectId !== suspId);
-            if (prevSuspects.length > 0) {
-              const prevNames = [...new Set(prevSuspects.map(a => a.perpetratorName))].join(', ');
-              const uniqueCount = new Set(prevSuspects.map(a => a.suspectId)).size;
-              if (uniqueCount === 1) {
-                sections.push(`Note: this player previously formally accused ${prevNames}. Now they're accusing ${suspName}. Their investigative judgment may be questionable.`);
-              } else {
-                sections.push(`This player has now accused ${uniqueCount + 1} different people (${prevNames}, now ${suspName}). They seem to be guessing rather than investigating.`);
-              }
-              npc.state.relationships?.adjustTrust(playerId, -0.05);
-              ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: -0.05 });
-            }
-            if (!session.formalAccusations.some(a => a.suspectId === suspId)) {
-              session.formalAccusations.push({ suspectId: suspId, perpetratorName: suspName, gameDay: ctx.gameDay });
-            }
-          }
-
-          // Mechanical effects based on evidence quality — via registry
-          const response = getAccusationResponse(acc.combinedQuality, npc, suspectAgent.profile.id);
-          if (response) {
-            if (response.goalType && response.affordanceId && ctx.goalCreator) {
-              const created = ctx.goalCreator(npc.profile.id, response.goalType, suspectAgent.profile.name);
-              if (created) {
-                ctx.effects.push({ type: 'goal_created', action: response.goalType, affordanceId: response.affordanceId, target: suspectAgent.profile.name });
-              }
-            }
-            if (response.rejectReason) {
-              ctx.effects.push({ type: 'goal_rejected', action: 'accuse', reason: response.rejectReason });
-            }
-            if (response.trustDelta) {
-              npc.state.relationships?.adjustTrust(playerId, response.trustDelta);
-              ctx.effects.push({ type: 'relationship_change', field: 'trust', delta: response.trustDelta });
-            }
-          }
-
-          // Accused NPC reacts to accusation — hostile consequences (Trigger 3)
-          suspectAgent.state.relationships?.adjustSentiment(playerId, -0.3);
-          suspectAgent.state.relationships?.adjustTrust(playerId, -0.3);
-          ctx.effects.push({ type: 'relationship_change', field: 'sentiment', delta: -0.3 });
-
-          console.log(`  [IL] Accusation: ${suspectAgent.profile.name} — journal=${acc.journalEvidence.totalScore.toFixed(2)} npc=${acc.npcMaxConfidence.toFixed(2)} trust=${playerTrust.toFixed(2)} → combined=${acc.combinedScore.toFixed(2)} (${acc.combinedQuality}). Accused hostile: sent-0.3, trust-0.3`);
-          } // end else (valid target — not dead/player/self)
-        }
-      }
-    }
+  // 1b. Module dialogue effects — genre-specific reactions (crime: evidence-presentation + formal
+  //     accusation) supplied via registerDialogueEffectHandler. The engine owns no investigation logic.
+  for (const handler of getDialogueEffectHandlers()) {
+    sections.push(...handler(meaning, ctx));
   }
 
   // 2. Questions → gather NPC beliefs for response context
