@@ -1,7 +1,9 @@
 # SPEC: Engine Max Generalization (universal capability subsystems)
 
 > **Milestone**: M5 (Engine Generalization) — Phase B (растим движок на нейтрализованной базе)
-> **Status**: **🚧 IN PROGRESS** — B1 (scalar-attribute subsystem) ✅ DONE; B2/B3 далее. Branch `feature/engine-generalization`.
+> **Status**: **✅ B1+B2+B3 DONE** (scalar attributes, inventory, faction+relationship richness — all as clean tested
+>   engine primitives). Branch `feature/engine-generalization`. tsc 0, **249/249** tests. Один follow-up: полная A7b
+>   shop→inventory миграция требует economy-модуля (примитив готов). Отложенные enhancement'ы — ниже.
 > **Depends on**: SPEC-engine-neutralization (Phase A) — чистая genre-нейтральная база
 > **Source of truth**: `docs/workflow/engine-generalization-survey/2026-05-29-3d7ddc1c/report.md` (ranked
 >   investments) + per-agent maps; gap-анализ в `engine-self-sufficiency` (LEGIT GAPS секция).
@@ -43,7 +45,15 @@ string-keyed слой числовых атрибутов на `AgentState`:
 - Атрибут-ключи — чистый string-keyed registry (как events/sources): НИ crime, НИ economy имён в движке.
 **Один примитив сразу под**: Combat HP / Economy gold / Politics standing / Survival needs.
 
-### B2 — Inventory / item-instance / atomic transfer [size L, leverage high]
+### B2 — Inventory / item-instance / atomic transfer [size L] — ✅ DONE (primitive)
+**Реализовано** (`packages/engine/src/inventory.ts` + World API + tsc 0, 249/249, `tests/inventory.test.ts` 4 теста):
+- `Item` {id, kind (free string), quantity, state?} + pure `addItem`(stack fungible / push unique-state)/`removeItems`(conserved)/`countItems`.
+- `AgentState.inventory?: Item[]` + save/load. World API: `getInventory`/`countItem`/`hasItem`/`giveItem`/`removeItem`/
+  **`transferItem`** (атомарный conserved-перенос — реальная торговля/кража/лут двигают state, а не только эмитят событие).
+- **A7b остаётся частично**: примитив готов, но shop/ShopItem/TradeIntent в движке **НЕ** удалены — их замена требует
+  economy-МОДУЛЯ (мигрировать shop→inventory + server/client/IL trade-flow). Сделано на уровне engine-capability; module-миграция — follow-up под реальный economy-модуль (per survey: строить против реального спроса).
+
+### B2 (original outline) — Inventory / item-instance / atomic transfer
 Engine-level Item/Container: item-инстансы (owner+location+state refs, quantities) + атомарный transfer-of-value
 step-примитив (move N of X from A to B с conservation). Заменяет dead-end `AgentProfile.shop` (убран в Phase A/здесь).
 Делает кражу/торговлю **реальным** перемещением состояния (сегодня `steal_from` эмитит событие, но не двигает state).

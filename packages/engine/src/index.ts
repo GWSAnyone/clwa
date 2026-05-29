@@ -6,6 +6,9 @@ export { DEFAULT_LLM_PERSONALITY, hasCapability } from './agent-types';
 // ─── Scalar Attributes (B1) — universal quantified-state primitive ───
 export { createAttribute, attributeEffective, getAttributeValue, decayAttribute } from './attributes';
 export type { ScalarAttribute, AttributeModifier } from './attributes';
+// ─── Inventory (B2) — conserved, ownable, transferable item instances ───
+export { countItems, addItem, removeItems } from './inventory';
+export type { Item } from './inventory';
 export type { NpcStatus } from './agent-types';
 
 // ─── Beliefs ───

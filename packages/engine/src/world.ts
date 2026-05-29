@@ -24,6 +24,7 @@ import type {
 import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
 import { createAttribute, attributeEffective, getAttributeValue, decayAttribute } from './attributes';
 import type { AttributeModifier } from './attributes';
+import { countItems, addItem, removeItems } from './inventory';
 import type { ILConfig, ConversationConfig } from './world-types';
 import { ScheduleManager, MINUTES_PER_DAY, getTimePeriod, minuteToHour } from './schedule';
 import type { ScheduleEntry } from './schedule';
@@ -94,6 +95,7 @@ export interface WorldSaveAgentData {
   moodModifiers: import('./world-types').MoodModifier[];
   attributes?: Record<string, import('./attributes').ScalarAttribute>;
   factions?: string[];
+  inventory?: import('./inventory').Item[];
   currentDay: number;
   knownFacts: string[];
   beliefs: import('./beliefs').Belief[];
@@ -726,6 +728,48 @@ export class World {
   /** All factions an agent belongs to. */
   getFactions(npcId: string): string[] {
     return this.agents.get(npcId)?.state.factions ?? [];
+  }
+
+  // ─── Inventory (B2) — conserved, ownable, transferable item instances ───
+
+  /** All item instances owned by an agent. */
+  getInventory(npcId: string): import('./inventory').Item[] {
+    return this.agents.get(npcId)?.state.inventory ?? [];
+  }
+
+  /** Total quantity of a kind an agent holds. */
+  countItem(npcId: string, kind: string): number {
+    return countItems(this.agents.get(npcId)?.state.inventory, kind);
+  }
+
+  /** Whether an agent holds at least `quantity` of a kind. */
+  hasItem(npcId: string, kind: string, quantity = 1): boolean {
+    return this.countItem(npcId, kind) >= quantity;
+  }
+
+  /** Give an agent items (stacks fungible kinds; unique state-bearing items become new instances). */
+  giveItem(npcId: string, kind: string, quantity = 1, state?: Record<string, unknown>): import('./inventory').Item | null {
+    const agent = this.agents.get(npcId);
+    if (!agent) return null;
+    if (!agent.state.inventory) agent.state.inventory = [];
+    return addItem(agent.state.inventory, kind, quantity, state);
+  }
+
+  /** Remove `quantity` of a kind. Returns false (no-op) if the agent holds fewer. */
+  removeItem(npcId: string, kind: string, quantity = 1): boolean {
+    const agent = this.agents.get(npcId);
+    if (!agent?.state.inventory) return false;
+    return removeItems(agent.state.inventory, kind, quantity);
+  }
+
+  /** Atomic conserved transfer of `quantity` of a kind between agents (trade, theft, loot).
+   *  Returns false (no-op) if the source holds fewer than `quantity`. */
+  transferItem(fromId: string, toId: string, kind: string, quantity = 1): boolean {
+    if (quantity <= 0) return false;
+    if (!this.agents.has(toId)) return false;
+    if (!this.removeItem(fromId, kind, quantity)) return false;
+    this.giveItem(toId, kind, quantity);
+    return true;
   }
 
   /** Get mood history for an NPC (time-series snapshots every 5 game minutes) */
@@ -1830,6 +1874,7 @@ export class World {
         moodModifiers: agent.state.moodModifiers ?? [],
         ...(agent.state.attributes ? { attributes: agent.state.attributes } : {}),
         ...(agent.state.factions ? { factions: agent.state.factions } : {}),
+        ...(agent.state.inventory ? { inventory: agent.state.inventory } : {}),
         currentDay: agent.state.currentDay,
         knownFacts: agent.state.knownFacts,
         beliefs: agent.state.beliefs?.toJSON() ?? [],
@@ -1932,6 +1977,7 @@ export class World {
         .filter((m) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
       if (saved.attributes) agent.state.attributes = saved.attributes;
       if (saved.factions) agent.state.factions = saved.factions;
+      if (saved.inventory) agent.state.inventory = saved.inventory;
       agent.state.currentDay = saved.currentDay;
       agent.state.knownFacts = saved.knownFacts;
 

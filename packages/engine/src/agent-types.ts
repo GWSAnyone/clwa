@@ -151,6 +151,9 @@ export interface AgentState {
   /** Faction/group memberships (B3): open string keys (guild / house / coalition / cult). Collective-actor
    *  primitive — read via World.isFactionMember / CG op 'faction'. Per-faction standing uses an attribute. */
   factions?: string[];
+  /** Item instances owned by the agent (B2): conserved, transferable goods. kind is a free module string.
+   *  Managed via World.giveItem / removeItem / transferItem. */
+  inventory?: import('./inventory').Item[];
   currentDay: number;
   knownFacts: string[];
   /** Structured beliefs about events (who did what). Optional for backward compat */
