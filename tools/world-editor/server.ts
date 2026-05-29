@@ -41,6 +41,38 @@ async function writeJSON(path: string, data: unknown) {
   await Bun.write(path, JSON.stringify(data, null, 2) + "\n");
 }
 
+const sortUniq = (xs: (string | undefined | null)[]) => [...new Set(xs.filter(Boolean) as string[])].sort();
+
+/** LLM routing options for the editor — tasks/providers from the registry + default router; models grouped
+ *  PER PROVIDER (lm-studio models ≠ claude-code models). lm-studio queried live; claude-code = Anthropic
+ *  aliases ∪ what the default router uses. No hardcoded master list — provider-scoped, registry/data-driven. */
+async function buildLlmRegistry() {
+  const def = buildDefaultRouter();
+  const defRoutes = def.routes as Record<string, { provider?: string; model?: string }>;
+  const routeVals = [def.default, ...Object.values(defRoutes)] as Array<{ provider?: string; model?: string }>;
+  const llmProviders = sortUniq(routeVals.map(r => r.provider));
+  const llmTasks = sortUniq([...getRegisteredLlmTasks().map(t => t.name), ...Object.keys(defRoutes)]);
+
+  const modelsByProvider: Record<string, string[]> = {};
+  for (const r of routeVals) if (r.provider && r.model) (modelsByProvider[r.provider] ??= []).push(r.model);
+  // claude-code: the provider's known model menu (Claude aliases) ∪ default-router usage.
+  if (llmProviders.includes('claude-code')) modelsByProvider['claude-code'] = [...(modelsByProvider['claude-code'] ?? []), 'haiku', 'sonnet'];
+  // lm-studio: query the live LM Studio model list (best-effort; falls back to default-router models if down).
+  if (llmProviders.includes('lm-studio')) {
+    try {
+      const url = (process.env.LMSTUDIO_URL ?? 'http://localhost:1234') + '/v1/models';
+      const res = await fetch(url, { signal: AbortSignal.timeout(1500) });
+      if (res.ok) {
+        const body = await res.json() as { data?: Array<{ id?: string }> };
+        for (const m of body.data ?? []) if (m.id) (modelsByProvider['lm-studio'] ??= []).push(m.id);
+      }
+    } catch { /* LM Studio down — keep default-router models */ }
+  }
+  for (const p of Object.keys(modelsByProvider)) modelsByProvider[p] = sortUniq(modelsByProvider[p]);
+
+  return { llmTasks, llmProviders, modelsByProvider, llmDefaultRouter: def };
+}
+
 // ─── API handlers ───
 
 async function handleAPI(req: Request, pathname: string): Promise<Response> {
@@ -86,18 +118,9 @@ async function handleAPI(req: Request, pathname: string): Promise<Response> {
       factions,       // B3 — open keys, union from world data
       capabilities,   // open keys, union from world data
       itemKinds,      // B2 — open keys (shop ids + inventory kinds)
-      // LLM routing: tasks from the engine registry (modules register them) ∪ the default router's routes;
-      // providers/models derived from the default router (it names them) ∪ what config.llm uses. No hardcoded
-      // lists — the editor's LLM config panel is driven entirely by registry + the real default router.
-      ...(() => {
-        const def = buildDefaultRouter();
-        const defRoutes = def.routes as Record<string, { provider?: string; model?: string }>;
-        const llmTasks = uniqSort([...getRegisteredLlmTasks().map(t => t.name), ...Object.keys(defRoutes)]);
-        const routeVals = [def.default, ...Object.values(defRoutes)] as Array<{ provider?: string; model?: string }>;
-        const llmProviders = uniqSort(routeVals.map(r => r.provider));
-        const llmModels = uniqSort(routeVals.map(r => r.model));
-        return { llmTasks, llmProviders, llmModels, llmDefaultRouter: def };
-      })(),
+      // LLM routing: tasks from the engine registry ∪ default router; providers from the default router;
+      // models PER PROVIDER (claude-code = known aliases, lm-studio = live /v1/models). See buildLlmRegistry.
+      ...(await buildLlmRegistry()),
     }, { headers: cors });
   }
 

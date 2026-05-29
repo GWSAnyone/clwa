@@ -847,16 +847,31 @@ async function renderConfig() {
     const llmCard = h('div', { class: 'card mb-lg' });
     llmCard.append(h('div', { class: 'card-title', text: 'LLM Routing' }));
     llmCard.append(h('div', { class: 'hint', text: 'Provider+model per task. Unset = engine default (llm-defaults.ts). Env CLWA_<ROUTE>_PROVIDER/_MODEL also override at launch. Tasks/providers/models come from the registry + default router.' }));
+    const provModels = (p) => reg.modelsByProvider?.[p] || [];
+    const modelsFor = (p, current) => [...new Set([...(provModels(p)), current].filter(Boolean))];
+    const localProvider = () => (reg.llmProviders || []).includes('lm-studio') ? 'lm-studio' : (reg.llmProviders || [])[0] || '';
+    // provider select that clamps its sibling model to the new provider's menu, then re-renders the row.
+    function providerSelect(route) {
+      return selectInput(route.provider || '', reg.llmProviders || [], v => {
+        route.provider = v;
+        if (!provModels(v).includes(route.model)) route.model = provModels(v)[0] || '';
+        renderLlm();
+      });
+    }
     function routeCells(route) {
       if (!route.sampling) route.sampling = {};
       return [
-        h('td', {}, [selectInput(route.provider || '', reg.llmProviders || [], v => route.provider = v)]),
-        h('td', {}, [comboInput(route.model || '', reg.llmModels || [], v => route.model = v)]),
+        h('td', {}, [providerSelect(route)]),
+        h('td', {}, [selectInput(route.model || '', modelsFor(route.provider, route.model), v => route.model = v)]),
         h('td', {}, [numInput(route.maxTokens ?? 0, v => { if (v > 0) route.maxTokens = v; else delete route.maxTokens; }, { style: { width: '64px' } })]),
         h('td', {}, [numInput(route.sampling.temperature ?? 0.7, v => route.sampling.temperature = v, { step: '0.05', style: { width: '60px' } })]),
         h('td', {}, [route.fallback
-          ? h('span', { class: 'flex-row gap-sm' }, [h('span', { text: `${route.fallback.provider}/${route.fallback.model}`, style: { fontSize: '0.7rem', color: 'var(--muted)' } }), h('button', { class: 'btn btn-danger', text: 'x', onclick: () => { delete route.fallback; renderLlm(); } })])
-          : h('button', { class: 'btn btn-ghost', text: '+ fb', title: 'add fallback route', onclick: () => { route.fallback = { provider: (reg.llmProviders || [])[0] || '', model: (reg.llmModels || [])[0] || '' }; renderLlm(); } })]),
+          ? h('span', { class: 'flex-row gap-sm' }, [
+              selectInput(route.fallback.provider || '', reg.llmProviders || [], v => { route.fallback.provider = v; if (!provModels(v).includes(route.fallback.model)) route.fallback.model = provModels(v)[0] || ''; renderLlm(); }),
+              selectInput(route.fallback.model || '', modelsFor(route.fallback.provider, route.fallback.model), v => route.fallback.model = v),
+              h('button', { class: 'btn btn-danger', text: 'x', title: 'remove fallback', onclick: () => { delete route.fallback; renderLlm(); } }),
+            ])
+          : h('button', { class: 'btn btn-ghost', text: '+ fb', title: 'add fallback (defaults to local lm-studio)', onclick: () => { const p = localProvider(); route.fallback = { provider: p, model: provModels(p)[0] || '', ...(route.maxTokens ? { maxTokens: route.maxTokens } : {}) }; renderLlm(); } })]),
       ];
     }
     function renderLlm() {
