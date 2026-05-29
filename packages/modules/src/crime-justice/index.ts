@@ -60,7 +60,7 @@ export function registerCrimeJusticeModule(): void {
   registerLlmTask('il',           { requiresStructuredOutput: true });   // engine/il.ts:extractDialogueMeaning
   registerLlmTask('verdict',      { requiresStructuredOutput: true });   // module: step-handlers.ts:sentence_npc
   registerLlmTask('dialogue',     { requiresStreaming: true });           // engine/agent.ts:chatStream
-  registerLlmTask('npc-dialogue', {});                                    // engine/agent.ts:generateResponse
+  registerLlmTask('npc-dialogue', { requiresStructuredOutput: true });    // engine/conversation.ts (speech+gesture schema)
   registerLlmTask('reflection',   {});                                    // engine/reflection.ts:generateReflection
 
   AFFORDANCE_REGISTRY.push(...CRIME_AFFORDANCES);

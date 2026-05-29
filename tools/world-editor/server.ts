@@ -51,7 +51,10 @@ async function buildLlmRegistry() {
   const defRoutes = def.routes as Record<string, { provider?: string; model?: string }>;
   const routeVals = [def.default, ...Object.values(defRoutes)] as Array<{ provider?: string; model?: string }>;
   const llmProviders = sortUniq(routeVals.map(r => r.provider));
-  const llmTasks = sortUniq([...getRegisteredLlmTasks().map(t => t.name), ...Object.keys(defRoutes)]);
+  const regTasks = getRegisteredLlmTasks();
+  const llmTasks = sortUniq([...regTasks.map(t => t.name), ...Object.keys(defRoutes)]);
+  // Which tasks are structured (need JSON) — drives the editor's Schema-toggle enable state.
+  const structuredTasks = sortUniq(regTasks.filter(t => t.requirements?.requiresStructuredOutput).map(t => t.name));
 
   const modelsByProvider: Record<string, string[]> = {};
   for (const r of routeVals) if (r.provider && r.model) (modelsByProvider[r.provider] ??= []).push(r.model);
@@ -70,7 +73,7 @@ async function buildLlmRegistry() {
   }
   for (const p of Object.keys(modelsByProvider)) modelsByProvider[p] = sortUniq(modelsByProvider[p]);
 
-  return { llmTasks, llmProviders, modelsByProvider, llmDefaultRouter: def };
+  return { llmTasks, structuredTasks, llmProviders, modelsByProvider, llmDefaultRouter: def };
 }
 
 // ─── API handlers ───

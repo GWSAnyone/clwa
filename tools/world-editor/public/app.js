@@ -167,11 +167,12 @@ function selectInput(value, options, onChange) {
   return sel;
 }
 
-function checkbox(value, labelText, onChange) {
+function checkbox(value, labelText, onChange, disabled = false) {
   const inp = h('input', { type: 'checkbox' });
   inp.checked = !!value;
-  inp.addEventListener('change', () => onChange(inp.checked));
-  return h('label', { class: 'flex-row', style: { cursor: 'pointer', fontSize: '0.82rem', fontWeight: '400', textTransform: 'none', letterSpacing: '0' } }, [inp, labelText]);
+  inp.disabled = !!disabled;
+  if (!disabled) inp.addEventListener('change', () => onChange(inp.checked));
+  return h('label', { class: 'flex-row', title: disabled ? 'not applicable for this route' : '', style: { cursor: disabled ? 'default' : 'pointer', opacity: disabled ? '0.3' : '1', fontSize: '0.82rem', fontWeight: '400', textTransform: 'none', letterSpacing: '0' } }, [inp, labelText]);
 }
 
 function divider(text) {
@@ -855,18 +856,27 @@ async function renderConfig() {
       return selectInput(route.provider || '', reg.llmProviders || [], v => {
         route.provider = v;
         if (!provModels(v).includes(route.model)) route.model = provModels(v)[0] || '';
+        // Flags are claude-code-only — drop them when leaving claude-code so no dead no-op flags linger.
+        if (v !== 'claude-code') { delete route.warm; delete route.schemaInPrompt; }
         renderLlm();
       });
     }
-    function routeCells(route) {
+    function routeCells(route, task) {
       if (!route.sampling) route.sampling = {};
+      // Warm matters only for claude-code (cold-spawn). Schema matters only for a structured claude-code call.
+      const isClaude = route.provider === 'claude-code';
+      const isStructured = task ? (reg.structuredTasks || []).includes(task) : true; // default route: allow
+      const warmOff = !isClaude;
+      const schemaOff = !(isClaude && isStructured);
+      if (warmOff && route.warm) delete route.warm;             // keep config clean if route changed shape
+      if (schemaOff && route.schemaInPrompt) delete route.schemaInPrompt;
       return [
         h('td', {}, [providerSelect(route)]),
         h('td', {}, [selectInput(route.model || '', modelsFor(route.provider, route.model), v => route.model = v)]),
         h('td', {}, [numInput(route.maxTokens ?? 0, v => { if (v > 0) route.maxTokens = v; else delete route.maxTokens; }, { style: { width: '64px' } })]),
         h('td', {}, [numInput(route.sampling.temperature ?? 0.7, v => route.sampling.temperature = v, { step: '0.05', style: { width: '60px' } })]),
-        h('td', { title: 'Reuse a warm claude session (skips ~7-19s cold-spawn). claude-code only.' }, [checkbox(!!route.warm, '', v => { if (v) route.warm = true; else delete route.warm; })]),
-        h('td', { title: 'Inject schema into prompt (fast ~3-5s) instead of native --json-schema (~11s). claude-code structured calls.' }, [checkbox(!!route.schemaInPrompt, '', v => { if (v) route.schemaInPrompt = true; else delete route.schemaInPrompt; })]),
+        h('td', { title: warmOff ? 'Warm only applies to claude-code (no cold-spawn on lm-studio)' : 'Reuse a warm claude session (skips ~7-19s cold-spawn)' }, [checkbox(!!route.warm, '', v => { if (v) route.warm = true; else delete route.warm; }, warmOff)]),
+        h('td', { title: schemaOff ? 'Schema only applies to structured claude-code calls (free-text / lm-studio routes have no JSON to speed up)' : 'Inject schema into prompt (~3-5s) instead of native --json-schema (~11s)' }, [checkbox(!!route.schemaInPrompt, '', v => { if (v) route.schemaInPrompt = true; else delete route.schemaInPrompt; }, schemaOff)]),
         h('td', {}, [route.fallback
           ? h('span', { class: 'flex-row gap-sm' }, [
               selectInput(route.fallback.provider || '', reg.llmProviders || [], v => { route.fallback.provider = v; if (!provModels(v).includes(route.fallback.model)) route.fallback.model = provModels(v)[0] || ''; renderLlm(); }),
@@ -892,11 +902,11 @@ async function renderConfig() {
       const tbl = h('table');
       tbl.append(h('thead', {}, [h('tr', {}, ['Task', 'Provider', 'Model', 'MaxTok', 'Temp', 'Warm', 'Schema', 'Fallback', ''].map(t => h('th', { text: t })))]));
       const tb = h('tbody');
-      tb.append(h('tr', {}, [h('td', { html: '<b>default</b>' }), ...routeCells(llm.default)]));
+      tb.append(h('tr', {}, [h('td', { html: '<b>default</b>' }), ...routeCells(llm.default, null)]));
       (reg.llmTasks || []).forEach(task => {
         const r = llm.routes[task];
         if (r) {
-          tb.append(h('tr', {}, [h('td', { text: task }), ...routeCells(r), ]));
+          tb.append(h('tr', {}, [h('td', { text: task }), ...routeCells(r, task), ]));
           tb.lastChild.append(h('td', {}, [h('button', { class: 'btn btn-danger', text: 'reset', title: 'use default for this task', onclick: () => { delete llm.routes[task]; renderLlm(); } })]));
         } else {
           tb.append(h('tr', { style: { opacity: '0.55' } }, [
