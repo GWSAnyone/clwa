@@ -1,12 +1,12 @@
 # SPEC: Position-Authoritative Movement System
 
 > **Milestone**: M4 (Complete Session)
-> **Status**: **🔨 Implemented — живой прогон не завершён** (v0.15.0). Таймерный transit заменён на position-authoritative: сервер ведёт NPC по серверным A*-waypoints с фиксированной скоростью (80 px/игр-мин), прибытие = физический вход в зону (pointInPolygon). Код покрыт автотестами (tsc 0, 210/210, `clwa-auditor` — 0 нарушений), НО 8 сценариев раздела «Тест» вживую ещё не прогнаны (ждут LM Studio). До COMPLETE остаётся живая верификация. Реализовано с отклонениями — см. «Реализация (as-built)» ниже.
+> **Status**: **✅ COMPLETE** (v0.15.0). Таймерный transit заменён на position-authoritative: сервер ведёт NPC по серверным A*-waypoints (80 px/игр-мин), прибытие = физический вход в зону (pointInPolygon). tsc 0, 210/210, `clwa-auditor` — 0 нарушений. Живой прогон (LM Studio + Qdrant, реальные LLM-NPC) подтвердил сценарии **#1–#4, #6**: постоянная скорость, прибытие по границе зоны, несколько NPC параллельно, multi-hop с обновлением location в промежуточной зоне (без остановки), save/load посреди transit с resume до прибытия (без freeze). **#5/#8** неактуальны (gameSpeed/estimator удалены). **#7** — серверный snapshot (`/api/agents.transit`) подтверждён; браузерный reconnect не прогонялся (признано достаточным). Реализовано с отклонениями — см. «Реализация (as-built)» ниже.
 > **Depends on**: None
 > **Engine changes**: Movement rewrite. Удалены `_advanceTransits` + timer-поля (`transitProgress`/`transitStartMinute`/`transitDuration`). Добавлены `World.handleArrivals`/`handleIntermediateLocationUpdate` + `ArrivalEvent`.
 > **Created**: 2026-04-03
 > **Implemented**: 2026-05-29 (commit v0.15.0; сопутствующая зачистка gameSpeed — v0.15.1)
-> **Completed**: — (после живого прогона 8 сценариев из раздела «Тест» при включённом LM Studio)
+> **Completed**: 2026-05-29 (живой прогон сценариев #1–#4/#6 пройден на реальных LLM-NPC; визуальная плавность/reconnect — на API/snapshot-уровне, признано достаточным)
 > Движение NPC: от таймера к физике. NPC идёт с фиксированной скоростью, прибывает когда дошёл.
 
 ---

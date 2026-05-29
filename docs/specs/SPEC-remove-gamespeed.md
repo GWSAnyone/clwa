@@ -1,12 +1,12 @@
 # SPEC: Remove gameSpeed Mechanic — Fixed Clock + autoTick Run/Stop
 
 > **Milestone**: M4 (Complete Session) — follow-up к position-movement
-> **Status**: **🔨 Implemented — живой прогон не завершён** (v0.15.1). Механика `gameSpeed` удалена целиком; Master Clock тикает с фиксированным интервалом (1 игровая минута / реальная секунда), старт/стоп — только через autoTick (`start/stopMasterClock`). tsc 0, 210/210 тестов, 0 ссылок `gameSpeed` в коде. Поведение часов/autoTick/HUD вживую (раздел «Тест») ещё не подтверждено — ждёт LM Studio.
+> **Status**: **✅ COMPLETE** (v0.15.1). Механика `gameSpeed` удалена целиком; Master Clock — фиксированный интервал (1 игровая минута / реальная секунда), старт/стоп только через autoTick (`start/stopMasterClock`). tsc 0, 210/210 тестов, 0 ссылок `gameSpeed` в коде. Живой прогон подтвердил: лог `[MasterClock] Started (1 game-min/sec)`, autoTick стоп→старт (paused→running), `/api/auto-state` и `/api/time` без поля `gameSpeed`.
 > **Depends on**: SPEC-position-movement (v0.15.0)
 > **Engine changes**: удалены `WorldConfig.gameSpeed`, `World._gameSpeed`/getter/save-load; интервал часов фиксирован.
 > **Created**: 2026-05-29
 > **Implemented**: 2026-05-29 (commit v0.15.1)
-> **Completed**: — (после живого прогона раздела «Тест» при включённом LM Studio)
+> **Completed**: 2026-05-29 (живой прогон: фикс-cadence часов + autoTick run/stop подтверждены, gameSpeed отсутствует в API)
 
 ---
 
