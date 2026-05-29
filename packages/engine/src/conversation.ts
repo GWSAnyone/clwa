@@ -59,12 +59,9 @@ function parseDialogue(raw: string): string {
         speech = speech.slice(0, dashIdx).trim();
       }
     }
-    // If speech is empty or purely punctuation, use gesture as fallback
-    if (!speech || /^[\s.,!?…\-—–]+$/.test(speech)) {
-      const gesture = (d.gesture ?? '').trim().toLowerCase();
-      if (gesture && gesture !== 'none') return `*${gesture}*`;
-      return '*nods silently*';
-    }
+    // Speech empty / punctuation-only: a wordless turn. Display silence — never narrate the gesture as
+    // text (no asterisks). The `gesture` field stays in the JSON as metadata for the future visual layer.
+    if (!speech || /^[\s.,!?…\-—–]+$/.test(speech)) return '...';
     return speech;
   } catch {
     // Fallback: extract speech from malformed JSON via regex
@@ -75,7 +72,7 @@ function parseDialogue(raw: string): string {
     }
     // Last resort: strip JSON artifacts and return cleaned text
     const last = cleaned.replace(/[{}"]/g, '').replace(/speech\s*:|gesture\s*:/gi, '').replace(/<[^>]+>/g, '').trim();
-    return last || '*nods silently*';
+    return last || '...';
   }
 }
 

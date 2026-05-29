@@ -102,7 +102,9 @@ export function _setActiveCtxForLlmProvider(agents: Map<string, Agent>, world: W
 
 registerLlmProvider(new ClaudeCodeProvider({
   npcsRoot: NPCS_ROOT,
-  maxConcurrency: Number(process.env.CLAUDE_CODE_MAX_CONCURRENCY ?? '4'),
+  // External API (subscription) — NOT a single local model, so it parallelizes. The cap is just a
+  // subprocess/rate-limit safety; default to the NPC count. Raise via CLAUDE_CODE_MAX_CONCURRENCY.
+  maxConcurrency: Number(process.env.CLAUDE_CODE_MAX_CONCURRENCY ?? '8'),
   // Persistent session idle TTL for streaming player↔NPC dialogue (default 10 min; 0 = ephemeral).
   // Streaming on/off is the `dialogue` route in buildDefaultRouter / world.json config.llm.
   sessionIdleMs: Number(process.env.CLWA_CLAUDE_SESSION_IDLE_MS ?? '600000'),
