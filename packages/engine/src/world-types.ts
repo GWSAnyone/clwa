@@ -173,6 +173,14 @@ export interface NpcHome {
 }
 
 /** World configuration */
+/** Server → engine arrival notification. Emitted by PositionManager.advancePositions when an entity's
+ *  pixel position enters its destination zone; consumed by World.handleArrivals (position-authoritative). */
+export interface ArrivalEvent {
+  entityId: string;
+  /** Location slug ID (e.g. market-square), NOT display name. INV-11. */
+  location: string;
+}
+
 export interface WorldConfig {
   /** Minimum score for a pair to have a conversation (default: 2) */
   minConversationScore: number;
@@ -195,8 +203,6 @@ export interface WorldConfig {
   startMinute?: number;
   /** Game speed multiplier: 1 = 1 game min per real sec, 2 = 2/sec, 3 = 3/sec, 0 = paused */
   gameSpeed?: number;
-  /** Game minutes per pathfinding hop for NPC transit (default: 30 = 30 min per hop) */
-  minutesPerHop?: number;
   /** Goal watchdog: abort an active goal that makes NO step progress for this many game minutes
    *  (default 45; 0 = disabled). Frees an NPC stuck on an unreachable target / dead-end goal so it
    *  returns to volition. No-progress based (not total age), so legitimately long goals are unaffected;

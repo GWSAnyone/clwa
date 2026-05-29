@@ -1,5 +1,5 @@
 import type { EventType, ConsequenceResult, WorldEvent } from '@clwa/engine';
-import { isEventCategory } from '@clwa/engine';
+import { isEventCategory, findPath } from '@clwa/engine';
 import { broadcast } from './ws';
 import type { GameContext } from './game-context';
 
@@ -83,6 +83,7 @@ export async function handleRequest(
           x: pos?.x ?? 0,
           y: pos?.y ?? 0,
           inTransit: pos?.inTransit ?? false,
+          transit: pm?.getActiveTransit(id) ?? null, // reconnect-resume: remaining waypoints + speed (Item 2)
           reflection: agent.getReflectionStatus(),
           background: agent.profile.background,
           speechStyle: agent.profile.speechStyle,
@@ -627,11 +628,20 @@ export async function handleRequest(
   // ─── GET /api/debug/move/:id/:location ───
   const moveMatch = path.match(/^\/api\/debug\/move\/([^/]+)\/(.+)$/);
   if (method === 'GET' && moveMatch) {
-    const agent = agents.get(moveMatch[1]);
+    const id = moveMatch[1];
+    const agent = agents.get(id);
     if (!agent) return Response.json({ error: 'Agent not found' }, { status: 404, headers: cors });
+    const slug = decodeURIComponent(moveMatch[2]);
     const oldLocation = agent.state.location;
-    agent.state.location = decodeURIComponent(moveMatch[2]);
-    return Response.json({ id: moveMatch[1], name: agent.profile.name, oldLocation, newLocation: agent.state.location }, { headers: cors });
+    // Route through the engine API (INV-14: engine owns agent.state). The NPC walks the real transit
+    // pipeline (server A* path → advancePositions → handleArrivals), not an instant teleport.
+    const started = world.startTransit(agent, slug);
+    if (started && positionManager) {
+      const logicalPath = findPath(world.locations, oldLocation, slug);
+      const target = positionManager.startMovement(id, logicalPath.length ? logicalPath : [oldLocation, slug]);
+      broadcast({ type: 'movement', data: [{ agentId: id, agentName: agent.profile.name, from: oldLocation, to: slug, arrived: false, x: target.targetX, y: target.targetY, waypoints: target.path, speed: positionManager.transitSpeed }] });
+    }
+    return Response.json({ id, name: agent.profile.name, oldLocation, newLocation: slug, transitStarted: started }, { headers: cors });
   }
 
   // ─── GET /api/debug/sentiment/:id/:targetId/:value ───

@@ -360,7 +360,9 @@ async function init() {
         investigator: a.investigator || false,
         chatHistory: loadChatHistory(a.id),
         x: a.x ?? 0, y: a.y ?? 0, targetX: a.x ?? 0, targetY: a.y ?? 0,
-        moving: false, waypoints: [], wpIdx: 0,
+        // Reconnect-resume (Item 2): an in-transit NPC rebuilds its remaining server waypoints + speed
+        // so it keeps walking after a page reload instead of standing still until the next broadcast.
+        moving: !!a.transit, waypoints: a.transit?.path ?? [], wpIdx: 0, walkSpeed: a.transit?.speed ?? NPC_SPEED,
         sprites, frameIdx: 0, animTimer: 0, flipH: false,
       };
       state.agentNameMap[a.name] = a.id;
@@ -529,20 +531,13 @@ function handleWSMovement(data) {
         npc.moving = false;
         npc.waypoints = [];
       }
-      npc.transitDist = 0;
-      npc.transitDuration = 0;
     } else {
-      const tx = m.targetX ?? 0, ty = m.targetY ?? 0;
-      npc.waypoints = astarPath(npc.x, npc.y, tx, ty);
+      // Server-authoritative routing (Item 2): animate the server's A* waypoints at the server speed.
+      // NPC client-side A* is retired — astarPath stays for the player only (instant click response).
+      npc.waypoints = (m.waypoints && m.waypoints.length) ? m.waypoints : astarPath(npc.x, npc.y, m.targetX ?? 0, m.targetY ?? 0);
       npc.wpIdx = 0;
       npc.moving = true;
-      if (m.transitDuration > 0) {
-        npc.transitDist = pathLength(npc.waypoints, npc.x, npc.y);
-        npc.transitDuration = m.transitDuration;
-      } else {
-        npc.transitDist = 0;
-        npc.transitDuration = 0;
-      }
+      npc.walkSpeed = m.speed || NPC_SPEED; // px per GAME-minute (scaled by gameSpeed in the anim loop)
       addEvent('movement', `${m.agentName} → ${LOCATIONS[m.to]?.label || m.to}`);
     }
   }
@@ -649,8 +644,9 @@ function handleWS(type, data) {
       if (ap) {
         const initNpc = agentByName(data.initiator);
         const respNpc = agentByName(data.responder);
-        if (initNpc) { initNpc.waypoints = astarPath(initNpc.x, initNpc.y, ap.ax, ap.ay); initNpc.wpIdx = 0; initNpc.moving = true; initNpc.transitDist = 0; initNpc.transitDuration = 0; }
-        if (respNpc) { respNpc.waypoints = astarPath(respNpc.x, respNpc.y, ap.bx, ap.by); respNpc.wpIdx = 0; respNpc.moving = true; respNpc.transitDist = 0; respNpc.transitDuration = 0; }
+        // Server-computed approach waypoints (Item 2); astarPath remains only as a defensive fallback.
+        if (initNpc) { initNpc.waypoints = ap.aWaypoints || astarPath(initNpc.x, initNpc.y, ap.ax, ap.ay); initNpc.wpIdx = 0; initNpc.moving = true; initNpc.walkSpeed = NPC_SPEED; }
+        if (respNpc) { respNpc.waypoints = ap.bWaypoints || astarPath(respNpc.x, respNpc.y, ap.bx, ap.by); respNpc.wpIdx = 0; respNpc.moving = true; respNpc.walkSpeed = NPC_SPEED; }
       }
       break;
     }
@@ -2367,13 +2363,8 @@ function update(dt) {
           a.moving = false;
         }
       } else {
-        let spd;
-        if (a.transitDist > 0 && a.transitDuration > 0) {
-          const realSeconds = a.transitDuration / Math.max(0.1, state.gameSpeed || 1);
-          spd = a.transitDist / Math.max(1, realSeconds);
-        } else {
-          spd = NPC_SPEED;
-        }
+        // Server speed is px per GAME-minute; client px/real-sec = walkSpeed × gameSpeed (Item 2).
+        const spd = (a.walkSpeed ?? NPC_SPEED) * Math.max(0.1, state.gameSpeed || 1);
         a.x += (dx/dist) * spd * dt;
         a.y += (dy/dist) * spd * dt;
         if (Math.abs(dx) > 2) a.flipH = dx < 0;

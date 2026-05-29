@@ -25,7 +25,6 @@ export function processMovement(
   config: NpcMovementConfig,
   excludeIds: Set<string> | undefined,
   gameMinute: number,
-  minutesPerHop: number,
 ): MovementResult[] {
   const results: MovementResult[] = [];
 
@@ -48,15 +47,12 @@ export function processMovement(
     if (!targetLoc) continue;
 
     const from = agent.state.location;
-    const hopMin = minutesPerHop;
 
-    // Start transit (1 hop to adjacent location)
+    // Start transit (1 hop to adjacent location) — position-authoritative: intent only, no timer.
     agent.state.inTransit = true;
     agent.state.transitTo = targetId;
     agent.state.transitPath = [targetId];
-    agent.state.transitProgress = 0;
-    agent.state.transitStartMinute = gameMinute;
-    agent.state.transitDuration = hopMin;
+    agent.state.lastTransitProgressMinute = gameMinute; // watchdog baseline (no engine timer self-clear)
 
     results.push({
       agentId: id,

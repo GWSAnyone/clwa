@@ -2,6 +2,17 @@ import type { ServerWebSocket } from 'bun';
 import type { ConversationLine, ConversationResult, TickResult, MovementResult, GoalActionResult, CrimeScene, JournalEntry } from '@clwa/engine';
 import type { WorldEvent } from '@clwa/engine';
 
+/** Server-enriched movement broadcast: engine MovementResult + pixel data for the client renderer
+ *  (position-authoritative waypoints + speed). Pixel fields live here (server), NOT on engine MovementResult. */
+export type EnrichedMovement = MovementResult & {
+  x?: number;
+  y?: number;
+  targetX?: number;
+  targetY?: number;
+  waypoints?: { x: number; y: number }[];
+  speed?: number;
+};
+
 /** All WebSocket message types server can send */
 export type WSMessage =
   | { type: 'conversation:line'; data: ConversationLine }
@@ -12,7 +23,7 @@ export type WSMessage =
   | { type: 'chat:token'; data: { agentId: string; token: string } }
   | { type: 'chat:done'; data: { agentId: string; fullReply: string } }
   | { type: 'state:update'; data: { agentId: string; mood: number; alive: boolean; location: string } }
-  | { type: 'movement'; data: MovementResult[] }
+  | { type: 'movement'; data: EnrichedMovement[] }
   | { type: 'goal:action'; data: GoalActionResult }
   | { type: 'murder'; data: { killerId: string; victimId: string; killerName: string; affectedName: string } }
   | { type: 'intent'; data: { agentId: string; intent: string; targetNpc?: string; detail?: string } }

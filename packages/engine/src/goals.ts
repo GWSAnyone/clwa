@@ -457,9 +457,7 @@ export class GoalManager {
         owner.state.inTransit = true;
         owner.state.transitTo = s.location;
         owner.state.transitPath = path;
-        owner.state.transitProgress = 0;
-        // transitStartMinute and transitDuration set by World (it owns gameMinute)
-        // For now mark as pending — World._advanceTransits() will handle progress
+        // Position-authoritative (Item 2): intent only; arrival is physical, World sets the watchdog baseline.
 
         return {
           ...baseResult,
@@ -500,7 +498,6 @@ export class GoalManager {
           owner.state.inTransit = true;
           owner.state.transitTo = target.state.location;
           owner.state.transitPath = path;
-          owner.state.transitProgress = 0;
           console.log(`  [Goal] ${owner.profile.name} pursuing ${target.profile.name} to ${target.state.location}`);
           return {
             ...baseResult,

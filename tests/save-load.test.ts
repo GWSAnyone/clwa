@@ -127,7 +127,6 @@ function createTestWorld(): World {
 
 const TRANSIENT_FIELDS = [
   'processingState', 'inTransit', 'transitTo', 'transitPath',
-  'transitProgress', 'transitStartMinute', 'transitDuration',
   'lastInteractionMinute', 'inPlayerChat', 'lastInteractionOutcome',
 ];
 

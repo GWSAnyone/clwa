@@ -440,6 +440,18 @@ async function createGameContext(
   // ─── Position Manager ───
   const positionManager = new PositionManager();
   positionManager.loadZones(worldData.zones);
+  // Server-side A* walkable grid. map-data.json is a global public asset (the Millhaven tilemap),
+  // so it loads here (server bootstrap), NOT in world-loader which is per-world (worldDir-scoped).
+  const mapDataPath = join(import.meta.dir, '../public/map-data.json');
+  if (existsSync(mapDataPath)) {
+    const mapData = JSON.parse(readFileSync(mapDataPath, 'utf-8')) as { tiles: [number, number, number, number][]; tileSize: number };
+    positionManager.loadWalkableGrid(mapData);
+    const drift = positionManager.checkZoneCentersWalkable();
+    if (drift.length > 0) console.warn(`  [⚠ map] ${drift.length} zone center(s) on non-walkable tiles (tilemap/zone drift): ${drift.join(', ')}`);
+    else console.log(`  [+] Walkable grid loaded (${mapData.tiles.length} tiles)`);
+  } else {
+    console.warn(`  [⚠ map] map-data.json not found at ${mapDataPath} — NPC pathfinding falls back to direct segments`);
+  }
   for (const [id, agent] of agents) {
     if (!positionManager.getPosition(id)) {
       positionManager.initPosition(id, agent.state.location);
@@ -523,6 +535,7 @@ async function createGameContext(
   });
   agents.set('player', playerAgent);
   positionManager.initPosition('player', playerAgent.state.location);
+  positionManager.setPlayerId('player'); // INV-16: excluded from advancePositions (player walks client-side)
   console.log('  [+] Player Agent (Traveler) @ Town Square');
 
   // ─── Public places ───
@@ -589,27 +602,21 @@ async function createGameContext(
       },
       onMovement: (movements) => {
         const enriched = movements.map(m => {
-          const agent = agents.get(m.agentId);
           if (m.arrived) {
-            // NPC arrived — snap to target position, no new movement
+            // Arrival is position-authoritative (advancePositions already moved the NPC into the zone and
+            // cleared transit); completeMovement is now an idempotent no-op (no stale-target teleport).
             positionManager.completeMovement(m.agentId);
             const pos = positionManager.getPosition(m.agentId);
             console.log(`  [Arrived] ${m.agentName} at ${m.to}`);
-            return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: pos?.x ?? 0, targetY: pos?.y ?? 0, transitDuration: 0 };
+            return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: pos?.x ?? 0, targetY: pos?.y ?? 0, arrived: true };
           }
-          // Compute path BEFORE startMovement (which updates position)
+          // Movement start: server computes the logical hop path + A* pixel waypoints, then broadcasts
+          // waypoints + speed (px per game-minute). NO timer write — INV-14: engine owns agent.state transit.
           const path = findPath(locationGraph, m.from, m.to) ?? [m.to];
-          const pathDistance = positionManager.estimatePathDistance(m.agentId, path);
-          const target = positionManager.startMovement(m.agentId, m.to);
+          const target = positionManager.startMovement(m.agentId, path);
           const pos = positionManager.getPosition(m.agentId);
-          // Distance-based transit: use path distance through zone centers (not straight line)
-          const TRANSIT_PX_PER_MIN = 80;
-          const MIN_TRANSIT_MIN = 3;
-          const distanceDuration = Math.max(MIN_TRANSIT_MIN, Math.ceil(pathDistance / TRANSIT_PX_PER_MIN));
-          // Override engine's flat hops*minutesPerHop with distance-proportional value
-          if (agent) agent.state.transitDuration = distanceDuration;
-          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to} (${Math.round(pathDistance)}px via ${path.length} hops, ${distanceDuration}min)`);
-          return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: target.targetX, targetY: target.targetY, transitDuration: distanceDuration };
+          console.log(`  [Move] ${m.agentName}: ${m.from} -> ${m.to} (${path.length} hops, ${target.path.length} waypoints, ${Math.round(target.distance)}px)`);
+          return { ...m, x: pos?.x ?? 0, y: pos?.y ?? 0, targetX: target.targetX, targetY: target.targetY, waypoints: target.path, speed: positionManager.transitSpeed };
         });
         broadcast({ type: 'movement', data: enriched });
       },
@@ -655,6 +662,11 @@ async function createGameContext(
         }});
       },
       onTimeUpdate: (minuteOfDay, hour, period, gameDay) => {
+        // Position-authoritative transit (Item 2): advance pixel positions by 1 game-minute, then route
+        // arrivals + intermediate-zone crossings into the engine (INV-14: only engine mutates agent.state).
+        const { arrivals, intermediates } = positionManager.advancePositions(1);
+        if (arrivals.length > 0) world.handleArrivals(arrivals);
+        for (const it of intermediates) world.handleIntermediateLocationUpdate(it.entityId, it.location);
         broadcast({ type: 'time_update', data: { minuteOfDay, hour, period, gameDay, gameSpeed: world.gameSpeed } });
         // Record NPC locations for alibi checking (every game minute via time update)
         const gameMinute = (gameDay - 1) * 1440 + minuteOfDay;
@@ -729,8 +741,21 @@ async function main() {
     ctx.world.loadState(savedData.world);
     console.log(`  [Save] World state restored (gameMinute ${savedData.world.gameMinute ?? 'N/A'}, ${Object.keys(savedData.world.agents).length} agents)`);
     if (savedData.positions) {
-      ctx.positionManager.loadFromJSON(savedData.positions);
+      const pending = ctx.positionManager.loadFromJSON(savedData.positions);
       console.log(`  [+] Positions restored from save`);
+      // Mid-transit resume (Item 2 / INV-21 / D5): recompute the A* path from the saved LIVE pixel and
+      // re-establish engine transit intent — else engine inTransit (transient) stays false on load, so
+      // handleArrivals early-returns and the NPC freezes forever while goals keep re-issuing transit.
+      for (const { id, transitTo, transitPath } of pending) {
+        const agent = ctx.agents.get(id);
+        if (!agent) continue;
+        if (ctx.positionManager.restoreTransit(id, transitTo, transitPath)) {
+          ctx.world.startTransit(agent, transitTo); // engine intent (inTransit/transitPath); server drives arrival
+        } else {
+          ctx.world.handleArrivals([{ entityId: id, location: transitTo }]); // unreachable → snap to destination
+        }
+      }
+      if (pending.length > 0) console.log(`  [+] Resumed ${pending.length} in-transit NPC(s) from save`);
     }
 
     // Async memory restore: init Qdrant without reset, then load memories from save

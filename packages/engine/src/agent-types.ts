@@ -161,12 +161,10 @@ export interface AgentState {
   transitTo?: string;
   /** Full path of location slugs from current to destination (for multi-hop) */
   transitPath?: string[];
-  /** Transit progress 0-1 (0 = just started, 1 = arrived). Advanced by Master Clock. */
-  transitProgress?: number;
-  /** Game minute when transit started */
-  transitStartMinute?: number;
-  /** Total game minutes for this transit */
-  transitDuration?: number;
+  /** Game minute of the last transit progress (start / intermediate-zone crossing / arrival). Transient.
+   *  Position-authoritative watchdog baseline: a transit that stalls past goalStuckMinutes is aborted
+   *  rather than frozen forever (there is no engine-side timer self-clear anymore). */
+  lastTransitProgressMinute?: number;
   /** Game minute of last social interaction — for loneliness decay. Transient, not persisted. */
   lastInteractionMinute?: number;
 }

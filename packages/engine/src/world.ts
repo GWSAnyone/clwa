@@ -19,7 +19,7 @@ import {
 import type {
   WorldConfig, TickResult, ConversationLine, ConversationResult,
   LocationGraph, NpcMovementConfig, MovementResult, NpcHome,
-  CrimeScene, CrimeSceneJSON, MoodModifier,
+  CrimeScene, CrimeSceneJSON, MoodModifier, ArrivalEvent,
 } from './world-types';
 import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
 import type { ILConfig, ConversationConfig } from './world-types';
@@ -378,11 +378,9 @@ export class World {
   private _onClockTick(): void {
     this._gameMinute++;
 
-    try {
-      this._advanceTransits();
-    } catch (err) {
-      console.error('  [MasterClock] _advanceTransits error:', err);
-    }
+    // Transit arrival is position-authoritative (Item 2): the server's onTimeUpdate callback runs
+    // PositionManager.advancePositions → world.handleArrivals/handleIntermediateLocationUpdate every
+    // game-minute. There is no engine-side transit timer anymore.
 
     try {
       this.callbacks.onTimeUpdate?.(this.minuteOfDay, this.currentHour, this.currentPeriod, this.getCurrentDay());
@@ -405,12 +403,18 @@ export class World {
             this._gameMinute,
             stuckMin,
             // Freeze the stuck-clock while the NPC legitimately can't advance steps:
-            //  - inTransit: walking a multi-hop path (move_to advances the step only on arrival)
+            //  - inTransit (PROGRESSING ONLY): walking a path — frozen only while transit progressed within
+            //    stuckMin. Position-authoritative transit has no engine timer self-clear, so a stalled/
+            //    unreachable transit (no arrival/intermediate past stuckMin) is NOT frozen → the goal aborts
+            //    instead of freezing forever (Item 2 safety-net).
             //  - inPlayerChat: goal paused during player conversation
             //  - isPlayer: player has no engine goals
             (id) => {
               const a = this.agents.get(id);
-              return !!a && (a.state.inPlayerChat === true || a.profile.isPlayer === true || a.state.inTransit === true);
+              if (!a) return false;
+              const transitProgressing = a.state.inTransit === true &&
+                (this._gameMinute - (a.state.lastTransitProgressMinute ?? this._gameMinute)) < stuckMin;
+              return a.state.inPlayerChat === true || a.profile.isPlayer === true || transitProgressing;
             },
           );
           for (const ab of aborted) {
@@ -438,47 +442,13 @@ export class World {
    * Advance transit progress for all moving NPCs. Called every game minute by Master Clock.
    * On arrival: update location, clear transit, broadcast movement.
    */
-  private _advanceTransits(): void {
-    for (const [id, agent] of this.agents) {
-      if (!agent.state.inTransit || !agent.state.transitDuration) continue;
-
-      if (agent.state.transitStartMinute === undefined) {
-        console.error(`  [Transit] ${agent.profile.name} inTransit=true but transitStartMinute undefined — skipping`);
-        continue;
-      }
-      const elapsed = this._gameMinute - agent.state.transitStartMinute;
-      agent.state.transitProgress = Math.min(1, elapsed / agent.state.transitDuration);
-
-      // Arrival
-      if (agent.state.transitProgress >= 1) {
-        const from = agent.state.location;
-        const to = agent.state.transitTo ?? agent.state.location;
-        agent.state.location = to;
-        this._clearTransit(agent);
-        // Reset processing state on arrival — unblock _enqueueWork checks
-        agent.state.processingState = this.goalManager.hasActiveGoal(id) ? 'executing_goal' : 'idle';
-        console.log(`  [Transit] ${agent.profile.name} arrived at ${to}`);
-
-        // Broadcast arrival
-        this.callbacks.onMovement?.([{
-          agentId: id,
-          agentName: agent.profile.name,
-          from,
-          to,
-          arrived: true,
-        }]);
-      }
-    }
-  }
+  
 
   /** Clear all transit state on an agent */
   private _clearTransit(agent: Agent): void {
     agent.state.inTransit = false;
     agent.state.transitTo = undefined;
     agent.state.transitPath = undefined;
-    agent.state.transitProgress = undefined;
-    agent.state.transitStartMinute = undefined;
-    agent.state.transitDuration = undefined;
   }
 
   /** Start transit for an NPC: compute path, set duration, mark inTransit */
@@ -487,14 +457,48 @@ export class World {
     const path = findPath(this.locations, agent.state.location, targetLocation);
     if (!path || path.length === 0) return false;
 
-    const minutesPerHop = this.config.minutesPerHop ?? 30;
+    // Position-authoritative (Item 2): intent only — inTransit/transitTo/transitPath. Arrival is physical
+    // (PositionManager.advancePositions → handleArrivals); no timer fields.
     agent.state.inTransit = true;
     agent.state.transitTo = targetLocation;
     agent.state.transitPath = path;
-    agent.state.transitProgress = 0;
-    agent.state.transitStartMinute = this._gameMinute;
-    agent.state.transitDuration = path.length * minutesPerHop;
+    agent.state.lastTransitProgressMinute = this._gameMinute; // watchdog baseline
     return true;
+  }
+
+  /**
+   * Position-authoritative arrival handler (Item 2). Server's PositionManager detects an entity's
+   * pixel position entering its destination zone and calls this. Engine mutates ITS OWN state only —
+   * server NEVER writes agent.state directly (INV-14). Mirrors the legacy _advanceTransits arrival block.
+   */
+  handleArrivals(arrivals: ArrivalEvent[]): void {
+    for (const { entityId, location } of arrivals) {
+      const agent = this.agents.get(entityId);
+      if (!agent || !agent.state.inTransit) continue; // already arrived / not in transit → idempotent
+      const from = agent.state.location;
+      agent.state.location = location;
+      this._clearTransit(agent);
+      // Reset processing state ONLY if still mid-transit — do not clobber an NPC that was pulled into a
+      // conversation / player chat on the same minute (would un-pause it out of 'in_conversation').
+      if (agent.state.processingState === 'in_transit' && agent.state.inPlayerChat !== true) {
+        agent.state.processingState = this.goalManager.hasActiveGoal(entityId) ? 'executing_goal' : 'idle';
+      }
+      console.log(`  [Transit] ${agent.profile.name} arrived at ${location}`);
+      this.callbacks.onMovement?.([{ agentId: entityId, agentName: agent.profile.name, from, to: location, arrived: true }]);
+    }
+  }
+
+  /**
+   * Multi-hop intermediate-zone crossing (Item 2). NPC entered an intermediate zone on the way to its
+   * final destination — update logical location for perception/gameplay, but DO NOT stop the NPC:
+   * no transit clear, no processingState reset, no movement broadcast (it keeps walking).
+   */
+  handleIntermediateLocationUpdate(entityId: string, location: string): void {
+    const agent = this.agents.get(entityId);
+    if (agent) {
+      agent.state.location = location;
+      agent.state.lastTransitProgressMinute = this._gameMinute; // transit progressed — keep watchdog clock fresh
+    }
   }
 
   /**
@@ -837,7 +841,7 @@ export class World {
       }
       const randomMovements = processMovement(
         this.agents, this.locations, this.movementConfig, excludeFromMovement,
-        this._gameMinute, this.config.minutesPerHop ?? 30,
+        this._gameMinute,
       );
       for (const m of randomMovements) {
         this.callbacks.onMovement?.([m]);
@@ -1112,10 +1116,10 @@ export class World {
       }
       if (action.movement) {
         const movingAgent = this.agents.get(action.ownerId);
-        if (movingAgent?.state.inTransit && !movingAgent.state.transitStartMinute) {
-          const hops = movingAgent.state.transitPath?.length ?? 1;
-          movingAgent.state.transitStartMinute = this._gameMinute;
-          movingAgent.state.transitDuration = hops * (this.config.minutesPerHop ?? 30);
+        // Position-authoritative (Item 2): a goal-initiated transit gets its watchdog progress baseline
+        // here (goals.ts has no gameMinute). No timer — arrival is physical (advancePositions → handleArrivals).
+        if (movingAgent?.state.inTransit) {
+          movingAgent.state.lastTransitProgressMinute = this._gameMinute;
         }
         this.callbacks.onMovement?.([action.movement]);
       }
