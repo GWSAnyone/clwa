@@ -7,7 +7,7 @@ export function buildWorldState(events: WorldEvent[]): WorldState {
   const state: WorldState = {
     currentDay: 0,
     deadNpcs: new Set(),
-    wantedSubjects: new Set(),
+    pursuedSubjects: new Set(),
     locationFacts: new Map(),
     npcMoodShifts: new Map(),
   };
@@ -22,10 +22,10 @@ export function buildWorldState(events: WorldEvent[]): WorldState {
       state.deadNpcs.add(event.object);
     }
 
-    // Track wanted/pursued subjects (pursuit events registered by modules)
+    // Track pursued subjects (pursuit events registered by modules)
     if (isPursuitEvent(event.type)) {
-      const wanted = event.subject ?? (event.payload?.perpetratorName as string);
-      state.wantedSubjects.add(wanted);
+      const pursued = event.subject ?? (event.payload?.perpetratorName as string);
+      state.pursuedSubjects.add(pursued);
     }
 
     // Accumulate mood shifts per affected target

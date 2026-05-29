@@ -200,7 +200,7 @@ export async function handleRequest(
         id,
         name: agents.get(id)?.profile.name ?? id,
       })),
-      wantedSubjects: Array.from(state.wantedSubjects),
+      wantedSubjects: Array.from(state.pursuedSubjects),
       npcMoodShifts: Object.fromEntries(state.npcMoodShifts),
       locationFacts: Object.fromEntries(state.locationFacts),
       eventCount: eventStore.count,

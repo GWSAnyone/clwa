@@ -1,5 +1,4 @@
 import type { Agent } from './agent';
-import { hasCapability } from './agent-types';
 import type { WorldEvent } from './cg-types';
 import type { NpcGoal, GoalStep } from './goals';
 import { classify } from './llm-client';
@@ -167,7 +166,8 @@ export async function evaluateAllVolition(
 
     // No affordances available → skip LLM call (NPC follows schedule)
     if (scored.length === 0) {
-      if (hasCapability(agent.profile, 'investigator')) {
+      // Debug: an agent that holds beliefs yet found no actionable affordance (genre-neutral gate).
+      if ((agent.state.beliefs?.getAllBeliefs().length ?? 0) > 0) {
         console.log(`  [AL:debug] ${agent.profile.name}: no affordances passed (beliefs: ${agent.state.beliefs?.getAllBeliefs().length ?? 0})`);
       }
       continue;

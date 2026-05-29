@@ -15,7 +15,7 @@ export interface EventQuery {
 export interface WorldState {
   currentDay: number;
   deadNpcs: Set<string>;
-  wantedSubjects: Set<string>;
+  pursuedSubjects: Set<string>;
   locationFacts: Map<string, string[]>;
   npcMoodShifts: Map<string, number>;
 }

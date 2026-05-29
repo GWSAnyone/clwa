@@ -1,7 +1,9 @@
 # SPEC: Engine Genre-Neutralization (drain all crime-justice leaks)
 
 > **Milestone**: M5 (Engine Generalization) — Phase A (cleanliness, prerequisite for Phase B)
-> **Status**: **🚧 IN PROGRESS** (branch `feature/engine-neutralization`)
+> **Status**: **✅ Phase A COMPLETE** (A1–A9 + A4a drained & verified; A10+A4b consciously deferred — turn-key spec below).
+>   Branch `feature/engine-neutralization`. tsc 0, **222/222** tests (was 210; +genre-neutrality guard + Economy Module Test).
+>   `clwa-auditor`: 95% — import boundary PERFECT, INV-08/09/10/12/17 intact, all blocking/major leaks gone.
 > **Depends on**: SPEC-position-movement (v0.15.0), SPEC-remove-gamespeed (v0.15.1)
 > **Source of truth**: `docs/workflow/engine-self-sufficiency/2026-05-29-28aeb820/` (verdict + leak list) and
 >   `docs/workflow/engine-generalization-survey/2026-05-29-3d7ddc1c/` (per-subsystem maps). All 9 per-agent
@@ -99,12 +101,21 @@ RESISTANCE/TEXTURE registry-ификация (`instinct-builder.ts`) — это 
   в lockstep. Старых сейвов нет (подтверждено) → save-миграция не нужна.
 - Serena stale-index при длинных цепочках symbol-edit на одном файле → частый `tsc`, при подозрении — full Write.
 
-## Verification (после A1–A10)
-- После КАЖДОГО шага: `bunx tsc --noEmit` == 0, `bun test` зелёный (210+).
-- `clwa-auditor` на дифф: INV-14 (особ. semantic), INV-08/09/10/12/15, INV-17 bilateral.
-- Повторный прогон **module-sufficiency test** (метод в self-sufficiency `report.md`) на двух probe-жанрах:
-  оценка 7→8-9, leak-count→0 (измеримый сигнал успеха). Отчёт — в `docs/workflow/`.
-- Live (LM Studio): прогон crime-флоу (kill→investigate→arrest→sentence) — без изменений.
+## Verification — РЕЗУЛЬТАТ (выполнено)
+- ✅ После КАЖДОГО шага: `bunx tsc --noEmit` == 0, `bun test` зелёный. Итог: **222/222** (210 базлайн + genre-neutrality guard + Economy Module Test).
+- ✅ `clwa-auditor` на полный дифф Phase A: **95%** — import-граница INV-14 PERFECT, INV-08/09/10/12/17 целы,
+  все blocking/major утечки устранены. Найденный 1 BUG (TickResult.crimeType) + naming-debts (D1–D6) — устранены.
+- ✅ **Re-probe module-sufficiency** (`docs/workflow/engine-self-sufficiency/2026-05-29-722c8d77/`):
+  **7/10 → 8.5/10** occasional-engine (high end, bordering module-only). **Blocking leaks 2→0** (source-verified).
+  Per-genre: trading 8.5 (93%), court-romance **9** (92%), static-recount **9** (97%). 8.5 weighted floor задан
+  целиком отложенной A10+A4b подсистемой (~191/455 crime-vocab в journal.ts+il.ts за crime-only гейтами).
+  Два не-deferred остатка (volition.ts debug-gate, `wantedSubjects`) — дренированы сразу после прогона →
+  не-deferred поверхность движка теперь без genuine-утечек.
+- ✅ Permanent **genre-neutrality regression guard** (`tests/architecture.test.ts` → "Engine Semantic Neutrality"):
+  падает, если crime-проза вернётся в engine-строки или если переименованные примитивы (CrimeScene/processKill/
+  onMurder/'rumor'/typed capability flags) реинтродуцируются. journal.ts+il.ts исключены (deferred).
+- ⏳ Live (LM Studio): прогон crime-флоу (kill→investigate→arrest→sentence) — **остаётся** (gated на запуск сервера +
+  LM Studio пользователем). A1–A9 behavior-identical по построению (registry-делегация + verbatim-проза в модуле).
 
 ## Что НЕ делается в Phase A (осознанно)
 - Новые capability-субсистемы (scalar-attribute, inventory, factions) — это **Phase B**
