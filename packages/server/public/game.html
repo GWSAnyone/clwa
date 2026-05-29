@@ -96,6 +96,16 @@
       display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
       padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle;
     }
+    .faction-badge {
+      display: inline-block; font-size: 9px; font-weight: 700; letter-spacing: 0.3px;
+      padding: 1px 5px; border-radius: 4px; margin-left: 5px; vertical-align: middle;
+    }
+    .shop-buy-btn {
+      margin-left: auto; font-size: 10px; padding: 2px 8px; border-radius: 4px; cursor: pointer;
+      background: rgba(240,192,64,0.15); color: #f0c040; border: 1px solid rgba(240,192,64,0.4);
+    }
+    .shop-buy-btn:hover { background: rgba(240,192,64,0.3); }
+    .shop-buy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     .chat-status-badge.detained { background: rgba(220,60,60,0.25); color: #f88; border: 1px solid rgba(220,60,60,0.3); }
     .chat-status-badge.wanted { background: rgba(220,160,40,0.2); color: #fa4; border: 1px solid rgba(220,160,40,0.3); }
     .chat-status-badge.exiled, .chat-status-badge.fled { background: rgba(120,120,120,0.2); color: #999; border: 1px solid rgba(120,120,120,0.3); }
@@ -698,6 +708,8 @@
     <span>MILLHAVEN</span> — Day <span class="day" id="hud-day">1</span>
     <span class="time" id="hud-time">07:00</span>
     <span id="hud-period">morning</span>
+    <span id="hud-gold" style="color:#f0c040;font-size:11px;margin-left:10px" title="Your gold">&#128176; 0g</span>
+    <span id="hud-justice" style="color:#7fc8ff;font-size:11px;margin-left:8px" title="Your standing with the Magistrate (justice progress)">&#9878; 0</span>
     <span id="hud-speed" style="font-size:10px;margin-left:8px"></span>
     <span id="hud-clues" style="color:#c8a;font-size:10px;margin-left:8px"></span>
     <span id="hud-seed" style="color:#555;font-size:10px;margin-left:8px;cursor:pointer" title="Click to copy seed" onclick="navigator.clipboard.writeText(this.dataset.seed)"></span>
@@ -723,7 +735,9 @@
       <div id="chat-npc-subtitle">
         <span id="chat-npc-role"></span><span id="chat-npc-loc"></span>
         <span id="chat-status-badge" class="chat-status-badge" style="display:none"></span>
+        <span id="chat-faction-badges"></span>
       </div>
+      <div id="chat-npc-econ" style="font-size:10px;font-family:monospace;color:#cbb;margin-top:2px;display:none"></div>
       <div id="chat-details-toggle" onclick="toggleChatDetails()">
         <span id="chat-details-arrow">&#9654;</span> <span id="chat-details-label">NPC Mind</span>
       </div>
@@ -783,6 +797,7 @@
     <input id="chat-input" type="text" placeholder="Type a message..." autocomplete="off" aria-label="Chat message">
     <button id="btn-evidence" type="button" onclick="toggleEvidencePresenter()">Evidence</button>
     <button id="btn-shop" type="button" style="display:none" onclick="toggleShop()">Shop</button>
+    <button id="btn-bribe" type="button" title="Slip them coin to win favor" onclick="bribeCurrentNpc()">Bribe 10g</button>
     <button id="chat-send" type="submit">Send</button>
   </form>
   <div id="chat-player-footer">
@@ -796,6 +811,7 @@
         <span id="chat-player-mood" style="font-size:10px;font-family:monospace"></span>
         <span id="chat-player-beliefs" style="font-size:10px;color:#9abaca"></span>
       </div>
+      <div id="chat-player-econ" style="font-size:10px;font-family:monospace;color:#f0c040;text-align:right;margin-top:2px"></div>
     </div>
     <img id="chat-player-avatar" src="" alt="">
   </div>

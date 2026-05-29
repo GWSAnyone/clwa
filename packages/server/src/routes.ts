@@ -91,6 +91,8 @@ export async function handleRequest(
           relationshipCount: agent.state.relationships?.getAllRelationships().length ?? 0,
           hasShop: !!(agent.profile.shop && agent.profile.shop.length > 0),
           investigator: hasCapability(agent.profile, 'investigator'),
+          gold: world.getAttribute(id, 'gold') ?? null,   // B1
+          factions: world.getFactions(id),                 // B3
         };
       });
     return Response.json(list, { headers: cors });
@@ -115,6 +117,9 @@ export async function handleRequest(
       bigFive: agent.profile.bigFive,
       enneagram: agent.profile.enneagram,
       shop: agent.profile.shop || null,
+      gold: world.getAttribute(agentId, 'gold') ?? null,   // B1
+      factions: world.getFactions(agentId),                 // B3
+      inventory: world.getInventory(agentId),               // B2
       x: pos?.x ?? 0,
       y: pos?.y ?? 0,
     }, { headers: cors });
@@ -408,7 +413,10 @@ export async function handleRequest(
     for (const scene of scenes) {
       const point = scene.points.find((p) => p.id === pointId);
       if (point) {
+        const wasExamined = point.examined;
         point.examined = true;
+        // B3: diligent investigation raises the player's standing with the magistrate (justice progress).
+        if (!wasExamined) world.playerAgent?.state.relationships?.adjustStanding('magistrate', 0.05);
 
         const relatedNpcs: string[] = [];
         if (scene.affectedId) relatedNpcs.push(scene.affectedId);
@@ -593,8 +601,64 @@ export async function handleRequest(
       mood: player?.state.mood,
       alive: player?.state.alive,
       beliefs: player?.state.beliefs?.getAllBeliefs().length ?? 0,
+      gold: world.getAttribute('player', 'gold') ?? 0,   // B1
+      inventory: world.getInventory('player'),            // B2
+      standing: player?.state.relationships?.getRelationship('magistrate')?.standing ?? null, // B3 justice axis
       x: pos?.x ?? 0,
       y: pos?.y ?? 0,
+    }, { headers: cors });
+  }
+
+  // ─── GET /api/inventory/:id (B2) ───
+  const invMatch = path.match(/^\/api\/inventory\/([^/]+)$/);
+  if (method === 'GET' && invMatch) {
+    return Response.json({ id: invMatch[1], inventory: world.getInventory(invMatch[1]) }, { headers: cors });
+  }
+
+  // ─── POST /api/shop/:merchantId/buy/:itemKind (B1+B2 real trade) ───
+  const buyMatch = path.match(/^\/api\/shop\/([^/]+)\/buy\/([^/]+)$/);
+  if (method === 'POST' && buyMatch) {
+    const [, merchantId, itemKind] = buyMatch;
+    const merchant = agents.get(merchantId);
+    if (!merchant) return Response.json({ error: 'Merchant not found' }, { status: 404, headers: cors });
+    const entry = merchant.profile.shop?.find((s) => s.id === itemKind);
+    if (!entry) return Response.json({ error: 'Item not sold here' }, { status: 400, headers: cors });
+    if (world.countItem(merchantId, itemKind) < 1) return Response.json({ error: 'Out of stock', reason: 'out_of_stock' }, { status: 409, headers: cors });
+    if ((world.getAttribute('player', 'gold') ?? 0) < entry.price) return Response.json({ error: 'Not enough gold', reason: 'insufficient_gold' }, { status: 402, headers: cors });
+    // Atomic: gold player→merchant, item merchant→player (both conserved by the engine primitives).
+    world.transferAttribute('player', merchantId, 'gold', entry.price);
+    world.transferItem(merchantId, 'player', itemKind, 1);
+    return Response.json({
+      ok: true, item: entry.name, kind: itemKind, price: entry.price,
+      playerGold: world.getAttribute('player', 'gold'),
+      merchantGold: world.getAttribute(merchantId, 'gold'),
+      stockLeft: world.countItem(merchantId, itemKind),
+      playerInventory: world.getInventory('player'),
+    }, { headers: cors });
+  }
+
+  // ─── POST /api/bribe/:targetId/:amount (B1 — gold buys favor/corruption) ───
+  const bribeMatch = path.match(/^\/api\/bribe\/([^/]+)\/(\d+)$/);
+  if (method === 'POST' && bribeMatch) {
+    const targetId = bribeMatch[1];
+    const amount = parseInt(bribeMatch[2], 10);
+    const target = agents.get(targetId);
+    if (!target) return Response.json({ error: 'Target not found' }, { status: 404, headers: cors });
+    if ((world.getAttribute('player', 'gold') ?? 0) < amount) return Response.json({ error: 'Not enough gold', reason: 'insufficient_gold' }, { status: 402, headers: cors });
+    world.transferAttribute('player', targetId, 'gold', amount);
+    // Corruption: coin warms the target toward the player (more for those who can be bought — low honesty).
+    const venality = 1 - target.profile.bigFive.honesty; // 0..1
+    target.state.relationships?.adjustSentiment('player', 0.1 + 0.3 * venality);
+    target.state.relationships?.adjustTrust('player', 0.05 + 0.2 * venality);
+    // B3: bribing the law corrupts justice — the player's standing with the magistrate falls.
+    const corruptedGuard = world.getFactions(targetId).includes('town_guard') || hasCapability(target.profile, 'detersCrime');
+    if (corruptedGuard) world.playerAgent?.state.relationships?.adjustStanding('magistrate', -0.08);
+    return Response.json({
+      ok: true, amount,
+      playerGold: world.getAttribute('player', 'gold'),
+      targetGold: world.getAttribute(targetId, 'gold'),
+      venality: +venality.toFixed(2),
+      justiceStanding: world.playerAgent?.state.relationships?.getRelationship('magistrate')?.standing ?? null,
     }, { headers: cors });
   }
 

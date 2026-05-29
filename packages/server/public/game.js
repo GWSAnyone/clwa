@@ -358,6 +358,8 @@ async function init() {
         background: a.background || '',
         hasShop: a.hasShop || false,
         investigator: a.investigator || false,
+        gold: a.gold,                       // B1
+        factions: a.factions || [],         // B3
         chatHistory: loadChatHistory(a.id),
         x: a.x ?? 0, y: a.y ?? 0, targetX: a.x ?? 0, targetY: a.y ?? 0,
         // Reconnect-resume (Item 2): an in-transit NPC rebuilds its remaining server waypoints + speed
@@ -372,6 +374,10 @@ async function init() {
     if (!playerRes.ok) throw new Error(`player: ${playerRes.status}`);
     const playerData = await playerRes.json();
     if (playerData.id) state.player.id = playerData.id;
+    state.player.gold = playerData.gold ?? 0;            // B1
+    state.player.inventory = playerData.inventory || [];  // B2
+    state.player.standing = playerData.standing;          // B3 justice axis
+    updateEconomyHud();
     if (playerData.x != null && playerData.y != null && (playerData.x || playerData.y)) {
       state.player.x = playerData.x; state.player.y = playerData.y;
     } else {
@@ -617,6 +623,26 @@ function handleWS(type, data) {
       handleWSMovement(data);
       break;
 
+    case 'economy:update': {
+      // B1/B2/B3 live delta: update sprite-state gold/factions, refresh the inspector if it's this NPC,
+      // and surface notable changes (a new criminal, a theft loss) as toasts.
+      const ag = state.agents[data.agentId];
+      if (ag) {
+        const wasCriminal = (ag.factions || []).includes('criminals');
+        if (data.gold != null) ag.gold = data.gold;
+        if (data.factions) ag.factions = data.factions;
+        if (!wasCriminal && (data.factions || []).includes('criminals')) {
+          showToast(`${ag.name} turned to crime`, 'crime', 4000);
+        }
+        if (state.chatOpen && state.chatNpcId === data.agentId) {
+          const fb = document.getElementById('chat-faction-badges');
+          if (fb) fb.innerHTML = factionBadgeHtml(ag.factions);
+          renderNpcEcon(data.agentId, ag);
+        }
+      }
+      break;
+    }
+
     case 'conversation:line': {
       addEvent('conversation', `${data.speakerName}: "${data.text}"`);
       const speaker = agentByName(data.speakerName);
@@ -801,6 +827,46 @@ function updateHUD() {
   }
 }
 
+// ─── ECONOMY / FACTION / STANDING HUD (B1/B2/B3 demo) ───
+const FACTION_STYLE = {
+  town_guard:     { label: 'Guard',    color: '#5b9bd5' },
+  merchants_guild:{ label: 'Merchant', color: '#d4a017' },
+  criminals:      { label: 'Criminal', color: '#d9534f' },
+};
+function factionBadgeHtml(factions) {
+  return (factions || []).map((f) => {
+    const s = FACTION_STYLE[f] || { label: f, color: '#888' };
+    return `<span class="faction-badge" style="background:${s.color}22;color:${s.color};border:1px solid ${s.color}66">${s.label}</span>`;
+  }).join(' ');
+}
+// Refetch the player's wallet/bag/standing and refresh HUD + footer (after a player action).
+function refreshPlayerEconomy() {
+  fetch('/api/player').then(r => r.json()).then(pd => {
+    state.player.gold = pd.gold ?? state.player.gold ?? 0;
+    state.player.inventory = pd.inventory || state.player.inventory || [];
+    state.player.standing = pd.standing;
+    updateEconomyHud();
+    const econEl = document.getElementById('chat-player-econ');
+    if (econEl && state.chatOpen) {
+      const inv = (state.player.inventory || []).filter(i => i.quantity > 0);
+      const items = inv.map(i => `${i.kind}×${i.quantity}`).join(', ');
+      econEl.innerHTML = `\u{1F4B0} ${state.player.gold}g` + (items ? ` &nbsp;<span style="color:#bca">\u{1F392} ${items}</span>` : '');
+    }
+  }).catch(() => {});
+}
+
+// Player gold + justice meter (standing with the magistrate, -1..1 → 0..100 scale)
+function updateEconomyHud() {
+  const g = document.getElementById('hud-gold');
+  if (g) g.textContent = `\u{1F4B0} ${state.player.gold ?? 0}g`;
+  const j = document.getElementById('hud-justice');
+  if (j) {
+    const st = state.player.standing;
+    j.textContent = st == null ? '⚖ —' : `⚖ ${st >= 0 ? '+' : ''}${Math.round(st * 100)}`;
+    j.style.color = st == null ? '#7fc8ff' : st >= 0 ? '#7fe0a0' : '#e08a8a';
+  }
+}
+
 // ─── ACTION EFFECTS ───
 const ACTION_EFFECT_CONFIG = {
   attack_npc:       { color: '#ff4444', icon: '⚔', label: 'ATTACK',      duration: 3, line: true },
@@ -929,9 +995,18 @@ function toggleShop() {
   }
   const data = state._shopData;
   if (!data) return;
+  renderShopItems();
+  panel.classList.add('open');
+}
+
+function renderShopItems() {
+  const data = state._shopData;
   const container = document.getElementById('shop-items');
+  if (!data || !container) return;
   container.innerHTML = '';
+  const gold = state.player.gold ?? 0;
   for (const item of data.items) {
+    const affordable = gold >= item.price;
     const div = document.createElement('div');
     div.className = 'shop-item';
     div.innerHTML = `
@@ -940,10 +1015,52 @@ function toggleShop() {
         <div class="shop-item-desc">${escapeHTML(item.description)}</div>
       </div>
       <span class="shop-item-price">${item.price}g</span>
+      <button class="shop-buy-btn" ${affordable ? '' : 'disabled'} data-kind="${escapeHTML(item.id)}" data-price="${item.price}">Buy</button>
     `;
+    div.querySelector('.shop-buy-btn').addEventListener('click', () => buyItem(data.agentId, item.id, item.name));
     container.appendChild(div);
   }
-  panel.classList.add('open');
+}
+
+// B1 bribe: slip the current NPC 10 gold to warm them toward the player (more effective on the venal).
+async function bribeCurrentNpc() {
+  const npcId = state.chatNpcId;
+  if (!npcId) return;
+  const amount = 10;
+  if ((state.player.gold ?? 0) < amount) { showToast('Not enough gold to bribe', 'info', 3000); return; }
+  try {
+    const res = await fetch(`/api/bribe/${npcId}/${amount}`, { method: 'POST' });
+    const r = await res.json();
+    if (!res.ok) { showToast(r.error || 'Bribe failed', 'info', 3000); return; }
+    state.player.gold = r.playerGold;
+    if (r.justiceStanding !== undefined) state.player.standing = r.justiceStanding;
+    if (state.agents[npcId]) state.agents[npcId].gold = r.targetGold;
+    updateEconomyHud();
+    setupPlayerFooter();
+    if (state.chatOpen && state.chatNpcId === npcId) { fetchChatBars(npcId, state.agents[npcId]); renderNpcEcon(npcId, state.agents[npcId]); }
+    const corrupt = r.justiceStanding != null && r.justiceStanding < (state.player._lastStanding ?? 0);
+    state.player._lastStanding = r.justiceStanding;
+    showToast(`Slipped ${state.agents[npcId]?.name || 'them'} ${amount}g` + (corrupt ? ' — the Magistrate would not approve' : ''), 'success', 3000);
+  } catch (e) { showToast('Bribe failed', 'info', 3000); }
+}
+
+// B1+B2 real trade: gold leaves the player, the item leaves the merchant's stock — server-authoritative.
+async function buyItem(merchantId, kind, name) {
+  try {
+    const res = await fetch(`/api/shop/${merchantId}/buy/${kind}`, { method: 'POST' });
+    const r = await res.json();
+    if (!res.ok) {
+      showToast(r.reason === 'insufficient_gold' ? 'Not enough gold' : r.reason === 'out_of_stock' ? `${name} is out of stock` : (r.error || 'Cannot buy'), 'info', 3000);
+      return;
+    }
+    state.player.gold = r.playerGold;
+    state.player.inventory = r.playerInventory || state.player.inventory;
+    if (state.agents[merchantId]) state.agents[merchantId].gold = r.merchantGold;
+    updateEconomyHud();
+    setupPlayerFooter();
+    renderShopItems(); // refresh affordability + (server stock already moved)
+    showToast(`Bought ${name} for ${r.price}g (${r.stockLeft} left)`, 'success', 3000);
+  } catch (e) { showToast('Trade failed', 'info', 3000); }
 }
 
 function closeShop() {
@@ -990,10 +1107,6 @@ function openExaminePanel() {
     fetchExamineScene(locationId);
   }
   if (state._examineSceneData) panel.style.display = 'block';
-}
-
-function closeExaminePanel() {
-  document.getElementById('examine-panel').style.display = 'none';
 }
 
 async function fetchExamineScene(locationId) {
@@ -1056,6 +1169,8 @@ async function examinePoint(locationId, pointId) {
         showToast(`Evidence: ${e.description}`, 'discovery', 7000);
       }
     }
+    // B3: investigating raised the player's standing with the magistrate — refresh the justice meter.
+    refreshPlayerEconomy();
     // Update cached scene data and re-render
     if (state._examineSceneData) {
       const pt = state._examineSceneData.points.find(p => p.id === pointId);
@@ -1423,6 +1538,27 @@ function setupChatNpcDisplay(npcId, a) {
   } else {
     badge.style.display = 'none';
   }
+  // B3 faction badges (instant from sprite state) + B1/B2 econ line (gold + inventory, fetched).
+  const fb = document.getElementById('chat-faction-badges');
+  if (fb) fb.innerHTML = factionBadgeHtml(a.factions);
+  renderNpcEcon(npcId, a);
+}
+
+// NPC gold + inventory readout in the inspector (B1/B2). Uses sprite-state gold immediately, fetches
+// /api/agent/:id for the live inventory list.
+function renderNpcEcon(npcId, a) {
+  const el = document.getElementById('chat-npc-econ');
+  if (!el) return;
+  const gold = a.gold;
+  el.style.display = gold == null ? 'none' : 'block';
+  if (gold == null) return;
+  el.innerHTML = `\u{1F4B0} ${gold}g`;
+  fetch(`/api/agent/${npcId}`).then(r => r.json()).then(d => {
+    if (state.chatNpcId !== npcId) return;
+    const inv = (d.inventory || []).filter(i => i.quantity > 0);
+    const items = inv.map(i => `${i.kind}×${i.quantity}`).join(', ');
+    el.innerHTML = `\u{1F4B0} ${d.gold ?? gold}g` + (items ? ` &nbsp;\u{1F392} ${items}` : '');
+  }).catch(() => {});
 }
 
 function fetchChatBars(npcId, a) {
@@ -1503,6 +1639,17 @@ function setupPlayerFooter() {
     }
     const belEl = document.getElementById('chat-player-beliefs');
     if (belEl) belEl.textContent = `${pd.beliefs ?? 0} beliefs`;
+    // B1/B2: keep the live player wallet + bag in sync, render in the footer.
+    state.player.gold = pd.gold ?? state.player.gold ?? 0;
+    state.player.inventory = pd.inventory || state.player.inventory || [];
+    state.player.standing = pd.standing;
+    updateEconomyHud();
+    const econEl = document.getElementById('chat-player-econ');
+    if (econEl) {
+      const inv = (state.player.inventory || []).filter(i => i.quantity > 0);
+      const items = inv.map(i => `${i.kind}×${i.quantity}`).join(', ');
+      econEl.innerHTML = `\u{1F4B0} ${state.player.gold}g` + (items ? ` &nbsp;<span style="color:#bca">\u{1F392} ${items}</span>` : ' &nbsp;<span style="color:#776">empty bag</span>');
+    }
   }).catch(err => console.warn('[Fetch]', err));
 }
 
@@ -1746,12 +1893,15 @@ function renderRelItem(r) {
   const trustPct = r.trust * 100;
   const div = document.createElement('div');
   div.className = 'rel-item';
+  // B3 standing axis (-1..1): only shown when present (e.g. standing toward the magistrate).
+  const standingBar = (r.standing != null) ? `
+      <div class="rel-bar"><span class="rel-bar-label" title="Standing / favor">St</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${((r.standing + 1) / 2) * 100}%;background:#c8a24a"></div></div><span class="rel-bar-val">${r.standing.toFixed(1)}</span></div>` : '';
   div.innerHTML = `
     <span class="rel-name">${escapeHTML(r.targetName)}</span>
     <span class="rel-type-badge">${escapeHTML(r.type)}</span>
     <div class="rel-bars">
       <div class="rel-bar"><span class="rel-bar-label">S</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${sentPct}%;background:${sentimentColor(r.sentiment)}"></div></div><span class="rel-bar-val">${r.sentiment.toFixed(1)}</span></div>
-      <div class="rel-bar"><span class="rel-bar-label">T</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${trustPct}%;background:#4a7aba"></div></div><span class="rel-bar-val">${r.trust.toFixed(1)}</span></div>
+      <div class="rel-bar"><span class="rel-bar-label">T</span><div class="rel-bar-bg"><div class="rel-bar-fill" style="width:${trustPct}%;background:#4a7aba"></div></div><span class="rel-bar-val">${r.trust.toFixed(1)}</span></div>${standingBar}
     </div>
   `;
   return div;
@@ -2582,6 +2732,16 @@ function drawNPCs() {
     ctx.shadowColor = '#000'; ctx.shadowBlur = 3;
     ctx.fillText(a.name, a.x, a.y - 45);
     ctx.shadowBlur = 0;
+
+    // Faction markers (B3) — colored dots above the name (guard=blue, merchant=gold, criminal=red).
+    if (!isDead && (a.factions || []).length) {
+      const cols = a.factions.map(f => (FACTION_STYLE[f] || {}).color).filter(Boolean);
+      let fx = a.x - (cols.length - 1) * 4;
+      for (const c of cols) {
+        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(fx, a.y - 55, 3, 0, Math.PI * 2); ctx.fill();
+        fx += 8;
+      }
+    }
 
     // Emotional state indicator — subtle visual cue for player observation
     if (!isDead && !isDetained) {

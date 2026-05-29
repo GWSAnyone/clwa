@@ -65,7 +65,28 @@ contract-тестом). Тесты: `tests/living-millhaven.test.ts` (3). **stan
   arrest-backlash → `−`.
 - **Verify**: новые module-тесты (theft двигает сток, bribe, faction-CG, standing). tsc 0.
 
-### Phase 2 — Server surface (4 seams)
+### Phase 2 — Server surface (4 seams) ✅ DONE (tsc 0, 272/272, live-verified)
+- REST: `/api/agents` + `/api/agent/:id` отдают gold+factions(+inventory); `/api/player` — gold+inventory+standing;
+  `/api/inventory/:id`. **`POST /api/shop/:merchant/buy/:kind`** (реальная транзакция gold↔товар, conserved) и
+  **`POST /api/bribe/:id/:amount`** (золото→коррупция: sentiment/trust + justice-standing вниз для town_guard).
+- WS: `economy:update` (gold/factions/inventoryCount дельты) из onTick-диффа → живые изменения в UI.
+- Standing-on-justice: подкуп стражника −0.08 к standing с магистратом; осмотр новой улики +0.05; player→magistrate
+  ось засеяна 0 на чистом старте. **Live-verified**: buy (Марк 200→215, игрок 100→85, сток 8→7), bribe (justice→−0.08).
+- LLM-промпт-обогащение — отложено (на видимость не влияет; follow-up).
+> Нюанс: загрузка устаревшего save.json (до фичи) перезаписывает связи без standing → метр «—» до первого действия.
+> Чистый старт / New Game показывает standing 0. Документировано (CLAUDE.md clean-start).
+
+### Phase 3 — Frontend (Canvas2D + DOM) ✅ DONE (game.js strict node --check clean; fixed a pre-existing dup)
+- HUD: 💰 золото игрока + ⚖ justice-метр (standing с магистратом).
+- NPC-инспектор: бэйджи фракций в подзаголовке + строка 💰gold/🎒inventory; standing-бар (St) в Relationships.
+- Player-footer: 💰gold + 🎒inventory.
+- Спрайты: цветные точки фракций над именем (страж=син, торговец=зол, преступник=красн).
+- Лавка: реальная кнопка «Buy» (POST buy, живое обновление золота/стока/инвентаря).
+- Кнопка «Bribe 10g» в чате. Тосты на дельты (новый преступник, покупка, подкуп).
+- WS `economy:update` → живое обновление gold/факций/бэйджей. `refreshPlayerEconomy()` после действий.
+- Попутно убран pre-existing дубль `closeExaminePanel` (теперь strict-clean).
+
+### Phase 2 — Server surface (4 seams) [superseded by the ✅ block above]
 - **WS**: новые сообщения `attr:update`/`inventory:update`/`faction:update`/`standing:update`; пуш из per-agent
   цикла в `onTimeUpdate` (диф) + точечно на транзакциях.
 - **REST**: gold/factions в `/api/agents` + `/api/agent/:id`; `/api/inventory/:id`; gold+inventory в `/api/player`;

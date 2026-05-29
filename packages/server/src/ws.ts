@@ -39,6 +39,7 @@ export type WSMessage =
   | { type: 'goal_update'; data: unknown }
   | { type: 'mood_update'; data: unknown }
   | { type: 'time_update'; data: unknown }
+  | { type: 'economy:update'; data: { agentId: string; gold?: number; factions?: string[]; inventoryCount?: number; note?: string } }
   | { type: 'new_game'; data: unknown }
   | { type: 'player_position'; data: unknown }
   | { type: 'il_result'; data: unknown };

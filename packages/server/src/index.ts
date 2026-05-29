@@ -516,6 +516,9 @@ async function createGameContext(
     playerRelationships.addRelationship({
       targetId: p.id, targetName: p.name,
       type: 'acquaintance' as RelationType, sentiment: 0.0, trust: 0.3,
+      // B3: the player's standing with the magistrate is the justice-progress axis (starts neutral, shown
+      // as the HUD justice meter). Raised by diligent investigation, lowered by corrupting the guard.
+      ...(p.id === 'magistrate' ? { standing: 0 } : {}),
     });
   }
   for (const [, npcAgent] of agents) {
@@ -551,6 +554,9 @@ async function createGameContext(
   const approachContexts = new Map<string, string>();
   const locationHistory = new LocationHistory();
   const journal = new PlayerJournal(); // server-owned (crime-justice); persisted in save, fed into IL
+  // B1/B2/B3 demo: per-tick economy delta detection (gold/factions/inventory) → WS, so trades/thefts/
+  // guild changes are visible live in the UI. Fresh per game (closure-local).
+  const lastEconomy = new Map<string, { gold: number; factions: string; invCount: number }>();
 
   const world = new World(
     agents, eventStore, cgEngine,
@@ -603,6 +609,20 @@ async function createGameContext(
           }
         }
         broadcast({ type: 'tick', data: result });
+        // B1/B2/B3: broadcast economy/faction/inventory deltas so the UI reflects live trades/thefts/joins.
+        for (const [id, agent] of agents) {
+          const gold = world.getAttribute(id, 'gold') ?? 0;
+          const factions = agent.state.factions ?? [];
+          const invCount = (agent.state.inventory ?? []).reduce((s, it) => s + it.quantity, 0);
+          const factionsKey = factions.join(',');
+          const prev = lastEconomy.get(id);
+          if (!prev || prev.gold !== gold || prev.factions !== factionsKey || prev.invCount !== invCount) {
+            lastEconomy.set(id, { gold, factions: factionsKey, invCount });
+            if (prev) { // skip the initial seed snapshot — only broadcast real changes
+              broadcast({ type: 'economy:update', data: { agentId: id, gold, factions, inventoryCount: invCount } });
+            }
+          }
+        }
       },
       onMovement: (movements) => {
         const enriched = movements.map(m => {
