@@ -4,9 +4,6 @@ import type { GoalStep, NpcGoal } from './goals';
 
 export const MINUTES_PER_DAY = 1440;
 
-/** @deprecated Use MINUTES_PER_DAY. Kept for backward compat with old save format. */
-export const TICKS_PER_DAY = 96;
-
 const TIME_PERIODS = ['dawn', 'morning', 'afternoon', 'evening', 'night'] as const;
 export type TimePeriod = (typeof TIME_PERIODS)[number];
 
@@ -31,11 +28,6 @@ export function minuteToHour(minuteOfDay: number): string {
   const hours = Math.floor(m / 60);
   const minutes = m % 60;
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-}
-
-/** @deprecated Use minuteToHour. Converts old tick to hour string. */
-export function tickToHour(tickInDay: number): string {
-  return minuteToHour(tickInDay * 15);
 }
 
 // ─── Schedule Entry ───

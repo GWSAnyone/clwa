@@ -6,10 +6,9 @@
  * провайдер-id, model-id или URL — это домен server'а, как и регистрация модулей.
  *
  * buildDefaultRouter() — pure-default router (если worldData.config.llm не задан).
- * migrateLegacyWorldConfig(cfg) — soft migration для старых WorldConfig.lmStudioUrl/model.
  */
 
-import type { LlmRouterConfig, WorldConfig } from '@clwa/engine';
+import type { LlmRouterConfig } from '@clwa/engine';
 
 const DEFAULT_LM_STUDIO_MODEL = 'qwen3.5-9b-abliterated';
 const DEFAULT_EMBED_MODEL = 'text-embedding-nomic-embed-text-v1.5@q8_0';
@@ -85,10 +84,4 @@ export function buildDefaultRouter(): LlmRouterConfig {
   };
 }
 
-/**
- * @deprecated Удалено в Stage 4. WorldConfig.lmStudioUrl/model больше не существуют.
- * Используйте worldData.config.llm для override маршрутов или buildDefaultRouter().
- */
-export function migrateLegacyWorldConfig(_cfg: WorldConfig): LlmRouterConfig | null {
-  return null;
-}
+

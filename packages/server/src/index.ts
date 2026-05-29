@@ -23,7 +23,7 @@ import { LMStudioProvider } from '@clwa/provider-lm-studio';
 import { ClaudeCodeProvider } from '@clwa/provider-claude-code';
 import { NpcMemoryManager } from './npc-memory-manager';
 import { buildNpcSystemPrompt, buildNpcRelationships, buildNpcSecrets } from './llm-npc-prompt-builder';
-import { buildDefaultRouter, migrateLegacyWorldConfig } from './llm-defaults';
+import { buildDefaultRouter } from './llm-defaults';
 import { LlmUsageTracker } from './llm-usage-tracker';
 
 // Player action vocabulary — module-level constants, NOT engine

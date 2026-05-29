@@ -186,10 +186,6 @@ export interface ILContext {
   targetNpcName: string;
   /** NPC being talked to — agent id (для ClaudeCodeProvider per-NPC папки) */
   targetNpcId?: string;
-  /** @deprecated Use route in llm config. Will be removed in v0.15. */
-  llmBaseUrl?: string;
-  /** @deprecated Use route in llm config. Will be removed in v0.15. */
-  llmModel?: string;
 }
 
 // ─── Extraction ───

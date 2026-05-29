@@ -18,7 +18,9 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
-## Текущее состояние: v0.13.0 (M3 complete)
+## Текущее состояние: v0.15.1 — M4 частично, фокус смещён на обобщение движка
+
+> M4 «Complete Session»: arrival-event + position-authoritative movement (v0.15.0) и удаление gameSpeed (v0.15.1) отгружены; win/lose + end-of-run summary **сознательно отложены** — текущий фокус — развитие движка (обобщённость под больше пространства для создания игр), не закрытие конкретной игры.
 
 ### Завершено
 

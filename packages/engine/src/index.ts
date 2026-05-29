@@ -160,7 +160,7 @@ export type { LocationGraph, MoodModifier } from './world-types';
 export { modifierEffective } from './world-types';
 
 // ─── Schedule ───
-export { ScheduleManager, getTimePeriod, minuteToHour, tickToHour, MINUTES_PER_DAY, TICKS_PER_DAY } from './schedule';
+export { ScheduleManager, getTimePeriod, minuteToHour, MINUTES_PER_DAY } from './schedule';
 export type { TimePeriod } from './schedule';
 export type { ScheduleEntry } from './schedule';
 

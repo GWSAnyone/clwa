@@ -65,7 +65,6 @@ interface WorldJson {
   locations: LocationJson[];
   lore: string[];
   config: {
-    startTick?: number;     // @deprecated — use startMinute
     startMinute?: number;
     exchangeCount?: number;
     moodBias?: number;
