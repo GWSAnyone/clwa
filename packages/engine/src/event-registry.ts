@@ -309,12 +309,12 @@ export function getRelationshipLabel(type: string): string {
 }
 
 // ─── Belief Source Display Labels ───
+// Universal source labels only — the engine itself emits testimony (IL claims) and observation.
+// Module-specific source labels (body_discovery, evidence, deduction, witness, gossip…) are
+// registered by modules via registerBeliefSourceLabels — the engine ships no crime defaults.
 const BELIEF_SOURCE_LABELS: Map<string, string> = new Map([
-  ['body_discovery', 'found the body'],
   ['testimony', 'was told directly'],
   ['observation', 'observed directly'],
-  ['evidence', 'physical evidence'],
-  ['deduction', 'deduced from clues'],
 ]);
 
 export function registerBeliefSourceLabels(labels: Record<string, string>): void {
@@ -336,9 +336,9 @@ export const BELIEF_SOURCE = {
   // Engine-universal: the engine emits this source from NPC conversation in ANY genre, so it
   // must NOT be a module word. Modules tune its label/weight/decay; the engine owns the constant.
   GOSSIP: 'gossip',
-  BODY_DISCOVERY: 'body_discovery',
+  // EVIDENCE = belief formed from presented proof (engine IL evidence-presentation). Display/weight
+  // are module-tuned. (Crime-specific sources like body_discovery/deduction live in the module.)
   EVIDENCE: 'evidence',
-  DEDUCTION: 'deduction',
 } as const;
 
 /** Engine-defined event type for NPC conversations (not module-specific) */
@@ -348,12 +348,10 @@ export const ENGINE_EVENT = {
 
 // ─── Belief Source Transfer Weights ───
 // When beliefs transfer between NPCs, confidence is multiplied by source weight
+// Universal source transfer weights only — module-specific sources register their own.
 const SOURCE_TRANSFER_WEIGHTS: Map<string, number> = new Map([
   ['observation', 0.85],
-  ['body_discovery', 0.7],
   ['testimony', 0.7],
-  ['evidence', 0.8],
-  ['deduction', 0.6],
 ]);
 
 export function registerSourceTransferWeights(weights: Record<string, number>): void {

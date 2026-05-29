@@ -25,20 +25,6 @@ export interface Belief {
   lastUpdated: number;
 }
 
-/** Default confidence by source type */
-export const SOURCE_CONFIDENCE: Record<BeliefSource, number> = {
-  witness: 0.95,
-  body_discovery: 0.7,
-  testimony: 0.6,
-  rumor: 0.4,
-  interrogation: 0.7,
-  observation: 0.8,
-  cover_up: 0.95,
-  deduction: 0.5,
-  evidence: 0.5,
-  perpetrator: 1.0,
-};
-
 export class BeliefManager {
   private beliefs: Map<string, Belief> = new Map();
 

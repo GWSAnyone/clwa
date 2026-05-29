@@ -246,7 +246,7 @@ export function registerCrimeJusticeModule(): void {
         object: ctx.affectedName,
         location: ctx.location,
         confidence: 0.7,
-        source: BELIEF_SOURCE.BODY_DISCOVERY,
+        source: 'body_discovery', // crime-owned source (engine no longer pre-defines it)
         sourceNpcId: null,
         gameDay: ctx.gameDay,
         lastUpdated: ctx.gameDay,
@@ -283,6 +283,10 @@ export function registerCrimeJusticeModule(): void {
     perpetrator: 0.0,
     cover_up: 0.0,
     secret: 0,
+    // moved from engine pre-seed (crime-owned sources) — A8 genre-neutralization
+    body_discovery: 0.7,
+    evidence: 0.8,
+    deduction: 0.6,
   });
 
   // Module-specific source labels (moved from engine defaults)
@@ -294,6 +298,10 @@ export function registerCrimeJusticeModule(): void {
     cover_up: 'covering up',
     secret: 'personal knowledge',
     scene_notice: 'noticed at crime scene',
+    // moved from engine pre-seed (crime-owned sources) — A8 genre-neutralization
+    body_discovery: 'found the body',
+    evidence: 'physical evidence',
+    deduction: 'deduced from clues',
   });
 
   // Relationship labels (moved from engine defaults)

@@ -6,7 +6,7 @@ export { DEFAULT_LLM_PERSONALITY, hasCapability } from './agent-types';
 export type { NpcStatus } from './agent-types';
 
 // ─── Beliefs ───
-export { BeliefManager, SOURCE_CONFIDENCE } from './beliefs';
+export { BeliefManager } from './beliefs';
 export type { BeliefSource } from './beliefs';
 export type { Belief } from './beliefs';
 
