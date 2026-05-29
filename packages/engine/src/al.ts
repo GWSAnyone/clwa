@@ -439,6 +439,11 @@ const SCORING_CONTRIBUTORS: ScoringContributorFn[] = [];
 export function registerScoringContributor(fn: ScoringContributorFn): void { SCORING_CONTRIBUTORS.push(fn); }
 export function getScoringContributors(): readonly ScoringContributorFn[] { return SCORING_CONTRIBUTORS; }
 
+/** Test-support: clear all registered scoring contributors (SCORING_CONTRIBUTORS is a process-global
+ *  array; tests that register a contributor must reset it in afterAll to keep computeUtility deterministic
+ *  across files). Production never calls this. */
+export function clearScoringContributors(): void { SCORING_CONTRIBUTORS.length = 0; }
+
 export function computeUtility(aff: AffordanceDefinition, agent: Agent, target: AffordanceTarget): number {
   // 1. Personality (OCEAN+H weights)
   let personalityScore = 0;

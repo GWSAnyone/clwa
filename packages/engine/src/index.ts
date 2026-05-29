@@ -56,7 +56,7 @@ export {
   findByRole,
   validatePlayerAction,
   registerBlockingGoalTypes,
-  registerScoringContributor, getScoringContributors,
+  registerScoringContributor, getScoringContributors, clearScoringContributors,
 } from './al';
 export type {
   AffordanceContext,

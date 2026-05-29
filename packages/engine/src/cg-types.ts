@@ -49,8 +49,8 @@ export interface RuleCondition {
   actor?: 'target' | 'subject' | 'object';
   /** For op='relationship': toward whom (role ref or payload field name) */
   toward?: string;
-  /** Numeric comparator for trait/relationship */
-  comparator?: '>' | '<' | '>=' | '<=';
+  /** Numeric comparator for trait/relationship/attr ops. Omitted = equality (==). */
+  comparator?: '>' | '<' | '>=' | '<=' | '==';
   /** For op='belief': filter by event type */
   eventType?: string;
   /** For op='belief': minimum confidence threshold */

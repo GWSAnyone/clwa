@@ -51,9 +51,9 @@ export interface WorldCallbacks {
   onMovement?: (movements: MovementResult[]) => void;
   /** Called when a goal action is executed */
   onGoalAction?: (action: GoalActionResult) => void;
-  /** Called when an NPC commits murder (motivation system) */
-  onAgentDeath?: (killerId: string, victimId: string, killerName: string, affectedName: string) => void;
-  /** Called when a new crime scene is created */
+  /** Called when an agent dies at another agent's hand (motivation system) */
+  onAgentDeath?: (actorId: string, affectedId: string, actorName: string, affectedName: string) => void;
+  /** Called when a new scene residue is created */
   onSceneResidue?: (scene: SceneResidue) => void;
   /** Called before an LLM call (for debug UI) */
   onLlmCall?: (reason: string, target?: string) => void;
@@ -111,7 +111,6 @@ export interface WorldSaveData {
   decisionCooldowns: Record<string, number>;
   deathDiscoveries: string[];
   sceneResidues: Record<string, import('./world-types').SceneResidueJSON[]>;
-  playerState?: Record<string, unknown>;
   goals: Record<string, import('./goals').NpcGoal[]>;
   topicEngine: ReturnType<import('./topic-engine').TopicEngine['toJSON']>;
   evidence?: ReturnType<import('./evidence').EvidenceLayer['toJSON']>;
@@ -144,9 +143,6 @@ export class World {
   private deathDiscoveries: Set<string> = new Set(); // "discoverer:victim"
   /** Active crime scenes at locations */
   readonly sceneResidues: Map<string, SceneResidue[]> = new Map();
-  /** Opaque module-owned player state (e.g. crime-justice player journal), round-tripped in save.
-   *  The engine never reads its shape — it only persists it (A10). */
-  playerState: Record<string, unknown> = {};
   /** Cached reference to the player Agent (resolved once, updated if agents change) */
   private _playerAgent: Agent | null = null;
   /** Topic engine for NPC-NPC conversations */
@@ -552,11 +548,9 @@ export class World {
     let sum = 0;
     for (const m of mods) sum += modifierEffective(m);
     agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
-
-    // 4. Decay scalar attributes (B1) — same cadence/model as mood modifiers
-    if (agent.state.attributes) {
-      for (const key in agent.state.attributes) decayAttribute(agent.state.attributes[key], 5);
-    }
+    // NOTE: scalar-attribute decay is intentionally NOT here — _computeMoodTick is also called by the
+    // side-effect-free calibration helper advanceMoodMath. Conserved-state decay lives in the real-tick
+    // path _tickMoodSystem only (alongside loneliness). See review M5 finding #1.
   }
 
   private _tickMoodSystem(): void {
@@ -592,6 +586,10 @@ export class World {
         agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
       }
 
+      // Decay scalar attributes (B1) — real-tick only (NOT in the calibration helper). Same cadence as mood.
+      if (agent.state.attributes) {
+        for (const attr of Object.values(agent.state.attributes)) decayAttribute(attr, 5);
+      }
 
       if (Math.abs(agent.state.mood - oldMood) > 0.0005) {
         this.callbacks.onMoodChange?.(agent.profile.id, agent.profile.name, oldMood, agent.state.mood);
@@ -686,6 +684,8 @@ export class World {
   addAttributeModifier(npcId: string, key: string, mod: Omit<AttributeModifier, 'id'>): void {
     const agent = this.agents.get(npcId);
     if (!agent) return;
+    // Finite guard — mirrors mood's addModifier (SL-07): never admit NaN/Infinity into conserved state.
+    if (!Number.isFinite(mod.magnitude) || !Number.isFinite(mod.remaining)) return;
     if (!agent.state.attributes) agent.state.attributes = {};
     let attr = agent.state.attributes[key];
     if (!attr) { attr = createAttribute(0); agent.state.attributes[key] = attr; }
@@ -1538,7 +1538,7 @@ export class World {
           if (discoveryHandler) {
             await discoveryHandler({
               discoverer: agent,
-              victimId: dead.id,
+              affectedId: dead.id,
               affectedName,
               location: agent.state.location,
               gameDay: this.getCurrentDay(),
@@ -1904,7 +1904,6 @@ export class World {
       deathDiscoveries: Array.from(this.deathDiscoveries),
       sceneResidues,
       evidence: this.evidence.toJSON(),
-      playerState: this.playerState,
       goals: this.goalManager.toJSON(),
       topicEngine: this.topicEngine.toJSON(),
       agents,
@@ -1955,9 +1954,6 @@ export class World {
       this.topicEngine.loadState(data.topicEngine);
     }
 
-    // Restore opaque module-owned player state (e.g. crime journal — reconstructed by the module/server)
-    this.playerState = data.playerState ?? {};
-
     for (const [id, saved] of Object.entries(data.agents)) {
       const agent = this.agents.get(id);
       if (!agent) continue;
@@ -1975,9 +1971,21 @@ export class World {
       agent.state.baseMood = saved.baseMood ?? (0.3 - agent.profile.bigFive.neuroticism * 0.4 + agent.profile.bigFive.extraversion * 0.2);
       agent.state.moodModifiers = (saved.moodModifiers ?? [])
         .filter((m) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
-      if (saved.attributes) agent.state.attributes = saved.attributes;
-      if (saved.factions) agent.state.factions = saved.factions;
-      if (saved.inventory) agent.state.inventory = saved.inventory;
+      // SL-07: validate Phase B conserved state on load (same rigor as moodModifiers above).
+      if (saved.attributes) {
+        const clean: Record<string, import('./attributes').ScalarAttribute> = {};
+        for (const [key, a] of Object.entries(saved.attributes)) {
+          if (!a || !Number.isFinite(a.base)) continue;
+          const attr = createAttribute(a.base, a.min, a.max); // re-clamps base into [min,max]
+          attr.modifiers = (a.modifiers ?? []).filter((m) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
+          clean[key] = attr;
+        }
+        agent.state.attributes = clean;
+      }
+      if (saved.factions) agent.state.factions = saved.factions.filter((f) => typeof f === 'string');
+      if (saved.inventory) {
+        agent.state.inventory = saved.inventory.filter((it) => it && Number.isFinite(it.quantity) && it.quantity > 0);
+      }
       agent.state.currentDay = saved.currentDay;
       agent.state.knownFacts = saved.knownFacts;
 

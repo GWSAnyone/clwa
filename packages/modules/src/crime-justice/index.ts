@@ -243,7 +243,7 @@ export function registerCrimeJusticeModule(): void {
     }
     // Grief: relationship-based mood penalty
     if (ctx.discoverer.state.relationships) {
-      const grief = ctx.discoverer.state.relationships.getGriefPenalty(ctx.victimId);
+      const grief = ctx.discoverer.state.relationships.getGriefPenalty(ctx.affectedId);
       if (grief !== 0) ctx.addMoodModifier(ctx.discoverer.profile.id, { source: 'grief_discovery', category: 'event', magnitude: grief, remaining: 720, duration: 720, decay: 'exponential' });
     }
   });

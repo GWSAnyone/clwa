@@ -345,7 +345,7 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
         console.warn(`  [IL] Discarding low-intensity pressure '${ep.type}' (${epIntensity}) on benign speechAct '${speechAct}' — likely hallucination`);
       } else {
         result.emotionalPressure = {
-          type: String(ep.type) as EmotionalPressure['type'],
+          type: String(ep.type),
           intensity: epIntensity,
         };
       }

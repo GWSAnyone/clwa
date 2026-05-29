@@ -299,7 +299,7 @@ export class ConsequenceEngine {
         case '>=': return v >= target;
         case '<': return v < target;
         case '<=': return v <= target;
-        default: return v === target;
+        case '==': default: return v === target;
       }
     }
     if (cond.op === 'trait') {

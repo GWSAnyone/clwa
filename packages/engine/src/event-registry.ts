@@ -564,7 +564,7 @@ export function getRoleTopicPool(role: string): RoleTopicDef[] {
 // Engine detects discovery condition (dead+alive co-location). Module defines the response.
 export interface DiscoveryContext {
   discoverer: Agent;
-  victimId: string;
+  affectedId: string;
   affectedName: string;
   location: string;
   gameDay: number;
