@@ -4,8 +4,14 @@ Raw, browsable outputs of multi-agent **Workflow** runs (the parallel-agent orch
 assistant runs for surveys, audits, planning). Kept so you can always read the **raw** report — every
 agent's findings and the final synthesis — not just the assistant's chat summary.
 
-> Workflow scripts run sandboxed (no filesystem access), so these files are written by the **main agent**
-> from the workflow's returned result **after** it completes. Each run is immutable history.
+> These files are written by the **main agent** from the workflow's returned result **after** it completes —
+> NOT by the workflow's subagents. The workflow *script* is sandboxed (no FS), and subagents also do not
+> reliably write to disk: the default workflow subagent is return-oriented and skips side-effecting tool
+> calls (falsely claims "WRITE=success" with 0 tool calls), and even `general-purpose` subagent writes hit a
+> known Claude Code persistence bug (issues #7032/#9458/#4462). **Convention:** every workflow ends with
+> `return { result, agents }` (final synthesis + each agent's output) so the main agent can persist both the
+> synthesis and per-agent reports. If the synthesis emits a `reportMd` string, that becomes `report.md`
+> verbatim; otherwise it is rendered from the structured result. Each run is immutable history.
 
 ## Layout
 
