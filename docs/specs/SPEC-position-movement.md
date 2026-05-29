@@ -1,11 +1,36 @@
 # SPEC: Position-Authoritative Movement System
 
 > **Milestone**: M4 (Complete Session)
-> **Status**: Spec
+> **Status**: **🔨 Implemented — живой прогон не завершён** (v0.15.0). Таймерный transit заменён на position-authoritative: сервер ведёт NPC по серверным A*-waypoints с фиксированной скоростью (80 px/игр-мин), прибытие = физический вход в зону (pointInPolygon). Код покрыт автотестами (tsc 0, 210/210, `clwa-auditor` — 0 нарушений), НО 8 сценариев раздела «Тест» вживую ещё не прогнаны (ждут LM Studio). До COMPLETE остаётся живая верификация. Реализовано с отклонениями — см. «Реализация (as-built)» ниже.
 > **Depends on**: None
-> **Engine changes**: Movement system rewrite — position-authoritative transit.
+> **Engine changes**: Movement rewrite. Удалены `_advanceTransits` + timer-поля (`transitProgress`/`transitStartMinute`/`transitDuration`). Добавлены `World.handleArrivals`/`handleIntermediateLocationUpdate` + `ArrivalEvent`.
 > **Created**: 2026-04-03
-> Движение NPC: от таймера к физике. NPC идёт с фиксированной скоростью, прибывает когда дошёл. Текущий workaround — distance-based timer.
+> **Implemented**: 2026-05-29 (commit v0.15.0; сопутствующая зачистка gameSpeed — v0.15.1)
+> **Completed**: — (после живого прогона 8 сценариев из раздела «Тест» при включённом LM Studio)
+> Движение NPC: от таймера к физике. NPC идёт с фиксированной скоростью, прибывает когда дошёл.
+
+---
+
+## Реализация (as-built) — отклонения от первоначального замысла
+
+> Реализовано в **v0.15.0** (+ зачистка gameSpeed в **v0.15.1**). Разделы ниже описывают изначальный замысел; здесь зафиксированы расхождения с тем, что реально построено, чтобы документ не врал про реализацию.
+
+| # | Замысел в спеке | Как сделано | Почему |
+|---|---|---|---|
+| **D1** | `map-data.json` = `{ walkable: boolean[][], tileSize }`; dense-матрица | Реальный формат — разрежённый tilemap `tiles:[[tx,ty,...]]` (есть негативные координаты). Грузим как `Set<'tx,ty'>` 1-в-1 как клиентский `buildWalkableGrid`; `tileSize` из данных. Загрузка — в `createGameContext` (серверный bootstrap), **не** в `world-loader`. | Dense `boolean[][]` невозможен на негативно-индексированной карте; `Set` повторяет проверенный клиентский A* (нет срезания воды). `map-data.json` — глобальный public-ассет, а не per-world данные. |
+| **D6** | Убрать `arrived` из `MovementResult` | **Оставлен.** `arrived` — load-bearing дискриминатор start-vs-arrival (читают и `index.ts onMovement`, и `game.js`). Пиксельные поля вынесены в серверный тип `EnrichedMovement` (`ws.ts`); engine `MovementResult` остаётся pixel-free. | Удаление = лишний рефактор клиента+сервера без выгоды. |
+| **D7** | `goals.ts` использует `transitTimeEstimator` для maxChase | `maxChase` остался tick-tolerance (он **никогда** не читал transit-время). `transitTimeEstimator` + `estimateTransitMinutes`/`precomputeZoneDistances` **удалены целиком**. | Премиса спеки (goals используют оценку) ложна; неиспользуемый estimator = scaffold. |
+| **minutesPerHop** | «Сохраняется как fallback для engine-estimates» | **Удалён** (поле `WorldConfig` + параметр `processMovement`). | После удаления таймера — 0 потребителей. |
+| **gameSpeed** | Часы `1000/gameSpeed`; тест-сценарий #5 (2x/3x) | Механика **удалена целиком** (v0.15.1, отдельная спека): фикс 1 игр-мин/сек, run/stop через autoTick. Сценарий #5 неактуален. | Множитель не ускоряет LLM-мир (упирается в latency LLM), искажает game-min кулдауны; пауза дублировала autoTick. |
+
+### Что реально построено (ключевые символы)
+- **PositionManager** (server): `loadWalkableGrid`, `computePath` (порт клиентского A*), `advancePositions` (waypoint-driven через `hopWaypointIdx`, segment-sampling, player-guard INV-16), `_buildTransitPath` (общий для start/restore), `restoreTransit` (multi-hop resume), `getActiveTransit` (reconnect snapshot), `checkZoneCentersWalkable` (drift sanity). `transitSpeed=80`.
+- **World** (engine): `handleArrivals` + `handleIntermediateLocationUpdate` + `ArrivalEvent`; `startTransit` intent-only; watchdog замораживает stuck-clock только при свежем `lastTransitProgressMinute` (stalled transit → abort, а не freeze-forever).
+- **Автотесты**: `tests/position-movement.test.ts` (16 тестов): computePath, advancePositions arrival/multi-hop/zero-distance/off-route/player-guard, `handleArrivals` интеграция, save/load single+multi-hop.
+
+### Известные ограничения / отложено
+- **A\* `computePath`**: O(n) поиск минимума в openSet (порт клиента). Для ~8 NPC незаметно (<0.5мс); при 50+ NPC — заменить на binary-heap (Phase 4).
+- **Живой прогон 8 сценариев** (раздел «Тест») — требует LM Studio, выполняется при включённом inference.
 
 ---
 
@@ -422,7 +447,7 @@ restoreTransit(entityId: string, transitTo: string): boolean {
 2. NPC прибывает в Town Square когда визуально входит в зону (pointInPolygon)
 3. Два NPC идут к Town Square из разных зон — одинаковая скорость, разное время прибытия
 4. Multi-hop: Blacksmith → Temple — NPC проходит через Town Square без остановки, location обновляется при пересечении
-5. gameSpeed 2x/3x — NPC визуально быстрее, arrival соответствует
+5. ~~gameSpeed 2x/3x — NPC визуально быстрее, arrival соответствует~~ — **УСТАРЕЛО**: механика gameSpeed удалена (v0.15.1), часы фиксированы на 1 игр-мин/сек
 6. Save во время transit → load → NPC продолжает путь от сохранённой позиции
 7. Client reconnect → полный position sync → NPC позиции корректны
 8. `estimateTransitMinutes('blacksmith', 'temple-of-dawn')` ≈ 25min (через Town Square)
