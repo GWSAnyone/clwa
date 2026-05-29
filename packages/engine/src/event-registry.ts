@@ -723,6 +723,28 @@ export function getSecretDirectiveBuilders(): SecretDirectiveBuilderFn[] {
 }
 
 
+// ─── Role Directive Builders ───
+// Modules register functions that produce ROLE-SPECIFIC prompt directive sections derived from an
+// agent's beliefs/profile (e.g. an investigator's active-duty brief, a perpetrator's guilt, a wanted
+// fugitive's fear). The engine emits only UNIVERSAL sections (belief summary, relationships, motive);
+// the domain interpretation of beliefs ("you are investigating the murder of X") is genre-specific and
+// must live in a module, so it is delegated here. Mirrors registerSecretDirectiveBuilder.
+export type RoleDirectiveBuilderFn = (ctx: {
+  agent: Agent;
+  nameResolver: (id: string) => string;
+}) => string[];
+
+const ROLE_DIRECTIVE_BUILDERS: RoleDirectiveBuilderFn[] = [];
+
+export function registerRoleDirectiveBuilder(builder: RoleDirectiveBuilderFn): void {
+  ROLE_DIRECTIVE_BUILDERS.push(builder);
+}
+
+export function getRoleDirectiveBuilders(): RoleDirectiveBuilderFn[] {
+  return ROLE_DIRECTIVE_BUILDERS;
+}
+
+
 // ─── Consequence Post-Handlers ───
 // Modules register handlers that run AFTER CG consequence is applied to each target.
 // Replaces inline grief/sentiment logic in cg-engine — engine delegates behavioral response to modules.

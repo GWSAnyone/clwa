@@ -37,7 +37,7 @@ goals, volition, mood) — действительно универсальна; 
 | # | Утечка | Локация | Подход | Severity | Статус |
 |---|--------|---------|--------|----------|--------|
 | **A1** | `'rumor'` hardcoded belief-source | `world.ts:1181,1194,1309` | engine `BELIEF_SOURCE.GOSSIP`; унифицировать crime secondhand-источники в `gossip`; `heat.ts` считает `gossip` | blocking | ✅ |
-| **A2** | Role-directive crime-проза | `agent.ts:376-405` `buildRoleDirective` | `registerRoleDirectiveBuilder` (зеркало `registerSecretDirectiveBuilder`); crime-проза → модуль | blocking | ☐ |
+| **A2** | Role-directive crime-проза | `agent.ts:376-405` `buildRoleDirective` | `registerRoleDirectiveBuilder` (зеркало `registerSecretDirectiveBuilder`); crime-проза → модуль | blocking | ✅ |
 | **A3** | Belief NL «committed {verb} against {target}» | `beliefs.ts` summarizeForPrompt/Memory + `il.ts` question-handler | `registerBeliefPhrasing` (per event-type/category); нейтральный fallback в движке | blocking | ☐ |
 | **A4** | Concealment/accusation проза | `secret-directives.ts:20-89` + `il.ts:594-690` buildAccusationContext | роутить текст через `SECRET_DIRECTIVE_BUILDERS`-паттерн; crime-текст → модуль | blocking | ☐ |
 | **A5** | AffordanceRequirement crime-поля + хардкод-ветки + findByRole-обогащение + StepTemplate crime-поля | `al.ts:11-49,269-280,294,301-320,332-371,537-541,79-105`; `goals.ts` GoalStep | strip crime-полей из engine-типа → generic params bag + `REQUIREMENT_CHECKERS`; обогащение/ветки → модуль; StepTemplate crime-поля → generic `extra` | type leak | ☐ |

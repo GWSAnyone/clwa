@@ -15,8 +15,12 @@ import {
   isSourceCategory,
   registerDayAdvanceHandler,
   getEventLabel,
+  getEventLabelSafe,
   isTransferable,
   isFirsthand,
+  isPerpetrator,
+  isPursuitEvent,
+  registerRoleDirectiveBuilder,
   isStatusAbsent,
   registerSourceDecayRates,
   registerSourceTransferWeights,
@@ -587,6 +591,54 @@ export function registerCrimeJusticeModule(): void {
     const sentimentDrop = -(0.3 + victimRel.sentiment * 0.5);
     agent.state.relationships.adjustSentiment(perpetratorId, sentimentDrop);
     agent.state.relationships.adjustTrust(perpetratorId, -0.4);
+  });
+
+  // Role directive: crime-framed interpretation of an agent's beliefs for the prompt's role section.
+  // Moved out of the engine's buildRoleDirective (was hardcoded crime English in agent.ts) so the
+  // engine stays genre-neutral. Behaviour identical: investigator active-duty / perpetrator guilt /
+  // witness reaction / generic unease, plus wanted-fugitive self-awareness.
+  registerRoleDirectiveBuilder(({ agent, nameResolver }) => {
+    const beliefs = agent.state.beliefs;
+    if (!beliefs) return [];
+    const sections: string[] = [];
+
+    const crimeBeliefs = beliefs.getAllBeliefs().filter(
+      (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
+    );
+
+    if (agent.profile.investigator && crimeBeliefs.length > 0) {
+      const top = crimeBeliefs.sort((a, b) => b.confidence - a.confidence)[0];
+      const suspect = top.subject ?? 'an unknown perpetrator';
+      const crimeWord = getEventLabelSafe(top.eventType);
+      const victim = top.object ?? 'a victim';
+      sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}. This is your top priority.`);
+    } else if (crimeBeliefs.some((b) => isPerpetrator(b.source))) {
+      const b = crimeBeliefs.find((b) => isPerpetrator(b.source))!;
+      const n = agent.profile.bigFive?.neuroticism ?? 0.5;
+      const guilt = n > 0.6 ? 'Guilt gnaws at you constantly. You flinch at every mention of' : 'You keep your composure but the weight of what you did to';
+      sections.push(`## How you feel right now\n${guilt} ${nameResolver(b.object ?? '')} hangs over you.`);
+    } else if (crimeBeliefs.some((b) => isFirsthand(b.source))) {
+      const b = crimeBeliefs.find((b) => isFirsthand(b.source))!;
+      const n = agent.profile.bigFive?.neuroticism ?? 0.5;
+      const reaction = n > 0.6 ? 'The memory haunts you — you can barely focus.' : 'You process what happened calmly but it stays with you.';
+      sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${nameResolver(b.object ?? '')}. ${reaction}`);
+    } else if (crimeBeliefs.length > 0) {
+      const n = agent.profile.bigFive?.neuroticism ?? 0.5;
+      const unease = n > 0.6 ? 'You feel deeply unsettled — the news shook you.' : 'You are aware something bad happened in town.';
+      sections.push(`## How you feel right now\n${unease}`);
+    }
+
+    // Wanted NPC self-awareness
+    const wantedBelief = beliefs.getAllBeliefs().find(
+      (b) => isPursuitEvent(b.eventType) && b.subject === agent.profile.id,
+    );
+    if (wantedBelief) {
+      const n = agent.profile.bigFive?.neuroticism ?? 0.5;
+      const fear = n > 0.6 ? 'Panic is setting in. Every sound could be the guard coming for you.' : 'You know they are looking for you. Stay alert.';
+      sections.push(`## Your situation\nYou are wanted for a crime. ${fear}`);
+    }
+
+    return sections;
   });
 
   // Intimidated witness directive: witnesses who were threatened stay silent about crimes

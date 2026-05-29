@@ -4,7 +4,7 @@ import type { ReflectionConfig } from './reflection';
 import type { AgentProfile, AgentState, ScoredMemory, LlmPersonality, NpcMemoryState } from './agent-types';
 import { DEFAULT_LLM_PERSONALITY } from './agent-types';
 import { bigFiveToDescription } from './personality-prose';
-import { getEventLabel, getEventLabelSafe, isPursuitEvent, isTransferable, isPerpetrator, isFirsthand } from './event-registry';
+import { getRoleDirectiveBuilders } from './event-registry';
 import { DEFAULT_WORLD_CONFIG } from './world-types';
 import { classify, generate, generateStream } from './llm-client';
 
@@ -360,53 +360,24 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
   private buildRoleDirective(memories: ScoredMemory[]): string {
     const sections: string[] = [];
 
-    // 1. Beliefs section (structured, not keyword-matched)
+    // 1. Beliefs section (structured, not keyword-matched) — universal belief summary
     const beliefs = this.state.beliefs;
     if (beliefs) {
       const summary = beliefs.summarizeForPrompt(3, this.nameResolver);
       if (summary) {
         sections.push(`## What you know\n${summary}`);
       }
-
-      // Role-specific directives from beliefs (generic for all crime types)
-      const crimeBeliefs = beliefs.getAllBeliefs().filter(
-        (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
-      );
-
-      if (this.profile.investigator && crimeBeliefs.length > 0) {
-        const top = crimeBeliefs.sort((a, b) => b.confidence - a.confidence)[0];
-        const suspect = top.subject ?? 'an unknown perpetrator';
-        const crimeWord = getEventLabelSafe(top.eventType);
-        const victim = top.object ?? 'a victim';
-        sections.push(`## ACTIVE DUTY\nYou are investigating the ${crimeWord} of ${victim}. Suspect: ${suspect}. This is your top priority.`);
-      } else if (crimeBeliefs.some((b) => isPerpetrator(b.source))) {
-        const b = crimeBeliefs.find((b) => isPerpetrator(b.source))!;
-        const n = this.profile.bigFive?.neuroticism ?? 0.5;
-        const guilt = n > 0.6 ? 'Guilt gnaws at you constantly. You flinch at every mention of' : 'You keep your composure but the weight of what you did to';
-        sections.push(`## How you feel right now\n${guilt} ${this.nameResolver(b.object ?? '')} hangs over you.`);
-      } else if (crimeBeliefs.some((b) => isFirsthand(b.source))) {
-        const b = crimeBeliefs.find((b) => isFirsthand(b.source))!;
-        const n = this.profile.bigFive?.neuroticism ?? 0.5;
-        const reaction = n > 0.6 ? 'The memory haunts you — you can barely focus.' : 'You process what happened calmly but it stays with you.';
-        sections.push(`## How you feel right now\nYou witnessed something terrible happen to ${this.nameResolver(b.object ?? '')}. ${reaction}`);
-      } else if (crimeBeliefs.length > 0) {
-        const n = this.profile.bigFive?.neuroticism ?? 0.5;
-        const unease = n > 0.6 ? 'You feel deeply unsettled — the news shook you.' : 'You are aware something bad happened in town.';
-        sections.push(`## How you feel right now\n${unease}`);
-      }
-
-      // Wanted NPC self-awareness
-      const wantedBelief = beliefs.getAllBeliefs().find(
-        (b) => isPursuitEvent(b.eventType) && b.subject === this.profile.id,
-      );
-      if (wantedBelief) {
-        const n = this.profile.bigFive?.neuroticism ?? 0.5;
-        const fear = n > 0.6 ? 'Panic is setting in. Every sound could be the guard coming for you.' : 'You know they are looking for you. Stay alert.';
-        sections.push(`## Your situation\nYou are wanted for a crime. ${fear}`);
-      }
     }
 
-    // 2. Relationships section
+    // 2. Role-specific directives derived from beliefs/profile — delegated to module-registered
+    //    builders so the engine stays genre-neutral. The crime-justice module supplies the
+    //    investigator / perpetrator-guilt / witness / wanted-fugitive interpretations; another
+    //    genre supplies its own. The engine itself never frames a belief as a "crime".
+    for (const builder of getRoleDirectiveBuilders()) {
+      sections.push(...builder({ agent: this, nameResolver: this.nameResolver }));
+    }
+
+    // 3. Relationships section
     const relationships = this.state.relationships;
     if (relationships) {
       const relSummary = relationships.summarizeForPrompt();
@@ -415,7 +386,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
       }
     }
 
-    // 3. Current motive (from AL decision WHY)
+    // 4. Current motive (from AL decision WHY)
     if (this.state.currentMotive) {
       sections.push(`## What drives you right now\n${this.state.currentMotive}`);
     }
