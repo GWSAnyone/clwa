@@ -817,11 +817,11 @@ async function renderTopics() {
 // CONFIG
 // ============================================================
 async function renderConfig() {
-  const world = await api('world');
+  const [world, reg] = await Promise.all([api('world'), api('registry')]);
   const data = JSON.parse(JSON.stringify(world));
 
   $content.innerHTML = '';
-  $content.append(sectionHeader('World Config', 'Global world settings and lore.', async () => apiPut('world', data)));
+  $content.append(sectionHeader('World Config', 'Global world settings, LLM routing, and lore.', async () => apiPut('world', data)));
 
   $content.append(h('div', { class: 'card mb-lg' }, [
     h('div', { class: 'card-title', text: 'World' }),
@@ -840,6 +840,61 @@ async function renderConfig() {
         fieldGroup('Mood Bias', numInput(data.config.moodBias, v => data.config.moodBias = v, { step: '0.1' })),
       ]),
     ]));
+  }
+
+  // LLM Routing — assign provider+model per task (registry/default-router driven, no hardcoded lists).
+  {
+    const llmCard = h('div', { class: 'card mb-lg' });
+    llmCard.append(h('div', { class: 'card-title', text: 'LLM Routing' }));
+    llmCard.append(h('div', { class: 'hint', text: 'Provider+model per task. Unset = engine default (llm-defaults.ts). Env CLWA_<ROUTE>_PROVIDER/_MODEL also override at launch. Tasks/providers/models come from the registry + default router.' }));
+    function routeCells(route) {
+      if (!route.sampling) route.sampling = {};
+      return [
+        h('td', {}, [selectInput(route.provider || '', reg.llmProviders || [], v => route.provider = v)]),
+        h('td', {}, [comboInput(route.model || '', reg.llmModels || [], v => route.model = v)]),
+        h('td', {}, [numInput(route.maxTokens ?? 0, v => { if (v > 0) route.maxTokens = v; else delete route.maxTokens; }, { style: { width: '64px' } })]),
+        h('td', {}, [numInput(route.sampling.temperature ?? 0.7, v => route.sampling.temperature = v, { step: '0.05', style: { width: '60px' } })]),
+        h('td', {}, [route.fallback
+          ? h('span', { class: 'flex-row gap-sm' }, [h('span', { text: `${route.fallback.provider}/${route.fallback.model}`, style: { fontSize: '0.7rem', color: 'var(--muted)' } }), h('button', { class: 'btn btn-danger', text: 'x', onclick: () => { delete route.fallback; renderLlm(); } })])
+          : h('button', { class: 'btn btn-ghost', text: '+ fb', title: 'add fallback route', onclick: () => { route.fallback = { provider: (reg.llmProviders || [])[0] || '', model: (reg.llmModels || [])[0] || '' }; renderLlm(); } })]),
+      ];
+    }
+    function renderLlm() {
+      while (llmCard.children.length > 2) llmCard.lastChild.remove();
+      if (!data.config) data.config = {};
+      if (!data.config.llm) {
+        llmCard.append(h('div', { class: 'flex-row gap-sm mt-sm' }, [
+          h('span', { class: 'hint', text: 'No per-world routing — using engine defaults.' }),
+          h('button', { class: 'btn btn-ghost', text: 'Initialize from engine defaults', onclick: () => { data.config.llm = JSON.parse(JSON.stringify(reg.llmDefaultRouter)); renderLlm(); } }),
+        ]));
+        return;
+      }
+      const llm = data.config.llm;
+      if (!llm.default) llm.default = { provider: (reg.llmProviders || [])[0] || '', model: (reg.llmModels || [])[0] || '' };
+      if (!llm.routes) llm.routes = {};
+      const tbl = h('table');
+      tbl.append(h('thead', {}, [h('tr', {}, ['Task', 'Provider', 'Model', 'MaxTok', 'Temp', 'Fallback', ''].map(t => h('th', { text: t })))]));
+      const tb = h('tbody');
+      tb.append(h('tr', {}, [h('td', { html: '<b>default</b>' }), ...routeCells(llm.default)]));
+      (reg.llmTasks || []).forEach(task => {
+        const r = llm.routes[task];
+        if (r) {
+          tb.append(h('tr', {}, [h('td', { text: task }), ...routeCells(r), ]));
+          tb.lastChild.append(h('td', {}, [h('button', { class: 'btn btn-danger', text: 'reset', title: 'use default for this task', onclick: () => { delete llm.routes[task]; renderLlm(); } })]));
+        } else {
+          tb.append(h('tr', { style: { opacity: '0.55' } }, [
+            h('td', { text: task }),
+            h('td', { colspan: '5', html: '<span style="font-size:0.72rem;color:var(--muted)">inherits default</span>' }),
+            h('td', {}, [h('button', { class: 'btn btn-ghost', text: '+ override', onclick: () => { llm.routes[task] = JSON.parse(JSON.stringify(llm.default)); renderLlm(); } })]),
+          ]));
+        }
+      });
+      tbl.append(tb);
+      llmCard.append(tbl);
+      llmCard.append(h('button', { class: 'btn btn-danger mt-sm', text: 'Clear (revert to engine defaults)', onclick: () => { delete data.config.llm; renderLlm(); } }));
+    }
+    renderLlm();
+    $content.append(llmCard);
   }
 
   if (data.lore) {

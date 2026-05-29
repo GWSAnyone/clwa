@@ -122,6 +122,8 @@ export {
   validateLlmRouterContract,
   callWithSchemaRetry,
   disposeAllLlmProviders,
+  getRegisteredLlmTasks,
+  getRegisteredLlmProviderIds,
 } from './llm-registry';
 // NOTE: _getLlmProvider/_getLlmSemaphore/_resolveRoute — internal, НЕ экспортируются.
 

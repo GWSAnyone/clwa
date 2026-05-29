@@ -55,6 +55,16 @@ export function registerLlmTask(name: LlmTask, requirements: LlmTaskRequirements
   LLM_TASKS.set(name, requirements);
 }
 
+/** All registered LLM task names + requirements (read-only accessor for tooling/UI). */
+export function getRegisteredLlmTasks(): Array<{ name: string; requirements: LlmTaskRequirements }> {
+  return [...LLM_TASKS.entries()].map(([name, requirements]) => ({ name, requirements }));
+}
+
+/** All registered provider ids (read-only accessor for tooling/UI). */
+export function getRegisteredLlmProviderIds(): string[] {
+  return [...LLM_PROVIDERS.keys()];
+}
+
 export function registerLlmRouter(config: LlmRouterConfig): void {
   if (!config.default?.provider) {
     throw new Error(`[LLM] registerLlmRouter: default.provider is required`);

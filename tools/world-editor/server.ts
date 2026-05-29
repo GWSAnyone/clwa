@@ -12,8 +12,9 @@
 
 import { resolve, join, basename } from "path";
 import { readdir } from "fs/promises";
-import { getAllRegisteredEventTypes, getEventTypesByCategory, getAllRegisteredSources, BELIEF_SOURCE, getRegisteredRelationshipTypes } from "@clwa/engine";
+import { getAllRegisteredEventTypes, getEventTypesByCategory, getAllRegisteredSources, BELIEF_SOURCE, getRegisteredRelationshipTypes, getRegisteredLlmTasks } from "@clwa/engine";
 import { registerCrimeJusticeModule, registerSocialModule } from "@clwa/modules";
+import { buildDefaultRouter } from "../../packages/server/src/llm-defaults";
 
 // Populate engine registries so we can serve valid options to the editor UI
 registerSocialModule();
@@ -85,6 +86,18 @@ async function handleAPI(req: Request, pathname: string): Promise<Response> {
       factions,       // B3 — open keys, union from world data
       capabilities,   // open keys, union from world data
       itemKinds,      // B2 — open keys (shop ids + inventory kinds)
+      // LLM routing: tasks from the engine registry (modules register them) ∪ the default router's routes;
+      // providers/models derived from the default router (it names them) ∪ what config.llm uses. No hardcoded
+      // lists — the editor's LLM config panel is driven entirely by registry + the real default router.
+      ...(() => {
+        const def = buildDefaultRouter();
+        const defRoutes = def.routes as Record<string, { provider?: string; model?: string }>;
+        const llmTasks = uniqSort([...getRegisteredLlmTasks().map(t => t.name), ...Object.keys(defRoutes)]);
+        const routeVals = [def.default, ...Object.values(defRoutes)] as Array<{ provider?: string; model?: string }>;
+        const llmProviders = uniqSort(routeVals.map(r => r.provider));
+        const llmModels = uniqSort(routeVals.map(r => r.model));
+        return { llmTasks, llmProviders, llmModels, llmDefaultRouter: def };
+      })(),
     }, { headers: cors });
   }
 
