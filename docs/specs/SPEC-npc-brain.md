@@ -82,6 +82,19 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
 вызываемая обоими путями (сейчас расходятся: `serializeMemoryState` сортирует по confidence×recency top-30, а
 `summarizeForPrompt` берёт без сортировки slice(3) — разные топ-беливы в зависимости от провайдера).
 
+### Локализация (решение пользователя — first-class)
+
+Язык — **настройка игры** (`config.language`, сейчас `en | ru`, расширяемо). Промпт собирается на выбранном языке;
+переводим контент по мере необходимости. Эмпирика baseline: при английских промптах Qwen **срывается с языка**
+(украинский/английский вместо русского) — поэтому язык должен быть явным, а не «угадай по сообщению игрока».
+- **L1-каркас + языковое правило + few-shot — на целевом языке** (локализованы per-language; правило «отвечай
+  только на <язык>» в КОНЦЕ user-тёрна). Прототип v2 (`tools/npc-brain/fixtures-layered.ts`) подтверждает: русские
+  few-shot вместо английских убирают language-drift (v1 с английскими few-shot уводил ответы в английский).
+- **L2 персона** (background/speech/secret) — авторится на базовом языке, переводится при необходимости (меньше
+  немедленных правок контента). Допустимо смешение: английская проза персоны + локализованный каркас/few-shot.
+- **World Editor**: поле `language` + локализованные строки каркаса/few-shot редактируемы (Phase 4).
+- Engine остаётся genre/locale-neutral: каркас-строки приходят как данные (WorldConfig), не хардкод (INV-14 + INV-21 дефолт).
+
 ---
 
 ## Фазы (каждая: tsc 0 + `bun test` зелёный + игра запускаема; коммит по фазе)
@@ -122,6 +135,12 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
   world-loader и loadState; старые save.json не должны падать.
 - *Verify*: прогон харнесса `dialogue` vs baseline (3 модели) — качество ↑, регрессии нет; prompt-cache префикс
   стабилен на claude-code (проверить `cacheReadTokens` растёт, `cacheCreationTokens` не на каждый вызов).
+- **Прототип измерен** (`fixtures-layered.ts` v2, Qwen RUNS=3): локализованный каркас+few-shot **починил
+  language-drift** (baseline сваливался в украинский) и дал **+0.7** на обоих сценариях. Уроки для порта: (a) few-shot
+  ДОЛЖНЫ ротироваться (v2 скопировал пример дословно) — использовать `speechReminder`-ротацию; (b) Qwen даже с
+  лучшим промптом упирается в ~2.0 на grounded free-text диалоге → **`dialogue` роутится на Claude** (Haiku/Sonnet
+  4-5 на baseline), Qwen остаётся на структурных задачах; (c) одного knowledge-boundary правила Qwen'у мало против
+  embellishment — для high-stakes реплик опционально name/fact post-check (deferred).
 
 ### Phase 2 — Context-assembly fixes (беливы / память / история)
 - **Беливы** (`beliefs.ts`): **единая `getTopBeliefs(k, {recency, relevance, topic})`** для ОБОИХ путей (устраняет
