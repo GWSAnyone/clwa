@@ -41,8 +41,10 @@ function buildILSchema(ctx: ILContext): LlmJsonSchema {
   const actionVerbs = [...new Set([...getILTradeVerbs(), ...ctx.availableActions])].sort();
 
   return {
+    // NOT strict: strict mode forces EVERY property to be present, so the model fills emotionalPressure/
+    // requestedAction/tradeIntent with junk (intimidation 0.3, "null") on benign messages. Non-strict lets
+    // it omit absent fields (as the prompt asks); validateAndResolve + callWithSchemaRetry handle the rest.
     name: 'dialogue_meaning',
-    strict: true,
     schema: {
       type: 'object',
       properties: {
@@ -211,22 +213,23 @@ export async function extractDialogueMeaning(
     `   - about: who/what is being asked about (NPC name or topic)`,
     `   - topic: ${getRegisteredQuestionTopics().sort().join(', ')} (or null)`,
     ``,
-    `4. requestedAction: if player is asking the NPC to DO a specific action (NOT buying/selling — that is trade):`,
+    `4. requestedAction: ONLY if the player explicitly asks the NPC to DO a specific action (NOT buy/sell — that is trade). OMIT this field entirely for greetings, questions, small talk.`,
     `   - action: use one of these verbs: ${[...getILTradeVerbs(), ...ctx.availableActions].join(', ')}`,
     `   - target: target NPC or location (or null)`,
     `   - urgency: 0-1`,
     ``,
-    `5. emotionalPressure: if player is pressuring the NPC:`,
+    `5. emotionalPressure: ONLY if the player is genuinely threatening, coercing, guilt-tripping, or bribing the NPC. A normal question, greeting, or polite request has NO emotional pressure — OMIT this field. Do NOT infer pressure from neutral curiosity.`,
     `   - type: ${Array.from(getRegisteredPressureTypes()).join(', ')}`,
     `   - intensity: 0-1`,
     ``,
-    `6. tradeIntent: if player wants to buy/sell:`,
-    `   - category: weapon, armor, potion, food, general (or null)`,
-    `   - itemName: specific item mentioned (or null)`,
+    `6. tradeIntent: ONLY if the player actually wants to buy/sell/browse goods. OMIT entirely otherwise. Never use the string "null" as a value — just omit the field.`,
+    `   - category: weapon, armor, potion, food, general`,
+    `   - itemName: specific item mentioned`,
     ``,
     `7. extractionConfidence: 0-1 your overall confidence in this extraction`,
     ``,
-    `Respond ONLY with valid JSON. Omit fields that don't apply (don't include empty arrays).`,
+    `MOST messages are plain conversation: just a speechAct (+ maybe questions/claims). requestedAction, emotionalPressure, and tradeIntent are RARE — include them only on clear, explicit evidence, never by default.`,
+    `Respond ONLY with valid JSON. OMIT any field that doesn't apply — do not include empty arrays, empty objects, or "null"-string placeholders.`,
   ].join('\n');
 
   // classify сам управляет семафором + retry + null-on-error.
@@ -272,8 +275,10 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
     ? raw.speechAct as string
     : getDefaultSpeechAct();
   // Detect trade intent from multiple signals — IL trade verbs registered dynamically.
+  // isReal guards against the model emitting literal "null"/"none"/"" strings (truthy but meaningless).
+  const isReal = (v: unknown): boolean => typeof v === 'string' && !['', 'null', 'none', 'n/a'].includes(v.trim().toLowerCase());
   const tradeIntentObj = raw.tradeIntent && typeof raw.tradeIntent === 'object' ? raw.tradeIntent as Record<string, unknown> : null;
-  const hasTradeContent = tradeIntentObj && (tradeIntentObj.category || tradeIntentObj.itemName);
+  const hasTradeContent = !!tradeIntentObj && (isReal(tradeIntentObj.category) || isReal(tradeIntentObj.itemName));
   const raObj = raw.requestedAction && typeof raw.requestedAction === 'object' ? raw.requestedAction as Record<string, unknown> : null;
   const actionIsTrade = raObj && getILTradeVerbs().has(String(raObj.action));
 
@@ -354,12 +359,11 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
     }
   }
 
-  // Resolve trade intent
-  if (raw.tradeIntent && typeof raw.tradeIntent === 'object') {
-    const ti = raw.tradeIntent as Record<string, unknown>;
+  // Resolve trade intent — only when it carries real content (ignore "null"/"none" placeholders).
+  if (isTradeCtx && tradeIntentObj && (isReal(tradeIntentObj.category) || isReal(tradeIntentObj.itemName))) {
     result.tradeIntent = {
-      category: ti.category ? String(ti.category) : undefined,
-      itemName: ti.itemName ? String(ti.itemName) : undefined,
+      category: isReal(tradeIntentObj.category) ? String(tradeIntentObj.category) : undefined,
+      itemName: isReal(tradeIntentObj.itemName) ? String(tradeIntentObj.itemName) : undefined,
     };
   }
 
