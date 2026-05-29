@@ -57,7 +57,7 @@ Reactive cascade: event → conditions → consequence event → recurse (maxCha
 
 **v2 architecture:** Target selection pipeline (resolveTargets → gate/filter conditions), NPC-state condition ops (trait, relationship, belief), exclusive groups with priority (friendship > honesty), O(1) trigger index Map.
 
-**15 rules** in crime-justice module: 6 witness rules, 2 guard cascades, 3 rumor spread, 2 escalation precursors (argument/threat witnessed), 2 emergent personality-driven (grief-revenge, guard-warning). Plus `witness_reaction` exclusive group (cover-up vs eager-report).
+**16 rules** in crime-justice module: 6 witness rules, 2 guard cascades, 3 gossip spread, 2 escalation precursors (argument/threat witnessed), 2 emergent personality-driven (grief-revenge, guard-warning), + `merchant-guild-alarm` (op:`faction` — Living Millhaven demo). Plus `witness_reaction` exclusive group (cover-up vs eager-report).
 
 ### EL — Evidence Layer (v1)
 
@@ -71,7 +71,7 @@ Player speech → `extractDialogueMeaning()` (LLM, dynamic JSON schema) → `app
 
 **Effects (bilateral with NPC-NPC):** claims → addBelief (conf × trust), questions → NPC beliefs context, requests → createGoalFromRequest (trust gate), pressure → mood/relationship shifts.
 
-**M2 extensions:** Evidence Presentation (processEvidencePresentation — NOT trust-scaled), Player Accusation (buildAccusationContext — deterministic evidence quality → structured prompt injection).
+**M2 extensions (extracted to the crime-justice module in M5 Phase A):** Evidence Presentation, Player Accusation (`buildAccusationContext`) and PlayerJournal now live in `crime-justice/investigation.ts`. The engine stays accusation-agnostic — it exposes a generic `registerDialogueEffectHandler` hook + opaque `playerState` + `onPlayerObserve`; the server owns journal save/load.
 
 **ILConfig:** all behavioral constants configurable via WorldConfig (trust threshold, confidence floor, pressure multipliers, speechAct effects, bilateral factor).
 
@@ -79,7 +79,7 @@ Player speech → `extractDialogueMeaning()` (LLM, dynamic JSON schema) → `app
 
 Structured facts with confidence and source. Dedup key: (eventType, object, source). Different sources coexist. Decay per source type × eventType decayRate. `getMaxConfidenceFor()` aggregates.
 
-Sources: witness (0.95), body_discovery (0.7), testimony (trust-scaled), rumor (0.4), observation (0.8), deduction (0.3-0.5), evidence (weight-based), personal_motive (pool-assigned, weight 0 — no gossip), secret (firsthand, weight 0 — NPC's prior knowledge from world JSON).
+Sources — engine keeps only **universal** ones (M5 Phase A): testimony (trust-scaled), observation (0.8), **gossip** (0.4, conversation-transfer — was hardcoded `'rumor'`). Crime-justice **registers** the rest at startup: witness (0.95), body_discovery (0.7), deduction (0.3-0.5), evidence (weight-based), personal_motive (pool-assigned, weight 0), secret (firsthand, weight 0 — NPC's prior knowledge from world JSON).
 
 **Motive beliefs (SPEC-motive-pool):** category 'motive' with types PERSONAL_GRUDGE, REVENGE_DESIRE, THREAT_PERCEIVED. Object = target NPC ID. Assigned from pool at game start (conditional on traits + sentiment) or emergent during gameplay (victimization, deep hatred). EventTypeFlags.decayRate (0.05–0.2) makes motives decay 5–20x slower than facts.
 
@@ -101,9 +101,9 @@ Dual storage: `_memoryLog` array (primary) + Qdrant (search index, best-effort).
 
 **Persistence**: toJSON() → save.json (compact, ~800KB for 9 NPC × 5 memories). loadState() → re-embed if model changed → batch upsert to Qdrant. Boot: conditional init, parallel restore, no double knownFacts seeding.
 
-### Relationships (v1)
+### Relationships (v2)
 
-Bilateral: sentiment (-1..1), trust (0..1), type (friend/rival/family/colleague/acquaintance). Grief penalty on death. Testimony weight from trust. Sentiment cascade from CG events.
+Bilateral: sentiment (-1..1), trust (0..1), **standing (-1..1)** — third axis for politics/justice (standing with the magistrate = «ось правосудия»), adjusted via `adjustStanding` (clamped). **Open `RelationType`**: `registerRelationshipType(type, {trust, sentiment, grief})` + `getRelationshipDefaults` (7 universal bonds seeded — friend/rival/family/colleague/acquaintance/…; modules add alliance/betrothed/vassal без правок движка). Grief penalty + testimony weight read from the registry (DEFAULT_TRUST/SENTIMENT removed). Sentiment cascade from CG events.
 
 ### Perception (v1)
 
@@ -140,6 +140,26 @@ Player investigation journal. 3 entry types: clue, testimony, observation.
 ### Secret Directives
 
 Module-registered builders inject behavioral prompts into NPC system prompt. Checks: own crimes, cover-up, witness state, player threats/bribes. Via SECRET_DIRECTIVE_BUILDERS registry.
+
+### Scalar Attributes (v1 — M5 B1)
+
+Universal numeric-state primitive. `ScalarAttribute {base, min, max, modifiers[]}` + `AttributeModifier` reuse the MoodModifier decay model (timed, decaying, clamped). `effectiveValue = clamp(base + Σ decayed modifiers, min, max)`. `AgentState.attributes?: Record<string, ScalarAttribute>` — keys are free strings (no crime/economy vocabulary in the engine).
+
+**World API:** `getAttribute` / `setAttribute` / `adjustAttributeBase` (clamped) / `addAttributeModifier` / **`transferAttribute`** (atomic conserved move — the basis for economy/theft). Decay ticks on the same cadence as mood. **CG `RuleCondition` op `attr`** (`field` + comparator + `value`) gates rules on quantified state (`gold < 10`). Pluggable **`registerScoringContributor`** channel in `computeUtility` — affordances can be scored on resource drivers (debt → smuggle). Serialized to `WorldSaveAgentData`. **One primitive backs Economy gold / Combat HP / Politics standing / Survival needs.**
+
+### Inventory (v1 — M5 B2)
+
+Item-instance layer. `Item {id, kind (free string), quantity, state?}` + pure `addItem` (stack fungible / push unique-state) / `removeItems` (conserved) / `countItems`. `AgentState.inventory?: Item[]`, saved/loaded.
+
+**World API:** `getInventory` / `countItem` / `hasItem` / `giveItem` / `removeItem` / **`transferItem`** (atomic conserved move). Makes theft/trade/loot move **real state** (previously `steal_from` only emitted an event). Legacy `AgentProfile.shop`/`ShopItem` + IL `TradeIntent` remain pending full migration to an economy module (the primitive is ready).
+
+### Factions (v1 — M5 B3)
+
+Collective-membership primitive. `AgentState.factions?: string[]` (open keys). **World API:** `joinFaction` / `leaveFaction` / `isFactionMember` / `getFactions`. **CG `RuleCondition` op `faction`** gates rules on membership (merchant-guild reacts to theft of a member). Per-faction standing rides on a B1 attribute (key per faction). Saved/loaded.
+
+### Genre-Neutral Hooks (M5 Phase A)
+
+The engine's own prose/typed-content is sourced from modules via registries (semantic INV-14 «zero module-specific strings» now PERFECT). Beyond `SECRET_DIRECTIVE_BUILDERS`: **`registerRoleDirectiveBuilder`** (role-section prose), **`registerBeliefPhrasing`** (per-event-type NL phrasing; neutral fallback in engine), **`registerDialogueEffectHandler`** + opaque `playerState` + `onPlayerObserve` (player-journal/accusation moved to the crime module), **`REQUIREMENT_CHECKERS` / `POST_TARGET_REQUIREMENT_CHECKERS` / `registerTargetEnricher`** (affordance requirements), open `capabilities: Record<string,boolean>` + `hasCapability()` (was typed crime flags), `BELIEF_SOURCE.GOSSIP` (was hardcoded `'rumor'`). `CrimeScene` → genre-neutral **`SceneResidue`** (crimeType→sceneType, perpetratorId→actorId, victimId→affectedId, processKill→processAgentDeath).
 
 ---
 
@@ -195,16 +215,20 @@ Silver Flagon Tavern, Town Square (hub), Town Gate, Market Square, Blacksmith, T
 
 ```
 packages/
-  engine/src/     — subsystems, 40+ empty registries, ZERO module content
+  engine/src/     — subsystems, 40+ empty registries, ZERO module content (genre-neutral, INV-14 PERFECT)
+                    + attributes.ts (B1), inventory.ts (B2), scene-residue.ts (was crime-scene.ts)
+                    journal.ts REMOVED — player-journal/accusation extracted to the crime module
   modules/src/
     social/       — 13 topic sources + socialize affordance
-    crime-justice/ — 23 affordances, CG rules, step handlers, target finders
+    crime-justice/ — 23 affordances, CG rules, step handlers, target finders,
+                     investigation.ts (PlayerJournal + accusation + evidence-presentation)
   server/
-    src/          — HTTP/WS, world-loader (with JSON validation), bootstrap, position manager
-    public/       — Web UI (Canvas2D game client)
-worlds/millhaven/ — JSON world data (NPC profiles, locations, relationships, motives, secrets, topics)
-tools/world-editor/ — standalone world JSON editor (port 3001, registry-driven dropdowns)
-tests/            — 8 test files, 151 tests (architecture, boot-smoke, save-load, cg-v2, heat, m3-systems, cg-integration, regression, world-data)
+    src/          — HTTP/WS, world-loader (JSON validation + attributes/inventory/factions/standing seed),
+                    bootstrap, position manager, llm-usage-tracker, logger (timestamped)
+    public/       — game.html Web UI (Canvas2D; legacy index.html dropped — root serves the game)
+worlds/millhaven/ — JSON world data (NPC profiles + gold/inventory/factions, locations, relationships+standing, motives, secrets, topics)
+tools/world-editor/ — standalone world JSON editor (port 3001, registry-driven; edits attributes/inventory/factions/standing + LLM routing)
+tests/            — 19 test files, 262+ tests (architecture, boot-smoke, save-load, cg-v2, heat, m3-systems, cg-integration, regression, world-data, attributes, inventory, relationships-factions, living-millhaven, genre-neutrality guard)
 ```
 
 Dependencies: `modules → engine`, `server → engine + modules`. Engine **never** imports modules.
@@ -226,6 +250,10 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 | Conversation impact | No | Deterministic from TopicProposal fields |
 | Goal step execution | No | Mechanical state changes (move, announce, wait) |
 
+**Routing** (server-domain control panel — `server/src/llm-defaults.ts`, per-world override via `world.json` → `config.llm`): each task maps to a provider+model+sampling route. Hot/high-volume (volition, il, embeddings) → local **Qwen** (LM Studio, ~$0). Interactive/rare (dialogue, verdict, reflection) → **Claude Code** (subscription CLI; warm persistent session skips cold-spawn; `schemaInPrompt` injects the JSON schema as free text for structured calls). Every route is editable in the World Editor (provider/model/maxTokens/temp/warm/schema/fallback), registry-driven.
+
+**Observability:** every call → `LlmUsageEvent` (task, provider, model, tokens, cost, latency) persisted to `data/llm-usage.jsonl` + a per-call console line; NPC reply text (player↔NPC and NPC↔NPC) is logged; all logs carry an `[HH:MM:SS]` timestamp.
+
 ### Dialogue Quality
 
 - **Voice via examples** (speechStyle), not descriptions
@@ -239,4 +267,4 @@ Two pipelines: **structural** (IL → beliefs/goals/mood) and **free-form** (NPC
 
 ---
 
-*Last updated: April 2026*
+*Last updated: May 2026 — M5 (Engine Generalization: genre-neutral engine + scalar attributes / inventory / factions) + Living Millhaven demo*

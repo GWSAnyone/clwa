@@ -1,0 +1,1274 @@
+{
+  "summary": "Map CLWA logging sites, player/NPC dialogue flows, and LLM call metadata to add timestamps + dialogue/LLM logging",
+  "agentCount": 4,
+  "logs": [],
+  "result": {
+    "logging": {
+      "hasCentralLogger": true,
+      "loggerLocation": "C:\\Ledevia\\Projects\\CLWA\\packages\\server\\src\\logger.ts",
+      "logSites": [
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 71,
+          "prefix": "[Memory]",
+          "sample": "Consolidated X observations for agent.name"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 74,
+          "prefix": "[Memory]",
+          "sample": "Consolidation failed for npcId"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 134,
+          "prefix": "[+]",
+          "sample": "LLM cost gate enabled: $X per boot"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 215,
+          "prefix": "[SecretDirective]",
+          "sample": "BUG: Player Agent not found"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 274,
+          "prefix": "[Save]",
+          "sample": "State saved to path"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 283,
+          "prefix": "[Save]",
+          "sample": "Unknown save version X"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 288,
+          "prefix": "[Save]",
+          "sample": "Failed to load save"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 371,
+          "prefix": "[+]",
+          "sample": "LLM Router configured + validated"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 386,
+          "prefix": "[+]",
+          "sample": "Event Store"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 397,
+          "prefix": "[+]",
+          "sample": "NPC Claude folders prepared (X NPCs)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 409,
+          "prefix": "[Reflection]",
+          "sample": "name: text"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 422,
+          "prefix": "[+]",
+          "sample": "profile.name the role @ location"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 458,
+          "prefix": "[⚠ map]",
+          "sample": "X zone center(s) on non-walkable tiles"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 459,
+          "prefix": "[+]",
+          "sample": "Walkable grid loaded (X tiles)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 461,
+          "prefix": "[⚠ map]",
+          "sample": "map-data.json not found"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 468,
+          "prefix": "[+]",
+          "sample": "Positions initialized for X entities"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 479,
+          "prefix": "[+]",
+          "sample": "Background memories seeded for X NPCs"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 500,
+          "prefix": "[+]",
+          "sample": "Secret knowledge seeded for X NPCs"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 550,
+          "prefix": "[+]",
+          "sample": "Player Agent (Traveler) @ Town Square"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 592,
+          "prefix": "",
+          "sample": "speakerName: text"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 604,
+          "prefix": "[Time]",
+          "sample": "Tick X — hour (period)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 607,
+          "prefix": "[Time]",
+          "sample": "=== Day X ==="
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 613,
+          "prefix": "[Approach]",
+          "sample": "npcName wants to talk to player"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 639,
+          "prefix": "[Arrived]",
+          "sample": "agentName at location"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 647,
+          "prefix": "[Move]",
+          "sample": "agentName: from -> to"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 653,
+          "prefix": "[Goal]",
+          "sample": "ownerName: description"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 657,
+          "prefix": "[MURDER]",
+          "sample": "killerName killed affectedName"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 686,
+          "prefix": "[Decision]",
+          "sample": "npcName → action target (tier, score)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 715,
+          "prefix": "[+]",
+          "sample": "World orchestrator"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 716,
+          "prefix": "[+]",
+          "sample": "NPC schedules: X entries"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 717,
+          "prefix": "[+]",
+          "sample": "Mobile NPCs: names"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 735,
+          "prefix": "[+]",
+          "sample": "Demo state: gold on X agents"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 744,
+          "prefix": "",
+          "sample": "=== CLWA Server — Starting ==="
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 745,
+          "prefix": "[Log]",
+          "sample": "Writing to: path"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 746,
+          "prefix": "",
+          "sample": "(empty line)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 754,
+          "prefix": "[Save]",
+          "sample": "Found save from timestamp"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 764,
+          "prefix": "[+]",
+          "sample": "Location Graph — X locations"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 779,
+          "prefix": "[+]",
+          "sample": "Consequence engine — X rules"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 788,
+          "prefix": "[+]",
+          "sample": "Event Store — restored X events"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 790,
+          "prefix": "[Save]",
+          "sample": "World state restored"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 794,
+          "prefix": "[+]",
+          "sample": "Positions restored from save"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 807,
+          "prefix": "[+]",
+          "sample": "Resumed X in-transit NPC(s)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 817,
+          "prefix": "[Memory]",
+          "sample": "name: X memories restored"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 832,
+          "prefix": "",
+          "sample": "=== New Game (seed: X) ==="
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 843,
+          "prefix": "[+]",
+          "sample": "New game ready"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 845,
+          "prefix": "[NewGame]",
+          "sample": "Failed: error"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 860,
+          "prefix": "",
+          "sample": "(empty line)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 861,
+          "prefix": "",
+          "sample": "HTTP: url"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 862,
+          "prefix": "",
+          "sample": "WS: url"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 863,
+          "prefix": "",
+          "sample": "(empty line)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 864,
+          "prefix": "",
+          "sample": "REST endpoints:"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 865,
+          "prefix": "",
+          "sample": "GET /api/agents"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 866,
+          "prefix": "",
+          "sample": "GET /api/events"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 867,
+          "prefix": "",
+          "sample": "GET /api/state"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 868,
+          "prefix": "",
+          "sample": "GET /api/locations"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 869,
+          "prefix": "",
+          "sample": "GET /api/memories/:id"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 870,
+          "prefix": "",
+          "sample": "GET /api/beliefs/:id"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 871,
+          "prefix": "",
+          "sample": "GET /api/relationships/:id"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 872,
+          "prefix": "",
+          "sample": "POST /api/new-game"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 873,
+          "prefix": "",
+          "sample": "POST /api/save"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 874,
+          "prefix": "",
+          "sample": "(empty line)"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 875,
+          "prefix": "",
+          "sample": "Server ready. Waiting for connections..."
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 880,
+          "prefix": "[Clock]",
+          "sample": "Auto-tick ON"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 882,
+          "prefix": "[Clock]",
+          "sample": "Paused — auto-tick off"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 886,
+          "prefix": "",
+          "sample": "Reset in progress, exiting"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 887,
+          "prefix": "[Save]",
+          "sample": "Shutting down — flushing pending work"
+        },
+        {
+          "file": "packages/server/src/index.ts",
+          "line": 897,
+          "prefix": "",
+          "sample": "catch(console.error)"
+        },
+        {
+          "file": "packages/server/src/llm-usage-tracker.ts",
+          "line": 85,
+          "prefix": "[LlmUsageTracker]",
+          "sample": "write failed: error"
+        },
+        {
+          "file": "packages/server/src/position-manager.ts",
+          "line": 496,
+          "prefix": "[Save]",
+          "sample": "Invalid position for id: (x, y)"
+        },
+        {
+          "file": "packages/server/src/position-manager.ts",
+          "line": 500,
+          "prefix": "[Save]",
+          "sample": "Out-of-bounds position for id"
+        },
+        {
+          "file": "packages/server/src/server.ts",
+          "line": 74,
+          "prefix": "[WS]",
+          "sample": "Client connected (X total)"
+        },
+        {
+          "file": "packages/server/src/server.ts",
+          "line": 80,
+          "prefix": "[WS]",
+          "sample": "Client disconnected (X total)"
+        },
+        {
+          "file": "packages/server/src/server.ts",
+          "line": 186,
+          "prefix": "[IL]",
+          "sample": "FALLBACK: value"
+        },
+        {
+          "file": "packages/server/src/server.ts",
+          "line": 188,
+          "prefix": "[IL]",
+          "sample": "speechAct claims questions request (conf)"
+        },
+        {
+          "file": "packages/server/src/server.ts",
+          "line": 212,
+          "prefix": "[Evidence]",
+          "sample": "X entries presented to agent"
+        },
+        {
+          "file": "packages/server/src/server.ts",
+          "line": 304,
+          "prefix": "[Shop]",
+          "sample": "Injecting X items for agent"
+        },
+        {
+          "file": "packages/server/src/server.ts",
+          "line": 337,
+          "prefix": "[Journal]",
+          "sample": "Testimony from agent recorded"
+        },
+        {
+          "file": "packages/server/src/server.ts",
+          "line": 357,
+          "prefix": "[WS]",
+          "sample": "Error: message"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 112,
+          "prefix": "[Randomization]",
+          "sample": "CLAMPED name H: value → 0.45"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 124,
+          "prefix": "[Randomization]",
+          "sample": "CLAMPED name E: value → 0.55"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 136,
+          "prefix": "[Randomization]",
+          "sample": "CLAMPED name H: value → 0.65"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 148,
+          "prefix": "[Randomization]",
+          "sample": "Seed: value"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 155,
+          "prefix": "[Randomization]",
+          "sample": "name values"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 163,
+          "prefix": "[Randomization]",
+          "sample": "Population: crime-capable social honest"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 216,
+          "prefix": "[Randomization]",
+          "sample": "name mood=value"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 282,
+          "prefix": "[Randomization]",
+          "sample": "from→to: relation type"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 351,
+          "prefix": "[Motive]",
+          "sample": "from → to: type (id, conf)"
+        },
+        {
+          "file": "packages/server/src/trait-randomizer.ts",
+          "line": 377,
+          "prefix": "[Motive]",
+          "sample": "name → target: THREAT_PERCEIVED"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 162,
+          "prefix": "[WorldLoader]",
+          "sample": "Loading world from path"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 292,
+          "prefix": "[+]",
+          "sample": "X NPCs loaded"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 296,
+          "prefix": "[+]",
+          "sample": "X relationships"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 307,
+          "prefix": "[+]",
+          "sample": "X role topic pools"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 313,
+          "prefix": "[+]",
+          "sample": "X starting secrets"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 320,
+          "prefix": "[+]",
+          "sample": "X motive pool entries"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 345,
+          "prefix": "[WorldLoader]",
+          "sample": "X validation warning(s)"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 346,
+          "prefix": "[WorldLoader]",
+          "sample": "warning text"
+        },
+        {
+          "file": "packages/server/src/world-loader.ts",
+          "line": 349,
+          "prefix": "[WorldLoader]",
+          "sample": "world loaded successfully"
+        },
+        {
+          "file": "packages/engine/src/agent.ts",
+          "line": 150,
+          "prefix": "[Agent]",
+          "sample": "onObserve hook failed"
+        },
+        {
+          "file": "packages/engine/src/agent.ts",
+          "line": 183,
+          "prefix": "[Reflection error]",
+          "sample": "for agent name"
+        },
+        {
+          "file": "packages/engine/src/agent.ts",
+          "line": 216,
+          "prefix": "[LLM:FAIL]",
+          "sample": "name: classify returned null"
+        },
+        {
+          "file": "packages/engine/src/agent.ts",
+          "line": 230,
+          "prefix": "[LLM:FAIL]",
+          "sample": "name: generate returned null"
+        },
+        {
+          "file": "packages/engine/src/beliefs.ts",
+          "line": 180,
+          "prefix": "[Save]",
+          "sample": "Skipping belief with missing fields"
+        },
+        {
+          "file": "packages/engine/src/beliefs.ts",
+          "line": 184,
+          "prefix": "[Save]",
+          "sample": "Clamping invalid confidence"
+        },
+        {
+          "file": "packages/engine/src/cg-engine.ts",
+          "line": 276,
+          "prefix": "[CG]",
+          "sample": "Unknown gate condition op"
+        },
+        {
+          "file": "packages/engine/src/cg-engine.ts",
+          "line": 418,
+          "prefix": "[CG]",
+          "sample": "No memory text builder for consequence type"
+        },
+        {
+          "file": "packages/engine/src/conversation.ts",
+          "line": 123,
+          "prefix": "[Conv:SKIP]",
+          "sample": "name produced empty speech (LLM error)"
+        },
+        {
+          "file": "packages/engine/src/conversation.ts",
+          "line": 143,
+          "prefix": "[Conv:SKIP]",
+          "sample": "name produced empty speech (LLM error)"
+        },
+        {
+          "file": "packages/engine/src/conversation.ts",
+          "line": 148,
+          "prefix": "[Conv:ECHO]",
+          "sample": "name echoed other: text"
+        },
+        {
+          "file": "packages/engine/src/event-registry.ts",
+          "line": 144,
+          "prefix": "[Registry]",
+          "sample": "No label registered for eventType"
+        },
+        {
+          "file": "packages/engine/src/evidence.ts",
+          "line": 115,
+          "prefix": "[EL]",
+          "sample": "Unknown evidence source"
+        },
+        {
+          "file": "packages/engine/src/evidence.ts",
+          "line": 150,
+          "prefix": "[EL]",
+          "sample": "Generated X evidence at location"
+        },
+        {
+          "file": "packages/engine/src/evidence.ts",
+          "line": 196,
+          "prefix": "[EL]",
+          "sample": "Destroyed X evidence at location"
+        },
+        {
+          "file": "packages/engine/src/goals.ts",
+          "line": 357,
+          "prefix": "[Save]",
+          "sample": "Skipping goal — unknown step action"
+        },
+        {
+          "file": "packages/engine/src/goals.ts",
+          "line": 501,
+          "prefix": "[Goal]",
+          "sample": "name pursuing target to location"
+        },
+        {
+          "file": "packages/engine/src/goals.ts",
+          "line": 663,
+          "prefix": "[Goals]",
+          "sample": "addMoodModifier not provided"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 245,
+          "prefix": "[IL]",
+          "sample": "LLM returned null — falling back"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 250,
+          "prefix": "[IL]",
+          "sample": "Raw LLM output: JSON"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 253,
+          "prefix": "[IL]",
+          "sample": "Validation failed"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 264,
+          "prefix": "[IL]",
+          "sample": "Invalid speechAct — falling back"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 267,
+          "prefix": "[IL]",
+          "sample": "Missing/invalid extractionConfidence"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 286,
+          "prefix": "[IL]",
+          "sample": "Trade signals detected but speechAct"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 294,
+          "prefix": "[IL]",
+          "sample": "Discarding requestedAction (trade context)"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 295,
+          "prefix": "[IL]",
+          "sample": "Discarding emotionalPressure (trade context)"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 330,
+          "prefix": "[IL]",
+          "sample": "requestedAction target not resolved"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 350,
+          "prefix": "[IL]",
+          "sample": "Discarding low-intensity pressure"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 358,
+          "prefix": "[IL]",
+          "sample": "Invalid emotionalPressure type — dropped"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 376,
+          "prefix": "[IL]",
+          "sample": "Unknown claim source — keeping raw"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 380,
+          "prefix": "[IL]",
+          "sample": "Could not resolve claim subject"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 382,
+          "prefix": "[IL]",
+          "sample": "Could not resolve claim object"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 384,
+          "prefix": "[IL]",
+          "sample": "Could not resolve claim location"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 387,
+          "prefix": "[IL]",
+          "sample": "Location resolved but no slug mapping"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 505,
+          "prefix": "[IL]",
+          "sample": "BUG: agent has no relationship to player"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 541,
+          "prefix": "[IL]",
+          "sample": "Belief created in agent: eventType"
+        },
+        {
+          "file": "packages/engine/src/il.ts",
+          "line": 666,
+          "prefix": "[IL]",
+          "sample": "Goal created for agent: id"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 89,
+          "prefix": "[LLM:classify]",
+          "sample": "cost gate blocked task"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 114,
+          "prefix": "[LLM:classify]",
+          "sample": "provider threw error"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 129,
+          "prefix": "[LLM:classify]",
+          "sample": "error at line 130"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 157,
+          "prefix": "[LLM:generate]",
+          "sample": "cost gate blocked task"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 181,
+          "prefix": "[LLM:generate]",
+          "sample": "provider threw error"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 207,
+          "prefix": "[LLM:generateStream]",
+          "sample": "cost gate blocked task"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 234,
+          "prefix": "[LLM:generateStream]",
+          "sample": "error at line 235"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 250,
+          "prefix": "[LLM:generateStream]",
+          "sample": "provider threw error"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 280,
+          "prefix": "[LLM:embed]",
+          "sample": "cost gate blocked"
+        },
+        {
+          "file": "packages/engine/src/llm-client.ts",
+          "line": 306,
+          "prefix": "[LLM:embed]",
+          "sample": "provider threw error"
+        },
+        {
+          "file": "packages/engine/src/llm-registry.ts",
+          "line": 91,
+          "prefix": "[LLM]",
+          "sample": "usage recorder threw error"
+        },
+        {
+          "file": "packages/engine/src/llm-registry.ts",
+          "line": 94,
+          "prefix": "[LLM]",
+          "sample": "usage recorder sync throw"
+        },
+        {
+          "file": "packages/engine/src/llm-registry.ts",
+          "line": 114,
+          "prefix": "[LLM]",
+          "sample": "cost gate threw, allowing call"
+        },
+        {
+          "file": "packages/engine/src/llm-registry.ts",
+          "line": 179,
+          "prefix": "[LLM]",
+          "sample": "warning at line 180"
+        },
+        {
+          "file": "packages/engine/src/memory.ts",
+          "line": 46,
+          "prefix": "[Memory]",
+          "sample": "Qdrant unavailable on reset, degraded"
+        },
+        {
+          "file": "packages/engine/src/memory.ts",
+          "line": 57,
+          "prefix": "[Memory]",
+          "sample": "Qdrant unavailable, degraded mode"
+        },
+        {
+          "file": "packages/engine/src/memory.ts",
+          "line": 142,
+          "prefix": "[Memory]",
+          "sample": "Qdrant upsert failed, search degraded"
+        },
+        {
+          "file": "packages/engine/src/memory.ts",
+          "line": 169,
+          "prefix": "[Memory]",
+          "sample": "Qdrant search failed, falling back"
+        },
+        {
+          "file": "packages/engine/src/memory.ts",
+          "line": 239,
+          "prefix": "[Memory]",
+          "sample": "Embedding model changed, re-embedding X"
+        },
+        {
+          "file": "packages/engine/src/memory.ts",
+          "line": 246,
+          "prefix": "[Memory]",
+          "sample": "Re-embedded X/total"
+        },
+        {
+          "file": "packages/engine/src/memory.ts",
+          "line": 257,
+          "prefix": "[Memory]",
+          "sample": "Qdrant batch upsert failed"
+        },
+        {
+          "file": "packages/engine/src/processing-queue.ts",
+          "line": 51,
+          "prefix": "[Queue:dedup]",
+          "sample": "CONVERSATION_IMPACT dropped (already pending)"
+        },
+        {
+          "file": "packages/engine/src/processing-queue.ts",
+          "line": 92,
+          "prefix": "[Queue]",
+          "sample": "taskType failed"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 171,
+          "prefix": "[AL:debug]",
+          "sample": "name: no affordances passed"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 176,
+          "prefix": "[AL:debug]",
+          "sample": "name: X affordances → list"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 273,
+          "prefix": "[AL:reactive]",
+          "sample": "name → id (base + boost = total)"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 307,
+          "prefix": "[AL:llm]",
+          "sample": "name — deciding (list)"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 312,
+          "prefix": "[AL:llm]",
+          "sample": "name response: text"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 319,
+          "prefix": "[AL:llm]",
+          "sample": "name — invalid JSON, waiting"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 324,
+          "prefix": "[AL:llm]",
+          "sample": "name — no action, waiting"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 348,
+          "prefix": "[AL:llm]",
+          "sample": "name — unresolved: action target"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 352,
+          "prefix": "[AL:llm]",
+          "sample": "name → action target | why"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 735,
+          "prefix": "[AL:retry]",
+          "sample": "name: visit target rejected (cooldown)"
+        },
+        {
+          "file": "packages/engine/src/volition.ts",
+          "line": 764,
+          "prefix": "[AL:debug]",
+          "sample": "name: co-located with target"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 259,
+          "prefix": "[ReactiveEval]",
+          "sample": "event=type subj=id obj=id"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 264,
+          "prefix": "[ReactiveEval]",
+          "sample": "→ X goals: list"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 320,
+          "prefix": "[AL:reactive:skip]",
+          "sample": "id — type(pri) skipped"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 354,
+          "prefix": "[MasterClock]",
+          "sample": "Started (1 game-min/sec)"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 362,
+          "prefix": "[MasterClock]",
+          "sample": "Stopped"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 381,
+          "prefix": "[MasterClock]",
+          "sample": "onTimeUpdate error"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 388,
+          "prefix": "[MasterClock]",
+          "sample": "_tickMoodSystem error"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 419,
+          "prefix": "[Goal:watchdog]",
+          "sample": "aborted stuck goal for agent"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 423,
+          "prefix": "[MasterClock]",
+          "sample": "goal watchdog error"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 430,
+          "prefix": "[MasterClock]",
+          "sample": "_enqueueWork error"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 479,
+          "prefix": "[Transit]",
+          "sample": "name arrived at location"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 518,
+          "prefix": "[Mood]",
+          "sample": "Removing NaN modifier"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 615,
+          "prefix": "[Mood]",
+          "sample": "Rejected invalid modifier"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 834,
+          "prefix": "[MasterClock]",
+          "sample": "_runInstantChecks error"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 881,
+          "prefix": "[Queue:diag]",
+          "sample": "X pending, processing=Y at hour"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 982,
+          "prefix": "[Queue:ERROR]",
+          "sample": "taskType failed"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 994,
+          "prefix": "[Goal]",
+          "sample": "name goal type failed after 3 retries"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1051,
+          "prefix": "[Impact]",
+          "sample": "Suspicious moodValence"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1063,
+          "prefix": "[Impact:debug]",
+          "sample": "name↔name: valence sentiment delta topic"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1084,
+          "prefix": "[Mood]",
+          "sample": "Conversation modifier: +/-value (tone, dur)"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1111,
+          "prefix": "[Impact]",
+          "sample": "name: +/-value (topic)"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1145,
+          "prefix": "[Time]",
+          "sample": "New day: X"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1150,
+          "prefix": "[Queue]",
+          "sample": "_handleBodyDiscovery called"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1447,
+          "prefix": "[Overhear]",
+          "sample": "name overheard about eventType"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1554,
+          "prefix": "[Discovery:ERROR]",
+          "sample": "Handler failed for name"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1572,
+          "prefix": "[Discovery:ERROR]",
+          "sample": "Cascade/reactive failed for name"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1580,
+          "prefix": "[Discovery]",
+          "sample": "name found the body of victim"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1647,
+          "prefix": "[SceneResidue]",
+          "sample": "type at location — X points"
+        },
+        {
+          "file": "packages/engine/src/world.ts",
+          "line": 1968,
+          "prefix": "[Save]",
+          "sample": "Unknown status for id"
+        }
+      ],
+      "recommendation": "Use logger.ts' existing `initFileLogger()` pattern as the model. Create a lightweight `formatLogLine(timestamp: string, ...args)` export from logger.ts that all console.* calls throughout the codebase can use OPTIONALLY. The cleanest, lowest-churn path is: (1) Export a `log(msg)`, `warn(msg)`, `error(msg)` trio from logger.ts that PREPEND `[HH:MM:SS]` to every line; (2) Incrementally replace raw console.* calls with these helpers (can land gradually in PRs, one file at a time); (3) For immediate global coverage with zero file edits: extend the existing console.* patches in initFileLogger() to ALSO prepend the timestamp to stdout (not just the file), so all logs—even unadjusted ones—auto-gain timestamps. Option 3 is fastest (one edit at line 34 in logger.ts: prepend timestamp to origLog call), but loses the ability to strip timestamps if needed. Option 1+2 is slower to roll out but gives fine-grained control. Recommend starting with Option 3 for rapid value, then grad to Option 1+2 as logs are normalized."
+    },
+    "playerFlow": {
+      "entryPoint": "packages/server/src/server.ts:128 — WS handler branch `if (msg.type === 'chat')` (client message type defined in packages/server/src/ws.ts:49)",
+      "chain": [
+        "packages/server/src/ws.ts:49 — client WSMessage `{ type:'chat'; agentId; message; evidenceIds? }` arrives over WebSocket",
+        "packages/server/src/server.ts:128 — WS `chat` handler: resolves speaker `agent = agents.get(msg.agentId)`, validates alive + co-location vs world.playerAgent, freezes NPC (inPlayerChat=true)",
+        "packages/server/src/server.ts:183 — IL: `extractDialogueMeaning(msg.message, ilContext)` parses player speech into structured meaning (speechAct/claims/questions)",
+        "packages/server/src/server.ts:246 — `applyDialogueMeaning(meaning, effectCtx)` mutates beliefs/mood/relationships, returns ilAdditionalContext for the prompt",
+        "packages/server/src/server.ts:296-305 — assembles fullContext (secretDirectives + trustDirective + approachCtx + ilAdditionalContext) and effectiveMessage (player text, +shop inventory if trade)",
+        "packages/server/src/server.ts:308 — `await agent.chatStream(effectiveMessage, onToken, fullContext)` → fullReply (NPC spoken text)",
+        "packages/engine/src/agent.ts:103 — Agent.chatStream: recalls memories, buildSystemPrompt, pushes player msg to _chatHistory",
+        "packages/engine/src/agent.ts:120 — `const fullReply = await generateStream('dialogue', { system, user, onToken, history, ... })` — reply assembled here, returned at agent.ts:139",
+        "packages/engine/src/llm-client.ts:200 — generateStream façade: acquires LLM semaphore (INV-01), iterates provider.stream chunks, accumulates `full` (line 242), forwards each token via req.onToken (line 243), returns `full || '...'` (line 269)",
+        "packages/providers/lm-studio/src/index.ts:156 — provider.stream yields `{ type:'token', content }` chunks only (no reply-text logging); claude-code provider analogous",
+        "packages/server/src/server.ts:312 — `sendTo(ws, { type:'chat:done', data:{ agentId, fullReply } })` — reply streamed to client UI"
+      ],
+      "replyTextLocation": "packages/server/src/server.ts:308 — variable `fullReply` (string) is in scope immediately after the awaited `agent.chatStream(...)` returns, and remains in scope through line 353. (Originating assignment: packages/engine/src/agent.ts:120, returned at agent.ts:139.) This is the full assembled NPC spoken reply.",
+      "speakerListenerInScope": "At server.ts:308 the speaker NPC is `agent` (id `msg.agentId`, name `agent.profile.name`, location `agent.state.location`); the listener/player is `world.playerAgent` (bound to local `playerAgent` at server.ts:141, id `playerAgent.profile.id`, typically 'player', name `playerAgent.profile.name`); the player's raw input is `msg.message` (the prompt actually sent is `effectiveMessage`, which equals msg.message unless trade-mode appends shop inventory). Useful meta also in scope: `meaning.speechAct`, `meaning.extractionConfidence`, NPC trust `npcTrust` (computed line 252), `chatSession.messageCount`, `world.gameMinute` / `agent.state.currentDay`. Single-player WS connection — there is no listener id field beyond world.playerAgent.",
+      "currentlyLogged": false,
+      "currentLogSites": [
+        "packages/server/src/server.ts:188 — console.log of IL parse result (speechAct/claims/questions/confidence), NOT the NPC reply",
+        "packages/server/src/server.ts:212 — console.log evidence-presented count",
+        "packages/server/src/server.ts:304 — console.log shop-injection count",
+        "packages/server/src/server.ts:337 — console.log `[Journal] Testimony from <name> recorded` (no reply text)",
+        "packages/server/src/server.ts:186 — console.warn IL fallback",
+        "packages/engine/src/volition.ts:312 — console.log NPC LLM response text, but this is the AUTONOMOUS-LIFE (AL) NPC path, NOT player dialogue"
+      ],
+      "suggestedLogSite": "packages/server/src/server.ts — insert one line immediately after line 312 (after the chat:done send, inside the `if (msg.type === 'chat')` block where fullReply, agent, playerAgent, meaning are all in scope). Example: `console.log(\\`  [Chat] ${playerAgent?.profile.name ?? 'player'} → ${agent.profile.name} @${agent.state.location} d${agent.state.currentDay} m${world.gameMinute} [act:${meaning.speechAct} trust:${npcTrust.toFixed(2)}] reply: ${fullReply.replace(/\\n/g, ' ')}\\`);` — matches the existing two-space-indent `[Tag]` console.log convention used throughout this file (e.g. lines 188/212/304/337) and the reply-flatten style from volition.ts:312.",
+      "notes": "Player↔NPC dialogue does NOT flow through routes.ts (HTTP) nor through packages/engine/src/conversation.ts (that file's runConversation/parseDialogue at conversation.ts:39/83 is the NPC↔NPC autonomous path). It is handled entirely in the WS handler in server.ts. The reply text is currently only transmitted to the client (WS chat:token stream + chat:done) and stored in agent memory (agent.ts:133-134) — it is never printed to the server console on the player path. Suggested log site (server.ts:312+) is preferred over agent.ts:120 because speaker/listener/speechAct/trust meta are only in scope at the server layer (agent.chatStream has no listener id and no IL meaning). If you also want NPC↔NPC replies logged, that is a separate site in conversation.ts (responderLine at conversation.ts:141), out of scope here. Note: Serena symbolic tools errored (MemoryError / FileNotFoundError on packages/engine/src/conversation.ts) during this session, so the trace was done via Grep/Read on absolute paths; line numbers verified against current file contents."
+    },
+    "npcFlow": {
+      "entryPoint": "packages/engine/src/world.ts:1019 — World._handleTask dispatches a CONVERSATION work task to _handleConversation() (casual NPC↔NPC); the goal-driven NPC↔NPC path enters at world.ts:1016 → _handleGoalStep(npcId). Both run inside the tick/ProcessingQueue, not the player endpoint.",
+      "chain": [
+        "packages/server/src/index.ts:566 — new World(...) wired with callbacks (incl. onLine at index.ts:591)",
+        "packages/engine/src/world.ts:1019 — _handleTask → _handleConversation() (casual path, scheduler.findPair picks initiator+responder)",
+        "packages/engine/src/world.ts:1294 — onLlmCall('Conversation', 'A ↔ B [topic]') logged here (signal only, not reply text)",
+        "packages/engine/src/world.ts:1295 — runConversation(initiator, responder, ..., {onLine: this.callbacks.onLine, ...})",
+        "packages/engine/src/conversation.ts:116 — initiator.generateResponse(...) → packages/engine/src/agent.ts:207 classify('npc-dialogue', {schema}) [structured speech+gesture]",
+        "packages/engine/src/agent.ts:207 — llm-client classify('npc-dialogue') → routed via server/src/llm-defaults.ts to lm-studio/qwen (provider)",
+        "packages/engine/src/conversation.ts:121 — parseDialogue(initiatorRaw) → initiatorLine (reply text in scope)",
+        "packages/engine/src/conversation.ts:136 — responder.generateResponse(...) → conversation.ts:141 parseDialogue → responderLine",
+        "packages/engine/src/conversation.ts:132,156 — options.onLine(iLine|rLine) → this.callbacks.onLine",
+        "packages/server/src/index.ts:592 — onLine sink: console.log('    {speakerName}: \"{text}\"') + broadcast WS conversation:line",
+        "ALT goal-driven path: packages/engine/src/world.ts:1186 createInteractionRunner({onLine}) → goals.ts:511/589 runInteraction(owner,target,...) → interaction.ts:83/96 generateResponse → interaction.ts:87/100 onLine(...) → same index.ts:592 sink"
+      ],
+      "replyTextLocation": "packages/engine/src/conversation.ts:121 (initiatorLine) and conversation.ts:141 (responderLine) — both are the parsed clean spoken text, in scope alongside the full initiator/responder Agent objects. The goal-driven equivalent: packages/engine/src/interaction.ts:84 (ownerLine) and interaction.ts:97 (targetLine). At the server sink the same text is line.text (packages/server/src/index.ts:592).",
+      "speakerListenerInScope": "Inside runConversation (conversation.ts) both NPC ids are fully in scope at every reply: speaker = initiator.profile.id/.name when emitting iLine (line 126-130), and = responder.profile.id/.name for rLine (line 150-153); the listener is simply the other Agent (responder for the initiator's line, initiator for the responder's line). At the server sink (index.ts:592) only the ConversationLine is available — it carries speaker (id) + speakerName + text but NO listener id (ConversationLine type, world-types.ts:56-60), so the sink cannot name the listener without a type change. There is no player text — these are autonomous NPC↔NPC turns; the 'prompt' that drove the reply is the topic (topic.subject) / goal purpose, not player input.",
+      "currentlyLogged": true,
+      "currentLogSites": [
+        "packages/server/src/index.ts:592 — console.log('    {speakerName}: \"{text}\"') — fires for BOTH NPC↔NPC paths via callbacks.onLine, but logs speaker-only (no listener) and only the cleaned/truncated speech",
+        "packages/engine/src/world.ts:1294 — onLlmCall('Conversation', 'A ↔ B [topic]') → index.ts:660 onLlmCall logs the pairing as a pre-call signal (no reply text)",
+        "packages/engine/src/conversation.ts:123,143 — console.warn('[Conv:SKIP] ... produced empty speech (LLM error)') when a turn parses empty",
+        "packages/engine/src/conversation.ts:148 — console.warn('[Conv:ECHO] ...') when responder verbatim-copies initiator",
+        "packages/engine/src/agent.ts:216,230 — console.error('[LLM:FAIL] ...') when classify/generate returns null"
+      ],
+      "suggestedLogSite": "packages/engine/src/conversation.ts:156 — immediately after building rLine and calling options.onLine(rLine), add ONE log per exchange covering both directions, e.g. console.log(`[NPC↔NPC] ${initiator.profile.name}(${initiator.profile.id}) → ${responder.profile.name}(${responder.profile.id}) @${location} [${topic.subject}] :: \"${initiatorLine}\" | reply \"${responderLine}\"`). This is the single point where BOTH NPC ids (initiator+responder) AND BOTH full reply texts and topic+location are simultaneously in scope. (If goal-driven interactions must also be covered with listener id, add a mirror line at packages/engine/src/interaction.ts:104 where initiator/target Agents + ownerLine/targetLine are all in scope — the index.ts:592 sink cannot do listener id because ConversationLine lacks it.)",
+      "notes": "Assumptions: depth=medium, both NPC↔NPC paths in scope. WHY 'nothing shows' despite the existing index.ts:592 log — most likely one of: (1) NPC↔NPC casual conversations rarely fire — scheduler.findPair (world.ts:1281) returns null when no co-located eligible pair exists / cooldown active, so _handleConversation early-returns at world.ts:1282; (2) lm-studio/qwen returns null or empty → parseDialogue yields '' and the turn is skipped at conversation.ts:122-124/142-144 before reaching onLine (these emit [Conv:SKIP] warns, not the reply); (3) the line.text often degrades to '...' (conversation.ts:64) so output looks empty/meaningless. The fix the user wants (visible speaker→listener + full reply) is best placed in the engine producer at conversation.ts:156, NOT the server sink, because (a) the sink's ConversationLine has no listener id, and (b) logging in conversation.ts captures the real produced text regardless of WS/sink filtering. 'npc-dialogue' LLM task is registered in modules/crime-justice/index.ts:63 (requiresStructuredOutput) and routed to lm-studio/qwen by server/src/llm-defaults.ts:54 — confirming these turns never hit the streaming claude-code 'dialogue' (player) route. Engine has no import of modules (INV-14); the log line stays inside engine and uses only Agent fields."
+    },
+    "llmMeta": {
+      "resultShape": "There is NO LlmResult/LlmCallResult/LlmStreamResult type. The actual result types in packages/engine/src/llm-types.ts are:\n\nLlmCallResponse (llm-types.ts:87) — non-stream result:\n  content: string\n  finishReason: FinishReason            // 'stop' | 'length' | 'schema_violation' | 'error' (line 85)\n  usage?: {\n    promptTokens: number\n    completionTokens: number\n    cacheReadTokens?: number\n    cacheCreationTokens?: number\n    costUsd?: number\n  }\n  providerId: string\n  modelId: string\n\nLlmStreamChunk (llm-types.ts:117) — per-chunk for streaming:\n  type: 'token' | 'done' | 'error'\n  content?: string\n  error?: Error\n  usage?: { promptTokens: number; completionTokens: number; cacheReadTokens: number; cacheCreationTokens: number; costUsd: number }  // only on final 'done' chunk\n\nLlmUsageEvent (llm-types.ts:160) — the per-call telemetry record ALREADY emitted by the façade after every call:\n  timestamp: number; task: LlmTask; agentId?: string; providerId: string; modelId: string;\n  finishReason: FinishReason; promptTokens, completionTokens, cacheReadTokens, cacheCreationTokens: number;\n  costUsd: number; latencyMs: number; hadSchema: boolean\n\nLlmRoute (llm-types.ts:201): provider, model, maxTokens?, sampling?, fallback?: LlmRoute, warm?: boolean, schemaInPrompt?: boolean\nLlmRouterConfig (llm-types.ts:216): default: LlmRoute; routes: Partial<Record<LlmTask, LlmRoute>>",
+      "hasUsage": true,
+      "usageFields": [
+        "promptTokens (LlmCallResponse.usage)",
+        "completionTokens",
+        "cacheReadTokens (optional on LlmCallResponse, required on LlmStreamChunk)",
+        "cacheCreationTokens",
+        "costUsd (USD, exact for claude-code via result.total_cost_usd, always 0 for lm-studio local)",
+        "providerId",
+        "modelId",
+        "finishReason"
+      ],
+      "hasLatency": true,
+      "latencyNotes": "Latency IS already measured. Each façade fn captures `const startMs = Date.now()` immediately AFTER `await sem.acquire()` (classify llm-client.ts:96, generate :164, generateStream :214, embed :286) and computes `latencyMs: Date.now() - startMs` inside the emitUsage helper (:53) / inline _emitUsage calls (:266, :302, :318). Note: this is wall-clock INCLUDING nothing before acquire but INCLUDING the full provider round-trip; it does NOT isolate provider.call() time from semaphore-held overhead (acquire happens before startMs, so queue-wait is excluded — good). No per-provider internal timing exists; if you want pure provider.call latency it already is that (startMs is set right before the try{provider.call}). Cost-gate-blocked calls pass `Date.now()` as startMs so they log ~0ms (classify :90, generate :158).",
+      "centralCallSite": "There is no single class chokepoint — llm-client.ts is a façade of 4 free functions, not a router class with call()/stream(). The true single funnel for ALL non-stream telemetry is the local helper `emitUsage()` at packages/engine/src/llm-client.ts:31-56, which every non-stream path (classify success :118, classify provider-throw :115, classify cost-gate :90, generate success :185, generate throw :182, generate cost-gate :158) calls; it forwards to `_emitUsage()` (llm-registry.ts:87). The nearest thing to a provider-dispatch chokepoint is `callWithSchemaRetry()` (llm-registry.ts:188) which wraps provider.call() for classify, while generate calls provider.call() directly at llm-client.ts:168. embed has its own inline _emitUsage at :290 and :307 (does NOT use the emitUsage helper). So: telemetry chokepoint = emitUsage helper (llm-client.ts:31); provider-call chokepoints = classify→llm-registry.ts:188/:204 and generate→llm-client.ts:168.",
+      "streamCallSite": "Streaming funnels through `generateStream()` in packages/engine/src/llm-client.ts:200-273. The provider.stream() loop is at :222-248; the single stream telemetry emit is the inline `_emitUsage({...})` at :254-268 (run in the try-block's tail, always reached). Real usage comes from the final 'done' chunk (:245-247, populated by claude session.ts mapUsage() :245); LM Studio emits 'done' with NO usage (lm-studio/src/index.ts:148,162) so completionTokens falls back to Math.ceil(full.length/4) and cost=0 (:262,:265). Note generateStream is the ONLY streaming path — embed/classify/generate are non-stream.",
+      "routeTaskInScope": "YES — fully in scope at every emit point. `task: LlmTask` is the first arg of classify/generate/generateStream and a literal 'embeddings' in embed. The resolved route is obtained via `_resolveRoute(task)` (classify via classifyWithRoute :78/:81, generate :154, generateStream :204, embed :277), giving route.provider and route.model. The emitUsage helper takes both the resolved route.provider/route.model (as fallback ids) AND the actual resp.providerId/resp.modelId (which can differ after a fallback route — classify recurses into route.fallback at :116/:124). So at the chokepoint you have: task name, requested provider+model (route.*), and the provider+model that actually answered (resp.* or stream route.*). warm and schemaInPrompt are also in scope (route.warm, route.schemaInPrompt) but are NOT currently forwarded into the event.",
+      "suggestedLogSite": "Everything you asked to log EXCEPT warm? and schemaInPrompt? is ALREADY captured in LlmUsageEvent and persisted to data/llm-usage.jsonl by LlmUsageTracker.record() (llm-usage-tracker.ts:77). Existing per-call fields: task, providerId, modelId, promptTokens(in), completionTokens(out), cacheRead/CreationTokens, costUsd, latencyMs, hadSchema(=schema-was-present), finishReason, timestamp, agentId. To add the two missing flags (warm?, schemaInPrompt?): (1) add `warm: boolean; schemaInPrompt: boolean` to LlmUsageEvent (llm-types.ts:160-183); (2) thread them through the emitUsage helper signature + its single _emitUsage call (llm-client.ts:31-56) and pass route.warm/route.schemaInPrompt at each call (:90,:115,:118,:158,:182,:185), plus the stream emit (:254-268, route.warm only — stream has no schemaInPrompt) and embed emits (:290,:307 → both false). For a human-readable per-call console line (vs the JSONL), the single best place is the emitUsage helper body (llm-client.ts:~54) plus the generateStream _emitUsage at :254 and embed at :290/:307 — log `task provider/model warm=? schema=? ms=latencyMs in=promptTokens out=completionTokens cost=$costUsd finish=finishReason`. Alternatively add one console.log inside LlmUsageTracker.record() (llm-usage-tracker.ts:77) to get ALL four emit paths (classify/generate/stream/embed) from ONE place for free — this is the true single chokepoint for logging since every _emitUsage routes there.",
+      "notes": "Provider usage reality: (1) claude-code call() (index.ts:270-287) returns full usage — promptTokens = input_tokens + cache_read_input_tokens, completionTokens = output_tokens, cacheReadTokens, cacheCreationTokens, and EXACT costUsd from result.total_cost_usd. Warm structured path (callWarmStructured :343) forwards session.request usage via session.ts mapUsage() (:245-254) — same fields. (2) claude-code stream via session.send 'done' chunk → mapUsage() (session.ts:156,245) — full usage incl. exact cost. (3) lm-studio call() (index.ts:94-102) returns promptTokens/completionTokens from OpenAI usage; cacheRead/Creation hardcoded 0, costUsd hardcoded 0 (local). (4) lm-studio stream() (index.ts:108-166) emits 'done' with NO usage at all (:148,:162) → façade approximates completionTokens=len/4. (5) embed: lm-studio returns usage.promptTokens, cost 0 (index.ts:187); claude-code embed throws (unsupported, index.ts:463).\n\nGOTCHAS: (a) façade NEVER throws — all errors collapse to null/'...'; usage still emitted with finishReason='error' and zeroed tokens (llm-client.ts header + :115,:182,:307). (b) On fallback routes, the logged providerId/modelId is the one that ANSWERED (resp.*), but a separate error event is ALSO emitted for the failed primary (classify :115 then recursion emits again) — so ONE logical classify can produce MULTIPLE usage events. (c) Cost-gate-blocked calls emit an event with latency≈0 and finishReason='error' (:90,:158) — these are not real provider calls; if logging, distinguish via near-zero latency or add a 'blocked' marker. (d) Streaming LM Studio cost/tokens are approximations, not measured. (e) _emitUsage is fire-and-forget (registry.ts:87-96, Promise not awaited) — recorder errors are swallowed, won't block the call. (f) embed path does NOT use the emitUsage() helper — it inlines _emitUsage twice (:290 success, :307 error), so any helper-level change must be mirrored there."
+    }
+  }
+}

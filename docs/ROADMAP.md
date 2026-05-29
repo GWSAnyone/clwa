@@ -18,9 +18,20 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
-## Текущее состояние: v0.15.1 — M4 частично, фокус смещён на обобщение движка
+## Текущее состояние: v0.16.0 — M5 «Engine Generalization» отгружен (+ Living Millhaven demo)
 
-> M4 «Complete Session»: arrival-event + position-authoritative movement (v0.15.0) и удаление gameSpeed (v0.15.1) отгружены; win/lose + end-of-run summary **сознательно отложены** — текущий фокус — развитие движка (обобщённость под больше пространства для создания игр), не закрытие конкретной игры.
+> **M5 «Engine Generalization»** (две фазы, отдельные ветки):
+> - **Phase A — genre-нейтрализация**: из `packages/engine` слиты ВСЕ crime-justice утечки (строки, имена типов,
+>   проза, dead defaults, `CrimeScene`→`SceneResidue`, PlayerJournal/accusation извлечены в модуль). Semantic
+>   INV-14 «zero module-specific strings» теперь **PERFECT** — genre-neutrality guard проходит весь движок (0 исключений).
+> - **Phase B — universal capability subsystems**: добавлены три примитива (scalar attributes B1, inventory B2,
+>   factions+standing B3) — quantified-state слой, которого не хватало для второго жанра.
+> - Демо **Living Millhaven** доказало цель генерализации: экономика + фракции + правосудие добавлены в crime-игру
+>   с **нулём правок движка**.
+>
+> M4 «Complete Session»: arrival-event + position-authoritative movement (v0.15.0), удаление gameSpeed (v0.15.1)
+> отгружены; win/lose + end-of-run summary **сознательно отложены**. Текущий фокус — качество отыгрыша NPC
+> (тюнинг LLM/контекста) + обсервабилити.
 
 ### Завершено
 
@@ -29,6 +40,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | **Phase 1** | Proof of Concept — 8 NPC, E2E chain kill→investigate→arrest→sentence | v0.5-v0.8 |
 | **Phase 2** | Player Integration — IL v2, bilateral design, trust evolution, Web UI | v0.9-v0.10 |
 | **Milestone 1** | Replayable Crime — trait/mood/relationship randomization, Scenario Manager | v0.11.0 |
+| **Milestone 5** | Engine Generalization — genre-neutral engine (Phase A) + scalar attributes / inventory / factions (Phase B) + Living Millhaven demo (zero engine edits) | v0.16.0 |
 
 ### В работе
 
@@ -36,7 +48,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 |-----------|---------|--------|--------|
 | **Milestone 2** | Detective Toolkit — accusation, evidence presentation, prevention, journal v2 | v0.12 | Done (backend + Web UI) |
 
-### Engine подсистемы (14 реализовано)
+### Engine подсистемы (17 реализовано)
 
 | Подсистема | Версия | Назначение |
 |-----------|--------|-----------|
@@ -48,12 +60,15 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | Beliefs | v1 | Confidence, source dedup, decay, transfer weights |
 | Goals | v1 | Multi-step plans, priority preemption, pursuit, module step handlers |
 | Memory | v2 | Persistent dual storage (_memoryLog + Qdrant), 3-level fallback, multiplayer-ready |
-| Relationships | v1 | Bilateral sentiment/trust, typed, grief/testimony weights |
+| Relationships | v2 | Bilateral sentiment/trust + **standing** axis (-1..1, politics/justice). Open RelationType registry (registerRelationshipType), grief/testimony weights from registry |
 | Perception | v1 | canSee/canHear/getCoPresent/getWitnesses, location-based |
 | Schedule | v1 | 5 periods, per-NPC entries, priority 3 goals |
 | Clock | v1 | Master Clock, ProcessingQueue (7 task types), NPC state machine (6 states) |
 | Journal | v2 | Structured evidence fields, suspect tracking, case summary scoring |
 | Dialogue | v1 | Structured JSON (speech+gesture), TopicEngine v3.1 (16 sources: 13 social + 3 crime) |
+| Attributes (Scalar) | v1 | Universal numeric state: base + clamped [min,max] + decaying modifiers (MoodModifier-модель). Атомарный conserved `transferAttribute`. CG `attr` op, `registerScoringContributor`. Backs gold/HP/standing/needs |
+| Inventory | v1 | Item-инстансы {id, kind, quantity, state?}. Атомарный conserved `transferItem` — реальная кража/торговля/лут двигают state. Per-agent inventory |
+| Factions | v1 | Open-key membership на AgentState. CG `faction` op, join/leave/isMember. Per-faction standing через scalar-атрибут |
 
 ---
 
@@ -93,13 +108,59 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
+## M5 — Engine Generalization (DONE, v0.16.0)
+
+Движок приведён к genre-нейтральности и расширен universal capability-примитивами. Две фазы, две ветки.
+
+**Phase A — genre-нейтрализация** (`feature/engine-neutralization`, tsc 0, 230/230):
+все crime-утечки слиты из `packages/engine`; semantic INV-14 **PERFECT** (genre-neutrality guard проходит весь движок, 0 исключений).
+
+| Шаг | Что слито | Как |
+|-----|-----------|-----|
+| A1 | hardcoded `'rumor'` | `BELIEF_SOURCE.GOSSIP` |
+| A2 | role-directive crime-проза | `registerRoleDirectiveBuilder` hook |
+| A3 | belief NL phrasing «committed X against Y» | `registerBeliefPhrasing` (per event-type) + нейтральный fallback |
+| A4 | concealment/accusation проза | crime secret-directive builders |
+| A5 | AffordanceRequirement crime-поля | generic + `REQUIREMENT_CHECKERS` / `POST_TARGET_REQUIREMENT_CHECKERS` / `registerTargetEnricher` |
+| A6 | AgentProfile capability-флаги | open `capabilities: Record<string,boolean>` + `hasCapability()` |
+| A7 | EmotionalPressure closed union | `type=string`, registry-backed |
+| A8 | pre-seeded crime defaults | event-registry стартует пустым (universal-only) |
+| A9 | **CrimeScene → SceneResidue** | genre-neutral rename (crimeType→sceneType, perpetratorId→actorId, victimId→affectedId, processKill→processAgentDeath, …) |
+| A10 | PlayerJournal + accusation/evidence | извлечены в `crime-justice/investigation.ts`; движок получил `registerDialogueEffectHandler` + opaque `playerState` + `onPlayerObserve`; engine `journal.ts` удалён |
+
+**Phase B — universal capability subsystems** (`feature/engine-generalization`, tsc 0, 262/262):
+
+| Примитив | Файл | Суть |
+|----------|------|------|
+| **B1 Scalar Attributes** | `attributes.ts` | `ScalarAttribute {base, [min,max], modifiers[]}` (decay как MoodModifier). World API get/set/adjustBase/addModifier/**transferAttribute** (атомарный conserved). CG `attr` op. `registerScoringContributor` в computeUtility. Save/load. Backs gold/HP/standing/needs |
+| **B2 Inventory** | `inventory.ts` | `Item {id, kind, quantity, state?}`. World API get/count/has/give/remove/**transferItem** (атомарный conserved). Реальная кража/торговля двигают state, а не только эмитят событие |
+| **B3 Factions + standing** | `relationships.ts` | Open `RelationType` + `registerRelationshipType`/`getRelationshipDefaults` (7 universal-бондов). Ось `Relationship.standing` (-1..1) + `adjustStanding`. `AgentState.factions[]` + join/leave/isMember + CG `faction` op |
+
+**Demo — Living Millhaven** (`feature/living-millhaven-demo`, **zero engine edits** — главный success criterion):
+gold/inventory/factions/standing засеяны в world JSON; реальная кража (`transferItem`), вступление в `criminals`
+при преступлении, CG-правило `merchant-guild-alarm` (op:`faction`), REST `buy`/`bribe`, WS `economy:update`,
+фронт (💰 HUD + ⚖ justice-метр, бэйджи фракций, инвентарь, реальная лавка). Phase 4 (финальный verify/close) — в работе.
+
+**Сопутствующее (LLM / обсервабилити)**: per-route warm/schemaInPrompt config + LLM-routing панель в World Editor;
+reflection→sonnet; legacy web UI убран (root = game.html); IL over-extraction fix; диалоги без нарративных
+действий + language-lock; auto-tick OFF по умолчанию; `bun` command picker; таймстемпы на логах + логи реплик NPC
+(игрок↔NPC и NPC↔NPC) + per-call LLM-мета (модель/токены/стоимость/латентность).
+
+**Открытые follow-up'ы**: полная A7b shop→inventory миграция (нужен economy-модуль; примитив готов),
+A5b StepTemplate combat-поля, instinct RESISTANCE/TEXTURE registry-ификация.
+
+---
+
 ## Phase 3: World Expansion
 
 ### Новые подсистемы движка
 
 Четыре подсистемы разблокируют модули Economy, Politics, Social, Survival. Каждая = engine-level код (пустые регистры), конкретное содержание = module data.
 
-#### Trauma Layer — необратимые изменения личности
+> **Статус (M5 Phase B):** Inventory ✅ (B2), Factions ✅ (B3), плюс scalar-attribute слой (B1) как общая
+> числовая основа (gold/HP/standing/needs). **Trauma Layer** и **Needs/Resources** — ещё впереди (Needs строится поверх B1).
+
+#### Trauma Layer — необратимые изменения личности (впереди)
 
 **Что:** Экстремальное событие → постоянный сдвиг OCEAN+H. Baseline меняется навсегда.
 
@@ -117,7 +178,7 @@ Registry: TRAUMA_RULES — modules fill
 
 **Разблокирует:** Horror жанр, глубокий Social, organic character development.
 
-#### Inventory / Ownership — физические предметы
+#### Inventory / Ownership — физические предметы ✅ DONE (B2 — `inventory.ts`)
 
 **Что:** Предметы существуют в мире — в инвентаре NPC, на локации, в контейнере. Можно передать, украсть, потерять, найти, уничтожить.
 
@@ -136,7 +197,7 @@ Transfer(item, from, to) → CG event
 
 **Разблокирует:** Economy module, physical evidence, crafting, trade.
 
-#### Needs / Resources — потребности и давление
+#### Needs / Resources — потребности и давление (впереди, поверх B1)
 
 **Что:** Числовые потребности (0=удовлетворена, 1=критическая). Растут со временем, удовлетворяются через affordances.
 
@@ -156,7 +217,7 @@ Registry: NEED_DEFINITIONS — modules fill
 
 **Разблокирует:** Survival жанр, organic economy pressure, seasonal dynamics.
 
-#### Factions / Groups — коллективные субъекты
+#### Factions / Groups — коллективные субъекты ✅ DONE (B3 — `relationships.ts`)
 
 **Что:** Группы агентов с общей идентичностью: иерархия, shared beliefs, reputation, territory.
 
