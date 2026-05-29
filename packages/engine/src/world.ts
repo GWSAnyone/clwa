@@ -93,6 +93,7 @@ export interface WorldSaveAgentData {
   baseMood: number;
   moodModifiers: import('./world-types').MoodModifier[];
   attributes?: Record<string, import('./attributes').ScalarAttribute>;
+  factions?: string[];
   currentDay: number;
   knownFacts: string[];
   beliefs: import('./beliefs').Belief[];
@@ -698,6 +699,33 @@ export class World {
     this.adjustAttributeBase(fromId, key, -amount);
     this.adjustAttributeBase(toId, key, amount);
     return true;
+  }
+
+  // ─── Factions / groups (B3) — collective-actor membership primitive ───
+
+  /** Whether an agent belongs to a faction/group (open string key). */
+  isFactionMember(npcId: string, faction: string): boolean {
+    return this.agents.get(npcId)?.state.factions?.includes(faction) ?? false;
+  }
+
+  /** Add an agent to a faction (idempotent). */
+  joinFaction(npcId: string, faction: string): void {
+    const agent = this.agents.get(npcId);
+    if (!agent) return;
+    if (!agent.state.factions) agent.state.factions = [];
+    if (!agent.state.factions.includes(faction)) agent.state.factions.push(faction);
+  }
+
+  /** Remove an agent from a faction. */
+  leaveFaction(npcId: string, faction: string): void {
+    const agent = this.agents.get(npcId);
+    if (!agent?.state.factions) return;
+    agent.state.factions = agent.state.factions.filter((f) => f !== faction);
+  }
+
+  /** All factions an agent belongs to. */
+  getFactions(npcId: string): string[] {
+    return this.agents.get(npcId)?.state.factions ?? [];
   }
 
   /** Get mood history for an NPC (time-series snapshots every 5 game minutes) */
@@ -1801,6 +1829,7 @@ export class World {
         baseMood: agent.state.baseMood,
         moodModifiers: agent.state.moodModifiers ?? [],
         ...(agent.state.attributes ? { attributes: agent.state.attributes } : {}),
+        ...(agent.state.factions ? { factions: agent.state.factions } : {}),
         currentDay: agent.state.currentDay,
         knownFacts: agent.state.knownFacts,
         beliefs: agent.state.beliefs?.toJSON() ?? [],
@@ -1902,6 +1931,7 @@ export class World {
       agent.state.moodModifiers = (saved.moodModifiers ?? [])
         .filter((m) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
       if (saved.attributes) agent.state.attributes = saved.attributes;
+      if (saved.factions) agent.state.factions = saved.factions;
       agent.state.currentDay = saved.currentDay;
       agent.state.knownFacts = saved.knownFacts;
 

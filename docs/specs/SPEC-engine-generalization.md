@@ -50,11 +50,15 @@ step-примитив (move N of X from A to B с conservation). Заменяе�
 `item.kind` — free string (не реинтродуцировать crime/trade вокабуляр в движок).
 **Дренирует A7b**: убирает из движка `AgentProfile.shop`/`ShopItem` (`agent-types.ts`) и `il.ts TradeIntent`/`tradeIntent`/trade-detection — это economy half-primitive, который B2 заменяет реальной inventory + переносит trade-intent в economy-модуль (IL-schema-extension hook). Затрагивает server (world-loader/routes/ws) + client shop-panel.
 
-### B3 — Faction / group + relationship richness [size L, leverage medium]
-- Faction/group entity + membership на `AgentState` + `FACTION_TYPES` registry; group-scoped standing-скаляр (через B1).
-- `RelationType` (закрытый union friend|rival|family|…) → registry-backed bond-types + optional `standing/favor` на
-  `Relationship` (это win-condition court-romance, сегодня нет engine-native state). Затрагивает
-  `DEFAULT_TRUST/DEFAULT_SENTIMENT/getGriefPenalty` — мигрировать в lockstep.
+### B3 — Faction / group + relationship richness [size L] — ✅ DONE
+**Реализовано** (tsc 0, 245/245, `tests/relationships-factions.test.ts` 6 тестов):
+- **B3a relationship richness**: `RelationType` → OPEN string; `registerRelationshipType(type, {trust,sentiment,grief})` +
+  `getRelationshipDefaults(type)` (seeded с 7 universal-бондами, neutral fallback) — модуль добавляет `alliance/betrothed/vassal`
+  без правок движка; `getGriefPenalty` читает реестр; `DEFAULT_TRUST/DEFAULT_SENTIMENT` удалены (заменены реестром, server мигрирован).
+  Добавлена ось **`Relationship.standing`** + `adjustStanding` (clamped -1..1) — court/politics win-condition.
+- **B3b faction membership**: `AgentState.factions?: string[]` (open keys) + World `joinFaction`/`leaveFaction`/`isFactionMember`/
+  `getFactions` + CG условие-op **`faction`** (гейт по членству) + save/load. Per-faction standing — через B1-атрибут (key per faction).
+  Минимальный collective-actor примитив (без over-engineered faction-faction таблиц — те строятся, когда politics-модуль их требует, per survey).
 
 ## Отложенные enhancement'ы (из maps, не в B1–B3)
 - Instinct TEXTURE/RESISTANCE registry (модули поставляют свой affect-вокабуляр вместо crime/violence-прозы).

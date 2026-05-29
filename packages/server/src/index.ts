@@ -1,7 +1,7 @@
 import { initFileLogger } from './logger';
 const _logFile = initFileLogger();
 
-import { Agent, VectorMemory, BeliefManager, RelationshipGraph, DEFAULT_TRUST, DEFAULT_SENTIMENT } from '@clwa/engine';
+import { Agent, VectorMemory, BeliefManager, RelationshipGraph, getRelationshipDefaults } from '@clwa/engine';
 import { ConsequenceEngine } from '@clwa/engine';
 import { InMemoryEventStore } from '@clwa/engine';
 import { World, findPath } from '@clwa/engine';
@@ -331,9 +331,9 @@ function buildRelationshipsFromData(npcId: string, profiles: AgentProfile[], rel
     graph.addRelationship({
       targetId: def.to,
       targetName: target.name,
-      type: def.type as RelationType,
-      sentiment: def.sentiment ?? DEFAULT_SENTIMENT[def.type as RelationType],
-      trust: def.trust ?? DEFAULT_TRUST[def.type as RelationType],
+      type: def.type,
+      sentiment: def.sentiment ?? getRelationshipDefaults(def.type).sentiment,
+      trust: def.trust ?? getRelationshipDefaults(def.type).trust,
     });
   }
   return graph;

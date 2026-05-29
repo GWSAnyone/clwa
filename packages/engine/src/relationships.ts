@@ -1,11 +1,6 @@
-export type RelationType =
-  | 'friend'
-  | 'rival'
-  | 'family'
-  | 'acquaintance'
-  | 'romantic'
-  | 'mentor'
-  | 'colleague';
+/** Bond type — OPEN string (B3). The engine ships universal social bonds as defaults; modules register
+ *  their own (alliance, betrothed, vassal, faction-ally) via registerRelationshipType with zero engine edit. */
+export type RelationType = string;
 
 export interface Relationship {
   targetId: string;
@@ -15,29 +10,36 @@ export interface Relationship {
   sentiment: number;
   /** 0.0 to 1.0: how much they trust this person's word */
   trust: number;
+  /** Optional social standing / favor / rank this agent grants the target (-1..1). The court/politics
+   *  win-condition axis (B3). Undefined = no explicit standing. Adjust via adjustStanding. */
+  standing?: number;
 }
 
-/** Default trust by relationship type */
-export const DEFAULT_TRUST: Record<RelationType, number> = {
-  family: 0.9,
-  romantic: 0.85,
-  friend: 0.8,
-  mentor: 0.7,
-  colleague: 0.6,
-  acquaintance: 0.4,
-  rival: 0.2,
-};
+/** Per-bond-type defaults: starting trust/sentiment + grief penalty on the target's death. */
+export interface RelationshipTypeDefaults { trust: number; sentiment: number; grief: number; }
 
-/** Default sentiment by relationship type */
-export const DEFAULT_SENTIMENT: Record<RelationType, number> = {
-  family: 0.7,
-  romantic: 0.8,
-  friend: 0.6,
-  mentor: 0.5,
-  colleague: 0.3,
-  acquaintance: 0.1,
-  rival: -0.3,
-};
+const FALLBACK_DEFAULTS: RelationshipTypeDefaults = { trust: 0.4, sentiment: 0, grief: -0.05 };
+
+/** Registry-backed bond-type defaults. Seeded with universal social bonds; modules add their own. */
+const RELATIONSHIP_TYPE_DEFAULTS: Map<string, RelationshipTypeDefaults> = new Map([
+  ['family',       { trust: 0.9,  sentiment: 0.7,  grief: -0.4 }],
+  ['romantic',     { trust: 0.85, sentiment: 0.8,  grief: -0.5 }],
+  ['friend',       { trust: 0.8,  sentiment: 0.6,  grief: -0.3 }],
+  ['mentor',       { trust: 0.7,  sentiment: 0.5,  grief: -0.25 }],
+  ['colleague',    { trust: 0.6,  sentiment: 0.3,  grief: -0.15 }],
+  ['acquaintance', { trust: 0.4,  sentiment: 0.1,  grief: -0.05 }],
+  ['rival',        { trust: 0.2,  sentiment: -0.3, grief: 0 }],
+]);
+
+/** Register a bond type's defaults (e.g. 'alliance', 'betrothed', 'vassal') — zero engine edit. */
+export function registerRelationshipType(type: string, defaults: RelationshipTypeDefaults): void {
+  RELATIONSHIP_TYPE_DEFAULTS.set(type, defaults);
+}
+
+/** Defaults for a bond type (registered or universal); neutral fallback for unknown types. */
+export function getRelationshipDefaults(type: string): RelationshipTypeDefaults {
+  return RELATIONSHIP_TYPE_DEFAULTS.get(type) ?? FALLBACK_DEFAULTS;
+}
 
 export class RelationshipGraph {
   private relationships: Map<string, Relationship> = new Map(); // targetId -> Relationship
@@ -84,15 +86,15 @@ export class RelationshipGraph {
     const rel = this.relationships.get(targetId);
     if (!rel) return 0;
     if (rel.sentiment <= 0) return 0; // no grief for enemies
+    return getRelationshipDefaults(rel.type).grief;
+  }
 
-    switch (rel.type) {
-      case 'family': return -0.4;
-      case 'romantic': return -0.5;
-      case 'friend': return -0.3;
-      case 'mentor': return -0.25;
-      case 'colleague': return -0.15;
-      default: return -0.05;
-    }
+  /** Adjust social standing/favor toward a target (clamped -1..1). Fires onChange via the sentiment channel
+   *  is NOT triggered — standing is a separate axis; callers broadcast it themselves if needed. */
+  adjustStanding(targetId: string, delta: number): void {
+    const rel = this.relationships.get(targetId);
+    if (!rel) return;
+    rel.standing = Math.max(-1, Math.min(1, (rel.standing ?? 0) + delta));
   }
 
   /** Compact summary for LLM system prompt */

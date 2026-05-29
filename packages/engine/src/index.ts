@@ -14,8 +14,8 @@ export type { BeliefSource } from './beliefs';
 export type { Belief } from './beliefs';
 
 // ─── Relationships ───
-export { RelationshipGraph, DEFAULT_SENTIMENT, DEFAULT_TRUST } from './relationships';
-export type { RelationType } from './relationships';
+export { RelationshipGraph, registerRelationshipType, getRelationshipDefaults } from './relationships';
+export type { RelationType, RelationshipTypeDefaults } from './relationships';
 export type { Relationship } from './relationships';
 
 // ─── Memory ───

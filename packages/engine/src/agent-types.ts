@@ -148,6 +148,9 @@ export interface AgentState {
   /** Open string-keyed numeric attributes (B1): module-defined quantified state — gold / HP / standing /
    *  needs. base + clamped range + timed modifiers. Read via getAttributeValue / World.getAttribute. */
   attributes?: Record<string, import('./attributes').ScalarAttribute>;
+  /** Faction/group memberships (B3): open string keys (guild / house / coalition / cult). Collective-actor
+   *  primitive — read via World.isFactionMember / CG op 'faction'. Per-faction standing uses an attribute. */
+  factions?: string[];
   currentDay: number;
   knownFacts: string[];
   /** Structured beliefs about events (who did what). Optional for backward compat */

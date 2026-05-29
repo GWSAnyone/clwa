@@ -285,6 +285,10 @@ export class ConsequenceEngine {
       const capFlag = (cond.value ?? cond.field) as string;
       return hasCapability(agent.profile, capFlag);
     }
+    if (cond.op === 'faction') {
+      // Collective-actor gate (B3): target belongs to the named faction/group.
+      return agent.state.factions?.includes((cond.value ?? cond.field) as string) ?? false;
+    }
     if (cond.op === 'attr') {
       // Quantitative state gate (B1): compare a scalar attribute's effective value to cond.value.
       const v = getAttributeValue(agent.state.attributes, cond.field ?? '');
