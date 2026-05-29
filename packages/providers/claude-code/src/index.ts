@@ -150,8 +150,10 @@ export class ClaudeCodeProvider implements LlmProvider {
       // CLI default flipping to high (which measured ~25% slower with no quality gain here).
       '--effort',
       'low',
+      // `local` only: loads the NPC's own CLAUDE.local.md persona, but NOT the parent CLAUDE.md chain
+      // (project dev-instructions) that `project` would walk up and inject (~3k wasted tokens/call).
       '--setting-sources',
-      'project,local',
+      'local',
       '--output-format',
       'json',
       '--model',
@@ -322,8 +324,10 @@ export class ClaudeCodeProvider implements LlmProvider {
       '',
       '--effort',
       'low', // fast conversational replies — no extended thinking (see call())
+      // `local` only: loads the NPC's own CLAUDE.local.md persona, but NOT the parent CLAUDE.md chain
+      // (project dev-instructions) that `project` would walk up and inject (~3k wasted tokens/call).
       '--setting-sources',
-      'project,local',
+      'local',
       '--permission-mode',
       'acceptEdits',
       '--model',

@@ -3,7 +3,8 @@
  *
  * Каждый NPC получает:
  *   data/claude-npcs/<id>/
- *   ├── CLAUDE.md              # auto-loaded из cwd как system prompt NPC
+ *   ├── CLAUDE.local.md        # auto-loaded из cwd (local source) — персона NPC. NOT CLAUDE.md: тот
+ *   │                         #   грузится project-source'ом и тянет родительские dev-CLAUDE.md (walk-up).
  *   ├── .mcp.json              # {"mcpServers":{}} — блокирует все MCP servers
  *   ├── .claude/settings.json  # {"autoMemoryEnabled": false} — мы курируем память сами
  *   └── memory/                # CLWA-curated memory, @-импорты из CLAUDE.md
@@ -56,7 +57,11 @@ export class NpcMemoryManager {
       path.join(dir, '.claude', 'settings.json'),
       JSON.stringify({ autoMemoryEnabled: false }, null, 2),
     );
-    await this.writeIfMissing(path.join(dir, 'CLAUDE.md'), init.personality);
+    // Persona lives in CLAUDE.local.md (loaded via the `local` setting-source), NOT CLAUDE.md (`project`
+    // source, which also walks UP and would pull the whole project's dev-instruction CLAUDE.md chain into
+    // every NPC call — ~3k wasted tokens). One-time migration: drop a stale CLAUDE.md from older runs.
+    await fs.rm(path.join(dir, 'CLAUDE.md'), { force: true }).catch(() => {});
+    await this.writeIfMissing(path.join(dir, 'CLAUDE.local.md'), init.personality);
 
     if (init.relationships !== undefined) {
       await this.writeIfMissing(path.join(dir, 'memory', 'relationships.md'), init.relationships);
