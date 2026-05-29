@@ -48,12 +48,43 @@ goals, volition, mood) — действительно универсальна; 
 | **A7b** | TradeIntent + shop/ShopItem (economy half-subsystem) | `il.ts:153,166,72,214,237,281`; `agent-types.ts:107-119` | **→ Phase B (B2 inventory)**: рабочая shop-фича (panel/ws/steal); Phase-B inventory заменяет shop/ShopItem и переносит TradeIntent в economy-модуль. Вырывать сейчас = сломать фичу или scaffold | type leak | ⏭ Phase B |
 | **A8** | Pre-seeded crime defaults | `event-registry.ts` BELIEF_SOURCE_LABELS/SOURCE_TRANSFER_WEIGHTS/BELIEF_SOURCE; `beliefs.ts` SOURCE_CONFIDENCE | label/weight maps — только universal (testimony/observation); body_discovery/evidence/deduction → crime (идентичные значения); `BELIEF_SOURCE` без BODY_DISCOVERY/DEDUCTION (EVIDENCE остаётся — engine IL ссылается); мёртвый `SOURCE_CONFIDENCE` удалён | dead leak | ✅ |
 | **A9** | CrimeScene → generic primitive (rename) | engine: `world-types.ts`, `world.ts`, `event-registry.ts`, `scene-residue.ts`(↤crime-scene.ts), `goals.ts`, `cg-engine.ts`, `index.ts` | `CrimeScene→SceneResidue`(+JSON/Template), поля `crimeType→sceneType`/`perpetratorId→actorId`/`victimId→affectedId`, `processKill→processAgentDeath`, `markCrimeScene→markSceneResidue`, `createCrimeScene→createSceneResidue`, `crimeScenes→sceneResidues`, `bodyDiscoveries→deathDiscoveries`, callbacks `onMurder→onAgentDeath`/`onCrimeScene→onSceneResidue`/`onCrimeEvent→onEmitEvent`, `crimeEvent→emittedEvent`, `TickResult.murder→death/crimeScene→sceneResidue`, const `CRIME_SCENE_TEMPLATES→SCENE_RESIDUE_TEMPLATES`, BeliefCreator/MemoryBuilder params, файл переименован. Убраны backward-compat алиасы из index. Client/server-msg `crime:scene`+`crimeType` — game/wiring-слой (не движок), оставлен; payload-ключи `perpetratorName/affectedName` — graceful-degrading residual | naming leak | ✅ |
-| **A10** | PlayerJournal investigation-журнал в движке (+ A4b accusation-flow) | `journal.ts:1-48` + `il.ts` accusation-блок | извлечь investigation/accusation/journal-подсистему в crime-модуль через generic IL speech-act-effect hook (после A6) | naming leak | ☐ |
+| **A10+A4b** | PlayerJournal + accusation/evidence-presentation подсистема в движке | `journal.ts`, `il.ts` (PresentedEvidence/ConversationSession/AccusationContext/buildAccusationContext/buildAccusationPrompt/processEvidencePresentation + accusation-ветка в applyDialogueMeaning), `world.ts` (journal field/save/auto-obs) | **⏸ ОТЛОЖЕНО** — turn-key дизайн ниже; требует live investigate→accuse прогона | minor (journal) / major (accusation prose) | ⏸ |
 
 **Borderline (нейтрализуется только проза-коммент, механика — универсальная психология, не трогаем мат):**
 `al.ts:430` moodCurve коммент «more crime-prone»; `volition.ts:488-497` DUTY-blocks-talk проза. Instinct
 RESISTANCE/TEXTURE registry-ификация (`instinct-builder.ts`) — это **gap/enhancement** (нужен новый registry,
 проза — универсальная moral-friction), отложено в Phase B, НЕ часть A.
+
+## A10+A4b — turn-key дизайн извлечения (для отдельной сессии с live-прогоном)
+
+**Почему отложено:** это ~300 строк, монолитная подсистема, завязанная на player-chat hot-path И save/load
+(INV-21 boot). Эксперт-карта (`docs/workflow` senior-reviewer) оценила риск MEDIUM, 3 high-blast точки:
+(1) перенос владения journal в save (`world.ts:108/142/1776/1828`), (2) hot-path auto-obs запись
+(`world.ts:1324-1333`), (3) ширина контекста generic-хука. PlayerJournal-класс **0 engine-импортов**
+(чистый перенос); IL-сторона удаляется чисто; политика (`registerAccusationResponseHandler`) уже registry.
+Клиентский wire-контракт (`{type:'chat', evidenceIds}` + `/api/journal*`) — server-side, НЕ трогается.
+Журнал — **MINOR** утечка (non-blocking, инертна в no-crime мире). Требует живого investigate→accuse прогона.
+
+**Дизайн (server-owns-journal):**
+1. **Crime-модуль** `crime-justice/investigation.ts`: перенести verbatim `PlayerJournal`+`JournalEntry`+`CaseSummary`
+   (из engine `journal.ts`) + `PresentedEvidence`+`ConversationSession`+`AccusationContext`+`computeTrustBonus`+
+   `buildAccusationContext`+`buildAccusationPrompt`+`processEvidencePresentation` (из `il.ts`) + accusation-policy
+   (инлайн из `index.ts:130-144`) + reimpl `findAgentByName`. Экспорт `registerInvestigationModule()` →
+   `registerDialogueEffectHandler((meaning, ctx) => [...evidenceSections, ...accusationSections])`.
+2. **Движок** `il.ts`: добавить `DialogueEffectHandlerFn` + `registerDialogueEffectHandler`/`getDialogueEffectHandlers`.
+   `ILEffectContext`: `playerJournal?:unknown`, `presentedEvidence?:unknown[]`, `chatSession?:unknown` (generic; модуль
+   кастует). В `applyDialogueMeaning` заменить evidence-call(717) + accusation-ветку(771-872) на dispatch хука
+   (после claims). Удалить перенесённый код + accusation-response registry + exports (index.ts:189-190). Удалить `journal.ts`.
+3. **Движок** `world.ts`: убрать `journal:PlayerJournal` field + import + `onJournalEntry`; добавить opaque
+   `playerState:Record<string,unknown>` (round-trip в toJSON/loadState; `WorldSaveData.playerState`) + callback
+   `onPlayerObserve?({text,locationId,gameDay,tick,relatedNpcs})` (заменяет auto-obs запись 1324-1333).
+4. **Server**: владеет `journal=new PlayerJournal()` (из модуля); `world.journal`→`journal` (server.ts + routes.ts,
+   проброс в route-фабрику); `onPlayerObserve`→`journal.addObservation`+broadcast; в save-блоб (index.ts:262) добавить
+   `journal:journal.toJSON()`, при загрузке `PlayerJournal.fromJSON(savedData.journal)`; зарегистрировать
+   `registerInvestigationModule()`; передавать `playerJournal: journal` в ILEffectContext.
+5. **Тесты**: save round-trip журнала; accusation combinedScore/quality; dialogue-effect хук вызывается с нужным
+   контекстом; existing save-load + boot-smoke зелёные. **Live**: investigate→accuse прогон (LM Studio).
+   Промпт-строки переносятся **byte-identical** → LLM-поведение неизменно по построению.
 
 ## Переиспользуем (не изобретаем)
 - Hook-форма: `registerSecretDirectiveBuilder` → модель для `registerRoleDirectiveBuilder`/`registerBeliefPhrasing`.
