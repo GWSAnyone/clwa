@@ -60,6 +60,15 @@ export interface ClaudeCodeProviderOptions {
    * 0: current behavior — a fresh `claude -p` per call. Env: CLWA_CLAUDE_WARM_SESSION_MS.
    */
   warmSessionMs?: number;
+  /**
+   * Warm-path schema strategy (only when warmSessionMs>0 and a jsonSchema is present):
+   *   false (default) — native `--json-schema` (hard-enforced, but the StructuredOutput tool round-trip
+   *                     is slow, ~11s even warm) and pins the session to that schema.
+   *   true            — inject the schema into the prompt as free text + parse the reply (best-effort,
+   *                     ~3-5s warm, retry-on-parse handled by the engine). The session is NOT schema-pinned,
+   *                     so ONE warm session per (agent, model) serves every task. Env: CLWA_CLAUDE_WARM_SCHEMA_PROMPT=1.
+   */
+  warmSchemaInPrompt?: boolean;
 }
 
 interface ClaudeCodeOutput {
@@ -99,6 +108,40 @@ function formatHistorySeed(history: Array<{ role: 'user' | 'assistant'; content:
   return `[Earlier in this conversation:\n${lines.join('\n')}]`;
 }
 
+/** Prompt-mode schema instruction — appended to the user turn when warmSchemaInPrompt is on. */
+function schemaPromptSuffix(schema: { schema: Record<string, unknown> }): string {
+  return `Respond with ONLY a single JSON object — no prose, no explanation, no markdown code fences — `
+    + `that strictly conforms to this JSON Schema:\n${JSON.stringify(schema.schema)}`;
+}
+
+/** Extract the first balanced top-level JSON object from free text (handles ```fences``` + surrounding
+ *  prose). Returns the JSON substring, or null if none parses. Brace-scan respects string literals/escapes. */
+function extractJsonObject(text: string): string | null {
+  if (!text) return null;
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) {
+        const candidate = text.slice(start, i + 1);
+        try { JSON.parse(candidate); return candidate; } catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
 export class ClaudeCodeProvider implements LlmProvider {
   readonly id = 'claude-code';
   readonly capabilities: LlmCapabilities;
@@ -106,6 +149,7 @@ export class ClaudeCodeProvider implements LlmProvider {
   private readonly fallbackAgentDir: string;
   private readonly sessionIdleMs: number;
   private readonly warmSessionMs: number;
+  private readonly warmSchemaInPrompt: boolean;
   private readonly pool = new ClaudeSessionPool();          // streaming dialogue sessions
   private readonly structuredPool = new ClaudeSessionPool(); // warm structured-call sessions (opt-in)
 
@@ -114,6 +158,7 @@ export class ClaudeCodeProvider implements LlmProvider {
     this.fallbackAgentDir = opts.fallbackAgentDir ?? '_default';
     this.sessionIdleMs = opts.sessionIdleMs ?? 600_000;
     this.warmSessionMs = opts.warmSessionMs ?? 0; // default OFF — cold-spawn per call (unchanged behavior)
+    this.warmSchemaInPrompt = opts.warmSchemaInPrompt ?? false;
     this.capabilities = {
       structuredOutput: 'json_schema', // через --json-schema (под капотом StructuredOutput tool с retry)
       streaming: true, // stream-json + --include-partial-messages; persistent sessions per NPC. Toggle via config.llm route.
@@ -265,7 +310,10 @@ export class ClaudeCodeProvider implements LlmProvider {
   private async callWarmStructured(req: LlmCallRequest): Promise<LlmCallResponse | null> {
     const agentId = req.agentContext!.id;
     const npcDir = path.join(this.opts.npcsRoot, agentId);
-    const key = `${agentId}::${req.model}::${req.jsonSchema?.name ?? '_text'}`;
+    // Prompt-mode (schema injected as free text): the session is NOT schema-pinned, so ONE warm session
+    // per (agent, model) serves every task. Native mode pins the schema → key includes its name.
+    const promptMode = this.warmSchemaInPrompt && !!req.jsonSchema;
+    const key = `${agentId}::${req.model}::${promptMode ? '_prompt' : (req.jsonSchema?.name ?? '_text')}`;
     let session = this.structuredPool.get(key);
     // Identity is (model, systemPrompt) — a changed persona/model discards & respawns.
     if (session && (session.model !== req.model || session.systemPrompt !== req.system)) {
@@ -282,7 +330,7 @@ export class ClaudeCodeProvider implements LlmProvider {
         session = new ClaudeSession(
           {
             binary: this.claudeBinary,
-            args: this.buildStructuredStreamArgs(req),
+            args: this.buildStructuredStreamArgs(req, promptMode),
             cwd: npcDir,
             env: stripApiKeyEnv({ ...process.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1' }),
           },
@@ -297,18 +345,25 @@ export class ClaudeCodeProvider implements LlmProvider {
       }
       this.structuredPool.set(key, session);
     }
-    const res = await session.request(req.user);
+    // In prompt-mode the schema rides in the user turn (free-text session); native mode already pinned it.
+    const userText = promptMode ? `${req.user}\n\n${schemaPromptSuffix(req.jsonSchema!)}` : req.user;
+    const res = await session.request(userText);
     if (res.finishReason === 'error') {
       await session.kill();
       this.structuredPool.remove(key);
       return null; // fall back to cold spawn
     }
-    return { content: res.content, finishReason: res.finishReason, usage: res.usage, providerId: this.id, modelId: req.model };
+    // Prompt-mode returns free text — extract the JSON object (engine's classify then parses + retries).
+    const content = promptMode ? extractJsonObject(res.content) : res.content;
+    if (promptMode && content === null) {
+      return null; // no parseable JSON → fall back to cold (native --json-schema) for this call
+    }
+    return { content: content ?? res.content, finishReason: res.finishReason, usage: res.usage, providerId: this.id, modelId: req.model };
   }
 
-  /** Spawn args for a warm structured-call session: stream-json I/O + --json-schema (schema pinned at
-   *  spawn), no --include-partial-messages (we only read the final result). Mirrors call()'s flags. */
-  private buildStructuredStreamArgs(req: LlmCallRequest): string[] {
+  /** Spawn args for a warm structured-call session: stream-json I/O. Native mode pins --json-schema;
+   *  prompt mode skips it (free-text, schema injected per-turn). No --include-partial-messages (final result only). */
+  private buildStructuredStreamArgs(req: LlmCallRequest, promptMode: boolean): string[] {
     const args = [
       '-p',
       '--input-format', 'stream-json',
@@ -322,7 +377,7 @@ export class ClaudeCodeProvider implements LlmProvider {
       '--model', req.model,
     ];
     if (req.system) args.push('--system-prompt', req.system);
-    if (req.jsonSchema) args.push('--json-schema', JSON.stringify(req.jsonSchema.schema));
+    if (req.jsonSchema && !promptMode) args.push('--json-schema', JSON.stringify(req.jsonSchema.schema));
     return args;
   }
 
