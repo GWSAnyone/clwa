@@ -16,7 +16,7 @@
 // llmSemaphore более не используется — classify внутри façade сам управляет семафором
 import type { Agent } from './agent';
 import type { IEventStore } from './event-types';
-import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs, getRegisteredQuestionTopics, getDefaultSpeechAct } from './event-registry';
+import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs, getRegisteredQuestionTopics, getDefaultSpeechAct, phraseBelief } from './event-registry';
 import type { PressureHandlerContext } from './event-registry';
 import type { ILConfig } from './world-types';
 import type { PlayerJournal, CaseSummary } from './journal';
@@ -885,8 +885,8 @@ export async function applyDialogueMeaning(
             const certainty = b.confidence > 0.8 ? 'are certain' : b.confidence > 0.5 ? 'believe' : 'have heard rumors';
             const verb = getEventLabelSafe(b.eventType, 'something');
             const who = b.subject ? resolve(b.subject) : 'someone unknown';
-            const target = b.object ? ` against ${resolve(b.object)}` : '';
-            return `you ${certainty} that ${who} committed ${verb}${target}`;
+            const relation = phraseBelief({ eventType: b.eventType, source: b.source, confidence: b.confidence, verb, who, target: b.object ? resolve(b.object) : null });
+            return `you ${certainty} that ${relation}`;
           }).filter(Boolean).join('; ');
           sections.push(`About ${aboutAgent.profile.name}: ${beliefSummary}. Answer from your knowledge.`);
         } else {

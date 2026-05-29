@@ -249,6 +249,7 @@ export {
   registerTickPhaseHandler, getTickPhaseHandlers,
   registerSecretDirectiveBuilder, getSecretDirectiveBuilders,
   registerRoleDirectiveBuilder, getRoleDirectiveBuilders,
+  registerBeliefPhrasing, phraseBelief,
   registerConsequencePostHandler, getConsequencePostHandlers,
   getAllRegisteredVerbs,
   registerSecretEventType, getSecretEventType,

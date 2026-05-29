@@ -21,6 +21,7 @@ import {
   isPerpetrator,
   isPursuitEvent,
   registerRoleDirectiveBuilder,
+  registerBeliefPhrasing,
   isStatusAbsent,
   registerSourceDecayRates,
   registerSourceTransferWeights,
@@ -592,6 +593,15 @@ export function registerCrimeJusticeModule(): void {
     agent.state.relationships.adjustSentiment(perpetratorId, sentimentDrop);
     agent.state.relationships.adjustTrust(perpetratorId, -0.4);
   });
+
+  // Belief phrasing: frame a belief's core relation as wrongdoing ("X committed murder against Y").
+  // Moved out of the engine (beliefs.summarizeForPrompt/Memory + il question-handler hardcoded this).
+  // In the crime milestone every transferable belief is a crime, so it applies unconditionally —
+  // matching the engine's prior behaviour exactly. (When multiple content modules coexist, scope by
+  // eventType/category instead.)
+  registerBeliefPhrasing(({ verb, who, target }) =>
+    target != null ? `${who} committed ${verb} against ${target}` : `${who} committed ${verb}`,
+  );
 
   // Role directive: crime-framed interpretation of an agent's beliefs for the prompt's role section.
   // Moved out of the engine's buildRoleDirective (was hardcoded crime English in agent.ts) so the

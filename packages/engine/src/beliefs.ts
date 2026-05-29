@@ -1,4 +1,4 @@
-import { getBeliefSourceLabel, getSourceTransferWeight, getSourceDecayRate, getEventTypeDecayRate, getEventLabel } from './event-registry';
+import { getBeliefSourceLabel, getSourceTransferWeight, getSourceDecayRate, getEventTypeDecayRate, getEventLabel, phraseBelief } from './event-registry';
 
 // BeliefSource is a string — modules can add new sources via registry
 export type BeliefSource = string;
@@ -148,7 +148,8 @@ export class BeliefManager {
       const target = b.object ? resolveName(b.object) : 'someone';
       const where = b.location ? ` at ${b.location}` : '';
       const how = getBeliefSourceLabel(b.source);
-      return `- You ${certainty}: ${who} committed ${verb} against ${target}${where} (${how})`;
+      const relation = phraseBelief({ eventType: b.eventType, source: b.source, confidence: b.confidence, verb, who, target });
+      return `- You ${certainty}: ${relation}${where} (${how})`;
     }).filter(Boolean).join('\n');
   }
 
@@ -175,7 +176,8 @@ export class BeliefManager {
       if (!verb) return null;
       const who = b.subject ? resolveName(b.subject) : 'someone';
       const target = b.object ? resolveName(b.object) : 'someone';
-      return `${ownerName} ${conf} ${who} committed ${verb} against ${target}`;
+      const relation = phraseBelief({ eventType: b.eventType, source: b.source, confidence: b.confidence, verb, who, target });
+      return `${ownerName} ${conf} ${relation}`;
     }).filter(Boolean).join('. ');
   }
 

@@ -745,6 +745,43 @@ export function getRoleDirectiveBuilders(): RoleDirectiveBuilderFn[] {
 }
 
 
+// ─── Belief Phrasing ───
+// Modules register how a belief's core relation is phrased in natural language. The engine knows the
+// universal scaffolding (certainty prefix, source label, location) but the relational verb framing —
+// crime's "X committed murder against Y", a court's "X courted Y" — is genre-specific. The engine's
+// own neutral fallback ("X — verb (Y)") never frames a belief as wrongdoing. First non-null wins.
+export type BeliefPhrasingFn = (ctx: {
+  eventType: string;
+  source: string;
+  confidence: number;
+  verb: string;
+  who: string;
+  target: string | null;
+}) => string | null;
+
+const BELIEF_PHRASINGS: BeliefPhrasingFn[] = [];
+
+export function registerBeliefPhrasing(fn: BeliefPhrasingFn): void {
+  BELIEF_PHRASINGS.push(fn);
+}
+
+export function phraseBelief(ctx: {
+  eventType: string;
+  source: string;
+  confidence: number;
+  verb: string;
+  who: string;
+  target: string | null;
+}): string {
+  for (const fn of BELIEF_PHRASINGS) {
+    const r = fn(ctx);
+    if (r) return r;
+  }
+  // Neutral, genre-agnostic fallback — no wrongdoing framing.
+  return ctx.target != null ? `${ctx.who} — ${ctx.verb} (${ctx.target})` : `${ctx.who} — ${ctx.verb}`;
+}
+
+
 // ─── Consequence Post-Handlers ───
 // Modules register handlers that run AFTER CG consequence is applied to each target.
 // Replaces inline grief/sentiment logic in cg-engine — engine delegates behavioral response to modules.
