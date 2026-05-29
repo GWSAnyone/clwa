@@ -234,7 +234,7 @@ export function registerCrimeJusticeModule(): void {
   registerSourceDecayRates({
     witness: 0.01, body_discovery: 0.01, observation: 0.015,
     testimony: 0.02, interrogation: 0.02, deduction: 0.03,
-    rumor: 0.04, cover_up: 0.01, perpetrator: 0.01,
+    gossip: 0.04, cover_up: 0.01, perpetrator: 0.01,
     evidence: 0.005,  // physical evidence fades very slowly
     scene_notice: 0.02, // noticed aftermath — fades like testimony
     secret: 0,         // secret knowledge never decays
@@ -243,7 +243,7 @@ export function registerCrimeJusticeModule(): void {
   // Module-specific source transfer weights (moved from engine defaults)
   registerSourceTransferWeights({
     witness: 0.85,
-    rumor: 0.5,
+    gossip: 0.5,
     perpetrator: 0.0,
     cover_up: 0.0,
     secret: 0,
@@ -253,7 +253,7 @@ export function registerCrimeJusticeModule(): void {
   registerBeliefSourceLabels({
     witness: 'saw it happen',
     interrogation: 'testimony under questioning',
-    rumor: 'hearsay',
+    gossip: 'hearsay',
     perpetrator: 'committed the act',
     cover_up: 'covering up',
     secret: 'personal knowledge',
@@ -385,7 +385,7 @@ export function registerCrimeJusticeModule(): void {
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType: crimeEventType,
       subject: perpetrator, object: affectedName,
-      location: event.location, confidence: 0.4, source: 'rumor',
+      location: event.location, confidence: 0.4, source: BELIEF_SOURCE.GOSSIP,
       sourceNpcId: (event.payload?.reportedBy as string) ?? null,
       gameDay: event.gameDay, lastUpdated: event.gameDay,
     });

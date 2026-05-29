@@ -332,6 +332,10 @@ export function getBeliefSourceLabel(source: string): string {
 export const BELIEF_SOURCE = {
   TESTIMONY: 'testimony',
   OBSERVATION: 'observation',
+  // GOSSIP = belief acquired by hearing others talk (conversation transfer / overhearing).
+  // Engine-universal: the engine emits this source from NPC conversation in ANY genre, so it
+  // must NOT be a module word. Modules tune its label/weight/decay; the engine owns the constant.
+  GOSSIP: 'gossip',
   BODY_DISCOVERY: 'body_discovery',
   EVIDENCE: 'evidence',
   DEDUCTION: 'deduction',

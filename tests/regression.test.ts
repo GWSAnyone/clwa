@@ -81,7 +81,7 @@ describe('Regression: perpetrator belief leakage (commit e61a377)', () => {
   test('isPerpetrator blocks perpetrator source beliefs', () => {
     expect(isPerpetrator('perpetrator')).toBe(true);
     expect(isPerpetrator('witness')).toBe(false);
-    expect(isPerpetrator('rumor')).toBe(false);
+    expect(isPerpetrator('gossip')).toBe(false);
   });
 
   test('isConcealment blocks cover_up source beliefs', () => {

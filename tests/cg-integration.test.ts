@@ -562,7 +562,7 @@ describe('CG Integration: Belief Suppression Flags', () => {
   test('perpetrator source is correctly flagged', () => {
     expect(isPerpetrator('perpetrator')).toBe(true);
     expect(isPerpetrator('witness')).toBe(false);
-    expect(isPerpetrator('rumor')).toBe(false);
+    expect(isPerpetrator('gossip')).toBe(false);
     expect(isPerpetrator('cover_up')).toBe(false);
     expect(isPerpetrator(null)).toBe(false);
   });

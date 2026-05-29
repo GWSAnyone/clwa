@@ -1,4 +1,4 @@
-import { registerEventHandler, isTransferable } from '@clwa/engine';
+import { registerEventHandler, isTransferable, BELIEF_SOURCE } from '@clwa/engine';
 import type { EventHandlerContext } from '@clwa/engine';
 import type { WorldEvent, Belief, Agent } from '@clwa/engine';
 
@@ -198,7 +198,7 @@ export function registerCrimeEventHandlers(): void {
         object: event.object ?? perpetratorName,
         location: event.location,
         confidence: 0.8,
-        source: npcId === event.subject ? 'observation' : 'rumor',
+        source: npcId === event.subject ? BELIEF_SOURCE.OBSERVATION : BELIEF_SOURCE.GOSSIP,
         sourceNpcId: null,
         gameDay: ctx.getCurrentDay(),
         lastUpdated: ctx.getCurrentDay(),
@@ -238,7 +238,7 @@ export function registerCrimeEventHandlers(): void {
         object: suspectId ?? null,
         location: event.location,
         confidence: 0.9,
-        source: 'rumor',
+        source: BELIEF_SOURCE.GOSSIP,
         sourceNpcId: null,
         gameDay: ctx.getCurrentDay(),
         lastUpdated: ctx.getCurrentDay(),
@@ -340,7 +340,7 @@ export function registerCrimeEventHandlers(): void {
         object: event.object ?? fledName,
         location: event.location,
         confidence: 0.7,
-        source: 'rumor',
+        source: BELIEF_SOURCE.GOSSIP,
         sourceNpcId: null,
         gameDay: ctx.getCurrentDay(),
         lastUpdated: ctx.getCurrentDay(),

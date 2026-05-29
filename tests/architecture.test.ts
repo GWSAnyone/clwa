@@ -457,19 +457,19 @@ describe('Relationship Mutation Safety', () => {
 // ─── 11. Belief Transfer Guard (INV-08) ───
 
 describe('Belief Transfer Guard', () => {
-  test('rumor belief creation has isTransferable check nearby (INV-08)', () => {
+  test('gossip belief creation has isTransferable check nearby (INV-08)', () => {
     const violations: string[] = [];
     for (const f of engineFiles) {
       const content = readFileSync(f, 'utf-8');
       const lines = content.split('\n');
       for (let i = 0; i < lines.length; i++) {
         if (isCommentLine(lines[i])) continue;
-        // Find addBelief with source: 'rumor' (gossip/conversation spread)
-        if (/source:\s*'rumor'/.test(lines[i])) {
+        // Find addBelief with source: BELIEF_SOURCE.GOSSIP (conversation/overheard spread)
+        if (/source:\s*BELIEF_SOURCE\.GOSSIP/.test(lines[i])) {
           // Check 30 lines before for isTransferable (covers both sides of bidirectional transfer)
           const context = lines.slice(Math.max(0, i - 30), i + 1).join('\n');
           if (!/isTransferable/.test(context)) {
-            violations.push(`${relative(ROOT, f)}:${i + 1}: rumor belief without isTransferable guard`);
+            violations.push(`${relative(ROOT, f)}:${i + 1}: gossip belief without isTransferable guard`);
           }
         }
       }

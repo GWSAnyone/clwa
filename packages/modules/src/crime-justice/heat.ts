@@ -7,7 +7,7 @@
  */
 
 import type { Agent } from '@clwa/engine';
-import { isPerpetrator } from '@clwa/engine';
+import { isPerpetrator, BELIEF_SOURCE } from '@clwa/engine';
 
 export interface HeatContext {
   agents: Map<string, Agent>;
@@ -57,7 +57,7 @@ export function computeHeat(agent: Agent, ctx: HeatContext): number {
   // ─── Overheard rumors ───
   // Criminal heard rumors where THEY are the subject
   const selfRumors = beliefs.filter(b =>
-    b.source === 'rumor' && matchesSelf(b.subject),
+    b.source === BELIEF_SOURCE.GOSSIP && matchesSelf(b.subject),
   );
   heat += Math.min(0.25, selfRumors.length * 0.12);
 

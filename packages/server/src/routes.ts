@@ -1,5 +1,5 @@
 import type { EventType, ConsequenceResult, WorldEvent } from '@clwa/engine';
-import { isEventCategory, findPath } from '@clwa/engine';
+import { isEventCategory, findPath, BELIEF_SOURCE } from '@clwa/engine';
 import { broadcast } from './ws';
 import type { GameContext } from './game-context';
 
@@ -679,7 +679,7 @@ export async function handleRequest(
     const subject = subjectRaw === 'null' ? null : subjectRaw;
     const confidence = Math.max(0, Math.min(1, parseFloat(beliefMatch[4])));
     const objectName = new URL(req.url).searchParams.get('object') ?? null;
-    const source = new URL(req.url).searchParams.get('source') ?? 'rumor';
+    const source = new URL(req.url).searchParams.get('source') ?? BELIEF_SOURCE.GOSSIP;
     const gameDay = world.getCurrentDay();
     agent.state.beliefs?.addBelief({
       id: crypto.randomUUID(), eventType, subject, object: objectName, confidence,

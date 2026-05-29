@@ -155,7 +155,7 @@ describe('Heat Directive', () => {
     agent.state.beliefs!.addBelief({
       id: crypto.randomUUID(), eventType: 'NPC_KILLED',
       subject: 'Mark', object: 'bess', location: 'tavern',
-      confidence: 0.4, source: 'rumor', sourceNpcId: 'ted',
+      confidence: 0.4, source: 'gossip', sourceNpcId: 'ted',
       gameDay: 1, lastUpdated: 1,
     });
 

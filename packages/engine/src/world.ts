@@ -35,7 +35,7 @@ import { ProcessingQueue } from './processing-queue';
 import type { ProcessingTask, TaskType } from './processing-queue';
 import { EvidenceLayer } from './evidence';
 import type { EvidenceContext } from './evidence';
-import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, isConcealment, isPerpetrator, getEventLabel, getEventLabelSafe } from './event-registry';
+import { isEventCategory, getGoalCleanupForEvent, getSceneTypeForEvent, isDeathEvent, getDefaultDeathEvent, getEventHandlers, isStatusActive, isStatusAbsent, getGoalMoodBoost, getBodyDiscoveryEventType, getDiscoveryHandler, getTickPhaseHandlers, getDayAdvanceHandlers, isTransferable, isConcealment, isPerpetrator, getEventLabel, getEventLabelSafe, BELIEF_SOURCE } from './event-registry';
 import type { EventHandlerContext } from './event-registry';
 
 export interface WorldCallbacks {
@@ -1178,7 +1178,7 @@ export class World {
           responder.state.beliefs.addBelief({
             id: crypto.randomUUID(), eventType: bt.eventType, subject: initBelief.subject,
             object: initBelief.object, location: initBelief.location, confidence: conf,
-            source: 'rumor', sourceNpcId: initiator.profile.id, gameDay, lastUpdated: gameDay,
+            source: BELIEF_SOURCE.GOSSIP, sourceNpcId: initiator.profile.id, gameDay, lastUpdated: gameDay,
           });
         }
         // Check if responder is suppressed
@@ -1191,7 +1191,7 @@ export class World {
           initiator.state.beliefs.addBelief({
             id: crypto.randomUUID(), eventType: bt.eventType, subject: respBelief.subject,
             object: respBelief.object, location: respBelief.location, confidence: conf,
-            source: 'rumor', sourceNpcId: responder.profile.id, gameDay, lastUpdated: gameDay,
+            source: BELIEF_SOURCE.GOSSIP, sourceNpcId: responder.profile.id, gameDay, lastUpdated: gameDay,
           });
         }
       }
@@ -1306,7 +1306,7 @@ export class World {
             object: sourceBelief.object,
             location: sourceBelief.location,
             confidence: conf,
-            source: 'rumor',
+            source: BELIEF_SOURCE.GOSSIP,
             sourceNpcId: initId,
             gameDay: conversation.gameDay,
             lastUpdated: conversation.gameDay,
