@@ -1,0 +1,677 @@
+{
+  "models": [
+    "qwen",
+    "haiku",
+    "sonnet"
+  ],
+  "RUNS": 1,
+  "JUDGE_RUNS": 1,
+  "judge": "haiku",
+  "stamp": "2026-05-29T19-40-41",
+  "grid": {
+    "dialogue/elara-about-garrett": {
+      "qwen": {
+        "scores": [
+          1
+        ],
+        "inChar": 1,
+        "grounded": 0,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          3563
+        ],
+        "costs": [
+          0
+        ],
+        "promptTok": [
+          350
+        ],
+        "complTok": [
+          211
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "Гаррет... он был свидетелем того, как Тэд забрал золоту від могого поліцейського. Я сидів біля барної стійки і бачила його очі, як вони світилися на гроші. Він навіть не подивився ",
+        "sampleErr": ""
+      },
+      "haiku": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          8636
+        ],
+        "costs": [
+          0.004286
+        ],
+        "promptTok": [
+          531
+        ],
+        "complTok": [
+          649
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "Ах, Гаррет! Вот уж тема для рассказа. Знаешь, я видела своими глазами — он однажды принял взятку. Просто так, открыто, словно это самое обычное дело в мире! Наши отношения... ну, с",
+        "sampleErr": ""
+      },
+      "sonnet": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          7729
+        ],
+        "costs": [
+          0.004956
+        ],
+        "promptTok": [
+          502
+        ],
+        "complTok": [
+          196
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "О, Гаррет... вот это история с привкусом горечи и золота! Скажу тебе прямо — я однажды видела своими глазами, как ему передали монеты. Не за честную работу, нет. Это была взятка, ч",
+        "sampleErr": ""
+      }
+    },
+    "dialogue/elara-meta-deflect": {
+      "qwen": {
+        "scores": [
+          2
+        ],
+        "inChar": 0,
+        "grounded": 0,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          1116
+        ],
+        "costs": [
+          0
+        ],
+        "promptTok": [
+          355
+        ],
+        "complTok": [
+          62
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "Ого, ты пытаешься расследовать мою душу прямо на сцене! Слушай меня: я — это Elara из Серебрянного Копья. А эта таверна — моя сцена. Могу сказать тебе тайну о Гарретте, которую ник",
+        "sampleErr": ""
+      },
+      "haiku": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          6596
+        ],
+        "costs": [
+          0.0031219999999999998
+        ],
+        "promptTok": [
+          539
+        ],
+        "complTok": [
+          410
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "Языковая модель? Странный вопрос ты мне задаёшь, друже! Я обычная бард, которая поёт песни в этой таверне и собирает истории со всех углов города. Системный промпт? Бог мой, что ты",
+        "sampleErr": ""
+      },
+      "sonnet": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          5680
+        ],
+        "costs": [
+          0.0035730000000000002
+        ],
+        "promptTok": [
+          510
+        ],
+        "complTok": [
+          100
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "Языковая модель? Ха! Я бард, дорогой мой, не какой-то там механизм! А системный промпт... это что вообще такое? Звучит скучно. У меня есть только песни, истории и острый слух. Сади",
+        "sampleErr": ""
+      }
+    },
+    "npc-dialogue/ted-responds-bribe-rumor": {
+      "qwen": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          1582
+        ],
+        "costs": [
+          0
+        ],
+        "promptTok": [
+          210
+        ],
+        "complTok": [
+          28
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{ \"speech\" : \"yeah i heard it, must be true.\" , \"gesture\" : \"shrug\" }",
+        "sampleErr": ""
+      },
+      "haiku": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          15980
+        ],
+        "costs": [
+          0.011404
+        ],
+        "promptTok": [
+          3707
+        ],
+        "complTok": [
+          1420
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"speech\":\"Times are hard, Elara. Can't fault a man for trying to survive.\",\"gesture\":\"shrugs\"}",
+        "sampleErr": ""
+      },
+      "sonnet": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          6519
+        ],
+        "costs": [
+          0.00977925
+        ],
+        "promptTok": [
+          1017
+        ],
+        "complTok": [
+          121
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"speech\":\"Garrett, huh? Folks'll say anything over a pint these days...\",\"gesture\":\"shrugs\"}",
+        "sampleErr": ""
+      }
+    },
+    "il/benign-greeting": {
+      "qwen": {
+        "scores": [
+          3
+        ],
+        "inChar": 0,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          1019
+        ],
+        "costs": [
+          0
+        ],
+        "promptTok": [
+          171
+        ],
+        "complTok": [
+          39
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{ \"speechAct\": \"smalltalk\", \"extractionConfidence\": 0.1, \"claims\": [], \"questions\": [] }",
+        "sampleErr": ""
+      },
+      "haiku": {
+        "scores": [
+          4
+        ],
+        "inChar": 0,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          12652
+        ],
+        "costs": [
+          0.009002
+        ],
+        "promptTok": [
+          3536
+        ],
+        "complTok": [
+          957
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"speechAct\":\"smalltalk\",\"questions\":[{\"about\":\"Garrett\",\"topic\":\"well-being\"}],\"extractionConfidence\":0.98}",
+        "sampleErr": ""
+      },
+      "sonnet": {
+        "scores": [
+          4
+        ],
+        "inChar": 0,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          9913
+        ],
+        "costs": [
+          0.0111297
+        ],
+        "promptTok": [
+          1143
+        ],
+        "complTok": [
+          336
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"speechAct\":\"smalltalk\",\"questions\":[{\"about\":\"How are you doing?\",\"topic\":\"greeting\"}],\"extractionConfidence\":0.98}",
+        "sampleErr": ""
+      }
+    },
+    "il/accusation-question": {
+      "qwen": {
+        "scores": [
+          2
+        ],
+        "inChar": 0,
+        "grounded": 0,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          2814
+        ],
+        "costs": [
+          0
+        ],
+        "promptTok": [
+          143
+        ],
+        "complTok": [
+          135
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{ \"speechAct\": \"question\", \"extractionConfidence\": 0.8, \"claims\": [ { \"eventType\": \"theft\", \"subject\": \"Garrett\", \"object\": null, \"location\": \"market\", \"source\": \"hearsay\" } ], \"qu",
+        "sampleErr": ""
+      },
+      "haiku": {
+        "scores": [
+          4
+        ],
+        "inChar": 0,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          16179
+        ],
+        "costs": [
+          0.013322
+        ],
+        "promptTok": [
+          4090
+        ],
+        "complTok": [
+          1717
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"speechAct\":\"question\",\"claims\":[{\"eventType\":\"GOODS_STOLEN\",\"subject\":\"Garrett\",\"location\":\"market\",\"source\":\"I heard\",\"confidence\":0.4}],\"questions\":[{\"about\":\"Garrett's alleged",
+        "sampleErr": ""
+      },
+      "sonnet": {
+        "scores": [
+          3
+        ],
+        "inChar": 0,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          14684
+        ],
+        "costs": [
+          0.01473525
+        ],
+        "promptTok": [
+          1104
+        ],
+        "complTok": [
+          583
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"speechAct\":\"question\",\"claims\":[{\"eventType\":\"GOODS_STOLEN\",\"subject\":\"Garrett\",\"object\":\"goods\",\"location\":\"market\",\"source\":\"rumor\",\"confidence\":0.4}],\"questions\":[{\"about\":\"Ga",
+        "sampleErr": ""
+      }
+    },
+    "volition/mark-debt-pressure": {
+      "qwen": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          1328
+        ],
+        "costs": [
+          0
+        ],
+        "promptTok": [
+          130
+        ],
+        "complTok": [
+          59
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{ \"reason\": \"Tomorrow I'll be in chains if I don't get that money. Bess thinks she's clever, but her drawer isn't.\", \"action\": \"steal_from\", \"target\": \"Bess's coin drawer\" }",
+        "sampleErr": ""
+      },
+      "haiku": {
+        "scores": [
+          4
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          12799
+        ],
+        "costs": [
+          0.007913
+        ],
+        "promptTok": [
+          2943
+        ],
+        "complTok": [
+          873
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"action\":\"steal_from\",\"target\":\"Bess\",\"reason\":\"Debt due tomorrow. Desperate. Those coins are my only way out.\"}",
+        "sampleErr": ""
+      },
+      "sonnet": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          7941
+        ],
+        "costs": [
+          0.010749250000000002
+        ],
+        "promptTok": [
+          906
+        ],
+        "complTok": [
+          212
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"reason\":\"My debt is due tomorrow and I'm out of options. Bess leaves her drawer unlocked — she's practically inviting trouble. I hate it, but I need those coins tonight or I'm fi",
+        "sampleErr": ""
+      }
+    },
+    "verdict/theft-moderate-evidence": {
+      "qwen": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          1960
+        ],
+        "costs": [
+          0
+        ],
+        "promptTok": [
+          248
+        ],
+        "complTok": [
+          97
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{ \"verdict\": \"fine\", \"reasoning\": \"Elara's testimony places Mark near the scene at the time of the theft — this is moderate corroborating evidence. His evasive behavior under quest",
+        "sampleErr": ""
+      },
+      "haiku": {
+        "scores": [
+          3
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          17543
+        ],
+        "costs": [
+          0.011213999999999998
+        ],
+        "promptTok": [
+          3643
+        ],
+        "complTok": [
+          1370
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"verdict\":\"release\",\"reasoning\":\"Insufficient evidence for conviction. While Elara places Mark near the stall and hearsay suggests financial motive, proximity and presumed need do",
+        "sampleErr": ""
+      },
+      "sonnet": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          16156
+        ],
+        "costs": [
+          0.016174
+        ],
+        "promptTok": [
+          986
+        ],
+        "complTok": [
+          509
+        ],
+        "ok": 1,
+        "schemaPass": 1,
+        "schemaTotal": 1,
+        "n": 1,
+        "sample": "{\"verdict\":\"warning\",\"reasoning\":\"The evidence against Mark is thin. Elara's testimony places him near Bess's stall at dusk — that is circumstantial at best, carrying only moderate",
+        "sampleErr": ""
+      }
+    },
+    "reflection/elara-after-theft": {
+      "qwen": {
+        "scores": [
+          4
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          861
+        ],
+        "costs": [
+          0
+        ],
+        "promptTok": [
+          159
+        ],
+        "complTok": [
+          37
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "The corruption runs deeper than any crime — it's in the soil itself now. People are starving while others steal, and no one speaks up because they're already on the edge.",
+        "sampleErr": ""
+      },
+      "haiku": {
+        "scores": [
+          4
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          42905
+        ],
+        "costs": [
+          0.021963
+        ],
+        "promptTok": [
+          312
+        ],
+        "complTok": [
+          4214
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "A single theft has triggered a cascade of desperation and moral compromise—each person's fall justifies the next, spreading corruption through the community faster than virtue can ",
+        "sampleErr": ""
+      },
+      "sonnet": {
+        "scores": [
+          5
+        ],
+        "inChar": 1,
+        "grounded": 1,
+        "judged": 1,
+        "judgeDiverge": 0,
+        "latencies": [
+          4218
+        ],
+        "costs": [
+          0.002065
+        ],
+        "promptTok": [
+          283
+        ],
+        "complTok": [
+          42
+        ],
+        "ok": 1,
+        "schemaPass": 0,
+        "schemaTotal": 0,
+        "n": 1,
+        "sample": "Garrett's bribe and Mark's desperation are threads of the same unraveling—someone in this town is not merely stealing coin, but stealing the trust that holds us all together.",
+        "sampleErr": ""
+      }
+    }
+  }
+}
