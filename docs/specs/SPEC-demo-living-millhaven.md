@@ -48,7 +48,12 @@ bess: herbs/poultice/tonic) + цены. Орудие убийства → item �
 - Наполнить 8 NPC + player Millhaven-контентом выше.
 - **Verify**: debug API (`/api/debug/attr/...`) показывает gold; save/load round-trip сохраняет (engine SL-07 уже есть).
 
-### Phase 1 — Make it real (module, zero engine edits)
+### Phase 1 — Make it real (module, zero engine edits) ✅ DONE (272/272, tsc 0, engine diff empty)
+Сделано: real theft (`steal_from`→engine `removeItems`/`addItem`, conserved перенос + stolenKind в payload),
+вступление в `criminals` при краже/убийстве (`markCriminal`), CG-правило `merchant-guild-alarm` (op:`faction`
+→ гильдия торговцев на локации реагирует) с полной обвязкой (label+belief-creator+memory-builder — поймано
+contract-тестом). Тесты: `tests/living-millhaven.test.ts` (3). **standing-on-justice перенесён в Phase 2**
+(player-driven: обвинение/приговор живут в server/IL-потоке). Bribe/trade-транзакция — тоже Phase 2 (player action).
 - **Real theft (B2)**: `steal_from` → `world.transferItem(owner, thief, kind, 1)` из реального стока владельца;
   discovery через реальную нехватку.
 - **Real trade (B1+B2)**: транзакция `world.transferAttribute(player→merchant, 'gold', price)` +

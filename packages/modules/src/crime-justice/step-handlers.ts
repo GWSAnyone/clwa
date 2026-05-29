@@ -1,4 +1,4 @@
-import { registerStepHandler, registerTickPhaseHandler, getEventLabel, getBeliefSourceLabel, isFirsthand, nextHop, classify } from '@clwa/engine';
+import { registerStepHandler, registerTickPhaseHandler, getEventLabel, getBeliefSourceLabel, isFirsthand, nextHop, classify, addItem, removeItems, countItems } from '@clwa/engine';
 import type { Agent, StepExecutionContext, LlmJsonSchema, GoalActionResult, Belief, NpcGoal, GoalManager } from '@clwa/engine';
 import type { SceneResidue } from '@clwa/engine';
 
@@ -195,6 +195,13 @@ function evaluateInterrogationOutcome(owner: Agent, target: Agent, currentDay: n
   }
 }
 
+/** B3: an agent who commits a crime joins the (emergent) `criminals` faction. Idempotent; pure state push
+ *  (engine's joinFaction is World-level — step handlers only have the Agent, so we mirror its idempotent add). */
+function markCriminal(agent: Agent): void {
+  if (!agent.state.factions) agent.state.factions = [];
+  if (!agent.state.factions.includes('criminals')) agent.state.factions.push('criminals');
+}
+
 export function registerCrimeStepHandlers(): void {
 
   registerStepHandler('steal_from', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
@@ -213,12 +220,24 @@ export function registerCrimeStepHandlers(): void {
       return { ...baseResult, action: 'wait', description: `${owner.profile.name} waiting for opportunity` };
     }
     goal.waitTicks = 0;
-    await owner.observe(`I stole goods from ${target.profile.name}'s shop. I was desperate — I had no choice. The guilt weighs on me.`, step.importance);
+    // B2: theft now MOVES real conserved state. Pick a stockable kind from the victim's inventory and
+    // transfer one unit into the thief's inventory (remove-then-add = conserved). Falls back to the prior
+    // event-only behaviour if the victim has nothing to take.
+    const stolenKind = (target.state.inventory ?? []).find((it) => it.quantity > 0)?.kind;
+    if (stolenKind && target.state.inventory) {
+      if (removeItems(target.state.inventory, stolenKind, 1)) {
+        if (!owner.state.inventory) owner.state.inventory = [];
+        addItem(owner.state.inventory, stolenKind, 1);
+      }
+    }
+    markCriminal(owner); // B3: thief joins the emergent criminals faction
+    const stolenDesc = stolenKind ? ` (took ${stolenKind}, ${countItems(target.state.inventory, stolenKind)} left)` : '';
+    await owner.observe(`I stole ${stolenKind ?? 'goods'} from ${target.profile.name}'s shop. I was desperate — I had no choice. The guilt weighs on me.`, step.importance);
     if (ctx.onEmitEvent) {
-      await ctx.onEmitEvent({ type: 'GOODS_STOLEN', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role } });
+      await ctx.onEmitEvent({ type: 'GOODS_STOLEN', subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: step.importance, payload: { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role, ...(stolenKind ? { stolenKind } : {}) } });
     }
     goal.currentStep++;
-    return { ...baseResult, action: 'steal_from', description: `${owner.profile.name} stole from ${target.profile.name}'s shop`, emittedEvent: { type: 'GOODS_STOLEN', targetId: step.targetId, targetName: target.profile.name } };
+    return { ...baseResult, action: 'steal_from', description: `${owner.profile.name} stole from ${target.profile.name}'s shop${stolenDesc}`, emittedEvent: { type: 'GOODS_STOLEN', targetId: step.targetId, targetName: target.profile.name } };
   });
 
   registerStepHandler('attack_npc', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
@@ -248,6 +267,7 @@ export function registerCrimeStepHandlers(): void {
     }
     if (target.state.relationships) { target.state.relationships.adjustSentiment(goal.ownerId, -0.5); target.state.relationships.adjustTrust(goal.ownerId, -0.6); }
     if (owner.state.relationships) { owner.state.relationships.adjustSentiment(step.targetId, -0.2); }
+    markCriminal(owner); // B3: killer/attacker joins the emergent criminals faction
     if (ctx.onEmitEvent) {
       await ctx.onEmitEvent({ type: eventType, subject: goal.ownerId, object: step.targetId, location: owner.state.location, importance: isLethal ? 10 : step.importance, payload: isLethal ? { perpetratorName: owner.profile.name, affectedName: target.profile.name, affectedRole: target.profile.role } : { attackerName: owner.profile.name, affectedName: target.profile.name, reason: step.reason } });
     }

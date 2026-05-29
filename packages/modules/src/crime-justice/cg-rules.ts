@@ -370,4 +370,22 @@ export const CRIME_CG_RULES: ConsequenceRule[] = [
     },
     maxChainDepth: 1,
   },
+
+  // Guild solidarity (B3 faction op): a theft at a location alarms every merchants_guild member present —
+  // collective-actor reaction. Demonstrates the engine's `faction` CG condition driving a group response.
+  {
+    id: 'merchant-guild-alarm',
+    trigger: 'GOODS_STOLEN',
+    targetMode: 'location',
+    conditions: [
+      { op: 'faction', value: 'merchants_guild' },
+    ],
+    consequence: {
+      type: 'GUILD_ALARM',
+      importance: 4,
+      delayDays: 0,
+      probability: 1.0,
+    },
+    maxChainDepth: 1,
+  },
 ];

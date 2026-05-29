@@ -195,6 +195,7 @@ export function registerCrimeJusticeModule(): void {
     GUARD_WARNING: 'warning',
     ARREST_RESENTMENT: 'arrest backlash',
     CORRUPTION_COVER: 'corruption',
+    GUILD_ALARM: 'guild alarm',
   });
 
   registerEventGoalCleanup({
@@ -432,6 +433,15 @@ export function registerCrimeJusticeModule(): void {
       gameDay: event.gameDay, lastUpdated: event.gameDay,
     });
   });
+  // B3 guild solidarity: a merchants_guild member becomes aware a theft hit a fellow merchant.
+  registerBeliefCreator('GUILD_ALARM', (agent, event, _rule, crimeEventType, perpetrator, affectedName) => {
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: crimeEventType,
+      subject: perpetrator, object: affectedName,
+      location: event.location, confidence: 0.5, source: BELIEF_SOURCE.GOSSIP,
+      sourceNpcId: null, gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
 
   // CG memory text builders — prose for NPC memories from consequences
   registerMemoryTextBuilder('WITNESS_MEMORY', (event, perpetrator, affectedName) => {
@@ -459,6 +469,9 @@ export function registerCrimeJusticeModule(): void {
   });
   registerMemoryTextBuilder('RUMOR_SPREAD', (_event, perpetrator, affectedName) => {
     return `I heard a disturbing rumor: ${perpetrator} committed a crime against ${affectedName}. People are whispering about it.`;
+  });
+  registerMemoryTextBuilder('GUILD_ALARM', (event, _perpetrator, affectedName) => {
+    return `Word spreads through the merchants' guild: thieves struck ${affectedName}'s stall at ${event.location}. As a fellow merchant, I must guard my own goods — none of us are safe while this continues.`;
   });
   registerMemoryTextBuilder('WANTED_STATUS', (event, perpetrator, affectedName) => {
     return `URGENT: I received reports that ${perpetrator} committed a crime against ${affectedName} at ${event.location}. I must investigate immediately.`;
