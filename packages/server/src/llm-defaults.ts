@@ -40,10 +40,18 @@ export function buildDefaultRouter(): LlmRouterConfig {
         sampling: { temperature: 0.15 },
       },
       reflection: {
-        provider: 'lm-studio',
-        model: DEFAULT_LM_STUDIO_MODEL,
+        // NPC self-reflection → Claude Sonnet for richer introspection. Falls back to local Qwen so a
+        // claude-code hiccup never stalls reflections (they're more frequent than verdicts).
+        provider: 'claude-code',
+        model: 'sonnet',
         maxTokens: 150,
         sampling: { temperature: 0.7 },
+        fallback: {
+          provider: 'lm-studio',
+          model: DEFAULT_LM_STUDIO_MODEL,
+          maxTokens: 150,
+          sampling: { temperature: 0.7 },
+        },
       },
       dialogue: {
         // Player↔NPC chat → Claude Sonnet for quality (streaming + persistent per-NPC session).
