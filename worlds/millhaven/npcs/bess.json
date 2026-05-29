@@ -13,12 +13,30 @@
     "H": 0.8
   },
   "randomRanges": {
-    "O": [0.6, 0.9],
-    "C": [0.2, 0.6],
-    "E": [0.15, 0.5],
-    "A": [0.5, 0.85],
-    "N": [0.3, 0.8],
-    "H": [0.5, 0.9]
+    "O": [
+      0.6,
+      0.9
+    ],
+    "C": [
+      0.2,
+      0.6
+    ],
+    "E": [
+      0.15,
+      0.5
+    ],
+    "A": [
+      0.5,
+      0.85
+    ],
+    "N": [
+      0.3,
+      0.8
+    ],
+    "H": [
+      0.5,
+      0.9
+    ]
   },
   "enneagram": {
     "type": 5,
@@ -43,7 +61,10 @@
   "startingLocation": "Market Square",
   "mobile": false,
   "startingMood": 0.3,
-  "moodRange": [0.0, 0.4],
+  "moodRange": [
+    0,
+    0.4
+  ],
   "schedule": [
     {
       "period": "dawn",
@@ -104,5 +125,14 @@
       "description": "Cures most common poisons. Bess tested it. On what, she will not say."
     }
   ],
-  "motive": null
+  "motive": null,
+  "attributes": {
+    "gold": {
+      "base": 90,
+      "min": 0
+    }
+  },
+  "factions": [
+    "merchants_guild"
+  ]
 }

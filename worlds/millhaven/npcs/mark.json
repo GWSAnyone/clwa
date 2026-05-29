@@ -13,12 +13,30 @@
     "H": 0.2
   },
   "randomRanges": {
-    "O": [0.3, 0.7],
-    "C": [0.15, 0.5],
-    "E": [0.4, 0.85],
-    "A": [0.15, 0.5],
-    "N": [0.4, 0.8],
-    "H": [0.15, 0.40]
+    "O": [
+      0.3,
+      0.7
+    ],
+    "C": [
+      0.15,
+      0.5
+    ],
+    "E": [
+      0.4,
+      0.85
+    ],
+    "A": [
+      0.15,
+      0.5
+    ],
+    "N": [
+      0.4,
+      0.8
+    ],
+    "H": [
+      0.15,
+      0.4
+    ]
   },
   "enneagram": {
     "type": 3,
@@ -43,7 +61,10 @@
   "startingLocation": "Market Square",
   "mobile": true,
   "startingMood": -0.2,
-  "moodRange": [-0.55, -0.15],
+  "moodRange": [
+    -0.55,
+    -0.15
+  ],
   "schedule": [
     {
       "period": "dawn",
@@ -113,5 +134,14 @@
   "motive": {
     "targetId": "bess",
     "reason": "Old Bess figured out your exotic spices are common herbs. She hinted she might tell everyone."
-  }
+  },
+  "attributes": {
+    "gold": {
+      "base": 200,
+      "min": 0
+    }
+  },
+  "factions": [
+    "merchants_guild"
+  ]
 }

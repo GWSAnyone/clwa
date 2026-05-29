@@ -29,9 +29,15 @@
     "type": "acquaintance",
     "note": "owes Mark money from gambling debts",
     "sentiment": -0.15,
-    "sentimentRange": [-0.45, 0.05],
+    "sentimentRange": [
+      -0.45,
+      0.05
+    ],
     "trust": 0.3,
-    "trustRange": [0.15, 0.45]
+    "trustRange": [
+      0.15,
+      0.45
+    ]
   },
   {
     "from": "ted",
@@ -45,9 +51,15 @@
     "type": "acquaintance",
     "note": "she knows too much about herbs",
     "sentiment": -0.7,
-    "sentimentRange": [-0.9, -0.45],
-    "trust": 0.0,
-    "trustRange": [0.0, 0.15]
+    "sentimentRange": [
+      -0.9,
+      -0.45
+    ],
+    "trust": 0,
+    "trustRange": [
+      0,
+      0.15
+    ]
   },
   {
     "from": "mark",
@@ -55,9 +67,15 @@
     "type": "colleague",
     "note": "resents paying full price for materials",
     "sentiment": -0.15,
-    "sentimentRange": [-0.3, 0.0],
+    "sentimentRange": [
+      -0.3,
+      0
+    ],
     "trust": 0.3,
-    "trustRange": [0.15, 0.45]
+    "trustRange": [
+      0.15,
+      0.45
+    ]
   },
   {
     "from": "mark",
@@ -71,7 +89,10 @@
     "type": "acquaintance",
     "note": "avoids the guard when possible",
     "sentiment": -0.1,
-    "sentimentRange": [-0.25, 0.05]
+    "sentimentRange": [
+      -0.25,
+      0.05
+    ]
   },
   {
     "from": "mark",
@@ -79,9 +100,15 @@
     "type": "acquaintance",
     "note": "Ted still owes him money",
     "sentiment": -0.1,
-    "sentimentRange": [-0.2, 0.05],
+    "sentimentRange": [
+      -0.2,
+      0.05
+    ],
     "trust": 0.2,
-    "trustRange": [0.1, 0.35]
+    "trustRange": [
+      0.1,
+      0.35
+    ]
   },
   {
     "from": "elara",
@@ -107,9 +134,15 @@
     "type": "acquaintance",
     "note": "he asks too many questions, she is wary",
     "sentiment": -0.1,
-    "sentimentRange": [-0.5, 0.1],
+    "sentimentRange": [
+      -0.5,
+      0.1
+    ],
     "trust": 0.3,
-    "trustRange": [0.15, 0.45]
+    "trustRange": [
+      0.15,
+      0.45
+    ]
   },
   {
     "from": "garrett",
@@ -129,15 +162,22 @@
     "type": "acquaintance",
     "note": "something about her does not add up",
     "sentiment": -0.1,
-    "sentimentRange": [-0.45, 0.1],
+    "sentimentRange": [
+      -0.45,
+      0.1
+    ],
     "trust": 0.3,
-    "trustRange": [0.15, 0.45]
+    "trustRange": [
+      0.15,
+      0.45
+    ]
   },
   {
     "from": "garrett",
     "to": "magistrate",
     "type": "colleague",
-    "note": "brings cases to the judge"
+    "note": "brings cases to the judge",
+    "standing": 0.4
   },
   {
     "from": "aldric",
@@ -155,7 +195,8 @@
     "from": "aldric",
     "to": "magistrate",
     "type": "colleague",
-    "note": "fellow pillars of the community"
+    "note": "fellow pillars of the community",
+    "standing": 0.2
   },
   {
     "from": "hilda",
@@ -163,9 +204,15 @@
     "type": "friend",
     "note": "old drinking buddies, but her father died in his tavern",
     "sentiment": -0.2,
-    "sentimentRange": [-0.55, 0.15],
+    "sentimentRange": [
+      -0.55,
+      0.15
+    ],
     "trust": 0.4,
-    "trustRange": [0.2, 0.55]
+    "trustRange": [
+      0.2,
+      0.55
+    ]
   },
   {
     "from": "hilda",
@@ -186,9 +233,15 @@
     "type": "acquaintance",
     "note": "his spices smell like common weeds",
     "sentiment": -0.3,
-    "sentimentRange": [-0.5, -0.1],
+    "sentimentRange": [
+      -0.5,
+      -0.1
+    ],
     "trust": 0.1,
-    "trustRange": [0.05, 0.2]
+    "trustRange": [
+      0.05,
+      0.2
+    ]
   },
   {
     "from": "magistrate",
@@ -213,8 +266,11 @@
     "to": "mark",
     "type": "acquaintance",
     "note": "merchant disputes sometimes reach the courthouse",
-    "sentiment": 0.0,
-    "sentimentRange": [-0.2, 0.15]
+    "sentiment": 0,
+    "sentimentRange": [
+      -0.2,
+      0.15
+    ]
   },
   {
     "from": "magistrate",

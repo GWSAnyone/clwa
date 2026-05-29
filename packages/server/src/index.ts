@@ -322,7 +322,7 @@ function makeState(location: string, npcId: string, wd: import('./world-loader')
   };
 }
 
-function buildRelationshipsFromData(npcId: string, profiles: AgentProfile[], rels: Array<{from: string; to: string; type: string; sentiment?: number; trust?: number}>): RelationshipGraph {
+function buildRelationshipsFromData(npcId: string, profiles: AgentProfile[], rels: Array<{from: string; to: string; type: string; sentiment?: number; trust?: number; standing?: number}>): RelationshipGraph {
   const graph = new RelationshipGraph();
   for (const def of rels) {
     if (def.from !== npcId) continue;
@@ -334,6 +334,7 @@ function buildRelationshipsFromData(npcId: string, profiles: AgentProfile[], rel
       type: def.type,
       sentiment: def.sentiment ?? getRelationshipDefaults(def.type).sentiment,
       trust: def.trust ?? getRelationshipDefaults(def.type).trust,
+      ...(def.standing !== undefined ? { standing: def.standing } : {}), // B3 standing axis
     });
   }
   return graph;
@@ -689,6 +690,24 @@ async function createGameContext(
   console.log('  [+] World orchestrator');
   console.log(`  [+] NPC schedules: ${worldData.schedules.length} entries for ${new Set(worldData.schedules.map((s) => s.npcId)).size} NPCs`);
   console.log(`  [+] Mobile NPCs: ${Array.from(worldData.mobileNpcs).join(', ')}`);
+
+  // ─── B1/B2/B3 demo seeding (Living Millhaven) — via World API so engine clamps/conservation apply.
+  //     Engine owns the state; this only fills it from world data. Persisted automatically by World.toJSON. ───
+  for (const [npcId, attrs] of Object.entries(worldData.startingAttributes)) {
+    for (const [key, a] of Object.entries(attrs)) world.setAttribute(npcId, key, a.base, a.min, a.max);
+  }
+  for (const [npcId, items] of Object.entries(worldData.startingInventory)) {
+    for (const it of items) world.giveItem(npcId, it.kind, it.quantity ?? 1, it.state);
+  }
+  for (const [npcId, factions] of Object.entries(worldData.factionMemberships)) {
+    for (const f of factions) world.joinFaction(npcId, f);
+  }
+  // Player starts with some coin + a traveler's possessions (player isn't an NPC JSON file).
+  world.setAttribute('player', 'gold', 100, 0);
+  world.giveItem('player', 'bread', 2);
+  const seededGold = Object.keys(worldData.startingAttributes).length;
+  const seededFactions = new Set(Object.values(worldData.factionMemberships).flat());
+  console.log(`  [+] Demo state: gold on ${seededGold + 1} agents, factions {${[...seededFactions].join(', ')}}, inventory on ${Object.keys(worldData.startingInventory).length + 1}`);
 
   // Stage 5: wire active agents/world для ClaudeCodeProvider.onBeforeCall snapshot
   _setActiveCtxForLlmProvider(agents, world);

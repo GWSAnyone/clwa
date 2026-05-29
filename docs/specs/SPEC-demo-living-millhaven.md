@@ -41,7 +41,7 @@ bess: herbs/poultice/tonic) + цены. Орудие убийства → item �
 
 ## Фазы (каждая оставляет игру запускаемой; tsc 0 + тесты после каждой)
 
-### Phase 0 — Data foundation (loader + seed) [in progress]
+### Phase 0 — Data foundation (loader + seed) ✅ DONE (269/269, tsc 0, engine untouched)
 - Расширить `NpcJson` (`world-loader.ts`): `attributes?`, `inventory?`, `factions?`. `RelationshipJson`: `standing?`.
 - Прокинуть через `loadWorld` → засеять в `createGameContext` через World API (clamps/conservation), по образцу
   seeding beliefs/secrets. `buildRelationshipsFromData` читает `standing`. Player gold+inventory в его state.

@@ -13,12 +13,30 @@
     "H": 0.7
   },
   "randomRanges": {
-    "O": [0.2, 0.5],
-    "C": [0.5, 0.95],
-    "E": [0.3, 0.7],
-    "A": [0.2, 0.6],
-    "N": [0.1, 0.4],
-    "H": [0.3, 0.85]
+    "O": [
+      0.2,
+      0.5
+    ],
+    "C": [
+      0.5,
+      0.95
+    ],
+    "E": [
+      0.3,
+      0.7
+    ],
+    "A": [
+      0.2,
+      0.6
+    ],
+    "N": [
+      0.1,
+      0.4
+    ],
+    "H": [
+      0.3,
+      0.85
+    ]
   },
   "enneagram": {
     "type": 6,
@@ -43,7 +61,10 @@
   "startingLocation": "Town Gate",
   "mobile": false,
   "startingMood": 0.45,
-  "moodRange": [0.1, 0.5],
+  "moodRange": [
+    0.1,
+    0.5
+  ],
   "schedule": [
     {
       "period": "dawn",
@@ -79,5 +100,14 @@
     "Hilda made my halberd. Best weapon I've ever held. She takes pride in her craft — I respect that more than she knows."
   ],
   "shop": null,
-  "motive": null
+  "motive": null,
+  "attributes": {
+    "gold": {
+      "base": 60,
+      "min": 0
+    }
+  },
+  "factions": [
+    "town_guard"
+  ]
 }

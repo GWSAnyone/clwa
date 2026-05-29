@@ -13,12 +13,30 @@
     "H": 0.6
   },
   "randomRanges": {
-    "O": [0.3, 0.7],
-    "C": [0.4, 0.8],
-    "E": [0.5, 0.9],
-    "A": [0.3, 0.85],
-    "N": [0.15, 0.5],
-    "H": [0.3, 0.8]
+    "O": [
+      0.3,
+      0.7
+    ],
+    "C": [
+      0.4,
+      0.8
+    ],
+    "E": [
+      0.5,
+      0.9
+    ],
+    "A": [
+      0.3,
+      0.85
+    ],
+    "N": [
+      0.15,
+      0.5
+    ],
+    "H": [
+      0.3,
+      0.8
+    ]
   },
   "enneagram": {
     "type": 9,
@@ -43,7 +61,10 @@
   "startingLocation": "Silver Flagon Tavern",
   "mobile": false,
   "startingMood": 0.35,
-  "moodRange": [-0.25, 0.45],
+  "moodRange": [
+    -0.25,
+    0.45
+  ],
   "schedule": [
     {
       "period": "morning",
@@ -75,5 +96,11 @@
     "Father Aldric used to come in more often. Lately he just sits in the temple staring at the altar. Something changed in him."
   ],
   "shop": null,
-  "motive": null
+  "motive": null,
+  "attributes": {
+    "gold": {
+      "base": 15,
+      "min": 0
+    }
+  }
 }

@@ -39,6 +39,12 @@ interface NpcJson {
   shop?: Array<{ id: string; name: string; price: number; description: string }> | null;
   motive?: { targetId: string; reason: string } | null;
   randomRanges?: Record<string, [number, number]>;
+  /** B1 scalar attributes (e.g. gold). Seeded into AgentState via World.setAttribute (clamped to [min,max]). */
+  attributes?: Record<string, { base: number; min?: number; max?: number }>;
+  /** B2 starting inventory. Seeded via World.giveItem. (Merchant stock can also be derived from `shop`.) */
+  inventory?: Array<{ kind: string; quantity?: number; state?: Record<string, unknown> }>;
+  /** B3 faction/group membership (open keys, e.g. town_guard / merchants_guild). Seeded via World.joinFaction. */
+  factions?: string[];
 }
 
 interface RelationshipJson {
@@ -50,6 +56,8 @@ interface RelationshipJson {
   trust?: number;
   sentimentRange?: [number, number];
   trustRange?: [number, number];
+  /** B3 social standing/favor axis (-1..1) the `from` agent grants `to` — e.g. standing toward the magistrate. */
+  standing?: number;
 }
 
 interface LocationJson {
@@ -106,6 +114,12 @@ export interface LoadedWorld {
   mobileNpcs: Set<string>;
   startingMoods: Record<string, number>;
   backgroundMemories: Record<string, string[]>;
+  /** B1: per-NPC starting scalar attributes (e.g. gold), seeded via World.setAttribute. */
+  startingAttributes: Record<string, Record<string, { base: number; min?: number; max?: number }>>;
+  /** B2: per-NPC starting inventory, seeded via World.giveItem. */
+  startingInventory: Record<string, Array<{ kind: string; quantity?: number; state?: Record<string, unknown> }>>;
+  /** B3: per-NPC faction memberships, seeded via World.joinFaction. */
+  factionMemberships: Record<string, string[]>;
   lore: string[];
   relationships: RelationshipJson[];
   secrets: SecretJson[];
@@ -189,6 +203,9 @@ export function loadWorld(worldDir: string): LoadedWorld {
   const moodRanges = new Map<string, [number, number]>();
   const startingMoods: Record<string, number> = {};
   const backgroundMemories: Record<string, string[]> = {};
+  const startingAttributes: LoadedWorld['startingAttributes'] = {};
+  const startingInventory: LoadedWorld['startingInventory'] = {};
+  const factionMemberships: LoadedWorld['factionMemberships'] = {};
 
   for (const file of npcFiles) {
     const npc = readJson<NpcJson>(join(npcsDir, file));
@@ -254,6 +271,22 @@ export function loadWorld(worldDir: string): LoadedWorld {
     if (npc.memories.length > 0) {
       backgroundMemories[npc.id] = npc.memories;
     }
+
+    // B1 attributes (e.g. gold)
+    if (npc.attributes) startingAttributes[npc.id] = npc.attributes;
+
+    // B3 faction memberships
+    if (npc.factions && npc.factions.length > 0) factionMemberships[npc.id] = [...npc.factions];
+
+    // B2 inventory: explicit entries + merchant stock derived from `shop` (one real stack per shop item,
+    // item.kind = shop entry id; prices stay on profile.shop and are looked up at trade time).
+    const inv: NonNullable<NpcJson['inventory']> = [...(npc.inventory ?? [])];
+    if (npc.shop) {
+      for (const item of npc.shop) {
+        if (!inv.some((i) => i.kind === item.id)) inv.push({ kind: item.id, quantity: 8 });
+      }
+    }
+    if (inv.length > 0) startingInventory[npc.id] = inv;
   }
 
   console.log(`  [+] ${profiles.length} NPCs loaded`);
@@ -326,6 +359,9 @@ export function loadWorld(worldDir: string): LoadedWorld {
     mobileNpcs,
     startingMoods,
     backgroundMemories,
+    startingAttributes,
+    startingInventory,
+    factionMemberships,
     lore: worldJson.lore,
     relationships,
     secrets,

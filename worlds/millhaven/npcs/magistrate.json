@@ -13,12 +13,30 @@
     "H": 0.9
   },
   "randomRanges": {
-    "O": [0.4, 0.8],
-    "C": [0.7, 0.98],
-    "E": [0.2, 0.6],
-    "A": [0.2, 0.6],
-    "N": [0.1, 0.4],
-    "H": [0.6, 0.95]
+    "O": [
+      0.4,
+      0.8
+    ],
+    "C": [
+      0.7,
+      0.98
+    ],
+    "E": [
+      0.2,
+      0.6
+    ],
+    "A": [
+      0.2,
+      0.6
+    ],
+    "N": [
+      0.1,
+      0.4
+    ],
+    "H": [
+      0.6,
+      0.95
+    ]
   },
   "enneagram": {
     "type": 1,
@@ -43,7 +61,10 @@
   "startingLocation": "Courthouse",
   "mobile": false,
   "startingMood": 0.4,
-  "moodRange": [0.1, 0.5],
+  "moodRange": [
+    0.1,
+    0.5
+  ],
   "schedule": [
     {
       "period": "dawn",
@@ -79,5 +100,14 @@
     "I miss the capital. The libraries, the courts, the debates. Here I judge disputes over goat ownership. But justice is justice, regardless of scale."
   ],
   "shop": null,
-  "motive": null
+  "motive": null,
+  "attributes": {
+    "gold": {
+      "base": 150,
+      "min": 0
+    }
+  },
+  "factions": [
+    "town_guard"
+  ]
 }

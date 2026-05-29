@@ -86,6 +86,65 @@ describe('World Data: Relationships', () => {
   });
 });
 
+describe('World Data: Living Millhaven demo (B1/B2/B3 content)', () => {
+  const KNOWN_FACTIONS = new Set(['town_guard', 'merchants_guild']);
+  const relationships = readJSON(join(WORLD_DIR, 'relationships.json')) as Array<Record<string, unknown>>;
+
+  test('every NPC with gold has a non-negative base and min 0', () => {
+    const bad: string[] = [];
+    for (const p of npcProfiles) {
+      const attrs = p.attributes as Record<string, { base: number; min?: number }> | undefined;
+      if (!attrs?.gold) continue;
+      if (attrs.gold.base < 0) bad.push(`${p.id}: negative gold ${attrs.gold.base}`);
+      if (attrs.gold.min !== 0) bad.push(`${p.id}: gold.min should be 0, got ${attrs.gold.min}`);
+    }
+    expect(bad).toEqual([]);
+    // sanity: at least the merchants + guards carry gold
+    expect(npcProfiles.filter((p) => (p.attributes as Record<string, unknown> | undefined)?.gold).length).toBeGreaterThanOrEqual(5);
+  });
+
+  test('faction memberships use only known faction keys', () => {
+    const bad: string[] = [];
+    for (const p of npcProfiles) {
+      for (const f of (p.factions as string[] | undefined) ?? []) {
+        if (!KNOWN_FACTIONS.has(f)) bad.push(`${p.id}: unknown faction '${f}'`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('every merchant (has shop) belongs to merchants_guild', () => {
+    const bad: string[] = [];
+    for (const p of npcProfiles) {
+      if (!p.shop) continue;
+      if (!((p.factions as string[] | undefined) ?? []).includes('merchants_guild')) bad.push(`${p.id}: merchant not in merchants_guild`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  test('relationship standing values are in [-1,1]', () => {
+    const bad: string[] = [];
+    for (const rel of relationships) {
+      const s = rel.standing as number | undefined;
+      if (s != null && (s < -1 || s > 1)) bad.push(`${rel.from}→${rel.to}: standing ${s} out of range`);
+    }
+    expect(bad).toEqual([]);
+    expect(relationships.some((r) => r.to === 'magistrate' && r.standing != null)).toBe(true); // justice axis seeded
+  });
+
+  test('loadWorld surfaces the seeded demo maps', async () => {
+    const { loadWorld } = await import('../packages/server/src/world-loader');
+    const w = loadWorld(WORLD_DIR);
+    expect(w.startingAttributes.mark.gold.base).toBe(200);
+    expect(w.factionMemberships.garrett).toContain('town_guard');
+    expect(w.factionMemberships.mark).toContain('merchants_guild');
+    // merchant stock derived from shop entries (real inventory)
+    expect((w.startingInventory.mark ?? []).length).toBeGreaterThan(0);
+    // standing threaded through relationships
+    expect(w.relationships.some((r) => r.to === 'magistrate' && typeof r.standing === 'number')).toBe(true);
+  });
+});
+
 describe('World Data: Motives', () => {
   const motives = readJSON(join(WORLD_DIR, 'motives.json')) as Array<Record<string, unknown>>;
   const registeredTypes = getAllRegisteredEventTypes();
