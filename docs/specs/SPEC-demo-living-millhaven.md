@@ -1,0 +1,88 @@
+# SPEC: Living Millhaven — demonstrate B1/B2/B3 in the crime game
+
+> **Milestone**: M5 follow-on (capability demonstration, not engine work)
+> **Status**: 🟡 IN PROGRESS — Phase 0
+> **Branch**: `feature/living-millhaven-demo` (off `feature/engine-generalization`)
+> **Depends on**: B1 scalar attributes, B2 inventory, B3 factions+standing (all DONE, engine-side)
+> **Created**: 2026-05-29
+> **Source maps**: 3 senior-reviewer reports (frontend / server channel / crime-module+world) — 2026-05-29 session.
+
+## Цель
+
+Сделать новые универсальные примитивы (gold/attributes, inventory, factions, standing) **видимыми и
+играбельными** в текущей crime-демке Millhaven — одной связной петлёй «живой экономики + правосудия».
+
+## Главный инвариант этой работы (success criterion)
+
+**НОЛЬ правок `packages/engine`.** Вся работа — в `packages/modules/crime-justice`, `packages/server`,
+`worlds/millhaven`, `packages/server/public`. Если потребовалась правка движка — значит примитив недоделан;
+остановиться и пересмотреть. Это доказательство, что генерализация M5 достигла цели («добавь экономику без
+правок движка»). `clwa-auditor` в конце подтверждает, что engine-диф пуст.
+
+## Текущее состояние (из карт)
+
+- Движок: World API (`setAttribute/transferAttribute/giveItem/transferItem/joinFaction/adjustStanding`),
+  persistence (`toJSON`/`loadState` с SL-07), per-tick decay — **готовы, но 0 вызовов** в server/module.
+- `world-loader` НЕ читает attributes/inventory/factions/standing из JSON; boot их не сидит.
+- `steal_from` (step-handlers.ts) эмитит `GOODS_STOLEN`, но **не двигает inventory** → B2-точка.
+- `shop`/`ShopItem` — витрина для LLM-промпта, **покупка не работает** → B1+B2-точка.
+- Естественные фракции: `town_guard`=garrett,magistrate · `merchants_guild`=mark,hilda,bess · criminals=эмерджентно.
+- `Relationship.standing` к магистрату = «ось правосудия» (помечено в коде).
+
+## Контент-дизайн (в world JSON)
+
+**Gold** (`attributes.gold`, min 0): mark 200, magistrate 150, hilda 120, player 100, bess 90, garrett 60,
+elara 50, aldric 40, ted 15 (в долгу у Марка — уже в lore).
+**Factions**: `town_guard`={garrett,magistrate}, `merchants_guild`={mark,hilda,bess}. `criminals` — добавляется
+динамически при совершении преступления (step-hook).
+**Inventory**: лавки торговцев → реальный сток (mark: bread/cloth/trinket; hilda: dagger/horseshoe/nails;
+bess: herbs/poultice/tonic) + цены. Орудие убийства → item на сцене как улика.
+**Standing** (к magistrate): стартово 0 у ключевых NPC; правосудные действия двигают (см. ниже).
+
+## Фазы (каждая оставляет игру запускаемой; tsc 0 + тесты после каждой)
+
+### Phase 0 — Data foundation (loader + seed) [in progress]
+- Расширить `NpcJson` (`world-loader.ts`): `attributes?`, `inventory?`, `factions?`. `RelationshipJson`: `standing?`.
+- Прокинуть через `loadWorld` → засеять в `createGameContext` через World API (clamps/conservation), по образцу
+  seeding beliefs/secrets. `buildRelationshipsFromData` читает `standing`. Player gold+inventory в его state.
+- Наполнить 8 NPC + player Millhaven-контентом выше.
+- **Verify**: debug API (`/api/debug/attr/...`) показывает gold; save/load round-trip сохраняет (engine SL-07 уже есть).
+
+### Phase 1 — Make it real (module, zero engine edits)
+- **Real theft (B2)**: `steal_from` → `world.transferItem(owner, thief, kind, 1)` из реального стока владельца;
+  discovery через реальную нехватку.
+- **Real trade (B1+B2)**: транзакция `world.transferAttribute(player→merchant, 'gold', price)` +
+  `world.transferItem(merchant→player, kind, 1)` (server-action в Phase 2; логика цен — здесь).
+- **Bribe (B1)**: действие подкупа стражника золотом → corruption (sentiment/standing вниз, сброс pursuit).
+- **Factions (B3)**: join `criminals` при преступлении; CG-правило с `op:'faction'` — кража у торговца →
+  тревога-belief всей гильдии на локации; арест → солидарность town_guard.
+- **Standing (B3)**: успешный report/testify/верный sentence → `adjustStanding(magistrate,+)`; ложное обвинение /
+  arrest-backlash → `−`.
+- **Verify**: новые module-тесты (theft двигает сток, bribe, faction-CG, standing). tsc 0.
+
+### Phase 2 — Server surface (4 seams)
+- **WS**: новые сообщения `attr:update`/`inventory:update`/`faction:update`/`standing:update`; пуш из per-agent
+  цикла в `onTimeUpdate` (диф) + точечно на транзакциях.
+- **REST**: gold/factions в `/api/agents` + `/api/agent/:id`; `/api/inventory/:id`; gold+inventory в `/api/player`;
+  debug-роуты по образцу.
+- **Player actions**: `shop:buy` (реальная транзакция), `bribe`. LLM-промпт: gold/standing/гильдия в system prompt.
+- **Verify**: live debug — транзакция меняет обе стороны, дельты прилетают по WS.
+
+### Phase 3 — Frontend (Canvas2D + DOM)
+- NPC-инспектор: gold + faction-бэйдж + standing-бар (standing уже приходит, просто рендерим в `renderRelItem`).
+- Player HUD: счётчик золота + панель инвентаря (выезжающая, по образцу journal).
+- Faction-бэйдж на спрайте (`drawNPCs`).
+- Реальная лавка: кнопка «Купить» → `shop:buy`, живое обновление золота.
+- Justice-метр: standing игрока с магистратом в HUD + тосты на дельты («−1 хлеб украден», «+5 к магистрату»).
+- **Verify**: ручной прогон в браузере — торговля/кража/тревога гильдии/метр правосудия видны.
+
+### Phase 4 — Verify & close
+- Полный `bun test` (новые тесты Phase 0/1) + tsc 0.
+- **`clwa-auditor`**: подтвердить пустой engine-диф (главный success criterion) + INV-14.
+- Live-walkthrough (сервер + браузер + LM Studio).
+- Закрыть спеку, коммиты по фазам.
+
+## Риски
+- Цены/баланс: держать в данных мира, не в коде. Транзакции атомарны (B1/B2 гарантируют conservation).
+- LLM-стоимость live-прогона — gated на доступность LM Studio; механики проверяются debug-API без LLM.
+- Фронт — vanilla Canvas2D, без сборки; следовать существующему конвейеру (server-поле → WS → handleWS → state → draw).
