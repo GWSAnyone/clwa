@@ -12,7 +12,7 @@
 
 import { resolve, join, basename } from "path";
 import { readdir } from "fs/promises";
-import { getAllRegisteredEventTypes, getEventTypesByCategory, getAllRegisteredSources, BELIEF_SOURCE } from "@clwa/engine";
+import { getAllRegisteredEventTypes, getEventTypesByCategory, getAllRegisteredSources, BELIEF_SOURCE, getRegisteredRelationshipTypes } from "@clwa/engine";
 import { registerCrimeJusticeModule, registerSocialModule } from "@clwa/modules";
 
 // Populate engine registries so we can serve valid options to the editor UI
@@ -59,18 +59,32 @@ async function handleAPI(req: Request, pathname: string): Promise<Response> {
     // Collect relationship types from world data
     const rels = await readJSON(join(WORLD_DIR, "relationships.json")) as Array<{ type?: string }>;
     const relTypes = [...new Set(rels.map(r => r.type).filter(Boolean))].sort();
-    // Collect roles from NPC data
+    // Collect open-key option sets from NPC data (factions/capabilities/item kinds are open strings with
+    // no engine registry by design — the "registry" for them is what the world actually uses; the UI adds
+    // a free-text "+ new" so authors aren't locked to the current set). Roles + rel types likewise.
     const npcData = await Promise.all(
       files.filter(f => f.endsWith(".json")).map(f => readJSON(join(npcsDir, f)))
-    ) as Array<{ role?: string }>;
-    const roles = [...new Set(npcData.map(n => n.role).filter(Boolean))].sort();
+    ) as Array<{ role?: string; factions?: string[]; capabilities?: Record<string, boolean>;
+                 shop?: Array<{ id?: string }>; inventory?: Array<{ kind?: string }> }>;
+    const uniqSort = (xs: (string | undefined)[]) => [...new Set(xs.filter(Boolean) as string[])].sort();
+    const roles = uniqSort(npcData.map(n => n.role));
+    const factions = uniqSort(npcData.flatMap(n => n.factions ?? []));
+    const capabilities = uniqSort(npcData.flatMap(n => Object.keys(n.capabilities ?? {})));
+    const itemKinds = uniqSort([
+      ...npcData.flatMap(n => (n.shop ?? []).map(s => s.id)),
+      ...npcData.flatMap(n => (n.inventory ?? []).map(it => it.kind)),
+    ]);
     return Response.json({
       eventTypes: getAllRegisteredEventTypes(),
       motiveTypes: getEventTypesByCategory('motive'),
       sources: [...getAllRegisteredSources(), ...Object.values(BELIEF_SOURCE)].filter((v, i, a) => a.indexOf(v) === i),
       npcIds,
-      relationshipTypes: [...new Set([...relTypes, 'friend', 'colleague', 'acquaintance', 'rival', 'enemy'])].sort(),
+      // Relationship types from the engine registry (universal seeds + module-added) ∪ what the world uses.
+      relationshipTypes: uniqSort([...getRegisteredRelationshipTypes(), ...relTypes]),
       roles,
+      factions,       // B3 — open keys, union from world data
+      capabilities,   // open keys, union from world data
+      itemKinds,      // B2 — open keys (shop ids + inventory kinds)
     }, { headers: cors });
   }
 

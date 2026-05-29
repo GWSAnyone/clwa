@@ -17,7 +17,7 @@ export type { BeliefSource } from './beliefs';
 export type { Belief } from './beliefs';
 
 // ─── Relationships ───
-export { RelationshipGraph, registerRelationshipType, getRelationshipDefaults } from './relationships';
+export { RelationshipGraph, registerRelationshipType, getRelationshipDefaults, getRegisteredRelationshipTypes } from './relationships';
 export type { RelationType, RelationshipTypeDefaults } from './relationships';
 export type { Relationship } from './relationships';
 

@@ -41,6 +41,11 @@ export function getRelationshipDefaults(type: string): RelationshipTypeDefaults 
   return RELATIONSHIP_TYPE_DEFAULTS.get(type) ?? FALLBACK_DEFAULTS;
 }
 
+/** All registered bond types (universal seeds + module-added). Read-only accessor for tooling/UI. */
+export function getRegisteredRelationshipTypes(): string[] {
+  return [...RELATIONSHIP_TYPE_DEFAULTS.keys()];
+}
+
 export class RelationshipGraph {
   private relationships: Map<string, Relationship> = new Map(); // targetId -> Relationship
   onChange?: (targetId: string, targetName: string, field: 'trust' | 'sentiment', oldVal: number, newVal: number) => void;

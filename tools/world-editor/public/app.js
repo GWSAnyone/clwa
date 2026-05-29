@@ -119,6 +119,17 @@ function numInput(value, onChange, attrs = {}) {
   return inp;
 }
 
+let _comboId = 0;
+/** Free-text input with datalist suggestions (open keys: pick an existing value or type a new one). */
+function comboInput(value, options, onChange) {
+  const listId = `combo-${_comboId++}`;
+  const inp = h('input', { type: 'text', value: value || '', list: listId });
+  inp.addEventListener('input', () => onChange(inp.value));
+  const dl = h('datalist', { id: listId });
+  (options || []).forEach(o => dl.append(h('option', { value: o })));
+  return h('span', {}, [inp, dl]);
+}
+
 function textArea(value, onChange, rows = 3) {
   const ta = h('textarea', { rows: String(rows) });
   ta.value = value || '';
@@ -167,6 +178,26 @@ function divider(text) {
   return h('div', { class: 'section-divider', text });
 }
 
+// Open-key toggle editor: checkboxes for the current option set (registry/data union) + a free-text
+// "+ new" so authors aren't locked to existing keys. knownFn() returns the live display set (recomputed
+// each render, so a just-added key appears). Used for factions / capabilities — no hardcoded lists.
+function keyToggles(knownFn, isOn, setOn) {
+  const box = h('div', {});
+  function render() {
+    box.innerHTML = '';
+    const keys = [...new Set(knownFn())].sort();
+    const grid = h('div', { class: 'grid-3' });
+    keys.forEach(k => grid.append(checkbox(isOn(k), k, v => { setOn(k, v); render(); })));
+    box.append(grid);
+    const inp = h('input', { class: 'input', placeholder: '+ new key', style: { width: '140px' } });
+    const add = () => { const k = inp.value.trim(); if (!k) return; setOn(k, true); render(); };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+    box.append(h('div', { class: 'flex-row gap-sm mt-sm' }, [inp, h('button', { class: 'btn btn-ghost', text: '+ Add', onclick: add })]));
+  }
+  render();
+  return box;
+}
+
 function backBtn(text, onClick) {
   return h('button', { class: 'back-btn', html: '&#8592; ' + text, onclick: onClick });
 }
@@ -174,6 +205,9 @@ function backBtn(text, onClick) {
 // Refs cache
 let npcIds = [], npcNames = {}, locationNames = [];
 let registeredEventTypes = [], registeredSources = [], registeredMotiveTypes = [];
+// Open-key option sets (factions/capabilities/item kinds have no engine registry by design — these are
+// the union of what the world uses, served by /api/registry. UI also allows adding a new key freely.)
+let factionKeys = [], capabilityKeys = [], itemKinds = [];
 
 async function loadRefs() {
   if (!npcIds.length) {
@@ -191,6 +225,9 @@ async function loadRefs() {
     registeredMotiveTypes = reg.motiveTypes;
     registeredSources = reg.sources;
     if (reg.relationshipTypes?.length) REL_TYPES = reg.relationshipTypes;
+    factionKeys = reg.factions ?? [];
+    capabilityKeys = reg.capabilities ?? [];
+    itemKinds = reg.itemKinds ?? [];
   }
 }
 
@@ -376,15 +413,66 @@ async function renderNpcDetail(id) {
     ]),
   ]));
 
-  // Capabilities
+  // Capabilities — open string-keyed flags (no hardcoded list; options = union used across the world).
   wrap.append(h('div', { class: 'card' }, [
     h('div', { class: 'card-title', text: 'Capabilities' }),
-    h('div', { class: 'grid-3' }, [
-      checkbox(data.capabilities?.investigator, 'Investigator', v => { if (!data.capabilities) data.capabilities = {}; data.capabilities.investigator = v; }),
-      checkbox(data.capabilities?.detersCrime, 'Deters Crime', v => { if (!data.capabilities) data.capabilities = {}; data.capabilities.detersCrime = v; }),
-      checkbox(data.capabilities?.canSentence, 'Can Sentence', v => { if (!data.capabilities) data.capabilities = {}; data.capabilities.canSentence = v; }),
+    h('div', { class: 'hint', text: 'Open flags read via hasCapability() / CG has_capability. Crime: investigator/detersCrime/canSentence. Other genres add their own (isMerchant, canGrantFavor, …).' }),
+    keyToggles(
+      () => [...capabilityKeys, ...Object.keys(data.capabilities || {})],
+      (k) => !!data.capabilities?.[k],
+      (k, v) => { if (!data.capabilities) data.capabilities = {}; data.capabilities[k] = v; },
+    ),
+  ]));
+
+  // Economy & Factions (B1 gold / B3 factions)
+  wrap.append(h('div', { class: 'card' }, [
+    h('div', { class: 'card-title', text: 'Economy & Factions' }),
+    h('div', { class: 'grid-2' }, [
+      fieldGroup('Gold', numInput(data.attributes?.gold?.base ?? 0, v => {
+        if (v > 0 || data.attributes?.gold) {
+          if (!data.attributes) data.attributes = {};
+          data.attributes.gold = { base: v, min: 0 };
+        }
+      }, { min: 0 })),
+      fieldGroup('Factions', keyToggles(
+        () => [...factionKeys, ...(data.factions || [])],
+        (k) => (data.factions || []).includes(k),
+        (k, v) => {
+          if (!data.factions) data.factions = [];
+          const i = data.factions.indexOf(k);
+          if (v && i < 0) data.factions.push(k);
+          else if (!v && i >= 0) data.factions.splice(i, 1);
+          if (data.factions.length === 0) delete data.factions;
+        },
+      )),
     ]),
   ]));
+
+  // Inventory (B2) — explicit starting items. Merchant shop stock is auto-derived from `shop` at load.
+  {
+    const invCard = h('div', { class: 'card' });
+    invCard.append(h('div', { class: 'card-title', text: 'Inventory' }));
+    invCard.append(h('div', { class: 'hint', text: 'Explicit starting items (e.g. a weapon, a keepsake). Merchant shop stock loads automatically from the Shop list.' }));
+    function renderInv() {
+      while (invCard.children.length > 2) invCard.lastChild.remove();
+      const inv = data.inventory ?? [];
+      const tbl = h('table');
+      tbl.append(h('thead', {}, [h('tr', {}, [h('th', { text: 'Kind' }), h('th', { text: 'Qty' }), h('th')])]));
+      const tb = h('tbody');
+      inv.forEach((it, i) => {
+        tb.append(h('tr', {}, [
+          h('td', {}, [comboInput(it.kind, itemKinds, v => data.inventory[i].kind = v)]),
+          h('td', {}, [numInput(it.quantity ?? 1, v => data.inventory[i].quantity = v, { min: 1 })]),
+          h('td', {}, [h('button', { class: 'btn btn-danger', text: 'X', onclick: () => { data.inventory.splice(i, 1); if (!data.inventory.length) delete data.inventory; renderInv(); } })]),
+        ]));
+      });
+      tbl.append(tb);
+      invCard.append(tbl);
+      invCard.append(h('button', { class: 'btn btn-ghost mt-sm', text: '+ Add item', onclick: () => { if (!data.inventory) data.inventory = []; data.inventory.push({ kind: '', quantity: 1 }); renderInv(); } }));
+    }
+    renderInv();
+    wrap.append(invCard);
+  }
 
   // Mood
   wrap.append(h('div', { class: 'card' }, [
@@ -528,9 +616,11 @@ async function renderRelationships() {
       fieldGroup('Note', textInput(rel.note, v => rel.note = v)),
       fieldGroup('Sentiment (-1..1)', slider(rel.sentiment ?? 0, -1, 1, 0.05, v => rel.sentiment = v)),
       fieldGroup('Trust (0..1)', slider(rel.trust ?? 0.5, 0, 1, 0.05, v => rel.trust = v)),
+      fieldGroup('Standing (-1..1) — favor/rank axis, e.g. toward the magistrate (0 = none)', slider(rel.standing ?? 0, -1, 1, 0.05, v => rel.standing = v)),
       h('div', { class: 'flex-row gap-sm mt-lg' }, [
         h('button', { class: 'btn btn-primary', text: 'Apply', onclick: () => {
-          if (existing) Object.assign(existing, rel);
+          if (rel.standing === 0) delete rel.standing; // keep neutral edges clean (undefined = no axis)
+          if (existing) { delete existing.standing; Object.assign(existing, rel); }
           else data.push(rel);
           overlay.remove();
           render();
