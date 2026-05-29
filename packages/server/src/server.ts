@@ -49,7 +49,7 @@ export function startServer(
         return handleRequest(req, ctx);
       }
 
-      const filePath = url.pathname === '/' ? '/index.html' : decodeURIComponent(url.pathname);
+      const filePath = url.pathname === '/' ? '/game.html' : decodeURIComponent(url.pathname);
       const fullPath = resolve(PUBLIC_DIR, '.' + filePath);
       const file = Bun.file(fullPath);
       if (await file.exists()) {
