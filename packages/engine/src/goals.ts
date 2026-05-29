@@ -27,8 +27,8 @@ export interface InteractStep {
   beliefTransfer?: boolean;
   /** Direction of belief transfer: 'target-to-owner' (default, for interrogate) or 'owner-to-target' (for testify) */
   beliefTransferDirection?: 'target-to-owner' | 'owner-to-target';
-  /** After interaction, evaluate if target is a suspect (deduction belief match) and update confidence based on guilt + H trait */
-  evaluateSuspect?: boolean;
+  /** After interaction, run the module's post-interaction target evaluation hook (engine just forwards the flag) */
+  evaluateInteractionTarget?: boolean;
   /** If set, emit an event with this type after interaction (e.g. module-specific event types) */
   emitEventType?: string;
 }
@@ -148,11 +148,11 @@ function transferBeliefs(
   if (!sender.state.beliefs || !receiver.state.beliefs) return { transferred };
 
   const senderBeliefs = sender.state.beliefs.getAllBeliefs();
-  const crimeBeliefs = senderBeliefs.filter(
+  const transferableBeliefs = senderBeliefs.filter(
     (b) => isTransferable(b.eventType) && b.confidence >= 0.3,
   );
 
-  for (const b of crimeBeliefs) {
+  for (const b of transferableBeliefs) {
     const transferConfidence = b.confidence * getSourceTransferWeight(b.source);
 
     // Dedup by (eventType, object) — Invariant 14
@@ -528,8 +528,8 @@ export class GoalManager {
               location: owner.state.location,
               importance: s.importance,
               payload: {
-                guardName: owner.profile.name,
-                witnessName: target.profile.name,
+                initiatorName: owner.profile.name,
+                targetName: target.profile.name,
                 beliefsTransferred: transferred.length,
                 affectedTargets: [goal.ownerId],
               },

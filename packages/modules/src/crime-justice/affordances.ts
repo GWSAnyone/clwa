@@ -362,7 +362,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     eventBoost: {
       eventTypes: ['WITNESS_MEMORY', 'BODY_DISCOVERED', 'RUMOR_SPREAD'],
       boost: 0.3,
-      requiresRelationToVictim: true,
+      requiresRelationToObject: true,
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
@@ -458,7 +458,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     },
     stepTemplates: [
       { action: 'move_to', location: '$target', skipIfAt: true },
-      { action: 'interact', targetId: '$target', purpose: 'Interrogate {targetName} about the {crimeType:crime} involving {affectedName:the victim}. Ask what they saw, when, and if they know who is responsible. Be thorough and firm.', importance: 6, beliefTransfer: true, evaluateSuspect: true, emitEventType: 'NPC_INTERROGATED' },
+      { action: 'interact', targetId: '$target', purpose: 'Interrogate {targetName} about the {crimeType:crime} involving {affectedName:the victim}. Ask what they saw, when, and if they know who is responsible. Be thorough and firm.', importance: 6, beliefTransfer: true, evaluateInteractionTarget: true, emitEventType: 'NPC_INTERROGATED' },
       { action: 'move_to', location: '$home', skipIfAt: true },
     ],
   },
@@ -556,7 +556,7 @@ export const CRIME_AFFORDANCES: AffordanceDefinition[] = [
     eventBoost: {
       eventTypes: ['RUMOR_SPREAD', 'WITNESS_MEMORY'],
       boost: 0.2,
-      requiresRelationToVictim: true,
+      requiresRelationToObject: true,
     },
     stepTemplates: [
       { action: 'move_to', location: 'town-square', skipIfAt: true },

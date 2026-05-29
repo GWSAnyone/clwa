@@ -12,8 +12,8 @@ export function createSceneResidue(
   sceneType: string,
   gameDay: number,
   gameMinute: number,
-  perpetrator?: Agent,
-  victim?: Agent,
+  actor?: Agent,
+  affected?: Agent,
   witnesses?: string[],
 ): SceneResidue {
   const template = getSceneResidueTemplate(sceneType);
@@ -29,12 +29,12 @@ export function createSceneResidue(
 
   // Module-defined personalization — template declares how to customize points
   if (template.personalizePoints) {
-    template.personalizePoints(points, { victim, perpetrator });
+    template.personalizePoints(points, { affected, actor });
   }
 
   // Module-defined additional points — template generates extras based on context
   if (template.additionalPoints) {
-    const extras = template.additionalPoints({ victim, perpetrator });
+    const extras = template.additionalPoints({ affected, actor });
     for (const ep of extras) {
       points.push({ ...ep, id: crypto.randomUUID(), examined: false });
     }
@@ -42,8 +42,8 @@ export function createSceneResidue(
 
   // Pre-fill noticedBy with witnesses (they already know)
   const noticedBy = new Set<string>();
-  if (perpetrator) noticedBy.add(perpetrator.profile.id);
-  if (victim) noticedBy.add(victim.profile.id);
+  if (actor) noticedBy.add(actor.profile.id);
+  if (affected) noticedBy.add(affected.profile.id);
   if (witnesses) {
     for (const w of witnesses) noticedBy.add(w);
   }
@@ -57,10 +57,10 @@ export function createSceneResidue(
     gameMinute,
     noticedBy,
     active: true,
-    actorId: perpetrator?.profile.id,
-    affectedId: victim?.profile.id,
+    actorId: actor?.profile.id,
+    affectedId: affected?.profile.id,
     personsPresent: [
-      ...(perpetrator ? [perpetrator.profile.id] : []),
+      ...(actor ? [actor.profile.id] : []),
       ...(witnesses ?? []),
     ],
   };

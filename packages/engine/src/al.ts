@@ -43,8 +43,8 @@ export interface EventBoost {
   eventTypes: string[];
   /** Score bonus added (typically 0.3-0.5, pushes past auto threshold) */
   boost: number;
-  /** Only apply if NPC has a close relationship with the victim */
-  requiresRelationToVictim?: boolean;
+  /** Only apply if NPC has a close relationship with the event's object (affected party) */
+  requiresRelationToObject?: boolean;
 }
 
 /**
@@ -77,8 +77,8 @@ export interface StepTemplate {
   beliefTransfer?: boolean;
   /** Direction of belief transfer: 'target-to-owner' (default) or 'owner-to-target' (for testify) */
   beliefTransferDirection?: 'target-to-owner' | 'owner-to-target';
-  /** After interaction, evaluate if target is a suspect and update confidence based on guilt + H trait */
-  evaluateSuspect?: boolean;
+  /** After interaction, run the module's post-interaction target evaluation hook (engine just forwards the flag) */
+  evaluateInteractionTarget?: boolean;
   /** If set, emit an event with this type after interaction (e.g. module-specific event types) */
   emitEventType?: string;
 }
@@ -168,7 +168,7 @@ export interface AffordanceContext {
   affordanceCooldownMinutes?: number;
   decisionCooldownMinutes?: number;
   /** Check if NPC is target of someone else's arrest/pursuit goal */
-  isArrestTarget?: (npcId: string) => boolean;
+  isPursuitTarget?: (npcId: string) => boolean;
   /** Check if conversation pair is on cooldown (scheduler-managed) */
   isPairOnCooldown?: (a: string, b: string) => boolean;
   /** LLM temperature for volition decisions (default: 0.35) */

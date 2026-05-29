@@ -279,10 +279,10 @@ export interface SceneResidueTemplate {
   points: Omit<ExaminationPoint, 'id' | 'examined'>[];
   /** Prose text for NPCs who passively notice this scene. {locationName} is interpolated. */
   passiveNoticeText?: string;
-  /** Module callback: personalize points based on victim/perpetrator context */
-  personalizePoints?: (points: ExaminationPoint[], ctx: { victim?: Agent; perpetrator?: Agent }) => void;
+  /** Module callback: personalize points based on the scene's actor/affected agents */
+  personalizePoints?: (points: ExaminationPoint[], ctx: { affected?: Agent; actor?: Agent }) => void;
   /** Module callback: generate additional points based on context (e.g. profession clues) */
-  additionalPoints?: (ctx: { victim?: Agent; perpetrator?: Agent }) => Omit<ExaminationPoint, 'id' | 'examined'>[];
+  additionalPoints?: (ctx: { affected?: Agent; actor?: Agent }) => Omit<ExaminationPoint, 'id' | 'examined'>[];
 }
 
 const SCENE_RESIDUE_TEMPLATES: Map<string, SceneResidueTemplate> = new Map();

@@ -1,4 +1,5 @@
 import type { Agent } from './agent';
+import { hasCapability } from './agent-types';
 import type { WorldEvent, ConsequenceRule, ConsequenceResult, RuleCondition } from './cg-types';
 import { getEventMoodShift, getBeliefCreator, getMemoryTextBuilder, getConsequencePostHandlers } from './event-registry';
 
@@ -281,7 +282,7 @@ export class ConsequenceEngine {
 
     if (cond.op === 'has_capability') {
       const capFlag = (cond.value ?? cond.field) as string;
-      return agent.profile.capabilities?.[capFlag] === true;
+      return hasCapability(agent.profile, capFlag);
     }
     if (cond.op === 'trait') {
       return this.checkTrait(agent, cond);

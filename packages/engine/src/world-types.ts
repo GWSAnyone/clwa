@@ -103,10 +103,10 @@ export interface TickResult {
   goalActions?: import('./goals').GoalActionResult[];
   /** Idle reason if no conversation happened */
   idleReason?: string;
-  /** Murder that happened this tick (NPC-on-NPC, motivation system) */
-  death?: { killerId: string; victimId: string; killerName: string; affectedName: string };
-  /** New crime scene created this tick */
-  sceneResidue?: { id: string; locationId: string; crimeType: string; pointCount: number };
+  /** Death that happened this tick (agent-on-agent, motivation system) */
+  death?: { actorId: string; affectedId: string; actorName: string; affectedName: string };
+  /** New scene residue created this tick */
+  sceneResidue?: { id: string; locationId: string; sceneType: string; pointCount: number };
   /** NPCs that want to approach the player this tick */
   approaches?: ApproachEvent[];
 }

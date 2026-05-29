@@ -1640,7 +1640,7 @@ export class World {
       affordanceCooldownMinutes: this.config.affordanceCooldownMinutes,
       decisionCooldownMinutes: this.config.decisionCooldownMinutes,
       volitionTemperature: this.config.volitionTemperature,
-      isArrestTarget: (npcId) => {
+      isPursuitTarget: (npcId) => {
         for (const goalType of getBlockingGoalTypes()) {
           if (this.goalManager.isTargetOfGoalType(npcId, goalType)) return true;
         }

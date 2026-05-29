@@ -141,7 +141,7 @@ export async function evaluateAllVolition(
     if (agent.state.inPlayerChat) continue; // NPC frozen in conversation with player
     if (!agent.state.alive || isStatusAbsent(agent.state.status)) continue;
     if (ctx.hasActiveGoalAbove(npcId, 4)) continue;
-    if (ctx.isArrestTarget?.(npcId)) continue; // someone is arresting this NPC — skip evaluation
+    if (ctx.isPursuitTarget?.(npcId)) continue; // someone is pursuing this NPC — skip evaluation
 
     // Decision cooldown — don't re-evaluate too frequently
     if (ctx.decisionCooldowns) {
@@ -234,8 +234,8 @@ export function evaluateReactiveVolition(
       if (!aff.eventBoost) continue;
       if (!aff.eventBoost.eventTypes.includes(event.type)) continue;
 
-      // Relation to victim filter
-      if (aff.eventBoost.requiresRelationToVictim) {
+      // Relation-to-object filter
+      if (aff.eventBoost.requiresRelationToObject) {
         const victimId = event.object;
         if (!victimId) continue;
         const rel = agent.state.relationships?.getRelationship(victimId);
@@ -944,7 +944,7 @@ function resolveTemplates(
           importance: tmpl.importance ?? 5,
           beliefTransfer: tmpl.beliefTransfer,
           beliefTransferDirection: tmpl.beliefTransferDirection,
-          evaluateSuspect: tmpl.evaluateSuspect,
+          evaluateInteractionTarget: tmpl.evaluateInteractionTarget,
         });
         break;
       }
