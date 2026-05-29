@@ -99,8 +99,12 @@ The **main agent writes these from the workflow's returned value** — workflow 
 write to disk: the default workflow subagent is return-oriented and skips side-effecting tool calls (it will
 falsely claim "WRITE=success" with 0 tool calls), and even `general-purpose` subagent writes hit a known
 Claude Code subagent FS-persistence bug (issues #7032/#9458/#4462). So author every workflow to
-`return { result, agents }` (synthesis + each agent's output) and persist from that after completion. If a
-synthesis emits a `reportMd` field, that string IS `report.md` verbatim; otherwise render from structure.
+`return { result, agents }` (synthesis + each agent's output) and persist from that after completion.
+
+Each agent's schema SHOULD carry a `reportMd` field (its own readable report) → written verbatim as
+`agents/<NN>-<label>.md`; the synthesis's `reportMd` → `report.md`. Where absent, render the structured
+result. The fixed per-run layout is `<slug>/<YYYY-MM-DD>-<runid8>/` containing `meta.md`, `report.md`,
+`raw.json`, and `agents/`. This format is the standard — keep it consistent across all runs.
 
 ## Current Status
 

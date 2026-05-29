@@ -10,8 +10,9 @@ agent's findings and the final synthesis — not just the assistant's chat summa
 > calls (falsely claims "WRITE=success" with 0 tool calls), and even `general-purpose` subagent writes hit a
 > known Claude Code persistence bug (issues #7032/#9458/#4462). **Convention:** every workflow ends with
 > `return { result, agents }` (final synthesis + each agent's output) so the main agent can persist both the
-> synthesis and per-agent reports. If the synthesis emits a `reportMd` string, that becomes `report.md`
-> verbatim; otherwise it is rendered from the structured result. Each run is immutable history.
+> synthesis and per-agent reports. Each agent's schema SHOULD carry a `reportMd` string (its own readable
+> report) → written verbatim as `agents/<NN>-<label>.md`; the synthesis's `reportMd` → `report.md`. Where a
+> `reportMd` is absent, the report is rendered from the structured result. Each run is immutable history.
 
 ## Layout
 
