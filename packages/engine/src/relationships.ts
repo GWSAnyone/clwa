@@ -46,6 +46,13 @@ export class RelationshipGraph {
   onChange?: (targetId: string, targetName: string, field: 'trust' | 'sentiment', oldVal: number, newVal: number) => void;
 
   addRelationship(rel: Relationship): void {
+    // SL-07: sanitize on the way in — the single chokepoint for both load (fromJSON) and runtime adds, so
+    // a corrupt/hand-edited save (NaN sentiment, out-of-range trust/standing) can never enter runtime state.
+    rel.sentiment = Number.isFinite(rel.sentiment) ? Math.max(-1, Math.min(1, rel.sentiment)) : 0;
+    rel.trust = Number.isFinite(rel.trust) ? Math.max(0, Math.min(1, rel.trust)) : 0;
+    if (rel.standing !== undefined) {
+      rel.standing = Number.isFinite(rel.standing) ? Math.max(-1, Math.min(1, rel.standing)) : 0;
+    }
     this.relationships.set(rel.targetId, rel);
   }
 

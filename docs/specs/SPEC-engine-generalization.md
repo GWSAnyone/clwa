@@ -86,6 +86,14 @@ FIXES» — ни одного живого бага против crime-орак�
   на Windows-checkout'ах); #8 teardown глобальных реестров (`clearScoringContributors()` + pop AFFORDANCE_REGISTRY);
   #10 transfer edge-кейсы (missing agent / amount≤0 / self-transfer для attribute+inventory); #11 CG `attr`/`faction`
   ветки (undefined-state, `>=`/`==`, `cond.field`-fallback).
+- **Pre-merge clwa-auditor gate** (после fixes выше): подтвердил INV-14 (import+semantic clean, guard sound) + нашёл
+  ещё 2, исправлены до merge: **F1 (BUG, conservation)** — `transferAttribute` проверял EFFECTIVE, а дебетовал BASE
+  с клампингом → при `+modifier` создавал единицы из воздуха; теперь проверяет `base` (переносится только
+  permanent-стоимость, не временный бафф) + тест с модификатором. **F2 (double-standard)** — `RelationshipGraph`
+  грузился без SL-07; B3 добавил `standing` без валидации → санитизация перенесена в единственный chokepoint
+  `addRelationship` (clamp sentiment/trust/standing, drop non-finite — и load, и runtime). Плюс завершён #7
+  (`processAgentDeath` params/locals → actor/affected; volition local; нейтрализованы crime-комментарии в engine;
+  payload-ключи `perpetratorName`/`affectedName` оставлены как cross-system untyped-residual). tsc 0, **264/264**.
 
 ## Отложенные enhancement'ы (из maps, не в B1–B3)
 - Instinct TEXTURE/RESISTANCE registry (модули поставляют свой affect-вокабуляр вместо crime/violence-прозы).

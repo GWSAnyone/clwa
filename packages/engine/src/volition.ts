@@ -236,10 +236,10 @@ export function evaluateReactiveVolition(
 
       // Relation-to-object filter
       if (aff.eventBoost.requiresRelationToObject) {
-        const victimId = event.object;
-        if (!victimId) continue;
-        const rel = agent.state.relationships?.getRelationship(victimId);
-        if (!rel || rel.sentiment < 0.2) continue; // only close relationships trigger grief
+        const objectId = event.object;
+        if (!objectId) continue;
+        const rel = agent.state.relationships?.getRelationship(objectId);
+        if (!rel || rel.sentiment < 0.2) continue; // only close relationships trigger the reaction
       }
 
       // Don't create same goal type if already active

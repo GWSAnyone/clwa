@@ -53,7 +53,7 @@ export interface EventBoost {
  * TargetId fields: '$target' | literal string.
  * String fields (purpose, message, reason): interpolation with {varName:fallback}.
  * Variables: targetName, targetId, targetLocation, reason, perpetratorName, affectedName,
- *   crimeLocation, crimeType, relationship, relationshipDesc, + all target.extra keys.
+ *   relationship, relationshipDesc, + all target.extra keys (module-defined, e.g. crimeLocation/tradeRoute).
  */
 export interface StepTemplate {
   action: string;

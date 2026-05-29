@@ -63,6 +63,23 @@ describe('Relationship bond-type registry (B3a)', () => {
     a.state.relationships!.adjustStanding('monarch', 0.9);
     expect(a.state.relationships!.getRelationship('monarch')!.standing).toBe(1); // clamped
   });
+
+  test('SL-07: addRelationship/fromJSON sanitize corrupt values (NaN, out-of-range sentiment/trust/standing)', () => {
+    // A corrupt/hand-edited save must never propagate NaN/out-of-range into runtime relationship state.
+    // addRelationship is the single chokepoint for both load and runtime, so the guard lives there.
+    const graph = RelationshipGraph.fromJSON([
+      { targetId: 'x', targetName: 'X', type: 'rival', sentiment: Number.NaN, trust: 5, standing: Number.POSITIVE_INFINITY },
+      { targetId: 'y', targetName: 'Y', type: 'friend', sentiment: -9, trust: -2 },
+    ] as any);
+    const x = graph.getRelationship('x')!;
+    expect(x.sentiment).toBe(0);    // NaN → neutral 0
+    expect(x.trust).toBe(1);        // 5 → clamped to 1
+    expect(x.standing).toBe(0);     // Infinity → neutral 0
+    const y = graph.getRelationship('y')!;
+    expect(y.sentiment).toBe(-1);   // -9 → clamped to -1
+    expect(y.trust).toBe(0);        // -2 → clamped to 0
+    expect(y.standing).toBeUndefined(); // absent stays absent (no spurious axis introduced)
+  });
 });
 
 describe('Faction membership primitive (B3b)', () => {

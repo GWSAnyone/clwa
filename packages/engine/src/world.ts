@@ -139,9 +139,9 @@ export class World {
   private _gameClockTimer: ReturnType<typeof setInterval> | null = null;
   /** Last known day number — for detecting day boundary in processing loop */
   private _lastKnownDay: number = 0;
-  /** Track which NPC has already discovered which body (to avoid repeats) */
-  private deathDiscoveries: Set<string> = new Set(); // "discoverer:victim"
-  /** Active crime scenes at locations */
+  /** Track which agent has already discovered which death (to avoid repeats) */
+  private deathDiscoveries: Set<string> = new Set(); // "discoverer:affected"
+  /** Active scene residues at locations */
   readonly sceneResidues: Map<string, SceneResidue[]> = new Map();
   /** Cached reference to the player Agent (resolved once, updated if agents change) */
   private _playerAgent: Agent | null = null;
@@ -270,11 +270,11 @@ export class World {
       this.goalManager.completeGoalsByType(goalType);
     }
 
-    // Belief zeroing, crime scene deactivation, and body marking are now handled
-    // by module event handlers (crime-justice/event-handlers.ts) which know verdict-specific logic.
+    // Belief zeroing, scene-residue deactivation, and death marking are now handled
+    // by module event handlers (crime-justice/event-handlers.ts) which know domain-specific logic.
     // Engine provides: agents, sceneResidues, deathDiscoveries via EventHandlerContext.
 
-    // Information spread sentiment + criminal reactive goals — moved to module event handlers.
+    // Information spread sentiment + subject reactive goals — moved to module event handlers.
     // Engine provides triggerReactiveEvaluation callback for modules that need AL reactive evaluation.
 
     // Module-registered event handlers (belief creation, sentiment, state changes, reactive evaluation)
@@ -693,11 +693,15 @@ export class World {
   }
 
   /** Atomic conserved transfer of base value between two agents (e.g. a sale, a theft of gold).
-   *  Returns false (no-op) if the source's effective value is below `amount`. */
+   *  Returns false (no-op) if the source's BASE value is below `amount`. Guards conservation: the check
+   *  is on `base` (transferable permanent value), NOT effective — a temporary +modifier inflating effective
+   *  must not be transferable as permanent value, else `adjustAttributeBase` would clamp the debit at min
+   *  and over-credit the target, creating units from nothing. */
   transferAttribute(fromId: string, toId: string, key: string, amount: number): boolean {
     if (amount <= 0) return false;
     if (!this.agents.has(fromId) || !this.agents.has(toId)) return false;
-    if ((this.getAttribute(fromId, key) ?? 0) < amount) return false;
+    const fromAttr = this.agents.get(fromId)!.state.attributes?.[key];
+    if (!fromAttr || fromAttr.base < amount) return false;
     this.adjustAttributeBase(fromId, key, -amount);
     this.adjustAttributeBase(toId, key, amount);
     return true;
@@ -881,7 +885,7 @@ export class World {
     // Conversation: enqueue one best pair (scheduler handles scoring)
     this.processingQueue.enqueue({ id: `conv-${gm}`, type: 'CONVERSATION', priority: 3, enqueuedAt: gm });
 
-    // Phase handlers: theft discovery, NPC approach, crime scene awareness
+    // Phase handlers: module-registered per-tick checks (NPC approach, scene-residue awareness, etc.)
     this.processingQueue.enqueue({ id: `phase-${gm}`, type: 'PHASE_HANDLERS', priority: 3, enqueuedAt: gm });
   }
 
@@ -1504,14 +1508,14 @@ export class World {
         const key = `${id}:${dead.id}`;
         if (this.deathDiscoveries.has(key)) continue;
 
-        // This NPC just discovered a body!
+        // This NPC just discovered the death!
         this.deathDiscoveries.add(key);
 
         const affectedName = dead.agent.profile.name;
-        // Find crime scene for this victim to get eventType
-        const victimScene = Array.from(this.sceneResidues.values()).flat()
+        // Find the scene residue for this agent to get eventType
+        const affectedScene = Array.from(this.sceneResidues.values()).flat()
           .find(s => s.affectedId === dead.id && s.active);
-        const deathEventType = victimScene?.eventType ?? victimScene?.sceneType;
+        const deathEventType = affectedScene?.eventType ?? affectedScene?.sceneType;
 
         // BODY_DISCOVERED represents what the discoverer knows:
         // victim identity + location. perpetratorName unknown.
@@ -1647,30 +1651,30 @@ export class World {
   }
 
   /**
-   * Crime scene awareness moved to module tick phase handler (crime-justice/index.ts).
+   * Scene-residue awareness moved to a module tick phase handler (crime-justice/index.ts).
    * Engine provides sceneResidues + locations in TickPhaseContext.
    */
 
-  /** Process a kill event through the consequence engine.
-   *  killerId is optional — defaults to 'player'. Pass NPC id for NPC-on-NPC kills.
+  /** Process an agent-death event through the consequence engine.
+   *  actorId is optional — defaults to the player. Pass an NPC id for NPC-on-NPC deaths.
    *  eventType is the event type string registered by modules (e.g. 'NPC_KILLED'). */
-  async processAgentDeath(victimId: string, killerId?: string, eventType?: string): Promise<{ killEvent: WorldEvent; results: unknown[] }> {
-    const victim = this.agents.get(victimId);
-    if (!victim || !victim.state.alive) {
-      throw new Error(`Cannot kill ${victimId}: not found or already dead`);
+  async processAgentDeath(affectedId: string, actorId?: string, eventType?: string): Promise<{ killEvent: WorldEvent; results: unknown[] }> {
+    const affected = this.agents.get(affectedId);
+    if (!affected || !affected.state.alive) {
+      throw new Error(`Cannot process death of ${affectedId}: not found or already dead`);
     }
 
-    const killer = killerId ? this.agents.get(killerId) : null;
+    const actor = actorId ? this.agents.get(actorId) : null;
     const playerAgent = this.playerAgent;
-    const killerSubject = killerId ?? playerAgent?.profile.id ?? 'unknown';
-    const perpetratorName = killer ? killer.profile.name : (playerAgent?.profile.name ?? 'unknown');
+    const actorSubject = actorId ?? playerAgent?.profile.id ?? 'unknown';
+    const actorName = actor ? actor.profile.name : (playerAgent?.profile.name ?? 'unknown');
 
-    victim.state.alive = false;
-    this.addModifier(victim.profile.id, { source: 'death', category: 'event',
+    affected.state.alive = false;
+    this.addModifier(affected.profile.id, { source: 'death', category: 'event',
       magnitude: -1.0, remaining: 0, duration: 0, decay: 'none' });
-    this._clearTransit(victim); // Cancel movement
-    // Cancel all goals for dead NPC
-    for (const g of this.goalManager.getGoals(victimId)) {
+    this._clearTransit(affected); // Cancel movement
+    // Cancel all goals for the dead agent
+    for (const g of this.goalManager.getGoals(affectedId)) {
       if (g.state === 'pending' || g.state === 'active') g.state = 'failed';
     }
 
@@ -1682,47 +1686,48 @@ export class World {
     const killEvent: WorldEvent = {
       id: crypto.randomUUID(),
       type: resolvedEventType,
-      subject: killerSubject,
-      object: victimId,
-      location: victim.state.location,
+      subject: actorSubject,
+      object: affectedId,
+      location: affected.state.location,
       gameDay: this.getCurrentDay(),
       importance: 9,
       payload: {
-        perpetratorName,
-        killerRole: killer?.profile.role,
-        affectedName: victim.profile.name,
-        affectedRole: victim.profile.role,
+        // Payload keys are the engine's untyped cross-system contract (read by cg-engine / event-projection).
+        perpetratorName: actorName,
+        killerRole: actor?.profile.role,
+        affectedName: affected.profile.name,
+        affectedRole: affected.profile.role,
       },
     };
 
     this.eventStore.append(killEvent);
 
-    // Mark witnesses at the scene as already having "discovered" the body
+    // Mark agents present at the scene as already having "discovered" the death
     for (const [id, agent] of this.agents) {
-      if (id === victimId) continue;
+      if (id === affectedId) continue;
       if (!isPresent(agent)) continue;
-      if (agent.state.location === victim.state.location) {
-        this.deathDiscoveries.add(`${id}:${victimId}`);
+      if (agent.state.location === affected.state.location) {
+        this.deathDiscoveries.add(`${id}:${affectedId}`);
       }
     }
 
-    // Create crime scene at the murder location
+    // Create the scene residue at the death location
     const witnessIds = Array.from(this.agents.entries())
-      .filter(([id, a]) => id !== victimId && id !== killerId && a.state.alive && a.state.location === victim.state.location)
+      .filter(([id, a]) => id !== affectedId && id !== actorId && a.state.alive && a.state.location === affected.state.location)
       .map(([id]) => id);
-    const killSceneType = getSceneTypeForEvent(resolvedEventType);
-    if (killSceneType) {
-      this.markSceneResidue(victim.state.location, killSceneType, killerId, victimId, witnessIds, resolvedEventType);
+    const deathSceneType = getSceneTypeForEvent(resolvedEventType);
+    if (deathSceneType) {
+      this.markSceneResidue(affected.state.location, deathSceneType, actorId, affectedId, witnessIds, resolvedEventType);
     }
 
-    // Generate structured evidence at the crime scene
+    // Generate structured evidence at the scene
     const elCtx: EvidenceContext = { event: killEvent, agents: this.agents, sceneResidues: this.sceneResidues };
     this.evidence.generate(killEvent, elCtx);
 
     // Process consequences (CG cascade: WITNESS_MEMORY, RUMOR_SPREAD, etc.)
     const results = await this.processCascade(killEvent);
 
-    // Feed the kill event + all consequence events into goal/reactive evaluation
+    // Feed the death event + all consequence events into goal/reactive evaluation
     await this.handleEventForGoals(killEvent);
     for (const r of results) {
       await this.handleEventForGoals(r.event);
@@ -1884,7 +1889,7 @@ export class World {
       };
     }
 
-    // Serialize crime scenes (Set → array)
+    // Serialize scene residues (Map → record)
     const sceneResidues: Record<string, import('./world-types').SceneResidueJSON[]> = {};
     for (const [locId, scenes] of this.sceneResidues) {
       sceneResidues[locId] = scenes.map((s) => ({
@@ -1933,7 +1938,7 @@ export class World {
     this.deathDiscoveries = new Set(data.deathDiscoveries);
     this.goalManager.loadFromJSON(data.goals);
 
-    // Restore crime scenes (array → Set)
+    // Restore scene residues (record → Map)
     this.sceneResidues.clear();
     if (data.sceneResidues) {
       for (const [locId, scenes] of Object.entries(data.sceneResidues)) {

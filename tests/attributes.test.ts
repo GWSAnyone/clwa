@@ -130,6 +130,29 @@ describe('World attribute API', () => {
     expect(world.transferAttribute('buyer', 'buyer', 'gold', 40)).toBe(true);
     expect(world.getAttribute('buyer', 'gold')).toBe(100);
   });
+
+  test('transferAttribute checks BASE not effective — a +modifier is not transferable (conservation)', () => {
+    const rich = makeAgent('rich');
+    const poor = makeAgent('poor');
+    const world = makeWorld(new Map([['rich', rich], ['poor', poor]]));
+    world.setAttribute('rich', 'gold', 50, 0, 9999);
+    world.setAttribute('poor', 'gold', 0, 0, 9999);
+    // A temporary +30 buff inflates effective to 80, but BASE (transferable wealth) is still 50.
+    world.addAttributeModifier('rich', 'gold', { source: 'blessing', category: 'buff', magnitude: 30, remaining: 100, duration: 100, decay: 'none' });
+    expect(world.getAttribute('rich', 'gold')).toBe(80); // effective
+
+    // Transferring 80 (the inflated effective) must be REJECTED — base is only 50.
+    expect(world.transferAttribute('rich', 'poor', 'gold', 80)).toBe(false);
+    expect(world.getAttribute('rich', 'gold')).toBe(80); // untouched
+    expect(world.getAttribute('poor', 'gold')).toBe(0);
+
+    // Transferring 50 (the full base) succeeds and conserves base: 50 → 0 / 0 → 50 (+ rich's buff persists).
+    expect(world.transferAttribute('rich', 'poor', 'gold', 50)).toBe(true);
+    const richGold = world.agents.get('rich')!.state.attributes!.gold;
+    expect(richGold.base).toBe(0);
+    expect(world.getAttribute('rich', 'gold')).toBe(30); // base 0 + buff 30 (buff not transferred)
+    expect(world.agents.get('poor')!.state.attributes!.gold.base).toBe(50);
+  });
 });
 
 describe('CG `attr` condition op — quantitative gates', () => {
