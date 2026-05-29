@@ -18,6 +18,7 @@ import {
   getEventLabelSafe,
   isTransferable,
   isFirsthand,
+  isConcealment,
   isPerpetrator,
   isPursuitEvent,
   registerRoleDirectiveBuilder,
@@ -648,6 +649,85 @@ export function registerCrimeJusticeModule(): void {
       sections.push(`## Your situation\nYou are wanted for a crime. ${fear}`);
     }
 
+    return sections;
+  });
+
+  // ── Crime concealment / witness directives (moved verbatim from engine buildSecretDirectives) ──
+  // Registered FIRST so their prompt sections keep their original order (own-crime, covering, justice).
+
+  // Own crimes — did this NPC commit a crime they must hide?
+  registerSecretDirectiveBuilder(({ agent, eventStore }) => {
+    const agentId = agent.profile.id;
+    const ownCrimes = eventStore.getAll()
+      .filter((e) => isTransferable(e.type) && e.subject === agentId);
+    if (ownCrimes.length === 0) return [];
+    const crime = ownCrimes[ownCrimes.length - 1];
+    const affectedName = (crime.payload?.affectedName as string) ?? 'someone';
+    const crimeLabel = getEventLabelSafe(crime.type);
+    return [
+      `## HIDDEN: You committed ${crimeLabel}\n` +
+      `You committed ${crimeLabel} against ${affectedName}. Nobody must find out.\n` +
+      `- If asked about ${affectedName} or the ${crimeLabel}: act surprised, deny any involvement.\n` +
+      `- If confronted with evidence pointing to you: become defensive, try to explain it away.\n` +
+      `- If pressed hard: show cracks — nervous pauses, contradictions — but do NOT confess easily.\n` +
+      `- You may try to redirect suspicion to someone else if it feels natural.`,
+    ];
+  });
+
+  // Covering for someone — concealment-source beliefs about another's crime
+  registerSecretDirectiveBuilder(({ agent, agents }) => {
+    const beliefs = agent.state.beliefs;
+    if (!beliefs) return [];
+    const sections: string[] = [];
+    const coverBeliefs = beliefs.getAllBeliefs().filter((b) => isConcealment(b.source));
+    for (const belief of coverBeliefs) {
+      const coveredId = belief.subject;
+      if (!coveredId) continue;
+      const coveredAgent = agents.get(coveredId);
+      const coveredName = coveredAgent?.profile.name ?? 'someone';
+      const rel = agent.state.relationships?.getRelationship(coveredId);
+      const relType = rel?.type ?? 'someone you know';
+      const coverCrimeLabel = getEventLabelSafe(belief.eventType, 'something wrong');
+      sections.push(
+        `## HIDDEN: You are covering for ${coveredName}\n` +
+        `You saw ${coveredName} commit ${coverCrimeLabel}, but you are protecting them because they are your ${relType}.\n` +
+        `- If asked about the ${coverCrimeLabel}: claim you didn't see anything clearly, be vague.\n` +
+        `- If asked directly about ${coveredName}: change the subject or say something neutral.\n` +
+        `- If pressed with evidence against ${coveredName}: show internal conflict — you hesitate, look away, almost speak but catch yourself.\n` +
+        `- You feel guilt about hiding the truth. This leaks through in nervous mannerisms.`,
+      );
+    }
+    return sections;
+  });
+
+  // Witnessed a crime (not covering) and resent the perpetrator — want justice
+  registerSecretDirectiveBuilder(({ agent, agents }) => {
+    const beliefs = agent.state.beliefs;
+    if (!beliefs) return [];
+    const sections: string[] = [];
+    const coveredSubjects = new Set(
+      beliefs.getAllBeliefs().filter((b) => isConcealment(b.source)).map((b) => b.subject),
+    );
+    const witnessBeliefs = beliefs.getAllBeliefs().filter((b) =>
+      isFirsthand(b.source) && isTransferable(b.eventType) && !coveredSubjects.has(b.subject),
+    );
+    for (const wb of witnessBeliefs) {
+      const suspectId = wb.subject;
+      if (!suspectId) continue;
+      const suspectAgent = agents.get(suspectId);
+      const perpetratorName = suspectAgent?.profile.name ?? suspectId;
+      const rel = agent.state.relationships?.getRelationship(suspectId);
+      const sentiment = rel?.sentiment ?? 0;
+      if (sentiment < -0.2) {
+        const justiceCrimeLabel = getEventLabelSafe(wb.eventType, 'a crime');
+        sections.push(
+          `## HIDDEN: You want justice\n` +
+          `You have information about ${justiceCrimeLabel} and you suspect ${perpetratorName}.\n` +
+          `- You are eager to share what you know — even volunteer details without being asked.\n` +
+          `- You may exaggerate slightly to make sure the guilty party is caught.`,
+        );
+      }
+    }
     return sections;
   });
 
