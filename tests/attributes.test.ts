@@ -5,16 +5,19 @@
  *
  * Run: bun test tests/attributes.test.ts
  */
-import { describe, test, expect, beforeAll } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import {
   Agent, VectorMemory, BeliefManager, RelationshipGraph, World, ConsequenceEngine, InMemoryEventStore,
   createAttribute, attributeEffective, decayAttribute, getAttributeValue,
-  registerScoringContributor, computeUtility,
+  registerScoringContributor, clearScoringContributors, computeUtility,
 } from '@clwa/engine';
 import type { AgentProfile, AffordanceDefinition, AffordanceTarget, ConsequenceRule, WorldEvent, WorldContext } from '@clwa/engine';
 import { setupFakeLlm } from './fixtures/fake-llm-provider';
 
 beforeAll(setupFakeLlm);
+// Teardown (M5 review #8): SCORING_CONTRIBUTORS is a process-global array with no production registrations;
+// this file registers one, so clear it after the file to keep computeUtility deterministic elsewhere.
+afterAll(clearScoringContributors);
 
 function makeProfile(id: string): AgentProfile {
   return {
@@ -102,6 +105,31 @@ describe('World attribute API', () => {
     expect(world.getAttribute('buyer', 'gold')).toBe(60);
     expect(world.getAttribute('seller', 'gold')).toBe(40);
   });
+
+  test('transferAttribute rejects missing agent, non-positive amount, and self-transfer is value-preserving', () => {
+    const buyer = makeAgent('buyer');
+    const seller = makeAgent('seller');
+    const world = makeWorld(new Map([['buyer', buyer], ['seller', seller]]));
+    world.setAttribute('buyer', 'gold', 100, 0, 9999);
+    world.setAttribute('seller', 'gold', 10, 0, 9999);
+
+    // missing SOURCE → false, nothing mutated
+    expect(world.transferAttribute('ghost', 'seller', 'gold', 5)).toBe(false);
+    // missing TARGET → false, source untouched (atomic: no half-applied debit)
+    expect(world.transferAttribute('buyer', 'ghost', 'gold', 5)).toBe(false);
+    expect(world.getAttribute('buyer', 'gold')).toBe(100);
+    expect(world.getAttribute('seller', 'gold')).toBe(10);
+
+    // non-positive amounts → false, no-op (guards the conservation contract against zero/negative)
+    expect(world.transferAttribute('buyer', 'seller', 'gold', 0)).toBe(false);
+    expect(world.transferAttribute('buyer', 'seller', 'gold', -50)).toBe(false);
+    expect(world.getAttribute('buyer', 'gold')).toBe(100);
+    expect(world.getAttribute('seller', 'gold')).toBe(10);
+
+    // self-transfer on a plain base (no modifiers, amount within range) nets zero — value conserved.
+    expect(world.transferAttribute('buyer', 'buyer', 'gold', 40)).toBe(true);
+    expect(world.getAttribute('buyer', 'gold')).toBe(100);
+  });
 });
 
 describe('CG `attr` condition op — quantitative gates', () => {
@@ -123,6 +151,44 @@ describe('CG `attr` condition op — quantitative gates', () => {
     expect(flagged).toBeDefined();
     expect(flagged!.targets).toContain('poor');   // gold 5 < 10 → flagged
     expect(flagged!.targets).not.toContain('rich'); // gold 50 → filtered out by attr gate
+  });
+
+  test('attr op: an agent that never declared the attribute is excluded (undefined → false at filter level)', async () => {
+    // Guards the cg-engine `if (v === undefined) return false` branch AT THE FILTER, not just the helper:
+    // a refactor dropping it would wrongly match every agent lacking the attribute.
+    const rule = {
+      id: 'rich-only', trigger: 'CENSUS', targetMode: 'location',
+      conditions: [{ op: 'attr', field: 'gold', comparator: '>=', value: 100, of: 'target' }],
+      consequence: { type: 'TAXED', importance: 3, delayDays: 0, probability: 1.0 }, maxChainDepth: 3,
+    } as ConsequenceRule;
+    const wealthy = makeAgent('wealthy'); wealthy.state.attributes = { gold: createAttribute(100, 0, 9999) };
+    const exactlyAt = makeAgent('exact'); exactlyAt.state.attributes = { gold: createAttribute(100, 0, 9999) };
+    const noGold = makeAgent('nogold'); // never declares gold → undefined
+    const engine = new ConsequenceEngine([rule]);
+    const ctx = { agents: new Map([['wealthy', wealthy], ['exact', exactlyAt], ['nogold', noGold]]) } as unknown as WorldContext;
+    const event: WorldEvent = { id: 'e2', type: 'CENSUS', subject: 'state', object: undefined, location: 'market-square', gameDay: 1, importance: 3, payload: {} };
+
+    const taxed = (await engine.process(event, ctx)).find((r) => r.rule.id === 'rich-only');
+    expect(taxed!.targets).toContain('wealthy');
+    expect(taxed!.targets).toContain('exact');     // '>=' boundary: 100 >= 100 → included
+    expect(taxed!.targets).not.toContain('nogold'); // undefined attr → excluded, never matches
+  });
+
+  test('attr op: omitted comparator means equality (the default branch)', async () => {
+    const rule = {
+      id: 'broke', trigger: 'CENSUS', targetMode: 'location',
+      conditions: [{ op: 'attr', field: 'gold', value: 0, of: 'target' }], // no comparator → equality default
+      consequence: { type: 'RELIEF', importance: 2, delayDays: 0, probability: 1.0 }, maxChainDepth: 3,
+    } as ConsequenceRule;
+    const broke = makeAgent('broke'); broke.state.attributes = { gold: createAttribute(0, 0, 9999) };
+    const solvent = makeAgent('solvent'); solvent.state.attributes = { gold: createAttribute(5, 0, 9999) };
+    const engine = new ConsequenceEngine([rule]);
+    const ctx = { agents: new Map([['broke', broke], ['solvent', solvent]]) } as unknown as WorldContext;
+    const event: WorldEvent = { id: 'e3', type: 'CENSUS', subject: 'state', object: undefined, location: 'market-square', gameDay: 1, importance: 2, payload: {} };
+
+    const relief = (await engine.process(event, ctx)).find((r) => r.rule.id === 'broke');
+    expect(relief!.targets).toContain('broke');       // gold == 0 → matched by equality default
+    expect(relief!.targets).not.toContain('solvent'); // gold 5 ≠ 0 → excluded
   });
 });
 

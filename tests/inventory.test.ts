@@ -89,4 +89,25 @@ describe('World inventory API', () => {
     expect(world.transferItem('seller', 'ghost', 'grain', 1)).toBe(false); // missing target → no-op
     expect(world.countItem('seller', 'grain')).toBe(6);
   });
+
+  test('transferItem rejects missing source, non-positive quantity, and self-transfer is conserved', () => {
+    const a = makeAgent('a');
+    const b = makeAgent('b');
+    const world = makeWorld(new Map([['a', a], ['b', b]]));
+    world.giveItem('a', 'coin', 50);
+
+    // missing SOURCE inventory → removeItem fails → false, target untouched
+    expect(world.transferItem('ghost', 'b', 'coin', 1)).toBe(false);
+    expect(world.countItem('b', 'coin')).toBe(0);
+
+    // non-positive quantity → false, no-op
+    expect(world.transferItem('a', 'b', 'coin', 0)).toBe(false);
+    expect(world.transferItem('a', 'b', 'coin', -5)).toBe(false);
+    expect(world.countItem('a', 'coin')).toBe(50);
+    expect(world.countItem('b', 'coin')).toBe(0);
+
+    // self-transfer: remove-then-give on the same agent → net no-op (total conserved)
+    expect(world.transferItem('a', 'a', 'coin', 20)).toBe(true);
+    expect(world.countItem('a', 'coin')).toBe(50);
+  });
 });

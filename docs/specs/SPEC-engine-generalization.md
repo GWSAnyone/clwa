@@ -1,9 +1,9 @@
 # SPEC: Engine Max Generalization (universal capability subsystems)
 
 > **Milestone**: M5 (Engine Generalization) — Phase B (растим движок на нейтрализованной базе)
-> **Status**: **✅ B1+B2+B3 DONE** (scalar attributes, inventory, faction+relationship richness — all as clean tested
->   engine primitives). Branch `feature/engine-generalization`. tsc 0, **249/249** tests. Один follow-up: полная A7b
->   shop→inventory миграция требует economy-модуля (примитив готов). Отложенные enhancement'ы — ниже.
+> **Status**: **✅ B1+B2+B3 DONE + M5-review hardened** (scalar attributes, inventory, faction+relationship richness —
+>   all as clean tested engine primitives). Branch `feature/engine-generalization`. tsc 0, **262/262** tests. Один
+>   follow-up: полная A7b shop→inventory миграция требует economy-модуля (примитив готов). Отложенные enhancement'ы — ниже.
 > **Depends on**: SPEC-engine-neutralization (Phase A) — чистая genre-нейтральная база
 > **Source of truth**: `docs/workflow/engine-generalization-survey/2026-05-29-3d7ddc1c/report.md` (ranked
 >   investments) + per-agent maps; gap-анализ в `engine-self-sufficiency` (LEGIT GAPS секция).
@@ -69,6 +69,23 @@ step-примитив (move N of X from A to B с conservation). Заменяе�
 - **B3b faction membership**: `AgentState.factions?: string[]` (open keys) + World `joinFaction`/`leaveFaction`/`isFactionMember`/
   `getFactions` + CG условие-op **`faction`** (гейт по членству) + save/load. Per-faction standing — через B1-атрибут (key per faction).
   Минимальный collective-actor примитив (без over-engineered faction-faction таблиц — те строятся, когда politics-модуль их требует, per survey).
+
+## M5 Review & Hardening (adversarial 27-agent workflow → 14 confirmed, 0 critical) — ✅ ALL CLOSED
+Отчёт: `docs/workflow/m5-review/2026-05-29-7b0c7b68/` (report.md/meta.md/raw.json/16 agents). Вердикт «SHIP WITH
+FIXES» — ни одного живого бага против crime-оракула; все findings закрыты до бриллиантового уровня:
+- **Engine consistency/abstraction**: #1 attribute-decay вынесен из shared `_computeMoodTick` в real-tick
+  `_tickMoodSystem` (calibration-роут `advanceMoodMath` больше не съедает conserved-state); #2 SL-07 load-валидация
+  Phase B (drop non-finite модификаторов, re-clamp base, prune bad inventory qty) + finite-guard в
+  `addAttributeModifier`; #6 удалён мёртвый `world.playerState` (server владеет persistence сам); #7 остаточные
+  crime-существительные (`DiscoveryContext.affectedId`, `onAgentDeath actorId/affectedId`); #9 `for...in`→`Object.values`;
+  #12 `==` в CG comparator-union + кейс; #13 снят мёртвый cast (`EmotionalPressure['type']`).
+- **Test surface до бриллиантового уровня**: #3 save/load round-trip для attributes/modifier/inventory/factions/standing
+  + corrupted-load (SL-07); #4 e2e `applyDialogueMeaning` (probe-seam + реальный `registerInvestigationModule`
+  handler, фиксирует verbatim evidence-prose); #5 усилен genre-neutrality guard (identifier-скан relocated-символов
+  + regex self-test; **+ починен латентный CRLF-баг в `codeLines`**, из-за которого inline-комментарии не срезались
+  на Windows-checkout'ах); #8 teardown глобальных реестров (`clearScoringContributors()` + pop AFFORDANCE_REGISTRY);
+  #10 transfer edge-кейсы (missing agent / amount≤0 / self-transfer для attribute+inventory); #11 CG `attr`/`faction`
+  ветки (undefined-state, `>=`/`==`, `cond.field`-fallback).
 
 ## Отложенные enhancement'ы (из maps, не в B1–B3)
 - Instinct TEXTURE/RESISTANCE registry (модули поставляют свой affect-вокабуляр вместо crime/violence-прозы).

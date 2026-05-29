@@ -4,9 +4,44 @@
  *
  * Run: bun test tests/investigation.test.ts
  */
-import { describe, test, expect } from 'bun:test';
-import { PlayerJournal } from '@clwa/modules';
-import { getDialogueEffectHandlers, registerDialogueEffectHandler } from '@clwa/engine';
+import { describe, test, expect, beforeAll } from 'bun:test';
+import { PlayerJournal, registerInvestigationModule } from '@clwa/modules';
+import {
+  getDialogueEffectHandlers, registerDialogueEffectHandler, applyDialogueMeaning,
+  Agent, VectorMemory, BeliefManager, RelationshipGraph, InMemoryEventStore,
+} from '@clwa/engine';
+import type { AgentProfile, DialogueMeaning, ILEffectContext } from '@clwa/engine';
+import { setupFakeLlm } from './fixtures/fake-llm-provider';
+
+beforeAll(setupFakeLlm);
+
+function makeAgent(id: string, name: string, isPlayer = false): Agent {
+  const profile: AgentProfile = {
+    id, name, role: 'villager', background: 't', speechStyle: 't',
+    bigFive: { openness: 0.5, conscientiousness: 0.5, extraversion: 0.5, agreeableness: 0.5, neuroticism: 0.5, honesty: 0.5 },
+    enneagram: { type: 5, wing: 4, coreFear: 't', coreDesire: 't', stressType: 7, growthType: 8 },
+    ...(isPlayer ? { isPlayer: true } : {}),
+  };
+  return new Agent(profile, {
+    alive: true, location: 'tavern', mood: 0, baseMood: 0, moodModifiers: [], status: undefined,
+    currentDay: 1, knownFacts: [], beliefs: new BeliefManager(), relationships: new RelationshipGraph(),
+    processingState: 'idle', inTransit: false,
+  }, new VectorMemory(id, { maxCapacity: 20 }), {});
+}
+
+/** Minimal IL scenario: an NPC being talked to (with a relationship to the player) + the player. */
+function makeIlScenario(): { ctx: ILEffectContext; meaning: DialogueMeaning } {
+  const npc = makeAgent('guard', 'Guard');
+  const player = makeAgent('hero', 'Hero', true);
+  npc.state.relationships!.addRelationship({ targetId: 'hero', targetName: 'Hero', type: 'acquaintance', sentiment: 0.1, trust: 0.5 });
+  const agents = new Map([['guard', npc], ['hero', player]]);
+  const ctx: ILEffectContext = {
+    targetAgent: npc, playerAgent: player, agents, eventStore: new InMemoryEventStore(),
+    gameDay: 1, effects: [],
+  };
+  const meaning: DialogueMeaning = { speechAct: 'inform', extractionConfidence: 1 };
+  return { ctx, meaning };
+}
 
 describe('PlayerJournal — case-summary scoring (moved to crime-justice, A10)', () => {
   test('quality tiers map to combined evidence weight, capped at 1.0', () => {
@@ -102,5 +137,44 @@ describe('Dialogue-effect hook (A4b) — engine delegates genre dialogue effects
     const after = getDialogueEffectHandlers();
     expect(after.length).toBe(before + 1);
     expect(after).toContain(probe);
+  });
+
+  test('applyDialogueMeaning CALLS registered handlers with the real (meaning, ctx) and merges their output', async () => {
+    // The registry test above only proves the array grew. This proves the load-bearing contract: the engine
+    // actually invokes the handler with the live meaning/ctx and splices its return into the structured output.
+    // Sentinel-gated so the (un-removable) global registration stays inert for every real/other dialogue call.
+    let receivedMeaning: DialogueMeaning | undefined;
+    let receivedCtx: ILEffectContext | undefined;
+    registerDialogueEffectHandler((meaning, ctx) => {
+      if (!(meaning as unknown as { __e2eProbe?: boolean }).__e2eProbe) return [];
+      receivedMeaning = meaning;
+      receivedCtx = ctx;
+      return ['__E2E_SECTION__'];
+    });
+
+    const { ctx, meaning } = makeIlScenario();
+    (meaning as unknown as { __e2eProbe?: boolean }).__e2eProbe = true;
+
+    const out = await applyDialogueMeaning(meaning, ctx);
+    expect(receivedMeaning).toBe(meaning); // engine passed the REAL meaning object…
+    expect(receivedCtx).toBe(ctx);         // …and the REAL ctx (not a copy)
+    expect(out).toContain('__E2E_SECTION__'); // handler return merged into applyDialogueMeaning output
+  });
+
+  test('the real registerInvestigationModule handler emits verbatim evidence-presentation prose through the seam', async () => {
+    // Locks the crime regression-oracle behavior at the extraction point: the relocated evidence-presentation
+    // prose must still render when presentedEvidence rides in ctx and the engine dispatches the module handler.
+    registerInvestigationModule(); // idempotent for a .toContain assertion (duplicate section still contains)
+    const { ctx, meaning } = makeIlScenario();
+    ctx.presentedEvidence = [
+      { id: 'ev1', text: 'a bloodied knife', eventType: 'NPC_KILLED', evidenceCategory: 'weapon', evidenceWeight: 0.8, perpetratorName: 'Mark', suspectId: 'mark' },
+    ];
+
+    const out = await applyDialogueMeaning(meaning, ctx);
+    expect(out).toContain('[EVIDENCE PRESENTED]');
+    expect(out).toContain('a bloodied knife');
+    expect(out).toContain('pointing to Mark');
+    expect(out).toContain('not just hearsay');               // verbatim crime-scene framing
+    expect(ctx.effects.some((e) => e.type === 'belief_created')).toBe(true); // the mechanical effect fired
   });
 });

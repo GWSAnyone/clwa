@@ -8,7 +8,7 @@
  *
  * Run: bun test tests/genre-neutrality.test.ts
  */
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, afterAll } from 'bun:test';
 import {
   Agent, VectorMemory, BeliefManager, RelationshipGraph,
   BELIEF_SOURCE, hasCapability, phraseBelief, registerBeliefPhrasing,
@@ -17,6 +17,18 @@ import {
   registerEventCategory, registerEventLabels, registerEventTypeFlags, getEventLabel, isTransferable,
   registerActionVerbs, getAllRegisteredVerbs,
 } from '@clwa/engine';
+
+// Teardown (M5 review #8): these tests register a non-crime "economy" genre into PROCESS-GLOBAL registries.
+// Bun runs all test files in one process with no contractual file order, so we must restore the cleanly-
+// removable mutations (the pushed affordance + the requirement-checker keys) to keep registry sizes
+// deterministic for any later file. Event-category/label/verb/enricher registrations are idempotent or
+// have no unregister API; they are additive and harmless (re-registering overwrites the same key).
+afterAll(() => {
+  const i = AFFORDANCE_REGISTRY.findIndex((a) => a.id === 'eco_defraud');
+  if (i >= 0) AFFORDANCE_REGISTRY.splice(i, 1);
+  REQUIREMENT_CHECKERS.delete('hasCapital');
+  POST_TARGET_REQUIREMENT_CHECKERS.delete('atMarket');
+});
 import type { AgentProfile, AffordanceDefinition, AffordanceContext, AffordanceTarget } from '@clwa/engine';
 
 function makeProfile(id: string, capabilities?: Record<string, boolean>, honesty = 0.5): AgentProfile {

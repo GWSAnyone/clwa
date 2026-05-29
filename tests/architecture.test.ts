@@ -41,7 +41,9 @@ function stripInlineComments(line: string): string {
 
 /** Read file, return array of {lineNum, code} for non-comment lines */
 function codeLines(filePath: string): Array<{ lineNum: number; code: string; raw: string }> {
-  const lines = readFileSync(filePath, 'utf-8').split('\n');
+  // Split on CRLF or LF — a trailing \r breaks inline-comment stripping (`.` won't cross \r, so the
+  // `/\/\/.*$/` strip silently fails on Windows checkouts, leaking comment text into `code`).
+  const lines = readFileSync(filePath, 'utf-8').split(/\r?\n/);
   const result: Array<{ lineNum: number; code: string; raw: string }> = [];
   let inBlockComment = false;
   for (let i = 0; i < lines.length; i++) {
@@ -138,6 +140,50 @@ describe('Engine Semantic Neutrality (INV-14)', () => {
             violations.push(`${relative(ROOT, f)}:${lineNum}: "${lit.slice(0, 60)}"`);
           }
         }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // Self-test: a mistyped/broken CRIME_PROSE regex would silently green-light the prose scan above
+  // (every literal would fail to match → vacuous pass). Pin its discrimination on known fixtures.
+  test('CRIME_PROSE regex actually fires on crime prose and spares neutral prose', () => {
+    expect(CRIME_PROSE.test('investigating the murder of the duke')).toBe(true);
+    expect(CRIME_PROSE.test('you are wanted for a crime')).toBe(true);
+    expect(CRIME_PROSE.test('the suspect fled before the arrest')).toBe(true);
+    expect(CRIME_PROSE.test('grand theft and robbery charges')).toBe(true);
+    // Neutral genres must NOT trip it — guards against an over-broad regex masquerading as coverage.
+    expect(CRIME_PROSE.test('the merchant sold grain at the market')).toBe(false);
+    expect(CRIME_PROSE.test('the courtier professed affection to the heir')).toBe(false);
+  });
+
+  // Concept-level guard (the gap the prose-literal + enumerated-symbol scans both miss): a partial crime
+  // re-import expressed as an IDENTIFIER. A10+A4b moved the investigation/journal/accusation subsystem
+  // entirely into crime-justice; these identifiers must never reappear as engine code.
+  test('relocated investigation/journal identifiers live only in modules, never in engine code', () => {
+    const RELOCATED =
+      /\b(PlayerJournal|JournalEntry|getCaseSummary|CaseSummary|buildAccusationContext|buildAccusationPrompt|AccusationContext|processEvidencePresentation|markSuspect|getSuspects)\b/;
+    const violations: string[] = [];
+    for (const f of engineFiles) {
+      for (const { lineNum, code } of codeLines(f)) {
+        const m = code.match(RELOCATED);
+        if (m) violations.push(`${relative(ROOT, f)}:${lineNum}: ${m[1]}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // Strong crime nouns must not appear as engine code identifiers (catches detectMurder()/ArrestWarrant/
+  // crimeHeat — camelCase/type names that the \b-bounded prose regex on string literals cannot see).
+  // Accepted residuals (perpetratorName/affectedName payload keys, victim/suspect locals) are deliberately
+  // excluded from this set — see the self-sufficiency audit's "accepted residuals".
+  test('no strong crime-noun identifiers in engine code', () => {
+    const STRONG = /(murder|criminal|arrest|theft|robbery|felony|homicide|\bcrime)/i;
+    const violations: string[] = [];
+    for (const f of engineFiles) {
+      for (const { lineNum, code } of codeLines(f)) {
+        const m = code.match(STRONG);
+        if (m) violations.push(`${relative(ROOT, f)}:${lineNum}: "${m[1]}" in \`${code.trim().slice(0, 70)}\``);
       }
     }
     expect(violations).toEqual([]);

@@ -100,4 +100,38 @@ describe('CG `faction` condition op (B3b)', () => {
     expect(rallied!.targets).toContain('member');
     expect(rallied!.targets).not.toContain('outsider');
   });
+
+  test('an agent with no factions declared is excluded (undefined → false)', async () => {
+    // Guards the cg-engine `?? false` branch: a non-faction agent must never match a membership gate.
+    const rule = {
+      id: 'rally2', trigger: 'DECREE', targetMode: 'location',
+      conditions: [{ op: 'faction', value: 'house_valois', of: 'target' }],
+      consequence: { type: 'RALLIED', importance: 5, delayDays: 0, probability: 1.0 }, maxChainDepth: 3,
+    } as ConsequenceRule;
+    const member = makeAgent('member'); member.state.factions = ['house_valois'];
+    const factionless = makeAgent('factionless'); // state.factions stays undefined
+    const engine = new ConsequenceEngine([rule]);
+    const ctx = { agents: new Map([['member', member], ['factionless', factionless]]) } as unknown as WorldContext;
+    const event: WorldEvent = { id: 'e2', type: 'DECREE', subject: 'monarch', object: undefined, location: 'market-square', gameDay: 1, importance: 5, payload: {} };
+    const rallied = (await engine.process(event, ctx)).find((r) => r.rule.id === 'rally2');
+    expect(rallied!.targets).toContain('member');
+    expect(rallied!.targets).not.toContain('factionless'); // undefined factions → excluded
+  });
+
+  test('faction key can be supplied via cond.field (the cond.value ?? cond.field fallback)', async () => {
+    // The op reads `cond.value ?? cond.field` — exercise the field-only form (value omitted).
+    const rule = {
+      id: 'rally3', trigger: 'DECREE', targetMode: 'location',
+      conditions: [{ op: 'faction', field: 'merchants_guild', of: 'target' }], // field, not value
+      consequence: { type: 'RALLIED', importance: 5, delayDays: 0, probability: 1.0 }, maxChainDepth: 3,
+    } as ConsequenceRule;
+    const guildsman = makeAgent('guildsman'); guildsman.state.factions = ['merchants_guild'];
+    const noble = makeAgent('noble'); noble.state.factions = ['house_valois'];
+    const engine = new ConsequenceEngine([rule]);
+    const ctx = { agents: new Map([['guildsman', guildsman], ['noble', noble]]) } as unknown as WorldContext;
+    const event: WorldEvent = { id: 'e3', type: 'DECREE', subject: 'monarch', object: undefined, location: 'market-square', gameDay: 1, importance: 5, payload: {} };
+    const rallied = (await engine.process(event, ctx)).find((r) => r.rule.id === 'rally3');
+    expect(rallied!.targets).toContain('guildsman'); // matched via cond.field
+    expect(rallied!.targets).not.toContain('noble');
+  });
 });

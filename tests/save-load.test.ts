@@ -120,7 +120,20 @@ function createTestWorld(): World {
   locations.set('market-square', { id: 'market-square', name: 'Market Square', connections: ['tavern'] });
   locations.set('tavern', { id: 'tavern', name: 'Tavern', connections: ['market-square'] });
 
-  return new World(agents, eventStore, engine, {}, {}, locations);
+  const world = new World(agents, eventStore, engine, {}, {}, locations);
+
+  // Phase B conserved state (M5 review #3) on ALICE only — bob stays empty for the "empty state" test.
+  // Without this, the identical-output round-trip below passes VACUOUSLY for attributes/factions/inventory/
+  // standing (every field omitted on both sides). Includes a timed attribute modifier, a fungible stack +
+  // a unique state-bearing item instance, faction membership, and a relationship standing axis.
+  world.setAttribute('alice', 'gold', 75, 0, 9999);
+  world.addAttributeModifier('alice', 'gold', { source: 'sale', category: 'trade', magnitude: 10, remaining: 8, duration: 10, decay: 'linear' });
+  world.joinFaction('alice', 'merchants_guild');
+  world.giveItem('alice', 'bread', 3);                     // fungible stack
+  world.giveItem('alice', 'sword', 1, { durability: 80 }); // unique state-bearing instance
+  alice.state.relationships!.adjustStanding('bob', 0.4);
+
+  return world;
 }
 
 // ─── Transient fields that should NOT appear in serialized agent state ───
@@ -190,6 +203,67 @@ describe('Save/Load Round-Trip', () => {
     expect(mod).toBeDefined();
     expect(mod!.magnitude).toBe(-0.15);
     expect(mod!.remaining).toBe(8);
+  });
+
+  test('Phase B conserved state (attributes/modifier/inventory/factions/standing) survives round-trip', () => {
+    const world = createTestWorld();
+    const snap = world.toJSON();
+
+    const world2 = createTestWorld();
+    world2.loadState(JSON.parse(JSON.stringify(snap)));
+
+    // Scalar attribute: base survives, and its timed modifier survives intact (remaining/duration/decay).
+    // Effective = base 75 + linear-decayed modifier 10*(remaining 8 / duration 10) = 75 + 8 = 83 — proves
+    // the decay model (not just the raw magnitude) round-trips.
+    expect(world2.getAttribute('alice', 'gold')).toBe(83);
+    const goldAttr = world2.agents.get('alice')!.state.attributes!.gold;
+    expect(goldAttr.base).toBe(75);
+    expect(goldAttr.min).toBe(0);
+    expect(goldAttr.max).toBe(9999);
+    expect(goldAttr.modifiers.length).toBe(1);
+    expect(goldAttr.modifiers[0].magnitude).toBe(10);
+    expect(goldAttr.modifiers[0].remaining).toBe(8);
+    expect(goldAttr.modifiers[0].duration).toBe(10);
+    expect(goldAttr.modifiers[0].decay).toBe('linear');
+
+    // Faction membership survives.
+    expect(world2.getFactions('alice')).toEqual(['merchants_guild']);
+    expect(world2.isFactionMember('alice', 'merchants_guild')).toBe(true);
+
+    // Inventory: fungible stack + unique state-bearing instance both survive, with per-instance state.
+    expect(world2.countItem('alice', 'bread')).toBe(3);
+    expect(world2.countItem('alice', 'sword')).toBe(1);
+    const sword = world2.getInventory('alice').find((i) => i.kind === 'sword');
+    expect(sword).toBeDefined();
+    expect(sword!.state?.durability).toBe(80);
+
+    // Relationship standing axis survives.
+    expect(world2.agents.get('alice')!.state.relationships!.getRelationship('bob')!.standing).toBeCloseTo(0.4, 5);
+  });
+
+  test('corrupted Phase B state is rejected on load (SL-07: NaN base/modifier dropped, bad qty pruned)', () => {
+    // Hand-edited/corrupt save: a NaN attribute base, a non-finite modifier magnitude, and a zero-qty item.
+    // SL-07 must sanitize on load (matching the moodModifiers finite-filter), never propagate NaN into
+    // attributeEffective / the CG attr op / scoring.
+    const world = createTestWorld();
+    const snap: any = JSON.parse(JSON.stringify(world.toJSON()));
+    const aliceSave = snap.agents.alice;
+    aliceSave.attributes.gold.base = Number.NaN;                       // corrupt base
+    aliceSave.attributes.hp = { base: 100, min: 0, max: 100, modifiers: [
+      { id: 'x', source: 'bug', category: 'c', magnitude: Number.POSITIVE_INFINITY, remaining: 5, duration: 5, decay: 'none' },
+    ] };
+    aliceSave.inventory = [...(aliceSave.inventory ?? []), { id: 'bad', kind: 'ghost', quantity: 0 }];
+
+    const world2 = createTestWorld();
+    world2.loadState(snap);
+
+    // NaN-base attribute dropped entirely (not loaded as a NaN time-bomb).
+    expect(world2.getAttribute('alice', 'gold')).toBeUndefined();
+    // hp survives but its non-finite modifier is filtered out → clean base value.
+    expect(world2.getAttribute('alice', 'hp')).toBe(100);
+    expect(world2.agents.get('alice')!.state.attributes!.hp.modifiers.length).toBe(0);
+    // Zero-quantity item pruned.
+    expect(world2.countItem('alice', 'ghost')).toBe(0);
   });
 
   test('agent alive/status/location survive round-trip', () => {
