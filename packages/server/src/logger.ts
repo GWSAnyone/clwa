@@ -35,18 +35,27 @@ export function initFileLogger(): string {
     } catch { /* ignore write errors */ }
   }
 
+  // Prepend [HH:MM:SS] to the stdout copy too — the file already gets it via writeToFile.
+  // Blank separator lines (boot-banner spacing) stay clean.
+  function stamp(args: unknown[]): unknown[] {
+    if (args.length === 0) return args;
+    if (args.length === 1 && (args[0] === '' || args[0] === undefined)) return args;
+    const ts = `[${formatTime()}]`;
+    return typeof args[0] === 'string' ? [`${ts} ${args[0]}`, ...args.slice(1)] : [ts, ...args];
+  }
+
   console.log = (...args: unknown[]) => {
-    origLog(...args);
+    origLog(...stamp(args));
     writeToFile('', args);
   };
 
   console.warn = (...args: unknown[]) => {
-    origWarn(...args);
+    origWarn(...stamp(args));
     writeToFile(' WARN', args);
   };
 
   console.error = (...args: unknown[]) => {
-    origError(...args);
+    origError(...stamp(args));
     writeToFile(' ERROR', args);
   };
 

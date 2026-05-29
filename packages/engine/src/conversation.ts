@@ -154,6 +154,7 @@ export async function runConversation(
     };
     lines.push(rLine);
     options?.onLine?.(rLine);
+    console.log(`  [NPC↔NPC] ${initiator.profile.name}(${initiator.profile.id}) ⇄ ${responder.profile.name}(${responder.profile.id}) @${location} [${topic.subject}] :: "${initiatorLine}" | "${responderLine}"`);
   }
 
   // Determine importance: topic weight + content keywords

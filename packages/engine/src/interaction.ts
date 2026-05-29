@@ -103,6 +103,7 @@ export function createInteractionRunner(
         text: targetLine,
       });
     }
+    console.log(`  [NPC↔NPC] ${initiator.profile.name}(${initiator.profile.id}) → ${target.profile.name}(${target.profile.id}) @${initiator.state.location} [purpose: ${cleanPurpose.length > 50 ? cleanPurpose.slice(0, 50) + '…' : cleanPurpose}] :: "${ownerLine}" | "${targetLine}"`);
 
     // Initiator memory created by goals.ts (unified with post-hook outcome — avoids double entry)
     // Target memory: structured belief summary (no raw dialogue)

@@ -310,6 +310,7 @@ export function startServer(
             }, fullContext);
 
             sendTo(ws, { type: 'chat:done', data: { agentId: msg.agentId, fullReply } });
+            console.log(`  [Chat] ${playerAgent?.profile.name ?? 'player'} → ${agent.profile.name} @${agent.state.location} d${agent.state.currentDay} m${world.gameMinute} [${meaning.speechAct} conf:${meaning.extractionConfidence}] reply: ${(fullReply ?? '').replace(/\s+/g, ' ').trim()}`);
 
             // Journal testimony for meaningful speech acts
             const TESTIMONY_ACTS = new Set(['inform', 'accuse', 'confide', 'question']);

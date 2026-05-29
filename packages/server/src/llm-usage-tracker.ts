@@ -76,6 +76,11 @@ export class LlmUsageTracker {
   /** Записать одно событие. Никогда не throws — error логируется, app продолжает работу. */
   async record(event: LlmUsageEvent): Promise<void> {
     this._bumpCumulative(event.costUsd);
+    // Per-call console line — the single chokepoint all four paths (classify/generate/stream/embed) hit.
+    const cache = event.cacheReadTokens ? ` cache=${event.cacheReadTokens}` : '';
+    const cost = event.costUsd > 0 ? ` $${event.costUsd.toFixed(4)}` : '';
+    const who = event.agentId ? ` (${event.agentId})` : '';
+    console.log(`  [LLM] ${event.task} ${event.providerId}/${event.modelId} ${event.latencyMs}ms in=${event.promptTokens} out=${event.completionTokens}${cache}${cost} ${event.finishReason}${event.hadSchema ? ' schema' : ''}${who}`);
     const next = this.writeQueue.then(async () => {
       try {
         // Ensure directory exists once (idempotent, no error if exists)
