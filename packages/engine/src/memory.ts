@@ -148,6 +148,10 @@ export class VectorMemory {
   // ─── Recall: composite scoring, 3-level fallback ───────────────
 
   async recall(query: string, currentDay: number, topK: number = 5, playerId?: string): Promise<ScoredMemory[]> {
+    // Degenerate-query guard: a too-short query embeds to noise and the composite would return
+    // importance-topped junk. Skip recall entirely rather than inject irrelevant memories.
+    if (query.trim().split(/\s+/).filter((w) => w.length > 2).length === 0) return [];
+
     let results: ScoredMemory[];
 
     if (this._qdrantAvailable) {
@@ -174,9 +178,11 @@ export class VectorMemory {
       results = await this.fallbackRecall(query, currentDay, topK * 3, playerId);
     }
 
-    // Composite scoring: relevance × 0.4 + decayedImportance × 0.4 + freshness × 0.2
+    // Composite scoring via the SINGLE source of truth (decay.ts compositeScore) — it normalizes
+    // decayedImportance (÷10) so relevance/freshness aren't swamped by raw importance. (Previously this was
+    // inlined WITHOUT the ÷10, so a fresh importance-10 memory scored 4.0 and drowned out relevance.)
     for (const m of results) {
-      m.compositeScore = m.relevance * 0.4 + m.decayedImportance * 0.4 + m.freshness * 0.2;
+      m.compositeScore = compositeScore(m.relevance, m.decayedImportance, m.freshness);
     }
     results.sort((a, b) => b.compositeScore - a.compositeScore);
     return results.slice(0, topK);
