@@ -468,4 +468,10 @@ export class ClaudeCodeProvider implements LlmProvider {
   async dispose(): Promise<void> {
     await Promise.all([this.pool.disposeAll(), this.structuredPool.disposeAll()]);
   }
+
+  /** Kill + drop this agent's warm sessions across both pools so a fresh conversation does not resume stale
+   *  in-session memory (called on NPC switch via the engine's resetAgentSessions façade). No-op if none warm. */
+  async resetAgentSession(agentId: string): Promise<void> {
+    await Promise.all([this.pool.killAgent(agentId), this.structuredPool.killAgent(agentId)]);
+  }
 }

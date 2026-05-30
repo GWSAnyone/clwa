@@ -195,6 +195,9 @@ export interface LlmProvider {
   embed(req: LlmEmbedRequest): Promise<LlmEmbedResponse>;
   /** Закрыть пулы, остановить heartbeat, отменить in-flight. Вызывается при shutdown. */
   dispose?(): Promise<void>;
+  /** Reset any warm per-agent session for `agentId` (provider-dependent; no-op for stateless providers).
+   *  Called on NPC switch so a fresh conversation does not resume stale in-session memory. */
+  resetAgentSession?(agentId: string): Promise<void>;
 }
 
 /** Маршрут одной задачи. */

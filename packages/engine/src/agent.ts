@@ -8,6 +8,7 @@ import { getRoleDirectiveBuilders } from './event-registry';
 import { DEFAULT_WORLD_CONFIG } from './world-types';
 import { classify, generate, generateStream } from './llm-client';
 import { buildExamplePool } from './prompt-utils';
+import { resetAgentSessions } from './llm-registry';
 
 // LlmSemaphore вынесен в llm-semaphore.ts и теперь per-provider (управляется façade).
 // Старый global semaphore + acquire/release удалены — INV-01 enforced архитектурно.
@@ -47,10 +48,17 @@ export class Agent {
   private language: 'en' | 'ru';
   /** Short-term conversation buffer for multi-turn player chat (last N exchanges) */
   private _chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  /** Rolling one-sentence summary of chat turns evicted from _chatHistory — so context older than ~6
+   *  exchanges isn't lost. Updated fire-and-forget on trim; reset by clearChatHistory. */
+  private _historySummary = '';
 
-  /** Clear conversation buffer (called when player starts talking to a different NPC) */
+  /** Clear conversation buffer (called when the player switches to a different NPC). Also drops any warm
+   *  provider session for this NPC (claude-code) so the next conversation starts clean — engine `_chatHistory`
+   *  and the provider's in-session memory must reset together, or they desync (provider "remembers" old turns). */
   clearChatHistory(): void {
     this._chatHistory = [];
+    this._historySummary = '';
+    void resetAgentSessions(this.profile.id).catch(() => { /* best-effort session reset */ });
   }
 
   constructor(
@@ -118,16 +126,20 @@ export class Agent {
     const userContext = this.buildUserContext(memories, additionalContext, true);
 
     // Push the RAW player message to history (NOT the L3-wrapped turn) so stale mood/memories never
-    // accumulate in the buffer. Keep last 6 exchanges (12 messages) to fit context window.
+    // accumulate in the buffer. Keep last 6 exchanges (12 messages); fold evicted turns into a rolling summary.
     this._chatHistory.push({ role: 'user', content: userMessage });
     if (this._chatHistory.length > 12) {
+      const dropped = this._chatHistory.slice(0, this._chatHistory.length - 12);
       this._chatHistory = this._chatHistory.slice(-12);
+      void this.summarizeIntoHistory(dropped); // fire-and-forget → ready for the next turn, no added latency
     }
 
     // generateStream() через façade: семафор + try/catch внутри.
     const history = this._chatHistory.slice(0, -1) as Array<{ role: 'user' | 'assistant'; content: string }>;
-    // Current turn = volatile L3 context + the message + the final language/grounding reminder LAST.
-    const user = `${userContext}\n\n${userMessage}\n\n${this.finalReminder()}`;
+    // Current turn = rolling summary of earlier (trimmed) turns, then volatile L3 context, then the message,
+    // then the final language/grounding reminder LAST (most decision-relevant closest to generation).
+    const earlier = this._historySummary ? `## Earlier in this conversation\n${this._historySummary}\n\n` : '';
+    const user = `${earlier}${userContext}\n\n${userMessage}\n\n${this.finalReminder()}`;
     const fullReply = await generateStream('dialogue', {
       system,
       user,
@@ -148,6 +160,27 @@ export class Agent {
     }
 
     return fullReply;
+  }
+
+  /** Fold chat turns evicted from _chatHistory into a one-sentence rolling summary, so context older than
+   *  ~6 exchanges isn't lost. Called fire-and-forget from chatStream (ready for the NEXT turn — no added
+   *  latency on the current reply). Routes via the 'history-summary' task (default → local Qwen); bounded
+   *  at the call site. Best-effort: on any failure the prior summary is kept. */
+  private async summarizeIntoHistory(dropped: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<void> {
+    if (dropped.length === 0) return;
+    try {
+      const speakerOf = { user: 'They', assistant: 'I' } as const;
+      const transcript = dropped.map((m) => `${speakerOf[m.role]}: ${m.content}`).join('\n');
+      const prior = this._historySummary ? `Earlier summary: ${this._historySummary}\n\n` : '';
+      const summary = await generate('history-summary', {
+        system: 'You compress dialogue into a terse running summary. Output ONE short sentence capturing what matters for continuity. No preamble, no quotes.',
+        user: `${prior}New turns to fold in:\n${transcript}\n\nUpdated one-sentence summary:`,
+        maxTokensOverride: 80,
+        samplingOverride: { temperature: 0.3 },
+        agentContext: { id: this.profile.id },
+      });
+      if (summary) this._historySummary = summary.trim().slice(0, 300);
+    } catch { /* keep the prior summary on failure */ }
   }
 
   async observe(event: string, importance: number, isProtected?: boolean): Promise<void> {

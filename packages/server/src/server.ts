@@ -17,6 +17,10 @@ const PUBLIC_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'publi
 /** Per-chat transient sessions — tracks accusation repetition, multiple suspects */
 const chatSessions = new Map<string, ConversationSession>();
 
+/** NPC the player is currently chatting (single-player). On switch we clear the PRIOR NPC's chat buffer +
+ *  warm session so its next conversation starts fresh (clearChatHistory previously had zero callers). */
+let currentChatAgentId: string | null = null;
+
 /** Clear all chat sessions — call on new-game to prevent stale accusation history */
 export function clearChatSessions() { chatSessions.clear(); }
 
@@ -77,6 +81,7 @@ export function startServer(
       close(ws: ServerWebSocket<unknown>) {
         removeClient(ws);
         chatSessions.clear(); // single-player: all sessions belong to this client
+        currentChatAgentId = null;
         console.log(`  [WS] Client disconnected (${clientCount()} total)`);
       },
 
@@ -111,6 +116,12 @@ export function startServer(
             const agent = agents.get(msg.agentId);
             if (agent && agent.state.alive) {
               agent.state.inPlayerChat = true;
+              // Switching NPCs → clear the PRIOR NPC's chat buffer + warm session so its next conversation
+              // starts fresh (no stale mid-conversation carryover on switch-back).
+              if (currentChatAgentId && currentChatAgentId !== msg.agentId) {
+                agents.get(currentChatAgentId)?.clearChatHistory();
+              }
+              currentChatAgentId = msg.agentId;
             }
             return;
           }

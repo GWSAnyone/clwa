@@ -283,4 +283,18 @@ export class ClaudeSessionPool {
     this.sessions.clear();
     await Promise.all(all.map((s) => s.kill()));
   }
+
+  /** Kill + drop every session belonging to one agent: the exact `agentId` key (streaming pool) AND any
+   *  compound `${agentId}::model::schema` key (structured pool). Used to reset a warm conversation on NPC switch. */
+  async killAgent(agentId: string): Promise<void> {
+    const prefix = `${agentId}::`;
+    const toKill: ClaudeSession[] = [];
+    for (const [key, s] of this.sessions) {
+      if (key === agentId || key.startsWith(prefix)) {
+        this.sessions.delete(key);
+        toKill.push(s);
+      }
+    }
+    await Promise.all(toKill.map((s) => s.kill()));
+  }
 }

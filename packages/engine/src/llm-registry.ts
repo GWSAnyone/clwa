@@ -233,6 +233,16 @@ export async function disposeAllLlmProviders(): Promise<void> {
   LLM_COST_GATE = null;
 }
 
+
+/** Reset per-agent warm sessions across every provider that keeps them (e.g. claude-code). Called when a
+ *  player switches NPCs so a fresh conversation does not resume stale session memory. Stateless providers
+ *  (lm-studio) implement no resetAgentSession and are skipped. Never throws. */
+export async function resetAgentSessions(agentId: string): Promise<void> {
+  await Promise.all(
+    Array.from(LLM_PROVIDERS.values()).map((p) => p.resetAgentSession?.(agentId) ?? Promise.resolve()),
+  );
+}
+
 // ─── Engine bootstrap: единственная инфраструктурная задача ────────
 
 registerLlmTask('embeddings', { requiresEmbeddings: true });
