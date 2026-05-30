@@ -85,6 +85,10 @@ export interface AgentProfile {
   role: string;              // "bartender", "guard", "merchant"
   background: string;
   speechStyle: string;
+  /** Rotating in-voice example lines; one is sampled per prompt build (player chat + NPC↔NPC) to anchor
+   *  tone without verbatim copying. Default [] — falls back to inline 'Example:' lines in speechStyle.
+   *  Authored in the world's language for localization (see WorldConfig.language). */
+  fewShotExamples?: string[];
   bigFive: BigFive;
   enneagram: Enneagram;
   /** Per-NPC LLM sampling settings */

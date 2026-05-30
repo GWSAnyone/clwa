@@ -45,6 +45,8 @@ interface NpcJson {
   inventory?: Array<{ kind: string; quantity?: number; state?: Record<string, unknown> }>;
   /** B3 faction/group membership (open keys, e.g. town_guard / merchants_guild). Seeded via World.joinFaction. */
   factions?: string[];
+  /** Rotating in-voice example lines (authored in the world language). Optional; default []. */
+  fewShotExamples?: string[];
 }
 
 interface RelationshipJson {
@@ -77,6 +79,8 @@ interface WorldJson {
     startMinute?: number;
     exchangeCount?: number;
     moodBias?: number;
+    /** World speech language for NPC prompts (en|ru). Default 'en'. Threaded to Agent + WorldConfig. */
+    language?: 'en' | 'ru';
   };
 }
 
@@ -232,6 +236,7 @@ export function loadWorld(worldDir: string): LoadedWorld {
       ...(npc.llm ? { llm: npc.llm } : {}),
       ...(npc.shop ? { shop: npc.shop } : {}),
       ...(npc.motive ? { motive: npc.motive } : {}),
+      fewShotExamples: npc.fewShotExamples ?? [],
     };
     profiles.push(profile);
 

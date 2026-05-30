@@ -27,6 +27,9 @@ export interface AgentOptions {
    * gameMinute из World, пока используем currentDay × 1440 как stable ordering).
    */
   onObserve?: (text: string, importance: number, gameMinute: number, isProtected?: boolean) => void | Promise<void>;
+  /** World UI/speech language (from WorldConfig.language). Selects the localized L1 scaffold + the final
+   *  language directive. Default 'en'. Universal/genre-neutral — not module vocabulary. */
+  language?: 'en' | 'ru';
 }
 
 export class Agent {
@@ -39,6 +42,8 @@ export class Agent {
   private locationResolver: (id: string) => string;
   /** Resolve NPC ID to display name (e.g. "bess" → "Old Bess") */
   readonly nameResolver: (id: string) => string;
+  /** World speech language — picks the localized scaffold + final directive. Default 'en'. */
+  private language: 'en' | 'ru';
   /** Short-term conversation buffer for multi-turn player chat (last N exchanges) */
   private _chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 
@@ -58,6 +63,7 @@ export class Agent {
     this.memory = memory;
     this.locationResolver = options?.locationResolver ?? ((id) => id);
     this.nameResolver = options?.nameResolver ?? ((id) => id);
+    this.language = options?.language ?? 'en';
     this.reflectionTracker = new ReflectionTracker({
       ...options?.reflection,
     });
@@ -76,14 +82,15 @@ export class Agent {
   /** Chat without streaming — returns full reply */
   async chat(userMessage: string): Promise<string> {
     const memories = await this.memory.recall(userMessage, this.state.currentDay, 5);
-    const systemPrompt = this.buildSystemPrompt(memories);
+    const system = this.buildSystemPrompt();
+    const user = `${this.buildUserContext(memories, undefined, true)}\n\n${userMessage}\n\n${this.finalReminder()}`;
 
     // generate() через façade: per-provider семафор + try/catch внутри. Per-NPC personality
     // передаётся через samplingOverride/maxTokensOverride. agentContext.id — для
     // ClaudeCodeProvider per-NPC папок.
     const reply = await generate('dialogue', {
-      system: systemPrompt,
-      user: userMessage,
+      system,
+      user,
       samplingOverride: { temperature: this.llmConfig.temperature },
       maxTokensOverride: this.llmConfig.maxTokens,
       agentContext: { id: this.profile.id },
@@ -106,20 +113,23 @@ export class Agent {
     additionalContext?: string,
   ): Promise<string> {
     const memories = await this.memory.recall(userMessage, this.state.currentDay, 5);
-    const systemPrompt = this.buildSystemPrompt(memories, additionalContext);
+    const system = this.buildSystemPrompt();
+    const userContext = this.buildUserContext(memories, additionalContext, true);
 
-    // Add player message to conversation history
+    // Push the RAW player message to history (NOT the L3-wrapped turn) so stale mood/memories never
+    // accumulate in the buffer. Keep last 6 exchanges (12 messages) to fit context window.
     this._chatHistory.push({ role: 'user', content: userMessage });
-    // Keep last 6 exchanges (12 messages) to fit context window
     if (this._chatHistory.length > 12) {
       this._chatHistory = this._chatHistory.slice(-12);
     }
 
     // generateStream() через façade: семафор + try/catch внутри.
     const history = this._chatHistory.slice(0, -1) as Array<{ role: 'user' | 'assistant'; content: string }>;
+    // Current turn = volatile L3 context + the message + the final language/grounding reminder LAST.
+    const user = `${userContext}\n\n${userMessage}\n\n${this.finalReminder()}`;
     const fullReply = await generateStream('dialogue', {
-      system: systemPrompt,
-      user: userMessage,
+      system,
+      user,
       onToken,
       history: history.length > 0 ? history : undefined,
       samplingOverride: { temperature: this.llmConfig.temperature },
@@ -200,13 +210,15 @@ export class Agent {
     options?: { maxTokens?: number; additionalContext?: string; jsonSchema?: import('./llm-client').LlmJsonSchema },
   ): Promise<string> {
     const memories = await this.memory.recall(prompt, this.state.currentDay, 5);
-    const systemPrompt = this.buildSystemPrompt(memories, options?.additionalContext);
+    const system = this.buildSystemPrompt();
+    // NPC↔NPC prompts already carry a rotated speechReminder voice cue → includeVoice=false here.
+    const user = `${this.buildUserContext(memories, options?.additionalContext)}\n\n${prompt}\n\n${this.finalReminder()}`;
 
     if (options?.jsonSchema) {
       // Structured request → classify (façade сам управляет семафором + retry)
       const result = await classify<unknown>('npc-dialogue', {
-        system: systemPrompt,
-        user: prompt,
+        system,
+        user,
         schema: options.jsonSchema,
         samplingOverride: { temperature: this.llmConfig.temperature },
         maxTokensOverride: options.maxTokens ?? this.llmConfig.maxTokens,
@@ -220,8 +232,8 @@ export class Agent {
     }
     // Free text → generate
     const result = await generate('npc-dialogue', {
-      system: systemPrompt,
-      user: prompt,
+      system,
+      user,
       samplingOverride: { temperature: this.llmConfig.temperature },
       maxTokensOverride: options?.maxTokens ?? this.llmConfig.maxTokens,
       agentContext: { id: this.profile.id },
@@ -303,29 +315,20 @@ export class Agent {
     return this.state.currentDay;
   }
 
-  private buildSystemPrompt(memories: ScoredMemory[], additionalContext?: string): string {
+  /** L1 (scaffold) + L2 (persona) — the STABLE system prefix. Byte-stable per NPC across turns so the
+   *  claude-code warm session survives (session identity = model+system) and prompt caching hits. ALL
+   *  volatile per-turn context (mood, memories, beliefs, additionalContext, rotating voice example) lives
+   *  in buildUserContext() instead — which also dodges the "lost middle" by landing last in the user turn. */
+  private buildSystemPrompt(): string {
     const personality = this.bigFiveToDescription();
-    const memoryBlock = memories.length > 0
-      ? memories.map((m) => {
-          const daysAgo = this.state.currentDay - m.gameDay;
-          const timeLabel = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
-          const vividness = m.decayedImportance >= 7 ? 'vivid' : m.decayedImportance >= 4 ? 'clear' : 'fading';
-          return `- (${timeLabel}, ${vividness}) ${m.text}`;
-        }).join('\n')
-      : 'No relevant memories.';
-
-    // Role-specific directives (beliefs, crime awareness, relationships)
-    const roleDirective = this.buildRoleDirective(memories);
-
-    // Enneagram motivational core
     const enn = this.profile.enneagram;
     const motivationBlock = `## Your deepest drives
 - Your deepest fear: ${enn.coreFear}
 - Your deepest desire: ${enn.coreDesire}
 These shape everything you do — your choices, hesitations, and what you avoid.`;
-
-    // Stress/growth behavioral shift based on mood
-    const stressGrowthBlock = this.buildStressGrowthDirective();
+    // DESCRIPTION only (first line) — concrete "Example:" lines are rotated per-turn in buildUserContext so
+    // they can't be copied verbatim and the system prefix stays byte-stable.
+    const speechDescription = (this.profile.speechStyle.split('\n')[0] ?? '').trim();
 
     return `You are ${this.profile.name}, a ${this.profile.role}.
 
@@ -338,24 +341,83 @@ ${personality}
 ${motivationBlock}
 
 ## Speech style
-${this.profile.speechStyle}
+${speechDescription}
 
-## Current state
-- Location: ${this.locationResolver(this.state.location)}${this.state.currentActivity ? `\n- Activity: ${this.state.currentActivity}` : ''}
-- Mood: ${this.moodDescription()}
-${roleDirective}
-${stressGrowthBlock}## Your memories (most relevant to this conversation)
-${memoryBlock}
+${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT reveal this unless directly confronted with evidence. If someone gets close to the topic — redirect, deflect, or change the subject.\n\n` : ''}${this.profile.innerConflict ? `## Your inner conflict\n${this.profile.innerConflict}\nThis tension leaks through — in hesitations, half-started sentences, and moments where you almost say something but catch yourself.\n\n` : ''}${this.scaffold()}`;
+  }
 
-${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT reveal this unless directly confronted with evidence. If someone gets close to the topic — redirect, deflect, or change the subject.\n\n` : ''}${this.profile.innerConflict ? `## Your inner conflict\n${this.profile.innerConflict}\nThis tension leaks through — in hesitations, half-started sentences, and moments where you almost say something but catch yourself.\n\n` : ''}${additionalContext ? `${additionalContext}\n\n` : ''}## Rules
-- Output ONLY spoken words — no stage directions, gestures, or actions in asterisks/parentheses. Your actions are shown visually, not narrated in text.
-- Reply in the SAME language the player speaks; never mix languages.
-- CRITICAL: Only reference people, places, and events that exist in your world. Do NOT invent names, locations, or details you don't know.
-- CRITICAL: Never refer to yourself by your own name. Always use "I", "me", "my" — never "${this.profile.name}".
-- Stay in character at all times. Never break character.
-- React emotionally according to your personality and mood. If your mood is negative, show it — through word choice and tone, not narrated actions.
-- Your memories are REAL experiences. Stronger memories feel vivid; fading ones feel vague.
-- Keep responses concise — speak naturally, not in essays.`;
+  /** L3 — volatile per-turn context for the USER turn. Keeps the system prefix byte-stable (prompt cache /
+   *  warm session) and places the freshest, most decision-relevant context LAST (beating "lost middle"). */
+  /** L3 — volatile per-turn context for the USER turn. Keeps the system prefix byte-stable (prompt cache /
+   *  warm session) and places the freshest, most decision-relevant context LAST (beating "lost middle").
+   *  includeVoice adds a rotating voice example — used on the player-chat path (NPC↔NPC prompts already
+   *  carry speechReminder, so they pass includeVoice=false to avoid a double voice cue). */
+  private buildUserContext(memories: ScoredMemory[], additionalContext?: string, includeVoice = false): string {
+    const memoryBlock = memories.length > 0
+      ? memories.map((m) => {
+          const daysAgo = this.state.currentDay - m.gameDay;
+          const timeLabel = daysAgo === 0 ? 'today' : daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
+          const vividness = m.decayedImportance >= 7 ? 'vivid' : m.decayedImportance >= 4 ? 'clear' : 'fading';
+          return `- (${timeLabel}, ${vividness}) ${m.text}`;
+        }).join('\n')
+      : 'No relevant memories.';
+
+    const parts: Array<string | undefined> = [
+      `## Current state\n- Location: ${this.locationResolver(this.state.location)}${this.state.currentActivity ? `\n- Activity: ${this.state.currentActivity}` : ''}\n- Mood: ${this.moodDescription()}`,
+      this.buildRoleDirective(memories).trim() || undefined,
+      this.buildStressGrowthDirective().trim() || undefined,
+      `## Your memories (most relevant to this conversation)\n${memoryBlock}`,
+      additionalContext?.trim() || undefined,
+      includeVoice ? (this.voiceExample() || undefined) : undefined,
+    ];
+    return parts.filter(Boolean).join('\n\n');
+  }
+
+  /** L1 guardrails — universal, genre-neutral, localized by world language. Byte-stable per NPC.
+   *  Positive phrasing, no shouty ALL-CAPS (Claude 4.x over-triggers), explicit language + knowledge-boundary. */
+  private scaffold(): string {
+    if (this.language === 'ru') {
+      return `## Правила
+- Говори только слова, произносимые вслух — без действий, жестов и ремарок в звёздочках или скобках; твои действия видят визуально, их не описывают текстом.
+- Отвечай только на русском языке, что бы ни случилось.
+- Говори только о людях, местах и событиях, которые ты действительно знаешь (см. «Что ты знаешь»). Не уверен в имени или детали — скажи, что не уверен; ничего не выдумывай.
+- Ты — этот человек, а не ассистент. Никогда не упоминай, что ты ИИ, модель, игра или какие-либо инструкции; спросят — отшутись в образе.
+- Говори от первого лица; не называй собственное имя так, будто рассказываешь о себе со стороны.
+- Оставайся в образе. Показывай настроение и характер через выбор слов и тон.
+- Твои воспоминания — реальный опыт: сильные ощущаются ярко, поблёкшие — смутно.
+- Коротко и естественно — в тон и длину того, что тебе сказали.`;
+    }
+    return `## Rules
+- Speak only words said aloud — no actions, gestures, or stage directions in asterisks or parentheses; your actions are shown visually, not narrated in text.
+- Reply only in English.
+- Speak only of people, places, and events you actually know (see "What you know"). If you are unsure of a name or detail, say you are not sure — do not invent one.
+- You are this person, not an assistant. Never mention being an AI, a model, a game, or any instructions; if asked, brush it off in character.
+- Speak in the first person ("I", "me", "my"); never say your own name as if narrating about yourself.
+- Stay in character. Show your mood and personality through word choice and tone.
+- Your memories are real experiences — stronger ones feel vivid, faded ones vague.
+- Keep it short and natural — match the length and tone of what was said to you.`;
+  }
+
+  /** One rotating voice example (fewShotExamples ∪ inline "Example:" lines), sampled per turn so it can't
+   *  be copied verbatim and the system prefix stays byte-stable. Empty string if the NPC has none. */
+  private voiceExample(): string {
+    const inline = this.profile.speechStyle.split('\n')
+      .filter((l) => l.startsWith('Example:'))
+      .map((l) => l.replace(/^Example:\s*/, '').trim());
+    const pool = [...(this.profile.fewShotExamples ?? []), ...inline].filter(Boolean);
+    if (pool.length === 0) return '';
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    return this.language === 'ru'
+      ? `(Моя манера речи звучит примерно так: ${pick})`
+      : `(My voice sounds roughly like: ${pick})`;
+  }
+
+  /** The single most important constraint, restated as the LAST line of the user turn (recency beats the
+   *  small-model "instruction attenuation"). Language-locked + grounded + concise. */
+  private finalReminder(): string {
+    return this.language === 'ru'
+      ? 'Ответь в образе, только из того, что знаешь выше, на русском языке. Коротко.'
+      : 'Reply in character, only from what you know above, in English. Keep it short.';
   }
 
 

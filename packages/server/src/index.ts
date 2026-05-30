@@ -417,6 +417,7 @@ async function createGameContext(
       },
       locationResolver: (id) => locationGraph.get(id)?.name ?? id,
       nameResolver: (id) => agents.get(id)?.profile.name ?? id,
+      language: worldData.config.language ?? 'en',
     });
     agents.set(profile.id, agent);
     console.log(`  [+] ${profile.name} the ${profile.role} @ ${npcLocation}`);
@@ -543,6 +544,7 @@ async function createGameContext(
     relationships: playerRelationships,
   }, playerMemory, {
     locationResolver: (id) => locationGraph.get(id)?.name ?? id,
+    language: worldData.config.language ?? 'en',
   });
   agents.set('player', playerAgent);
   positionManager.initPosition('player', playerAgent.state.location);

@@ -7,10 +7,10 @@ import type { Agent } from './agent';
 export function speechReminder(agent: Agent): string {
   const lines = agent.profile.speechStyle.split('\n');
   const description = lines[0] ?? '';
-  // Include one random example prefixed with "e.g." to prevent verbatim copying
-  const examples = lines.filter(l => l.startsWith('Example:'));
-  if (examples.length === 0) return description;
-  const example = examples[Math.floor(Math.random() * examples.length)];
-  const exampleText = example.replace(/^Example:\s*/, '');
-  return `${description} — e.g. ${exampleText}`;
+  // Pool = structured fewShotExamples ∪ inline "Example:" lines. One sampled per call to prevent verbatim copying.
+  const inline = lines.filter(l => l.startsWith('Example:')).map(l => l.replace(/^Example:\s*/, ''));
+  const pool = [...(agent.profile.fewShotExamples ?? []), ...inline].filter(Boolean);
+  if (pool.length === 0) return description;
+  const example = pool[Math.floor(Math.random() * pool.length)];
+  return `${description} — e.g. ${example}`;
 }

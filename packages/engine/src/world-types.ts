@@ -249,6 +249,9 @@ export interface WorldConfig {
   dialogueRule?: string;
   /** Speech constraint for interaction prompts (default: "Speech must be at most 15 words") */
   speechConstraint?: string;
+  /** World speech language for NPC prompts — selects the localized L1 scaffold + final language directive
+   *  in Agent prompt-building. Universal/genre-neutral (no module vocabulary). Default 'en'. */
+  language?: 'en' | 'ru';
   /** Max memories per NPC before eviction (default: 200) */
   memoryCapacity?: number;
   /** Memory consolidation tick handler config (Stage 7a) — observations → reflections compression */
@@ -379,6 +382,7 @@ export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   repeatPenalty: 1.1,
   frequencyPenalty: 0.3,
   presencePenalty: 0.2,
+  language: 'en',
 };
 
 export const DEFAULT_MOVEMENT_CONFIG: NpcMovementConfig = {
