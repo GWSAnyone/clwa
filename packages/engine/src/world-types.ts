@@ -256,6 +256,10 @@ export interface WorldConfig {
    *  the short-term buffer + rolling summary + warm provider session reset. A brief glance away keeps
    *  continuity; only a real absence resets. Long-term (vector) memory is untouched. Default 300000 (5 min). */
   chatStaleMs?: number;
+  /** Override for the L1 guardrail scaffold (universal speech/grounding rules), authored in the world language.
+   *  Empty/absent → engine genre-neutral default for `language` (see `defaultScaffold`, INV-21). Editable in the
+   *  World Editor. Must stay genre-neutral — no module (crime/economy/…) vocabulary here (INV-14). */
+  scaffold?: string;
   /** Max memories per NPC before eviction (default: 200) */
   memoryCapacity?: number;
   /** Memory consolidation tick handler config (Stage 7a) — observations → reflections compression */

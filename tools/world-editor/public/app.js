@@ -325,6 +325,24 @@ async function renderNpcDetail(id) {
     fieldGroup('Inner Conflict', textArea(data.innerConflict, v => data.innerConflict = v, 2)),
   ]));
 
+  // Few-shot voice examples — one is rotated into each prompt as a voice cue (∪ inline "Example:" lines in
+  // Speech Style), kept out of the byte-stable prefix. Author in the world language; great for locking dialect.
+  const fewShotCard = h('div', { class: 'card' });
+  fewShotCard.append(h('div', { class: 'card-title', text: 'Few-shot Voice Examples' }));
+  fewShotCard.append(h('div', { class: 'hint', text: 'Sample in-character lines. One is sampled into each prompt as a "my voice sounds like…" cue. Best authored in the world language.' }));
+  function renderFewShot() {
+    while (fewShotCard.children.length > 2) fewShotCard.lastChild.remove();
+    (data.fewShotExamples || []).forEach((ex, i) => {
+      fewShotCard.append(h('div', { class: 'flex-row mb-sm' }, [
+        h('div', { style: { flex: '1' } }, [textArea(ex, v => data.fewShotExamples[i] = v, 2)]),
+        h('button', { class: 'btn btn-danger', text: 'X', onclick: () => { data.fewShotExamples.splice(i, 1); if (!data.fewShotExamples.length) delete data.fewShotExamples; renderFewShot(); } }),
+      ]));
+    });
+    fewShotCard.append(h('button', { class: 'btn btn-ghost mt-sm', text: '+ Add example', onclick: () => { if (!data.fewShotExamples) data.fewShotExamples = []; data.fewShotExamples.push(''); renderFewShot(); } }));
+  }
+  renderFewShot();
+  wrap.append(fewShotCard);
+
   // Memories
   const memCard = h('div', { class: 'card' });
   memCard.append(h('div', { class: 'card-title', text: 'Memories' }));
@@ -840,7 +858,36 @@ async function renderConfig() {
         fieldGroup('Exchange Count', numInput(data.config.exchangeCount, v => data.config.exchangeCount = v)),
         fieldGroup('Mood Bias', numInput(data.config.moodBias, v => data.config.moodBias = v, { step: '0.1' })),
       ]),
+      h('div', { class: 'grid-3' }, [
+        fieldGroup('Language', selectInput(data.config.language || 'en', ['en', 'ru'], v => data.config.language = v)),
+        fieldGroup('Chat staleness (ms)', numInput(data.config.chatStaleMs ?? 300000, v => data.config.chatStaleMs = v, { min: '0', step: '1000' })),
+      ]),
+      h('div', { class: 'hint', text: 'Language selects the localized L1 scaffold + final directive. Chat staleness: real-time gap (ms) after which the next player chat with an NPC starts fresh (default 300000 = 5 min).' }),
     ]));
+  }
+
+  // L1 Prompt Scaffold — universal speech/grounding guardrails. Empty = engine genre-neutral default for the
+  // selected language (resolved at runtime). Editable so a world can tune the house style without code.
+  if (data.config) {
+    const scafCard = h('div', { class: 'card mb-lg' });
+    scafCard.append(h('div', { class: 'card-title', text: 'Prompt Scaffold (L1 guardrails)' }));
+    scafCard.append(h('div', { class: 'hint', text: 'Universal speech/grounding rules injected into every NPC system prompt. Leave empty to use the engine default for the selected language. Keep it genre-neutral (no crime/economy vocabulary).' }));
+    function renderScaffold() {
+      while (scafCard.children.length > 2) scafCard.lastChild.remove();
+      const has = typeof data.config.scaffold === 'string' && data.config.scaffold.length > 0;
+      if (has) {
+        scafCard.append(textArea(data.config.scaffold, v => data.config.scaffold = v, 12));
+        scafCard.append(h('button', { class: 'btn btn-danger mt-sm', text: 'Clear (use engine default)', onclick: () => { delete data.config.scaffold; renderScaffold(); } }));
+      } else {
+        const lang = data.config.language || 'en';
+        const def = (reg.scaffoldDefaults && reg.scaffoldDefaults[lang]) || '';
+        scafCard.append(h('div', { class: 'hint', text: `Using engine default (${lang}):` }));
+        scafCard.append(h('pre', { style: { whiteSpace: 'pre-wrap', fontSize: '0.76rem', color: 'var(--muted)', maxHeight: '200px', overflow: 'auto', padding: '8px', border: '1px solid var(--border)', borderRadius: '4px', margin: '6px 0' }, text: def }));
+        scafCard.append(h('button', { class: 'btn btn-ghost mt-sm', text: `Load engine default (${lang}) to customize`, onclick: () => { data.config.scaffold = def; renderScaffold(); } }));
+      }
+    }
+    renderScaffold();
+    $content.append(scafCard);
   }
 
   // LLM Routing — assign provider+model per task (registry/default-router driven, no hardcoded lists).

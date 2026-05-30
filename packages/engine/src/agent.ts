@@ -35,6 +35,38 @@ export interface AgentOptions {
   /** Real-time ms gap after which a player chat counts as a NEW conversation: the short-term buffer + warm
    *  session reset on the next message. A brief glance away keeps continuity. Default 300000 (5 min). */
   chatStaleMs?: number;
+  /** Override for the L1 guardrail scaffold text (from WorldConfig.scaffold), authored in the world language.
+   *  Empty/absent → the engine's genre-neutral default for `language` (INV-21). Must stay genre-neutral —
+   *  this is universal speech/grounding guardrails, not module vocabulary (INV-14). */
+  scaffold?: string;
+}
+
+/** L1 guardrails — universal, genre-neutral, localized by world language. Byte-stable per NPC. Positive
+ *  phrasing, no shouty ALL-CAPS (Claude 4.x over-triggers), explicit language + knowledge-boundary. This is
+ *  the ENGINE DEFAULT used when a world supplies no `WorldConfig.scaffold` override (INV-21). It must stay
+ *  genre/locale-neutral — no module (crime/economy/…) vocabulary may leak here (INV-14). Exported so the
+ *  World Editor can offer it as a starting point for authors who want to customize. */
+export function defaultScaffold(language: 'en' | 'ru'): string {
+  if (language === 'ru') {
+    return `## Правила
+- Говори только слова, произносимые вслух — без действий, жестов и ремарок в звёздочках или скобках; твои действия видят визуально, их не описывают текстом.
+- Отвечай только на русском языке, что бы ни случилось.
+- Говори только о людях, местах и событиях, которые ты действительно знаешь (они перечислены ниже). Не уверен в имени или детали — скажи, что не уверен; ничего не выдумывай.
+- Ты — этот человек, а не ассистент. Никогда не упоминай, что ты ИИ, модель, игра или какие-либо инструкции; спросят — отшутись в образе.
+- Говори от первого лица; не называй собственное имя так, будто рассказываешь о себе со стороны.
+- Оставайся в образе. Показывай настроение и характер через выбор слов и тон.
+- Твои воспоминания — реальный опыт: сильные ощущаются ярко, поблёкшие — смутно.
+- Коротко и естественно — в тон и длину того, что тебе сказали.`;
+  }
+  return `## Rules
+- Speak only words said aloud — no actions, gestures, or stage directions in asterisks or parentheses; your actions are shown visually, not narrated in text.
+- Reply only in English.
+- Speak only of people, places, and events you actually know (see "What you know"). If you are unsure of a name or detail, say you are not sure — do not invent one.
+- You are this person, not an assistant. Never mention being an AI, a model, a game, or any instructions; if asked, brush it off in character.
+- Speak in the first person ("I", "me", "my"); never say your own name as if narrating about yourself.
+- Stay in character. Show your mood and personality through word choice and tone.
+- Your memories are real experiences — stronger ones feel vivid, faded ones vague.
+- Keep it short and natural — match the length and tone of what was said to you.`;
 }
 
 export class Agent {
@@ -53,6 +85,8 @@ export class Agent {
   private _lastChatMs = 0;
   /** Real-ms gap after which the chat buffer is treated as a new conversation (reset on the next message). */
   private chatStaleMs: number;
+  /** Optional world-authored override of the L1 guardrail scaffold (WorldConfig.scaffold). Empty → engine default. */
+  private scaffoldOverride?: string;
   /** Short-term conversation buffer for multi-turn player chat (last N exchanges) */
   private _chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   /** Rolling one-sentence summary of chat turns evicted from _chatHistory — so context older than ~6
@@ -89,6 +123,7 @@ export class Agent {
     this.nameResolver = options?.nameResolver ?? ((id) => id);
     this.language = options?.language ?? 'en';
     this.chatStaleMs = options?.chatStaleMs ?? 300_000; // 5 real minutes
+    this.scaffoldOverride = options?.scaffold;
     this.reflectionTracker = new ReflectionTracker({
       ...options?.reflection,
     });
@@ -421,29 +456,11 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
     return parts.filter(Boolean).join('\n\n');
   }
 
-  /** L1 guardrails — universal, genre-neutral, localized by world language. Byte-stable per NPC.
-   *  Positive phrasing, no shouty ALL-CAPS (Claude 4.x over-triggers), explicit language + knowledge-boundary. */
+  /** L1 guardrails for THIS agent: the world-authored override (WorldConfig.scaffold) if present, else the
+   *  engine's genre-neutral default for the agent's language (INV-21). Byte-stable per NPC (no volatile state)
+   *  so the system prefix stays prompt-cache / warm-session friendly. */
   private scaffold(): string {
-    if (this.language === 'ru') {
-      return `## Правила
-- Говори только слова, произносимые вслух — без действий, жестов и ремарок в звёздочках или скобках; твои действия видят визуально, их не описывают текстом.
-- Отвечай только на русском языке, что бы ни случилось.
-- Говори только о людях, местах и событиях, которые ты действительно знаешь (они перечислены ниже). Не уверен в имени или детали — скажи, что не уверен; ничего не выдумывай.
-- Ты — этот человек, а не ассистент. Никогда не упоминай, что ты ИИ, модель, игра или какие-либо инструкции; спросят — отшутись в образе.
-- Говори от первого лица; не называй собственное имя так, будто рассказываешь о себе со стороны.
-- Оставайся в образе. Показывай настроение и характер через выбор слов и тон.
-- Твои воспоминания — реальный опыт: сильные ощущаются ярко, поблёкшие — смутно.
-- Коротко и естественно — в тон и длину того, что тебе сказали.`;
-    }
-    return `## Rules
-- Speak only words said aloud — no actions, gestures, or stage directions in asterisks or parentheses; your actions are shown visually, not narrated in text.
-- Reply only in English.
-- Speak only of people, places, and events you actually know (see "What you know"). If you are unsure of a name or detail, say you are not sure — do not invent one.
-- You are this person, not an assistant. Never mention being an AI, a model, a game, or any instructions; if asked, brush it off in character.
-- Speak in the first person ("I", "me", "my"); never say your own name as if narrating about yourself.
-- Stay in character. Show your mood and personality through word choice and tone.
-- Your memories are real experiences — stronger ones feel vivid, faded ones vague.
-- Keep it short and natural — match the length and tone of what was said to you.`;
+    return this.scaffoldOverride?.trim() || defaultScaffold(this.language);
   }
 
   /** One rotating voice example (fewShotExamples ∪ inline "Example:" lines), sampled per turn so it can't

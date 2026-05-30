@@ -12,7 +12,7 @@
 
 import { resolve, join, basename } from "path";
 import { readdir } from "fs/promises";
-import { getAllRegisteredEventTypes, getEventTypesByCategory, getAllRegisteredSources, BELIEF_SOURCE, getRegisteredRelationshipTypes, getRegisteredLlmTasks } from "@clwa/engine";
+import { getAllRegisteredEventTypes, getEventTypesByCategory, getAllRegisteredSources, BELIEF_SOURCE, getRegisteredRelationshipTypes, getRegisteredLlmTasks, defaultScaffold } from "@clwa/engine";
 import { registerCrimeJusticeModule, registerSocialModule } from "@clwa/modules";
 import { buildDefaultRouter } from "../../packages/server/src/llm-defaults";
 
@@ -121,6 +121,9 @@ async function handleAPI(req: Request, pathname: string): Promise<Response> {
       factions,       // B3 — open keys, union from world data
       capabilities,   // open keys, union from world data
       itemKinds,      // B2 — open keys (shop ids + inventory kinds)
+      // L1 guardrail scaffold defaults (en/ru) so the editor can offer the engine baseline as a starting
+      // point for a per-world WorldConfig.scaffold override (empty override = engine default at runtime).
+      scaffoldDefaults: { en: defaultScaffold('en'), ru: defaultScaffold('ru') },
       // LLM routing: tasks from the engine registry ∪ default router; providers from the default router;
       // models PER PROVIDER (claude-code = known aliases, lm-studio = live /v1/models). See buildLlmRegistry.
       ...(await buildLlmRegistry()),

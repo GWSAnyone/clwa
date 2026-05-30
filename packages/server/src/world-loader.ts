@@ -83,6 +83,9 @@ interface WorldJson {
     language?: 'en' | 'ru';
     /** Real-time ms gap after which a player's next chat with an NPC starts fresh. Default 300000 (5 min). */
     chatStaleMs?: number;
+    /** Override for the L1 guardrail scaffold text (universal speech/grounding rules), in the world language.
+     *  Absent → engine genre-neutral default. Editable in the World Editor. */
+    scaffold?: string;
   };
 }
 
