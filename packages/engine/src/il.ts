@@ -123,7 +123,7 @@ export interface Question {
 }
 
 export interface RequestedAction {
-  /** Affordance-like action: investigate, arrest, examine, report */
+  /** Affordance-like action: investigate, apprehend, examine, report */
   action: string;
   /** Target NPC name or location name */
   target?: string;

@@ -3,7 +3,7 @@ import type { WorldEvent } from './cg-types';
 import type { LocationGraph, MovementResult, SceneResidue } from './world-types';
 import type { EvidenceLayer } from './evidence';
 import { findPath } from './pathfinding';
-import { getEventLabel, getBeliefSourceLabel, getSourceTransferWeight, getStepHandler, runInteractPostHooks, isTransferable, BELIEF_SOURCE } from './event-registry';
+import { getBeliefSourceLabel, getSourceTransferWeight, getStepHandler, runInteractPostHooks, isTransferable, BELIEF_SOURCE } from './event-registry';
 import type { MoodModifierCallback } from './event-registry';
 
 // ─── Step Primitives ───
