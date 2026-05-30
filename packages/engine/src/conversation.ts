@@ -264,12 +264,15 @@ function buildFollowUpPrompt(
   speaker: Agent, other: Agent,
   previousLines: ConversationLine[], topic: TopicProposal,
 ): string {
-  const lastLine = previousLines[previousLines.length - 1];
   const speech = speechReminder(speaker);
   const relNote = relationshipNote(speaker, other);
   const mood = moodLine(speaker);
+  // Last few lines (not just the last one) for short-term coherence — avoids the topic drift / repetition
+  // that a single-line window caused across multi-exchange NPC↔NPC conversations.
+  const recent = previousLines.slice(-3).map((l) => `${l.speakerName}: "${l.text}"`).join('\n');
 
-  return `${other.profile.name} just said: "${lastLine.text}"
+  return `Recent exchange:
+${recent}
 Topic: ${topic.subject}. ${mood}
 ${relNote ? `${relNote}\n` : ''}(Your voice: ${speech})
 React naturally — agree, disagree, add your perspective, or change direction. Say 5–12 words out loud. Only dialogue.`;
