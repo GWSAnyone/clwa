@@ -1,7 +1,7 @@
 # SPEC: NPC Brain — maximize roleplay quality via layered prompts + context engineering + model routing
 
 > **Milestone**: M6 (NPC Brain — roleplay quality; LLM + context tuning). Follows M5 (Engine Generalization).
-> **Status**: 🔨 IMPLEMENTING — **P0 ✅ · P1 ✅ (auditor-verified) · P2 🟡 3/4 (3b history-WS deferred) · P3 ✅ · P4–P5 pending**.
+> **Status**: 🔨 IMPLEMENTING — **P0 ✅ · P1 ✅ (auditor) · P2 ✅ 4/4 (auditor) · P3 ✅ (auditor) · P4–P5 pending**.
 >   Branch `feature/npc-brain` (not pushed). clwa-auditor reviewed the plan (verdict: safe as-phased, 0 design violations);
 >   all 10 amendments folded in (dual-path building blocks, CLAUDE.local.md volatile-out, unified getTopBeliefs,
 >   judge methodology, LM-Studio cache empirical check, history-summary task + warm-session reset, server-side
@@ -143,7 +143,7 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
   4-5 на baseline), Qwen остаётся на структурных задачах; (c) одного knowledge-boundary правила Qwen'у мало против
   embellishment — для high-stakes реплик опционально name/fact post-check (deferred).
 
-### Phase 2 — Context-assembly fixes (беливы / память / история) 🟡 3/4 DONE — 3b (история-WS) отложено
+### Phase 2 — Context-assembly fixes (беливы / память / история) ✅ DONE 4/4
 - **✅ Беливы** (`43b32e1`): единая `getTopBeliefs(k, {currentDay, topic, requireParticipant})` для обоих путей
   (`summarizeForPrompt` + `serializeMemoryState` — было два расходящихся ранжирования); recency-cue на строке белива;
   `getEventLabelSafe` вместо тихого null-drop; per-event фрейзинг в crime-модуле (theft→«stole from Y», kill→«killed Y»,
@@ -151,10 +151,11 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
 - **✅ Память** (`bb6a3be`): `recall` через единый нормализованный `compositeScore` (÷10 внутри — relevance больше не
   тонет под importance) + guard на вырожденный запрос. cap оставлен 5 (баг был в нормализации, не в количестве).
   ⏸ recency по last-access — отложено (нужно новое поле `MemoryEntry` + миграция save/Qdrant).
-- **🟡 История диалога**: ✅ окно последних 3 строк для NPC↔NPC (`f3945fc`). ⏸ **3b отложено (свежим заходом, нужен
-  живой прогон)**: `clearChatHistory()` при смене NPC (поднять `chatAgentId` в per-connection WS-состояние) +
-  `resetAgentSession(agentId)` (изменение контракта `LlmProvider` + сброс warm-сессии в `ClaudeSessionPool`) +
-  `history-summary` task (Qwen-роут, сжатие сброшенных тёрнов). Деликатная WS/provider-интеграция, payoff чисто рантаймовый — не покрыт тестами.
+- **✅ История диалога** (`f3945fc` окно + `4efa429` 3b): окно последних 3 строк для NPC↔NPC; `clearChatHistory()`
+  при смене NPC (per-connection `currentChatAgentId` в server) + сброс warm-сессии
+  (`resetAgentSessions`→`ClaudeCodeProvider.resetAgentSession`→`ClaudeSessionPool.killAgent`, exact + `agentId::` ключи);
+  rolling `history-summary` (fire-and-forget при trim >12, default→Qwen, bounded, блок «Earlier in this conversation»).
+  Boot-проверен (сервер стартует чисто); рантайм-поведение (сброс при смене NPC, сжатие длинного диалога) — live-прогон.
 - *Verify*: харнесс `dialogue`/`npc-dialogue` ↑; unit-тесты на ранжирование/нормализацию/историю.
 
 ### Phase 3 — Propagate на остальные задачи ✅ DONE (verdict 41b88d6 · reflection+npc-dialogue 46bd948 · il 2660341)
