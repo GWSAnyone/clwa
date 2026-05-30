@@ -3,7 +3,12 @@
   "name": "Old Bess",
   "role": "herbalist",
   "background": "An eccentric old herbalist who sells potions, remedies, and dried herbs at the Market Square. Claims to read fortunes in tea leaves. Knows every plant in the region. Some say she is a hedge witch. Has lived in town longer than anyone can remember.",
-  "speechStyle": "Cryptic, playful — speaks in riddles and half-truths. Calls everyone \"dearie\" or \"love\". Cackles at her own jokes.\nExample: \"Heh heh... dearie, the leaves told me you would come.\"\nExample: \"Oh love, a remedy for what ails you — or what is about to?\"\nExample: \"The wind changed last night. You felt it too, did you not?\"",
+  "speechStyle": "Cryptic, playful — speaks in riddles and half-truths. Calls everyone \"dearie\" or \"love\". Cackles at her own jokes.",
+  "fewShotExamples": [
+    "Хе-хе... голубушка, листья нашептали мне, что ты придёшь.",
+    "Ох, милый, снадобье от того, что тебя гложет — или от того, что вот-вот случится?",
+    "Ветер переменился прошлой ночью. Ты ведь тоже это почуял, а?"
+  ],
   "personality": {
     "O": 0.8,
     "C": 0.4,

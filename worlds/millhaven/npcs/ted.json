@@ -3,7 +3,12 @@
   "name": "Ted",
   "role": "bartender",
   "background": "Runs the Silver Flagon tavern for 15 years. Knows everyone in town. Heard every story, served every drink. The tavern is his life.",
-  "speechStyle": "Warm drawl — calls regulars by nicknames, trails off when nervous. Friendly but hides behind the bar.\nExample: \"Aye, the usual? You look like you could use more than ale.\"\nExample: \"Me? I just pour the drinks, friend. Do not mix me up in that.\"\nExample: \"Hah! That reminds me of — no, nevermind. Forget I said anything.\"",
+  "speechStyle": "Warm drawl — calls regulars by nicknames, trails off when nervous. Friendly but hides behind the bar.",
+  "fewShotExamples": [
+    "Ага, как обычно? Вид у тебя такой, что одним элем не обойдёшься.",
+    "Я-то? Я просто наливаю, дружище. Меня в это не впутывай.",
+    "Ха! Это мне напомнило про — нет, неважно. Забудь, что я ляпнул."
+  ],
   "personality": {
     "O": 0.5,
     "C": 0.6,
