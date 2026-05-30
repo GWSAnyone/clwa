@@ -1,7 +1,11 @@
 # SPEC: NPC Brain — maximize roleplay quality via layered prompts + context engineering + model routing
 
 > **Milestone**: M6 (NPC Brain — roleplay quality; LLM + context tuning). Follows M5 (Engine Generalization).
-> **Status**: 🔨 IMPLEMENTING — **P0 ✅ · P1 ✅ (auditor) · P2 ✅ 4/4 (auditor) · P3 ✅ (auditor) · P4–P5 pending**.
+> **Status**: ✅ **CLOSED (2026-05-30)** — **P0–P5 all ✅** on `feature/npc-brain` (tsc 0, bun test 280, final clwa-auditor:
+>   no MUST-FIX, INV-14 PERFECT, quality A-). Both auditor SHOULD/NICE fixes applied (history-summary task registered;
+>   dup JSDoc removed). Harness final (JUDGE_RUNS=3): layered dialogue uplift **mean +2.0**, grounding n→Y in 5/6 cells,
+>   Qwen meta-deflect 1.0→5.0; report `docs/workflow/npc-brain-final/2026-05-30/`. Pending: live walkthrough + merge to master.
+>   Plus: real-time **chat-staleness TTL** (replaced clear-on-NPC-switch; default 5 min, `WorldConfig.chatStaleMs`) — auditor CLEAN, 8 unit tests.
 >   Branch `feature/npc-brain` (not pushed). clwa-auditor reviewed the plan (verdict: safe as-phased, 0 design violations);
 >   all 10 amendments folded in (dual-path building blocks, CLAUDE.local.md volatile-out, unified getTopBeliefs,
 >   judge methodology, LM-Studio cache empirical check, history-summary task + warm-session reset, server-side
@@ -185,12 +189,25 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
   maxTokens/temp/warm/schema/fallback — уже есть, дополнить few-shot и per-NPC sampling). Registry/данные, без
   хардкод-списков; no-op тумблеры отключены (как сделано для warm/schema).
 - *Verify*: правка в редакторе → видна в промпте/поведении; save/load round-trip.
+- **✅ Сделано**: L1-каркас стал `WorldConfig.scaffold` (engine `defaultScaffold(lang)` — genre-neutral дефолт при
+  отсутствии, INV-21/INV-14); редактор: Language (en/ru) + Chat staleness (ms) в Simulation Parameters, карточка
+  **Prompt Scaffold (L1)** (показывает engine-дефолт, load-to-edit, clear), редактор **Few-shot Voice Examples** на NPC.
+  Per-NPC sampling (temp/maxTokens) и полный per-task routing уже были. `server.ts` не менялся (PUT пишет весь JSON-блоб).
+  Verify: tsc 0, bun test 280, editor boots, `/api/registry` отдаёт `scaffoldDefaults`, save/load round-trip
+  `config.{chatStaleMs,scaffold}` через editor API подтверждён, world.json восстановлен байт-в-байт.
 
 ### Phase 5 — Verify & close
 - Полный прогон харнесса (новые промпты, 3 модели) vs Phase-0 baseline → итоговая таблица + назначения роутинга.
 - `bun test` + tsc 0. **`clwa-auditor`**: INV-14 (движок genre-neutral — в каркас Layer 1 не протекла module-проза),
   INV-16 (bilateral), LLM-дисциплина. Live-walkthrough (сервер + браузер + LM Studio + claude-code).
 - Persist comparison-отчёт в `docs/workflow/` (или `docs/`); обновить ROADMAP/ARCHITECTURE; закрыть спеку.
+- **✅ Сделано**: харнесс JUDGE_RUNS=3 (baseline 8×3 + dialogue baseline-vs-layered) → отчёт
+  `docs/workflow/npc-brain-final/2026-05-30/` (report/meta/baseline/dialogue-compare). Layered dialogue: mean **+2.0**
+  (base 2.5→4.5), grounding n→Y в 5/6 ячейках, **Qwen meta-deflect 1.0→5.0** (починен слом «я ИИ»); честная оговорка —
+  Qwen open-ended recall (about-garrett) остался 2.0 → подтверждает роутинг **dialogue → Haiku**. Schema-pass 100% у всех.
+  Routing-назначения совпали с live `world.json`. `bun test` 280 + tsc 0. Финальный **clwa-auditor** по всей спеке:
+  **0 MUST-FIX**, INV-14 PERFECT (Economy Module Test пройден), INV-16/01/21 CLEAN, A-; оба SHOULD/NICE fix'а внесены.
+  ROADMAP/ARCHITECTURE обновлены. **Спека закрыта.** Остаётся: live-walkthrough игроком + merge в master.
 
 ---
 

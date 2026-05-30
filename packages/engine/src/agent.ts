@@ -465,8 +465,6 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
 
   /** One rotating voice example (fewShotExamples ∪ inline "Example:" lines), sampled per turn so it can't
    *  be copied verbatim and the system prefix stays byte-stable. Empty string if the NPC has none. */
-  /** One rotating voice example (fewShotExamples ∪ inline "Example:" lines), sampled per turn so it can't
-   *  be copied verbatim and the system prefix stays byte-stable. Empty string if the NPC has none. */
   private voiceExample(): string {
     const pool = buildExamplePool(this.profile.speechStyle, this.profile.fewShotExamples);
     if (pool.length === 0) return '';

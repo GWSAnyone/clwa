@@ -161,6 +161,23 @@ Collective-membership primitive. `AgentState.factions?: string[]` (open keys). *
 
 The engine's own prose/typed-content is sourced from modules via registries (semantic INV-14 «zero module-specific strings» now PERFECT). Beyond `SECRET_DIRECTIVE_BUILDERS`: **`registerRoleDirectiveBuilder`** (role-section prose), **`registerBeliefPhrasing`** (per-event-type NL phrasing; neutral fallback in engine), **`registerDialogueEffectHandler`** + opaque `playerState` + `onPlayerObserve` (player-journal/accusation moved to the crime module), **`REQUIREMENT_CHECKERS` / `POST_TARGET_REQUIREMENT_CHECKERS` / `registerTargetEnricher`** (affordance requirements), open `capabilities: Record<string,boolean>` + `hasCapability()` (was typed crime flags), `BELIEF_SOURCE.GOSSIP` (was hardcoded `'rumor'`). `CrimeScene` → genre-neutral **`SceneResidue`** (crimeType→sceneType, perpetratorId→actorId, victimId→affectedId, processKill→processAgentDeath).
 
+### Layered Prompt & Model Routing (M6 — NPC Brain)
+
+NPC roleplay quality is engineered through a **3-layer prompt** + **context engineering** + **conscious model routing**, all data-driven (editable in the World Editor, INV-14/INV-21 clean).
+
+**Prompt layers** (`agent.ts`):
+- **L1 scaffold** — universal, genre-neutral guardrails (speak-aloud-only, language lock, knowledge-boundary, in-character, first-person, brevity). Localized en/ru. Engine default `defaultScaffold(lang)`; a world may override via `WorldConfig.scaffold` (genre-neutral by contract). Goes in the **system** prompt.
+- **L2 persona** — background / personality prose / motivation / speech-style description / secret / inner-conflict. Byte-stable per NPC. Also **system**. (L1+L2 = byte-stable prefix → claude-code warm-session + LM-Studio KV-cache both reuse it; volatile state must never leak here.)
+- **L3 volatile state** — current location/mood, "What you know" (top beliefs), role directives, relevant memories, rotated voice example, then the **critical rule restated LAST** (`finalReminder`, beats small-model instruction-attenuation). Goes in the **user** turn only.
+
+**Context engineering:** unified belief ranking (`getTopBeliefs`, confidence×recency) feeds both prompt + memory; memory recall via `compositeScore` with a degenerate-query guard; reflection output sanitized; few-shot voice examples (`AgentProfile.fewShotExamples`, authored per-world-language) sampled one-per-turn into L3 so the prefix stays stable and lines can't be copied verbatim.
+
+**Model routing** (`WorldConfig.llm`, fully replaces the default router): per-task provider/model/maxTokens/sampling + `warm` (reuse claude session, skips cold-spawn) + `schemaInPrompt` (inject schema vs native `--json-schema`) + `fallback`. Millhaven live: volition/il/embeddings/npc-dialogue → local Qwen; dialogue → haiku (Qwen fallback); reflection/verdict → sonnet. **No paid Anthropic API** — claude-code subscription CLI + local LM Studio only.
+
+**Chat-staleness TTL:** player short-term chat (`_chatHistory` + rolling summary + warm claude session) resets only after a real-time gap > `WorldConfig.chatStaleMs` (default 5 min) since the last turn with that NPC — a brief glance away keeps continuity, a real absence starts fresh. Long-term vector memory is untouched. Engine + provider session reset together (`clearChatHistory` → `resetAgentSessions`) or they desync.
+
+**Harness** (`tools/npc-brain/`): same fixtures × 3 models (Qwen / Haiku / Sonnet), LLM-as-judge scoring + objective tokens/latency/cost/schema-pass → routing decisions made on data, not by eye.
+
 ---
 
 ## Crime Prevention (M2)
@@ -227,7 +244,7 @@ packages/
                     bootstrap, position manager, llm-usage-tracker, logger (timestamped)
     public/       — game.html Web UI (Canvas2D; legacy index.html dropped — root serves the game)
 worlds/millhaven/ — JSON world data (NPC profiles + gold/inventory/factions, locations, relationships+standing, motives, secrets, topics)
-tools/world-editor/ — standalone world JSON editor (port 3001, registry-driven; edits attributes/inventory/factions/standing + LLM routing)
+tools/world-editor/ — standalone world JSON editor (port 3001, registry-driven; edits attributes/inventory/factions/standing + LLM routing + L1 scaffold/language/chat-TTL + per-NPC few-shot)
 tests/            — 19 test files, 262+ tests (architecture, boot-smoke, save-load, cg-v2, heat, m3-systems, cg-integration, regression, world-data, attributes, inventory, relationships-factions, living-millhaven, genre-neutrality guard)
 ```
 

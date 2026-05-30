@@ -243,6 +243,12 @@ export async function resetAgentSessions(agentId: string): Promise<void> {
   );
 }
 
-// ─── Engine bootstrap: единственная инфраструктурная задача ────────
+// ─── Engine bootstrap: universal infrastructure tasks (genre-neutral, registered by the engine itself
+//     rather than a content module — every world needs them regardless of genre) ────────
 
 registerLlmTask('embeddings', { requiresEmbeddings: true });
+// Rolling chat-history summary (agent.ts:summarizeIntoHistory) — folds evicted player-chat turns into a
+// one-line summary so context older than the window isn't lost. Plain text output, no special requirements.
+// Engine chat infrastructure (like embeddings), not world content → registered here, not in a module, so it
+// is visible in the World Editor task list + checked by validateLlmRouterContract for ALL worlds.
+registerLlmTask('history-summary', {});

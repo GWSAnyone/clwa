@@ -47,6 +47,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | Milestone | Описание | Версия | Статус |
 |-----------|---------|--------|--------|
 | **Milestone 2** | Detective Toolkit — accusation, evidence presentation, prevention, journal v2 | v0.12 | Done (backend + Web UI) |
+| **Milestone 6** | NPC Brain — layered prompt (L1 scaffold / L2 persona / L3 volatile), context engineering, model routing (Qwen/Haiku/Sonnet), chat-staleness TTL, all data-driven in World Editor | `feature/npc-brain` | Implemented + verified (tsc 0, 280 tests, auditor); live walkthrough + merge pending |
 
 ### Engine подсистемы (17 реализовано)
 
