@@ -17,6 +17,20 @@ interface TrackedMemory {
   importance: number;
 }
 
+/** Strip common LLM preface/quote artifacts ("Here is the insight:", surrounding quotes) and reject
+ *  empty/degenerate output. Reflections are stored at high importance and feed future recall, so an
+ *  un-sanitized "Here is the insight: ..." or empty string would stick and pollute the agent's context. */
+function sanitizeReflection(raw: string | null): string {
+  const fallback = 'Something has changed, but I cannot put it into words.';
+  if (!raw) return fallback;
+  const s = raw.trim()
+    .replace(/^(here(?:'s| is)\s+(?:the\s+|my\s+)?(?:insight|realization|reflection|epiphany)\s*:?\s*)/i, '')
+    .replace(/^(insight|realization|reflection)\s*:\s*/i, '')
+    .replace(/^["'«]+|["'»]+$/g, '')
+    .trim();
+  return s.length > 0 ? s : fallback;
+}
+
 export class ReflectionTracker {
   readonly config: ReflectionConfig;
   private accumulatedImportance: number = 0;
@@ -75,7 +89,7 @@ Respond with ONLY the insight, nothing else. No quotes, no prefixes.`;
       agentContext: { id: agentId },
     });
 
-    return result ?? 'Something has changed, but I cannot put it into words.';
+    return sanitizeReflection(result);
   }
 
   /** Reset tracker after reflection is stored */
