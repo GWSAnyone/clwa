@@ -265,19 +265,10 @@ export class Agent {
     options?: { beliefsTopN?: number },
   ): NpcMemoryState {
     const beliefsTopN = options?.beliefsTopN ?? 30;
-    const allBeliefs = this.state.beliefs?.getAllBeliefs() ?? [];
     const allRelationships = this.state.relationships?.getAllRelationships() ?? [];
-
-    // composite score: confidence × recency_factor (newer beliefs weighted higher)
-    const currentDay = this.state.currentDay;
-    const scoredBeliefs = allBeliefs
-      .map(b => {
-        const daysSinceUpdate = Math.max(0, currentDay - b.lastUpdated);
-        const recencyFactor = 1 / (1 + daysSinceUpdate * 0.1); // 0.91 at 1d, 0.5 at 10d
-        return { belief: b, score: b.confidence * recencyFactor };
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, beliefsTopN);
+    // Single belief ranking (confidence × recency) — shared with the prompt path via getTopBeliefs
+    // (was an inline confidence×recency copy here that diverged from summarizeForPrompt's confidence-only).
+    const topBeliefs = this.state.beliefs?.getTopBeliefs(beliefsTopN, { currentDay: this.state.currentDay }) ?? [];
 
     return {
       gameMinute: currentGameMinute,
@@ -296,7 +287,7 @@ export class Agent {
         sentiment: r.sentiment,
         trust: r.trust,
       })),
-      beliefs: scoredBeliefs.map(({ belief: b }) => ({
+      beliefs: topBeliefs.map((b) => ({
         eventType: b.eventType,
         subject: b.subject,
         subjectName: b.subject ? nameResolver(b.subject) : undefined,
@@ -425,7 +416,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
     // 1. Beliefs section (structured, not keyword-matched) — universal belief summary
     const beliefs = this.state.beliefs;
     if (beliefs) {
-      const summary = beliefs.summarizeForPrompt(3, this.nameResolver);
+      const summary = beliefs.summarizeForPrompt(3, this.nameResolver, this.state.currentDay);
       if (summary) {
         sections.push(`## What you know\n${summary}`);
       }

@@ -1,4 +1,4 @@
-import { getBeliefSourceLabel, getSourceTransferWeight, getSourceDecayRate, getEventTypeDecayRate, getEventLabel, phraseBelief } from './event-registry';
+import { getBeliefSourceLabel, getSourceTransferWeight, getSourceDecayRate, getEventTypeDecayRate, getEventLabelSafe, phraseBelief } from './event-registry';
 
 // BeliefSource is a string — modules can add new sources via registry
 export type BeliefSource = string;
@@ -23,6 +23,19 @@ export interface Belief {
   gameDay: number;
   /** Game day when last reinforced */
   lastUpdated: number;
+}
+
+/** Recency-weighted belief score (confidence × recencyFactor) — newer beliefs rank higher. The SINGLE ranking
+ *  shared by the prompt path (summarizeForPrompt) and the memory snapshot (Agent.serializeMemoryState) so both
+ *  order beliefs identically. recencyFactor: ~0.91 at 1 day, 0.5 at 10 days since last reinforcement. */
+function beliefRecencyScore(b: Belief, currentDay: number): number {
+  const daysSince = Math.max(0, currentDay - b.lastUpdated);
+  return b.confidence * (1 / (1 + daysSince * 0.1));
+}
+
+/** Human recency cue for a belief line, mirroring the memory time labels (today / yesterday / N days ago). */
+function beliefRecencyLabel(daysSince: number): string {
+  return daysSince <= 0 ? 'today' : daysSince === 1 ? 'yesterday' : `${daysSince} days ago`;
 }
 
 export class BeliefManager {
@@ -118,25 +131,41 @@ export class BeliefManager {
     return Array.from(this.beliefs.values()).sort((a, b) => b.confidence - a.confidence);
   }
 
+  /** Top beliefs ranked by confidence × recency — the SINGLE ranking, used by summarizeForPrompt AND
+   *  Agent.serializeMemoryState (was two divergent orderings: confidence-only vs an inline confidence×recency).
+   *  Without currentDay falls back to confidence DESC (getAllBeliefs order). `requireParticipant` keeps only
+   *  beliefs that name a subject/object (the prompt wants those); `topic` prefers a matching eventType. */
+  getTopBeliefs(maxBeliefs = 3, opts?: { currentDay?: number; topic?: string; requireParticipant?: boolean }): Belief[] {
+    let pool = this.getAllBeliefs();
+    if (opts?.requireParticipant) pool = pool.filter((b) => b.object != null || b.subject != null);
+    if (opts?.topic) {
+      const onTopic = pool.filter((b) => b.eventType === opts.topic);
+      if (onTopic.length > 0) pool = onTopic;
+    }
+    if (opts?.currentDay != null) {
+      const cd = opts.currentDay;
+      pool = [...pool].sort((a, b) => beliefRecencyScore(b, cd) - beliefRecencyScore(a, cd));
+    }
+    return pool.slice(0, maxBeliefs);
+  }
+
   /** Compact summary for LLM system prompt (2nd person: "You certain: X committed...") */
-  summarizeForPrompt(maxBeliefs = 3, nameResolver?: (id: string) => string): string {
+  summarizeForPrompt(maxBeliefs = 3, nameResolver?: (id: string) => string, currentDay?: number): string {
     const resolveName = nameResolver ?? ((id: string) => id);
-    const beliefs = this.getAllBeliefs()
-      .filter(b => b.object != null || b.subject != null)
-      .slice(0, maxBeliefs);
+    const beliefs = this.getTopBeliefs(maxBeliefs, { currentDay, requireParticipant: true });
     if (beliefs.length === 0) return '';
 
     return beliefs.map((b) => {
       const certainty = b.confidence > 0.8 ? 'certain' : b.confidence > 0.5 ? 'believe' : 'heard rumor';
-      const verb = getEventLabel(b.eventType);
-      if (!verb) return null;
+      const verb = getEventLabelSafe(b.eventType); // safe + warn instead of a silent null-drop
       const who = b.subject ? resolveName(b.subject) : 'someone unknown';
       const target = b.object ? resolveName(b.object) : 'someone';
       const where = b.location ? ` at ${b.location}` : '';
       const how = getBeliefSourceLabel(b.source);
+      const when = currentDay != null ? `, ${beliefRecencyLabel(currentDay - b.lastUpdated)}` : '';
       const relation = phraseBelief({ eventType: b.eventType, source: b.source, confidence: b.confidence, verb, who, target });
-      return `- You ${certainty}: ${relation}${where} (${how})`;
-    }).filter(Boolean).join('\n');
+      return `- You ${certainty}: ${relation}${where} (${how}${when})`;
+    }).join('\n');
   }
 
   /**
@@ -158,13 +187,12 @@ export class BeliefManager {
 
     return beliefs.map((b) => {
       const conf = b.confidence > 0.7 ? 'is convinced' : b.confidence > 0.4 ? 'believes' : 'has heard';
-      const verb = getEventLabel(b.eventType);
-      if (!verb) return null;
+      const verb = getEventLabelSafe(b.eventType); // safe + warn instead of a silent null-drop
       const who = b.subject ? resolveName(b.subject) : 'someone';
       const target = b.object ? resolveName(b.object) : 'someone';
       const relation = phraseBelief({ eventType: b.eventType, source: b.source, confidence: b.confidence, verb, who, target });
       return `${ownerName} ${conf} ${relation}`;
-    }).filter(Boolean).join('. ');
+    }).join('. ');
   }
 
   /** Serializable snapshot */

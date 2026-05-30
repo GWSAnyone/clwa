@@ -635,14 +635,18 @@ export function registerCrimeJusticeModule(): void {
     agent.state.relationships.adjustTrust(perpetratorId, -0.4);
   });
 
-  // Belief phrasing: frame a belief's core relation as wrongdoing ("X committed murder against Y").
-  // Moved out of the engine (beliefs.summarizeForPrompt/Memory + il question-handler hardcoded this).
-  // In the crime milestone every transferable belief is a crime, so it applies unconditionally —
-  // matching the engine's prior behaviour exactly. (When multiple content modules coexist, scope by
-  // eventType/category instead.)
-  registerBeliefPhrasing(({ verb, who, target }) =>
-    target != null ? `${who} committed ${verb} against ${target}` : `${who} committed ${verb}`,
-  );
+  // Belief phrasing: frame a belief's core relation in natural English, scoped PER eventType so the line reads
+  // grammatically ("stole from Y" / "attacked Y" / "killed Y") instead of the old blanket "committed theft
+  // against Y". Unknown crime event types fall back to the blanket "committed {verb} against {target}" form.
+  // Moved out of the engine (was hardcoded in beliefs.summarizeForPrompt/Memory + il question-handler).
+  registerBeliefPhrasing(({ eventType, verb, who, target }) => {
+    switch (eventType) {
+      case 'NPC_KILLED':   return target != null ? `${who} killed ${target}` : `${who} killed someone`;
+      case 'GOODS_STOLEN': return target != null ? `${who} stole from ${target}` : `${who} committed theft`;
+      case 'SELF_JUSTICE': return target != null ? `${who} attacked ${target}` : `${who} attacked someone`;
+      default:             return target != null ? `${who} committed ${verb} against ${target}` : `${who} committed ${verb}`;
+    }
+  });
 
   // Role directive: crime-framed interpretation of an agent's beliefs for the prompt's role section.
   // Moved out of the engine's buildRoleDirective (was hardcoded crime English in agent.ts) so the
