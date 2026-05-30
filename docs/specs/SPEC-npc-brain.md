@@ -1,7 +1,8 @@
 # SPEC: NPC Brain — maximize roleplay quality via layered prompts + context engineering + model routing
 
 > **Milestone**: M6 (NPC Brain — roleplay quality; LLM + context tuning). Follows M5 (Engine Generalization).
-> **Status**: 🔨 IMPLEMENTING — clwa-auditor reviewed the plan (verdict: safe as-phased, 0 design violations);
+> **Status**: 🔨 IMPLEMENTING — **P0 ✅ · P1 ✅ (auditor-verified) · P2 🟡 3/4 (3b history-WS deferred) · P3–P5 pending**.
+>   Branch `feature/npc-brain` (not pushed). clwa-auditor reviewed the plan (verdict: safe as-phased, 0 design violations);
 >   all 10 amendments folded in (dual-path building blocks, CLAUDE.local.md volatile-out, unified getTopBeliefs,
 >   judge methodology, LM-Studio cache empirical check, history-summary task + warm-session reset, server-side
 >   persona builder, reflection-mechanism split, IL trade-category registry, INV-21 field defaults).
@@ -99,7 +100,7 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
 
 ## Фазы (каждая: tsc 0 + `bun test` зелёный + игра запускаема; коммит по фазе)
 
-### Phase 0 — Comparison harness + baseline (данные до изменений)
+### Phase 0 — Comparison harness + baseline ✅ DONE (harness a4ee28e · baseline 08a9d22)
 - Свести существующие bench-инструменты (`tools/bench-*`) в один **harness**: фикстуры одинаковых сценариев на ВСЕ
   6 задач (`volition`, `il`, `verdict`, `reflection`, `dialogue`, `npc-dialogue`) из реальных ситуаций Millhaven
   (Элару спрашивают о Гаррете; кража при свидетеле; обвинение со слабой уликой; рефлексия после события; NPC↔NPC о
@@ -120,7 +121,7 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
 - **Зафиксировать baseline** текущих промптов (это и регресс-оракул для последующих фаз).
 - *Verify*: отчёт-таблица по задачам × моделям; харнесс воспроизводим (фикстуры в репо).
 
-### Phase 1 — Layered prompt на `dialogue` (вертикальный срез)
+### Phase 1 — Layered prompt на `dialogue` ✅ DONE (1583ad2 + ddfe7b6 · auditor fixes 2d2f8fa)
 - Ввести три кирпича `buildSharedScaffold()` / `buildPersonaBlock(agent)` / `buildVolatileContext(agent, query)`
   (см. «Dual-path сборка»); собрать оба маршрута из них. `buildSystemPrompt` становится тонкой обёрткой над L1+L2.
 - **Унифицировать две персоны**: единый `buildPersonaBlock` (server-side) → один источник; убрать конфликт
@@ -142,19 +143,18 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
   4-5 на baseline), Qwen остаётся на структурных задачах; (c) одного knowledge-boundary правила Qwen'у мало против
   embellishment — для high-stakes реплик опционально name/fact post-check (deferred).
 
-### Phase 2 — Context-assembly fixes (беливы / память / история)
-- **Беливы** (`beliefs.ts`): **единая `getTopBeliefs(k, {recency, relevance, topic})`** для ОБОИХ путей (устраняет
-  расхождение `serializeMemoryState` vs `summarizeForPrompt`); композитное ранжирование (confidence × свежесть) +
-  topic-релевантность; recency-cue на строке белива; порядок по возрастанию (сильнейший — последним); дедуп между
-  `## What you know` и role-директивой; per-event фрейзинг через `registerBeliefPhrasing` (theft→«stole from Y»);
-  заменить тихий null-drop на safe+warn.
-- **Память** (`memory.ts`/`decay.ts`): cap инъекции 5-8 (не 30); recency по last-access (не creation); согласовать
-  нормализацию (decay.ts ÷10 vs memory.ts raw); guard на вырожденный recall-запрос.
-- **История диалога** (`agent.ts`/`conversation.ts`): rolling-summary сбрасываемых тёрнов **через
-  зарегистрированный task `generate('history-summary')`** (роут на Qwen — дёшево/быстро, сжатие; идёт через facade →
-  INV-01 семафор, usage-tracking, cost-gate; не прямой fetch); **вызвать `clearChatHistory()` при смене NPC** — и она
-  должна ТАКЖЕ сбрасывать warm-сессию этого NPC в `ClaudeSessionPool` (иначе engine думает «история пуста», а warm
-  claude-сессия помнит всё — рассинхрон, P6); окно истории 2-3 строки для NPC↔NPC; дедуп «Player said…/I replied…» в памяти.
+### Phase 2 — Context-assembly fixes (беливы / память / история) 🟡 3/4 DONE — 3b (история-WS) отложено
+- **✅ Беливы** (`43b32e1`): единая `getTopBeliefs(k, {currentDay, topic, requireParticipant})` для обоих путей
+  (`summarizeForPrompt` + `serializeMemoryState` — было два расходящихся ранжирования); recency-cue на строке белива;
+  `getEventLabelSafe` вместо тихого null-drop; per-event фрейзинг в crime-модуле (theft→«stole from Y», kill→«killed Y»,
+  attack→«attacked Y»; blanket-fallback для прочих). ⏸ дедуп `## What you know` ↔ role-директива — отложено (low-value).
+- **✅ Память** (`bb6a3be`): `recall` через единый нормализованный `compositeScore` (÷10 внутри — relevance больше не
+  тонет под importance) + guard на вырожденный запрос. cap оставлен 5 (баг был в нормализации, не в количестве).
+  ⏸ recency по last-access — отложено (нужно новое поле `MemoryEntry` + миграция save/Qdrant).
+- **🟡 История диалога**: ✅ окно последних 3 строк для NPC↔NPC (`f3945fc`). ⏸ **3b отложено (свежим заходом, нужен
+  живой прогон)**: `clearChatHistory()` при смене NPC (поднять `chatAgentId` в per-connection WS-состояние) +
+  `resetAgentSession(agentId)` (изменение контракта `LlmProvider` + сброс warm-сессии в `ClaudeSessionPool`) +
+  `history-summary` task (Qwen-роут, сжатие сброшенных тёрнов). Деликатная WS/provider-интеграция, payoff чисто рантаймовый — не покрыт тестами.
 - *Verify*: харнесс `dialogue`/`npc-dialogue` ↑; unit-тесты на ранжирование/нормализацию/историю.
 
 ### Phase 3 — Propagate на остальные задачи (портируемый промпт + reason-before-answer)
