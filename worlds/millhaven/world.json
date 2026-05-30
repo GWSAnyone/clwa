@@ -487,6 +487,15 @@
           "maxTokens": 400,
           "sampling": {
             "temperature": 0.15
+          },
+          "fallback": {
+            "provider": "claude-code",
+            "model": "haiku",
+            "maxTokens": 400,
+            "sampling": {
+              "temperature": 0.15
+            },
+            "schemaInPrompt": true
           }
         },
         "embeddings": {

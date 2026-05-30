@@ -229,6 +229,12 @@ export async function extractDialogueMeaning(
     `7. extractionConfidence: 0-1 your overall confidence in this extraction`,
     ``,
     `MOST messages are plain conversation: just a speechAct (+ maybe questions/claims). requestedAction, emotionalPressure, and tradeIntent are RARE — include them only on clear, explicit evidence, never by default.`,
+    ``,
+    `Examples (these calibrate WHEN to omit the optional fields — names below are placeholders):`,
+    `• "Good morning, how are you?" → {"speechAct":"smalltalk","extractionConfidence":0.9} and NOTHING else (no claims, no questions, no pressure, no requestedAction).`,
+    `• "I heard <name> took goods from the market — do you know anything about it?" → speechAct "accuse" (or "inform"), ONE claim (subject=<name>, source=heard), ONE question; and NO emotionalPressure (curiosity is not pressure).`,
+    `• "Tell me where <name> was, or you'll regret it." → speechAct "threaten" + emotionalPressure {type: threat, high intensity}. This is the RARE case where pressure genuinely applies.`,
+    ``,
     `Respond ONLY with valid JSON. OMIT any field that doesn't apply — do not include empty arrays, empty objects, or "null"-string placeholders.`,
   ].join('\n');
 
