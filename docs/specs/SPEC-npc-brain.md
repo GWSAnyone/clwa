@@ -1,7 +1,7 @@
 # SPEC: NPC Brain — maximize roleplay quality via layered prompts + context engineering + model routing
 
 > **Milestone**: M6 (NPC Brain — roleplay quality; LLM + context tuning). Follows M5 (Engine Generalization).
-> **Status**: 🔨 IMPLEMENTING — **P0 ✅ · P1 ✅ (auditor-verified) · P2 🟡 3/4 (3b history-WS deferred) · P3–P5 pending**.
+> **Status**: 🔨 IMPLEMENTING — **P0 ✅ · P1 ✅ (auditor-verified) · P2 🟡 3/4 (3b history-WS deferred) · P3 ✅ · P4–P5 pending**.
 >   Branch `feature/npc-brain` (not pushed). clwa-auditor reviewed the plan (verdict: safe as-phased, 0 design violations);
 >   all 10 amendments folded in (dual-path building blocks, CLAUDE.local.md volatile-out, unified getTopBeliefs,
 >   judge methodology, LM-Studio cache empirical check, history-summary task + warm-session reset, server-side
@@ -157,7 +157,7 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
   `history-summary` task (Qwen-роут, сжатие сброшенных тёрнов). Деликатная WS/provider-интеграция, payoff чисто рантаймовый — не покрыт тестами.
 - *Verify*: харнесс `dialogue`/`npc-dialogue` ↑; unit-тесты на ранжирование/нормализацию/историю.
 
-### Phase 3 — Propagate на остальные задачи (портируемый промпт + reason-before-answer)
+### Phase 3 — Propagate на остальные задачи ✅ DONE (verdict 41b88d6 · reflection+npc-dialogue 46bd948 · il 2660341)
 - **`npc-dialogue`**: tight character block + ростер сущностей (нет выдуманных имён) + persona-reinject в конце;
   presence_penalty только тут/в reflection.
 - **`il`**: 2-3 inline few-shot (benign→{speechAct,conf}, claim+question, threat); пример с null-полем (INV-07);
@@ -170,7 +170,13 @@ claude-code → ТО ЖЕ `buildSystemPrompt` (как `--system-prompt`) ПЛЮ�
   двум механизмам (P7): разграничить, не объединять** — `ReflectionTracker` (threshold, importance≥50) = «эпифании»
   в VectorMemory; `consolidateObservations` (периодическая) = «дневник» в `reflections.md`. Разные триггеры →
   одно событие не запускает оба; дедуп новой рефлексии против существующих в `reflections.md`.
-- *Verify*: харнесс по каждой задаче vs baseline; контракт-тесты (schema-pass-rate, retry).
+- *Verify*: tsc 0 + 272 теста на каждом шаге (харнесс/baseline — в Phase 5, без LM Studio сейчас).
+- **✅ Сделано**: verdict (reason-before-verdict + severity-диапазоны в опциях + калибровочные примеры + «вес улик > демеанора»);
+  reflection (`sanitizeReflection`: strip префиксов/кавычек + non-empty перед imp 9); npc-dialogue (`presencePenalty` 0.5
+  на Qwen-роуте против cross-NPC повторов; grounding уже от L1-scaffold + L3 «People you know» из Phase 1);
+  il (3 genre-neutral few-shot против над-экстракции + claude-code/haiku **fallback-маршрут**).
+- **⏸ Отложено**: trade-categories registry (INV-14 cleanliness, low behavioral value); il reason-поле (extraction, не decision);
+  evidence cap/rank в verdict; разграничение двух механизмов рефлексии (P7); дедуп `## What you know` ↔ role-секция.
 
 ### Phase 4 — World Editor (всё управляемое, на данных)
 - Редактируемые из редактора: **Layer 1 каркас** (общий текст guardrails — поле `WorldConfig`, дефолт при отсутствии
