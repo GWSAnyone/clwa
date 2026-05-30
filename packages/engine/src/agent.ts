@@ -69,6 +69,13 @@ export class Agent {
     await resetAgentSessions(this.profile.id).catch(() => { /* best-effort session reset */ });
   }
 
+  /** True if the player has been away from THIS NPC long enough (real time) that the next chat turn should
+   *  start a fresh conversation. First turn (`_lastChatMs === 0`) is never stale; a clock that jumps backwards
+   *  (NTP) yields a negative delta → not stale (conservative: keep continuity). Boundary is strict (`>`). */
+  private _isStaleConversation(now: number): boolean {
+    return this._lastChatMs > 0 && now - this._lastChatMs > this.chatStaleMs;
+  }
+
   constructor(
     profile: AgentProfile,
     state: AgentState,
@@ -134,7 +141,7 @@ export class Agent {
     // start fresh — clear the short-term buffer + rolling summary + warm session. A brief glance away keeps
     // continuity; only a real gap resets. (Long-term vector memory persists regardless.)
     const now = Date.now();
-    if (this._lastChatMs > 0 && now - this._lastChatMs > this.chatStaleMs) {
+    if (this._isStaleConversation(now)) {
       await this.clearChatHistory();
     }
     this._lastChatMs = now;
