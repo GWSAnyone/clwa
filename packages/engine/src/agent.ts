@@ -32,6 +32,9 @@ export interface AgentOptions {
   /** World UI/speech language (from WorldConfig.language). Selects the localized L1 scaffold + the final
    *  language directive. Default 'en'. Universal/genre-neutral — not module vocabulary. */
   language?: 'en' | 'ru';
+  /** Real-time ms gap after which a player chat counts as a NEW conversation: the short-term buffer + warm
+   *  session reset on the next message. A brief glance away keeps continuity. Default 300000 (5 min). */
+  chatStaleMs?: number;
 }
 
 export class Agent {
@@ -46,19 +49,24 @@ export class Agent {
   readonly nameResolver: (id: string) => string;
   /** World speech language — picks the localized scaffold + final directive. Default 'en'. */
   private language: 'en' | 'ru';
+  /** Real (wall-clock) ms of the last player chat turn with this NPC (0 = none yet) — drives the stale-conversation TTL. */
+  private _lastChatMs = 0;
+  /** Real-ms gap after which the chat buffer is treated as a new conversation (reset on the next message). */
+  private chatStaleMs: number;
   /** Short-term conversation buffer for multi-turn player chat (last N exchanges) */
   private _chatHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
   /** Rolling one-sentence summary of chat turns evicted from _chatHistory — so context older than ~6
    *  exchanges isn't lost. Updated fire-and-forget on trim; reset by clearChatHistory. */
   private _historySummary = '';
 
-  /** Clear conversation buffer (called when the player switches to a different NPC). Also drops any warm
-   *  provider session for this NPC (claude-code) so the next conversation starts clean — engine `_chatHistory`
-   *  and the provider's in-session memory must reset together, or they desync (provider "remembers" old turns). */
-  clearChatHistory(): void {
+  /** Start a fresh conversation: clear the short-term buffer + rolling summary AND reset the provider's warm
+   *  session for this NPC (claude-code) — they must reset together or they desync (the warm process would
+   *  otherwise still "remember" the old turns). Driven by the stale-conversation TTL in chatStream. Long-term
+   *  (vector) memory is untouched: the NPC still remembers you, it just won't replay a stale verbatim thread. */
+  async clearChatHistory(): Promise<void> {
     this._chatHistory = [];
     this._historySummary = '';
-    void resetAgentSessions(this.profile.id).catch(() => { /* best-effort session reset */ });
+    await resetAgentSessions(this.profile.id).catch(() => { /* best-effort session reset */ });
   }
 
   constructor(
@@ -73,6 +81,7 @@ export class Agent {
     this.locationResolver = options?.locationResolver ?? ((id) => id);
     this.nameResolver = options?.nameResolver ?? ((id) => id);
     this.language = options?.language ?? 'en';
+    this.chatStaleMs = options?.chatStaleMs ?? 300_000; // 5 real minutes
     this.reflectionTracker = new ReflectionTracker({
       ...options?.reflection,
     });
@@ -121,6 +130,15 @@ export class Agent {
     onToken: (token: string) => void,
     additionalContext?: string,
   ): Promise<string> {
+    // Stale-conversation TTL: if the player was away from THIS NPC longer than chatStaleMs (real time),
+    // start fresh — clear the short-term buffer + rolling summary + warm session. A brief glance away keeps
+    // continuity; only a real gap resets. (Long-term vector memory persists regardless.)
+    const now = Date.now();
+    if (this._lastChatMs > 0 && now - this._lastChatMs > this.chatStaleMs) {
+      await this.clearChatHistory();
+    }
+    this._lastChatMs = now;
+
     const memories = await this.memory.recall(userMessage, this.state.currentDay, 5);
     const system = this.buildSystemPrompt();
     const userContext = this.buildUserContext(memories, additionalContext, true);

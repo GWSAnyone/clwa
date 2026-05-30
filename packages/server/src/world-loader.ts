@@ -81,6 +81,8 @@ interface WorldJson {
     moodBias?: number;
     /** World speech language for NPC prompts (en|ru). Default 'en'. Threaded to Agent + WorldConfig. */
     language?: 'en' | 'ru';
+    /** Real-time ms gap after which a player's next chat with an NPC starts fresh. Default 300000 (5 min). */
+    chatStaleMs?: number;
   };
 }
 

@@ -252,6 +252,10 @@ export interface WorldConfig {
   /** World speech language for NPC prompts — selects the localized L1 scaffold + final language directive
    *  in Agent prompt-building. Universal/genre-neutral (no module vocabulary). Default 'en'. */
   language?: 'en' | 'ru';
+  /** Real-time (wall-clock) ms gap after which a player's next chat with an NPC starts a NEW conversation:
+   *  the short-term buffer + rolling summary + warm provider session reset. A brief glance away keeps
+   *  continuity; only a real absence resets. Long-term (vector) memory is untouched. Default 300000 (5 min). */
+  chatStaleMs?: number;
   /** Max memories per NPC before eviction (default: 200) */
   memoryCapacity?: number;
   /** Memory consolidation tick handler config (Stage 7a) — observations → reflections compression */
@@ -383,6 +387,7 @@ export const DEFAULT_WORLD_CONFIG: WorldConfig = {
   frequencyPenalty: 0.3,
   presencePenalty: 0.2,
   language: 'en',
+  chatStaleMs: 300000,
 };
 
 export const DEFAULT_MOVEMENT_CONFIG: NpcMovementConfig = {
