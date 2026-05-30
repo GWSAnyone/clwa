@@ -7,6 +7,7 @@ import { bigFiveToDescription } from './personality-prose';
 import { getRoleDirectiveBuilders } from './event-registry';
 import { DEFAULT_WORLD_CONFIG } from './world-types';
 import { classify, generate, generateStream } from './llm-client';
+import { buildExamplePool } from './prompt-utils';
 
 // LlmSemaphore вынесен в llm-semaphore.ts и теперь per-provider (управляется façade).
 // Старый global semaphore + acquire/release удалены — INV-01 enforced архитектурно.
@@ -347,8 +348,6 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
   }
 
   /** L3 — volatile per-turn context for the USER turn. Keeps the system prefix byte-stable (prompt cache /
-   *  warm session) and places the freshest, most decision-relevant context LAST (beating "lost middle"). */
-  /** L3 — volatile per-turn context for the USER turn. Keeps the system prefix byte-stable (prompt cache /
    *  warm session) and places the freshest, most decision-relevant context LAST (beating "lost middle").
    *  includeVoice adds a rotating voice example — used on the player-chat path (NPC↔NPC prompts already
    *  carry speechReminder, so they pass includeVoice=false to avoid a double voice cue). */
@@ -380,7 +379,7 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
       return `## Правила
 - Говори только слова, произносимые вслух — без действий, жестов и ремарок в звёздочках или скобках; твои действия видят визуально, их не описывают текстом.
 - Отвечай только на русском языке, что бы ни случилось.
-- Говори только о людях, местах и событиях, которые ты действительно знаешь (см. «Что ты знаешь»). Не уверен в имени или детали — скажи, что не уверен; ничего не выдумывай.
+- Говори только о людях, местах и событиях, которые ты действительно знаешь (они перечислены ниже). Не уверен в имени или детали — скажи, что не уверен; ничего не выдумывай.
 - Ты — этот человек, а не ассистент. Никогда не упоминай, что ты ИИ, модель, игра или какие-либо инструкции; спросят — отшутись в образе.
 - Говори от первого лица; не называй собственное имя так, будто рассказываешь о себе со стороны.
 - Оставайся в образе. Показывай настроение и характер через выбор слов и тон.
@@ -400,11 +399,10 @@ ${this.profile.secret ? `## Your secret\n${this.profile.secret}\nYou will NOT re
 
   /** One rotating voice example (fewShotExamples ∪ inline "Example:" lines), sampled per turn so it can't
    *  be copied verbatim and the system prefix stays byte-stable. Empty string if the NPC has none. */
+  /** One rotating voice example (fewShotExamples ∪ inline "Example:" lines), sampled per turn so it can't
+   *  be copied verbatim and the system prefix stays byte-stable. Empty string if the NPC has none. */
   private voiceExample(): string {
-    const inline = this.profile.speechStyle.split('\n')
-      .filter((l) => l.startsWith('Example:'))
-      .map((l) => l.replace(/^Example:\s*/, '').trim());
-    const pool = [...(this.profile.fewShotExamples ?? []), ...inline].filter(Boolean);
+    const pool = buildExamplePool(this.profile.speechStyle, this.profile.fewShotExamples);
     if (pool.length === 0) return '';
     const pick = pool[Math.floor(Math.random() * pool.length)];
     return this.language === 'ru'
