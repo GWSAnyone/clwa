@@ -419,7 +419,7 @@ export function registerCrimeStepHandlers(): void {
     // 2. Get available verdicts for this crime severity
     const available = getAvailableVerdicts(crimeSeverity);
     const verdictIds = available.map(v => v.id);
-    const verdictDescriptions = available.map(v => `${v.id}: ${v.label}`).join('\n');
+    const verdictDescriptions = available.map(v => `${v.id}: ${v.label} (fits severity ${v.severityRange[0]}-${v.severityRange[1]})`).join('\n');
 
     // 3. Gather evidence grouped by quality
     const evidence = gatherEvidenceGrouped(target, agents);
@@ -457,7 +457,9 @@ export function registerCrimeStepHandlers(): void {
       `AVAILABLE VERDICTS (choose one appropriate to evidence strength and crime severity):`,
       verdictDescriptions,
       ``,
-      `Consider: strong evidence + severe crime → harsher verdict. Weak evidence → acquittal. Moderate crime → proportionate response.`,
+      `Weigh the EVIDENCE first; the accused's demeanour is unreliable on its own (the guilty can feign calm, the innocent can seem nervous). Be proportionate to evidence strength AND crime severity.`,
+      `Examples: strong evidence + severe crime → imprisonment or exile. Moderate evidence + moderate crime → fine or warning. Only weak/hearsay evidence → acquittal, regardless of how severe the crime would be.`,
+      `First state your reasoning weighing the evidence, THEN choose the verdict.`,
     ].join('\n');
 
     const verdictSchema: LlmJsonSchema = {
@@ -466,10 +468,10 @@ export function registerCrimeStepHandlers(): void {
       schema: {
         type: 'object',
         properties: {
+          reasoning: { type: 'string', description: 'Weigh the evidence first, then justify the chosen verdict.' },
           verdict: { type: 'string', enum: verdictIds },
-          reasoning: { type: 'string' },
         },
-        required: ['verdict', 'reasoning'],
+        required: ['reasoning', 'verdict'],
         additionalProperties: false,
       },
     };
@@ -477,7 +479,7 @@ export function registerCrimeStepHandlers(): void {
     // 8. LLM call via façade. classify ловит exceptions → null, façade оборачивает acquire/release.
     let chosenVerdict = 'release';
     let reasoning = '';
-    const result = await classify<{ verdict: string; reasoning: string }>('verdict', {
+    const result = await classify<{ reasoning: string; verdict: string }>('verdict', {
       system,
       user,
       schema: verdictSchema,
