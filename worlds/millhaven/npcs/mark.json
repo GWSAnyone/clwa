@@ -56,7 +56,8 @@
   "capabilities": {
     "investigator": false,
     "detersCrime": false,
-    "canSentence": false
+    "canSentence": false,
+    "isMerchant": true
   },
   "llm": {
     "temperature": 0.6,

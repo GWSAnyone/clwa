@@ -7,7 +7,7 @@ import { InMemoryEventStore } from '@clwa/engine';
 import { World, findPath } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
-import { registerCrimeJusticeModule, registerSocialModule, registerEconomyModule, CRIME_CG_RULES, ECONOMY_CG_RULES, PlayerJournal } from '@clwa/modules';
+import { registerCrimeJusticeModule, registerSocialModule, registerEconomyModule, setEconomyWorld, CRIME_CG_RULES, ECONOMY_CG_RULES, PlayerJournal } from '@clwa/modules';
 import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerQuestionTopics, registerDefaultSpeechAct } from '@clwa/engine';
 import {
   registerLlmProvider,
@@ -740,6 +740,10 @@ async function createGameContext(
   const seededGold = Object.keys(worldData.startingAttributes).length;
   const seededFactions = new Set(Object.values(worldData.factionMemberships).flat());
   console.log(`  [+] Demo state: gold on ${seededGold + 1} agents, factions {${[...seededFactions].join(', ')}}, inventory on ${Object.keys(worldData.startingInventory).length + 1}`);
+
+  // M7 E3/P3: late-bind the World into the economy module so its step handlers can move gold via the
+  // conserved E2 transferAttribute (StepExecutionContext carries no World ref).
+  setEconomyWorld(world);
 
   // Stage 5: wire active agents/world для ClaudeCodeProvider.onBeforeCall snapshot
   _setActiveCtxForLlmProvider(agents, world);
