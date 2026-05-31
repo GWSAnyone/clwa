@@ -1,5 +1,6 @@
 import type { EventType, ConsequenceResult, WorldEvent } from '@clwa/engine';
 import { isEventCategory, findPath, BELIEF_SOURCE, hasCapability } from '@clwa/engine';
+import { getPrice } from '@clwa/modules';
 import { broadcast } from './ws';
 import type { GameContext } from './game-context';
 
@@ -251,7 +252,8 @@ export async function handleRequest(
     }
     return Response.json({
       npcName: agent.profile.name,
-      items: agent.profile.shop ?? [],
+      // P6: show the dynamic supply/demand price (same one the buy route charges), not the static profile.shop price.
+      items: (agent.profile.shop ?? []).map((s) => ({ ...s, price: getPrice(agent, s.id) })),
     }, { headers: cors });
   }
 
@@ -624,12 +626,14 @@ export async function handleRequest(
     const entry = merchant.profile.shop?.find((s) => s.id === itemKind);
     if (!entry) return Response.json({ error: 'Item not sold here' }, { status: 400, headers: cors });
     if (world.countItem(merchantId, itemKind) < 1) return Response.json({ error: 'Out of stock', reason: 'out_of_stock' }, { status: 409, headers: cors });
-    if ((world.getAttribute('player', 'gold') ?? 0) < entry.price) return Response.json({ error: 'Not enough gold', reason: 'insufficient_gold' }, { status: 402, headers: cors });
+    // P6: charge the dynamic supply/demand price (E1 drift, same one NPC↔NPC trades use), not the static profile.shop price.
+    const price = getPrice(merchant, itemKind);
+    if ((world.getAttribute('player', 'gold') ?? 0) < price) return Response.json({ error: 'Not enough gold', reason: 'insufficient_gold' }, { status: 402, headers: cors });
     // Atomic: gold player→merchant, item merchant→player (both conserved by the engine primitives).
-    world.transferAttribute('player', merchantId, 'gold', entry.price);
+    world.transferAttribute('player', merchantId, 'gold', price);
     world.transferItem(merchantId, 'player', itemKind, 1);
     return Response.json({
-      ok: true, item: entry.name, kind: itemKind, price: entry.price,
+      ok: true, item: entry.name, kind: itemKind, price,
       playerGold: world.getAttribute('player', 'gold'),
       merchantGold: world.getAttribute(merchantId, 'gold'),
       stockLeft: world.countItem(merchantId, itemKind),

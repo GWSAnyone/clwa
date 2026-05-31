@@ -7,10 +7,10 @@
 import { describe, test, expect, beforeAll } from 'bun:test';
 import {
   Agent, VectorMemory, BeliefManager, RelationshipGraph,
-  AFFORDANCE_REGISTRY, REQUIREMENT_CHECKERS, computeUtility, createAttribute,
+  AFFORDANCE_REGISTRY, REQUIREMENT_CHECKERS, computeUtility, createAttribute, getBeliefCreator,
 } from '@clwa/engine';
 import type { AgentProfile, AffordanceDefinition, AffordanceTarget } from '@clwa/engine';
-import { registerEconomyModule, computePriceTarget, recordDebt, getDebt, clearDebt, isCreditor, findDebtorOf } from '@clwa/modules';
+import { registerEconomyModule, computePriceTarget, recordDebt, getDebt, clearDebt, isCreditor, findDebtorOf, ECONOMY_CG_RULES } from '@clwa/modules';
 
 beforeAll(() => { registerEconomyModule(); }); // idempotent
 
@@ -34,10 +34,18 @@ function makeAgent(id: string, opts?: { gold?: number; hunger?: number; debt?: n
 }
 
 describe('Economy module registration (P3)', () => {
-  test('registers the 8 economic affordances (6 trade + lend/collect_debt), all category "economic"', () => {
+  test('registers the 9 economic affordances (trade + lend/collect_debt + defraud), all category "economic"', () => {
     const eco = AFFORDANCE_REGISTRY.filter((a) => a.category === 'economic');
     const ids = eco.map((a) => a.id).sort();
-    expect(ids).toEqual(['buy', 'collect_debt', 'haggle', 'hoard', 'lend', 'produce', 'sell', 'smuggle']);
+    expect(ids).toEqual(['buy', 'collect_debt', 'defraud', 'haggle', 'hoard', 'lend', 'produce', 'sell', 'smuggle']);
+  });
+
+  test('defraud (P6 fraud) targets a buyer, is wrongdoing (severity>0), and is driven by LOW honesty', () => {
+    const fraud = AFFORDANCE_REGISTRY.find((a) => a.id === 'defraud');
+    expect(fraud).toBeDefined();
+    expect(fraud!.targetFinder).toBe('trade_buyer');
+    expect(fraud!.severity).toBeGreaterThan(0);
+    expect(fraud!.weights.some((w) => w.trait === 'H' && w.direction === 'low')).toBe(true);
   });
 
   test('every economy affordance has its actionVerb (INV-10 — needed for LLM constrained decoding)', () => {
@@ -145,5 +153,37 @@ describe('Economy debt ledger (P5 — E2 overdraft substrate)', () => {
     recordDebt('b2', 'cred1', 25);
     expect(check!(lender, ctx, {} as never)).toBe(true);
     clearDebt('b2');
+  });
+});
+
+describe('Economy SHORTAGE → DEBT_PRESSURE (P6 cross-module CG)', () => {
+  test('ECONOMY_CG_RULES wires SHORTAGE → DEBT_PRESSURE on affected agents', () => {
+    const rule = ECONOMY_CG_RULES.find((r) => r.id === 'shortage-debt-pressure');
+    expect(rule).toBeDefined();
+    expect(rule!.trigger).toBe('SHORTAGE');
+    expect(rule!.targetMode).toBe('affected');
+    expect(rule!.consequence.type).toBe('DEBT_PRESSURE');
+  });
+
+  test('DEBT_PRESSURE belief creator sharpens hunger (→ economy scoring) + records a pressure belief', () => {
+    const creator = getBeliefCreator('DEBT_PRESSURE');
+    expect(creator).toBeDefined();
+    const a = makeAgent('squeezed', { gold: 2, hunger: 0.5 });
+    const before = a.state.attributes!.hunger!.base;
+    const event = { id: 'e', type: 'DEBT_PRESSURE', subject: 'market-square', location: 'market-square', gameDay: 1, importance: 4, payload: {} } as never;
+    creator!(a, event, {} as never, 'DEBT_PRESSURE', null, 'squeezed');
+    expect(a.state.attributes!.hunger!.base).toBeGreaterThan(before);
+    const pressure = a.state.beliefs!.getAllBeliefs().filter((b) => b.eventType === 'DEBT_PRESSURE');
+    expect(pressure.length).toBe(1);
+    expect(pressure[0].object).toBe('squeezed'); // self-pressure
+  });
+
+  test('DEBT_PRESSURE creator lazy-inits hunger if the agent has none', () => {
+    const creator = getBeliefCreator('DEBT_PRESSURE')!;
+    const a = makeAgent('noHunger', { gold: 1 }); // no hunger attribute set
+    const event = { id: 'e2', type: 'DEBT_PRESSURE', subject: 'market-square', location: 'market-square', gameDay: 1, importance: 4, payload: {} } as never;
+    creator(a, event, {} as never, 'DEBT_PRESSURE', null, 'noHunger');
+    expect(a.state.attributes!.hunger).toBeDefined();
+    expect(a.state.attributes!.hunger!.base).toBeGreaterThan(0);
   });
 });

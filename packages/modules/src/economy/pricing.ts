@@ -16,6 +16,13 @@ const HUNGER_EAT_DROP = 0.6;  // eating drops hunger by this
 const EAT_THRESHOLD = 0.5;    // eat once hunger crosses this
 const PRICE_RATE = 0.02;      // price approaches its supply target over a few hours
 const PRICE_TICK_MIN = 30;    // recompute supply→price every 30 game-min
+const SHORTAGE_THRESHOLD = 3; // total supply of a food kind ≤ this across all merchants → SHORTAGE
+const SHORTAGE_CLEAR = 6;     // re-arm the SHORTAGE trigger only after supply recovers above this (hysteresis)
+const SHORTAGE_BROKE_GOLD = 10; // an agent is "broke" (feels the shortage) below this gold
+const SHORTAGE_HUNGRY = 0.4;  // …and "hungry" at/above this hunger need
+
+/** Food kinds currently in shortage — module-scope throttle so SHORTAGE fires once per episode, not every tick. */
+const inShortage = new Set<string>();
 
 /** Supply-driven market price target: scarcer = pricier. supply 0 → ~3× base; supply ≥ ~33 → 0.6× base floor. */
 export function computePriceTarget(supply: number): number {
@@ -65,6 +72,35 @@ export function registerEconomyTickHandlers(): void {
         let p = m.state.attributes[key];
         if (!p) { p = createAttribute(BASE_PRICE, 1, 999); m.state.attributes[key] = p; }
         p.drift = { ratePerMinute: PRICE_RATE, toward: target };
+      }
+    }
+
+    // ── Shortage detection (P6): when a food kind runs critically low across ALL merchants, emit a SHORTAGE
+    //    event through the CG bus (ctx.processEvent) so consequences can fire (economy → debt pressure, see
+    //    cg-rules.ts). Throttled per-kind via `inShortage`: fires once on entering shortage, re-arms only after
+    //    supply recovers above SHORTAGE_CLEAR (hysteresis avoids per-tick spam). ──
+    const market = merchants.find((m) => (m.state.location ?? '').includes('market')) ?? merchants[0];
+    for (const kind of FOOD_KINDS) {
+      const have = supply.get(kind) ?? 0;
+      if (have <= SHORTAGE_THRESHOLD && !inShortage.has(kind)) {
+        inShortage.add(kind);
+        if (!market) continue;
+        // Affected = agents who are both broke and hungry — scarcity bites them first (targetMode 'affected').
+        const affectedTargets: string[] = [];
+        for (const [id, a] of ctx.agents) {
+          if (!a.state.alive) continue;
+          const gold = getAttributeValue(a.state.attributes, 'gold') ?? 0;
+          const hunger = getAttributeValue(a.state.attributes, 'hunger') ?? 0;
+          if (gold < SHORTAGE_BROKE_GOLD && hunger >= SHORTAGE_HUNGRY) affectedTargets.push(id);
+        }
+        const where = market.state.location ?? 'market';
+        await ctx.processEvent({
+          id: crypto.randomUUID(), type: 'SHORTAGE',
+          subject: where, location: where, gameDay: ctx.currentDay,
+          importance: 4, payload: { kind, supply: have, affectedTargets },
+        });
+      } else if (have > SHORTAGE_CLEAR) {
+        inShortage.delete(kind);
       }
     }
   });

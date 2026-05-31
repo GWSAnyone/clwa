@@ -18,4 +18,15 @@ export const ECONOMY_CG_RULES: ConsequenceRule[] = [
     consequence: { type: 'DEBT_GRUDGE', importance: 5, delayDays: 0, probability: 1.0 },
     maxChainDepth: 1,
   },
+  // Scarcity → economic desperation. The pricing tick emits SHORTAGE with payload.affectedTargets = broke + hungry
+  // agents; this rule gives each of them a DEBT_PRESSURE consequence → the economy's belief creator sharpens their
+  // hunger need (→ economy scoring boosts buy/sell/smuggle) + records a pressure belief. Environment → economy, zero shared code.
+  {
+    id: 'shortage-debt-pressure',
+    trigger: 'SHORTAGE',
+    targetMode: 'affected',
+    conditions: [],
+    consequence: { type: 'DEBT_PRESSURE', importance: 4, delayDays: 0, probability: 1.0 },
+    maxChainDepth: 1,
+  },
 ];

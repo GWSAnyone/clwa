@@ -650,12 +650,9 @@ function handleWS(type, data) {
         const fullText = data.text.length > 60 ? data.text.slice(0, 57) + '...' : data.text;
         speaker._speech = { fullText, text: '', charIdx: 0, timer: SPEECH_BUBBLE_DURATION, typing: true };
       }
-      if (state.chatOpen && state.chatNpcId) {
-        const a = state.agents[state.chatNpcId];
-        if (a && a.name === data.speakerName) {
-          addChatMessage(data.speakerName, data.text, 'npc');
-        }
-      }
+      // NOTE: `conversation:line` is an NPC↔NPC autonomous exchange — it must NEVER be injected into the
+      // player's private chat window (the player's own dialogue arrives via the chatStream channel). It only
+      // belongs in the world event feed + as a floating speech bubble (handled above). (P6 UX fix.)
       break;
     }
 
@@ -859,6 +856,14 @@ function refreshPlayerEconomy() {
 function updateEconomyHud() {
   const g = document.getElementById('hud-gold');
   if (g) g.textContent = `\u{1F4B0} ${state.player.gold ?? 0}g`;
+  // P6: persistent player inventory panel — the player's bag is always visible in the HUD (data was loaded but never shown).
+  const invEl = document.getElementById('hud-inventory');
+  if (invEl) {
+    const items = (state.player.inventory || []).filter(i => i.quantity > 0);
+    const txt = items.map(i => `${i.kind}×${i.quantity}`).join(', ');
+    invEl.textContent = txt ? `\u{1F392} ${txt}` : '';
+    invEl.title = txt ? `Your inventory: ${txt}` : 'Your inventory (empty)';
+  }
   const j = document.getElementById('hud-justice');
   if (j) {
     const st = state.player.standing;
@@ -1547,18 +1552,10 @@ function setupChatNpcDisplay(npcId, a) {
 // NPC gold + inventory readout in the inspector (B1/B2). Uses sprite-state gold immediately, fetches
 // /api/agent/:id for the live inventory list.
 function renderNpcEcon(npcId, a) {
+  // The player must NOT see an NPC's gold balance or private inventory — it is not the player's
+  // information (P6 UX fix). Wares for sale are surfaced through the Shop panel instead.
   const el = document.getElementById('chat-npc-econ');
-  if (!el) return;
-  const gold = a.gold;
-  el.style.display = gold == null ? 'none' : 'block';
-  if (gold == null) return;
-  el.innerHTML = `\u{1F4B0} ${gold}g`;
-  fetch(`/api/agent/${npcId}`).then(r => r.json()).then(d => {
-    if (state.chatNpcId !== npcId) return;
-    const inv = (d.inventory || []).filter(i => i.quantity > 0);
-    const items = inv.map(i => `${i.kind}×${i.quantity}`).join(', ');
-    el.innerHTML = `\u{1F4B0} ${d.gold ?? gold}g` + (items ? ` &nbsp;\u{1F392} ${items}` : '');
-  }).catch(() => {});
+  if (el) el.style.display = 'none';
 }
 
 function fetchChatBars(npcId, a) {

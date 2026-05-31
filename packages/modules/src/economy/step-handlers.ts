@@ -5,6 +5,8 @@ import { recordDebt, getDebt, clearDebt, LOAN_AMOUNT, LOAN_INTEREST, DEBT_FLOOR 
 
 /** Black market pays a premium over the (dynamic) market price. Unit prices come from pricing.ts (E1 drift). */
 const BLACK_MARKET_PRICE = 10;
+/** A defrauded buyer pays this multiple of the fair price for ordinary goods passed off as fine wares. */
+const FRAUD_MARKUP = 2;
 
 /** Late-bound World — step handlers register at module init (before the World exists), and
  *  StepExecutionContext carries no World ref, so the server calls setEconomyWorld(world) once the World is
@@ -69,6 +71,36 @@ export function registerEconomyStepHandlers(): void {
     return { ...base, action: 'sell_goods', description: `${owner.profile.name} sold ${kind} to ${buyer.profile.name} (${price} coin)`, emittedEvent: { type: 'TRADE_COMPLETED', targetId: buyer.profile.id, targetName: buyer.profile.name } };
   });
 
+  // defraud_buyer: the merchant (owner) overcharges a co-located buyer for ordinary goods passed off as fine —
+  // pockets a FRAUD_MARKUP premium and emits a FRAUD event (transferable wrongdoing others can gossip about).
+  // Conserved: the buyer overpays real gold, gets a real (ordinary) item.
+  registerStepHandler('defraud_buyer', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as EcoStep;
+    const base = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
+    const buyer = step.targetId ? agents.get(step.targetId) : undefined;
+    if (!buyer || !buyer.state.alive || owner.state.location !== buyer.state.location) {
+      goal.state = 'failed';
+      return { ...base, action: 'defraud_buyer', description: `${owner.profile.name}: no mark available — fraud failed` };
+    }
+    const kind = (owner.state.inventory ?? []).find((it) => it.quantity > 0)?.kind;
+    const fair = kind ? getPrice(owner, kind) : BASE_PRICE;
+    const price = Math.round(fair * FRAUD_MARKUP);
+    if (!kind || (getAttributeValue(buyer.state.attributes, 'gold') ?? 0) < price || !economyWorld) {
+      goal.state = 'failed';
+      return { ...base, action: 'defraud_buyer', description: `${owner.profile.name}: no goods to fob off or the mark is too poor` };
+    }
+    const paid = economyWorld.transferAttribute(buyer.profile.id, owner.profile.id, 'gold', price);
+    if (paid && owner.state.inventory && removeItems(owner.state.inventory, kind, 1)) {
+      if (!buyer.state.inventory) buyer.state.inventory = [];
+      addItem(buyer.state.inventory, kind, 1);
+    }
+    await owner.observe(`I sold ${kind} to ${buyer.profile.name} as fine wares for ${price} coin — far above its worth. They suspected nothing.`, step.importance ?? 3);
+    if (ctx.onEmitEvent) await ctx.onEmitEvent({ type: 'FRAUD', subject: owner.profile.id, object: buyer.profile.id, location: owner.state.location, importance: step.importance ?? 3, payload: { kind, price, fair } });
+    goal.currentStep++;
+    return { ...base, action: 'defraud_buyer', description: `${owner.profile.name} defrauded ${buyer.profile.name} (${price} coin for ${kind})`, emittedEvent: { type: 'FRAUD', targetId: buyer.profile.id, targetName: buyer.profile.name } };
+  });
+
   // haggle_with: a soft social action — price-talk flavor + a memory, no state transfer.
   registerStepHandler('haggle_with', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
     const { goal, owner, agents } = ctx;
@@ -112,6 +144,7 @@ export function registerEconomyStepHandlers(): void {
     if (!kind || !owner.state.inventory || !economyWorld) { goal.state = 'failed'; return { ...base, action: 'smuggle_goods', description: `${owner.profile.name}: nothing to smuggle` }; }
     removeItems(owner.state.inventory, kind, 1);
     economyWorld.adjustAttributeBase(owner.profile.id, 'gold', BLACK_MARKET_PRICE);
+    economyWorld.joinFaction(owner.profile.id, 'smugglers'); // emergent smuggling ring — a queryable collective (B3 faction); crime/investigation CG can target it via the `faction` op
     await owner.observe(`I moved ${kind} on the black market for ${BLACK_MARKET_PRICE} coin. No questions asked.`, step.importance ?? 4);
     if (ctx.onEmitEvent) await ctx.onEmitEvent({ type: 'SMUGGLING', subject: owner.profile.id, location: owner.state.location, importance: step.importance ?? 4, payload: { kind, price: BLACK_MARKET_PRICE } });
     goal.currentStep++;

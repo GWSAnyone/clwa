@@ -1,15 +1,24 @@
 # SPEC: Economy / Trade — the second genre module (validates the universal-engine thesis)
 
 > **Milestone**: M7 (Economy & Trade). Follows M6 (NPC Brain). Second content module on the genre-neutral engine.
-> **Status**: 🔨 IMPLEMENTING on `feature/economy` (NOT merged/pushed) — **E1 ✅ E2 ✅ E3 ✅ · P2 ✅ · P3 ✅ · P4 ✅ · P5 ✅**.
->   tsc 0, **bun test 299**, crime oracle green. Live-verified: trade (buy/sell/haggle→merchant + produce/hoard) moves conserved
+> **Status**: ✅ **READY FOR MERGE (v0.18.0)** on `feature/economy` (NOT yet merged/pushed) — **E1·E2·E3 + P2–P6 все ✅, финальный аудит пройден** (0 MUST-FIX, INV-14 PERFECT, 1 SHOULD-FIX применён).
+>   tsc 0, **bun test 303**, crime oracle green. Живой прогон подтвердил: новые системы активны/выбираются/исполняются (см. P6c ниже). Live-verified: trade (buy/sell/haggle→merchant + produce/hoard) moves conserved
 >   gold (E2) + inventory; need/debt scoring drives decisions; dynamic price:KIND + hunger drift (E1); lend→collect debt (E2)
 >   with debt→crime grudge wiring; emergent NPC reflection on a debt observed.
->   **REMAINING (resume here from a clean context):**
->   - **P6 (#90)** — (a) **fix the 4 frontend UX bugs** below (most player-visible); (b) markets-as-venues polish + smuggling/fraud
->     rings; **emit SHORTAGE from the pricing tick** (supply is computed in pricing.ts but SHORTAGE is not yet emitted — TickPhaseContext
->     has no onEmitEvent, so wire an emit path); add more cross-module CG rules (e.g. SHORTAGE→DEBT_PRESSURE — today only
->     `debt-default-grudge` exists in cg-rules.ts); (c) re-verify (tsc + 299 tests + live walkthrough). Start with (a).
+>   **P6 progress (v0.18.0):**
+>   - **P6a ✅** — все 4 фронтовых UX-бага исправлены (детали ниже, секция «Известные UX-баги фронта»).
+>   - **P6b ✅** — SHORTAGE эмитится из тика цен через `TickPhaseContext.processEvent` (заметка про «нет onEmitEvent»
+>     была неверной — `processEvent` уже есть и кормит CG-шину); кросс-модульное CG-правило `shortage-debt-pressure`
+>     (SHORTAGE → DEBT_PRESSURE → +hunger у broke+hungry → economy scoring → больше торговли/контрабанды); fraud-аффорданс
+>     `defraud` (торговец обманывает покупателя, событие FRAUD — gossipable); кольцо контрабандистов (smuggle → фракция
+>     `smugglers`, B3); markets-as-venues = `atMarket`-гейтинг buy/sell/haggle/defraud. tsc 0, **bun test 303**.
+>   - **P6c ✅** — tsc 0 + 303 теста + crime-оракул зелёные. **Живой прогон (auto-tick + LM Studio) — доказано, что новые
+>     системы АКТИВНЫ/выбираются/исполняются (не фон):** в volition всплывали defraud×5, hoard×11, smuggle×3, produce×4, haggle×5;
+>     LLM сам выбрал `hoard` («goods are getting scarce; let the price rise before I sell»); форс+исполнение `defraud` (Mark→Elara,
+>     14 коин, событие FRAUD, консервация Elara −14 / Mark +14) и `smuggle` (Bess +10 чёрный рынок, событие SMUGGLING, **вступление
+>     в кольцо `smugglers` — factions=[merchants_guild,smugglers]**); SHORTAGE эмитится из тика; CG-шина = 23 правила (crime+economy);
+>     покупка игрока заряжает динамическую цену (6, не статичные 5) с консервацией золота+инвентаря. Фронт-фиксы — подтвердить в браузере.
+>   **REMAINING:**
 >   - **FINAL (#92)** — clwa-auditor over the whole M7 diff → fix MUST/SHOULD → update ROADMAP/ARCHITECTURE → close spec → (user merges).
 >   - **P5 simplifications to revisit** (acceptable v1, noted so they aren't forgotten): debt has no time-based interest/deadline
 >     (collection happens when the creditor acts; a `registerDayAdvanceHandler` for interest+overdue→DEBT_DEFAULT is deferred);
@@ -159,7 +168,11 @@ INV-01 (LLM-семафор через façade при `classify` в haggle), INV-
 - **Ценовая стабильность:** дрейф цены может расходиться (осцилляции/уход в 0/∞) — нужны clamp (min/max атрибута) + демпфирование в `computePrice`.
 - **debtLedger:** module-scope Map должна переживать перезапуск (reconstructed-from-events, как crime `imprisonmentTimers`), иначе долги теряются.
 
-## Известные UX-баги фронта (найдены в живом тесте P3, чинить в P6-полировке)
+## Известные UX-баги фронта (найдены в живом тесте P3) — ✅ ВСЕ ИСПРАВЛЕНЫ в P6a (tsc 0, 299 тестов)
+> 1 → `renderNpcEcon` скрывает золото/инвентарь NPC (`game.js`); 2 → постоянный `hud-inventory` в HUD (`game.html`/`game.js`);
+> 3 → убрана инжекция `conversation:line` в чат игрока (`game.js`) + guard `inPlayerChat` в `scheduler.findPair` (`scheduler.ts`);
+> 4 → маршруты `/api/shop/:id` и `/buy` используют динамический `getPrice(merchant, kind)` (`routes.ts`).
+
 Бэкенд сделки корректен (проверено: золото игрока 100→77 на 2 покупки, перевод atomic+conserved). Проблемы — в
 игровом клиенте `game.js`/`game.html` (наследие M5, не регрессии P3):
 1. **Магазин показывает игроку баланс торговца** — убрать (это не инфа игрока; баланс торговца меняется на бэке, но
@@ -172,6 +185,12 @@ INV-01 (LLM-семафор через façade при `classify` в haggle), INV-
 4. **Магазин игрока использует статичные цены** (P4) — маршрут `/api/shop/:m/buy/:item` (`routes.ts`) берёт цену из
    статичного `profile.shop`, а не из динамического `price:KIND` (E1). Поэтому динамика цен сейчас видна только в
    NPC↔NPC-сделках. Фикс в P6: маршрут покупки игрока должен читать `getPrice(merchant, kind)` (модульная функция).
+
+## Финальный аудит (clwa-auditor, P6)
+**Verdict: READY FOR MERGE — 0 MUST-FIX, INV-14 PERFECT** (0 economy-строк в движке). Качество B+.
+- **SHOULD-FIX #1 ✅ исправлено**: добавлен `registerBeliefPhrasing` для FRAUD/SMUGGLING/DEBT_PRESSURE (gossipable события рендерились generic-фоллбэком crime-модуля).
+- **SHOULD-FIX #2 → осознанный uniform-deferral**: trade step-handlers (buy/sell/defraud) делают `transferAttribute` до `removeItems` — теоретический «оплачено без товара» при гонке. В single-threaded async между check и transfer нет yield-points, поэтому гонка не возникает; паттерн единообразен для всех трёх (без двойных стандартов). Полноценный транзакционный trade-step (remove+transfer+add с откатом) отложен.
+- NICE (отложено): `atMarket` substring-match (ок для одной market-локации); `inShortage` Set не переживает save/load (безвредный дубль-SHORTAGE, +0.2 hunger с клампом).
 
 ## Отложено (deferred)
 First-class Need registry (v1 = `hunger` скаляр поверх E1-drift — отдельный реестр Need вводим при втором потребителе); first-class

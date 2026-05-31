@@ -16,7 +16,7 @@ import {
   AFFORDANCE_REGISTRY, REQUIREMENT_CHECKERS, registerScoringContributor, registerActionVerbs,
   registerEventCategory, registerEventTypeFlagsBatch, registerEventLabels,
   registerEventMoodShifts, registerGoalMoodBoost, registerBeliefCreator, registerMemoryTextBuilder,
-  hasCapability, getAttributeValue,
+  registerBeliefPhrasing, hasCapability, getAttributeValue, createAttribute,
 } from '@clwa/engine';
 import { ECONOMY_AFFORDANCES } from './affordances';
 import { registerEconomyTargetFinders } from './target-finders';
@@ -52,7 +52,7 @@ export function registerEconomyModule(): void {
   AFFORDANCE_REGISTRY.push(...ECONOMY_AFFORDANCES);
   registerActionVerbs({
     buy: ['buy'], sell: ['sell'], haggle: ['haggle'], produce: ['produce'], hoard: ['hoard'], smuggle: ['smuggle'],
-    lend: ['lend'], collect: ['collect'],
+    lend: ['lend'], collect: ['collect'], defraud: ['defraud'],
   });
 
   // ── Target finders (who to trade with) ──
@@ -80,11 +80,11 @@ export function registerEconomyModule(): void {
   });
 
   // ── Events (INV-08 flags) + labels ──
-  registerEventCategory('economy', ['TRADE_COMPLETED', 'SMUGGLING']);
-  registerEventCategory('credit', ['LOAN_GRANTED', 'DEBT_DEFAULT', 'DEBT_OWED']);
-  registerEventTypeFlagsBatch(['TRADE_COMPLETED', 'LOAN_GRANTED', 'DEBT_DEFAULT', 'DEBT_OWED'], { informationOnly: true }); // CG handles the grudge — no reactive volition
-  registerEventTypeFlagsBatch(['SMUGGLING'], { transferable: true });          // gossipable wrongdoing
-  registerEventLabels({ TRADE_COMPLETED: 'a trade', SMUGGLING: 'smuggling', LOAN_GRANTED: 'a loan', DEBT_DEFAULT: 'a defaulted debt', DEBT_OWED: 'a debt owed' });
+  registerEventCategory('economy', ['TRADE_COMPLETED', 'SMUGGLING', 'SHORTAGE', 'FRAUD']);
+  registerEventCategory('credit', ['LOAN_GRANTED', 'DEBT_DEFAULT', 'DEBT_OWED', 'DEBT_PRESSURE']);
+  registerEventTypeFlagsBatch(['TRADE_COMPLETED', 'LOAN_GRANTED', 'DEBT_DEFAULT', 'DEBT_OWED', 'SHORTAGE', 'DEBT_PRESSURE'], { informationOnly: true }); // CG handles consequences — no reactive volition
+  registerEventTypeFlagsBatch(['SMUGGLING', 'FRAUD'], { transferable: true });  // gossipable wrongdoing
+  registerEventLabels({ TRADE_COMPLETED: 'a trade', SMUGGLING: 'smuggling', LOAN_GRANTED: 'a loan', DEBT_DEFAULT: 'a defaulted debt', DEBT_OWED: 'a debt owed', SHORTAGE: 'a shortage', DEBT_PRESSURE: 'economic pressure', FRAUD: 'fraud' });
 
   // ── Cross-module (P5): DEBT_DEFAULT → a PERSONAL_GRUDGE motive in the creditor toward the defaulter
   //    (event.subject). crime's threaten/argue/kill react to PERSONAL_GRUDGE → debt escalates to crime. The
@@ -100,9 +100,39 @@ export function registerEconomyModule(): void {
   });
   registerMemoryTextBuilder('DEBT_GRUDGE', () => `They owed me coin and defaulted. A debt unpaid is not forgotten.`);
 
+  // ── Cross-module (P6): SHORTAGE → DEBT_PRESSURE. Scarcity squeezes broke, hungry agents — raise their `hunger`
+  //    need (the same scalar the economy scoring contributor reads → boosts buy/sell/smuggle utility) and leave a
+  //    pressure belief for narrative. The CG rule (cg-rules.ts) routes SHORTAGE → DEBT_PRESSURE to the affected. ──
+  registerBeliefCreator('DEBT_PRESSURE', (agent, event) => {
+    if (!agent.state.attributes) agent.state.attributes = {};
+    let h = agent.state.attributes['hunger'];
+    if (!h) { h = createAttribute(0, 0, 1); agent.state.attributes['hunger'] = h; }
+    h.base = Math.min(h.max, h.base + 0.2);
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: 'DEBT_PRESSURE',
+      subject: null, object: agent.profile.id,
+      location: event.location, confidence: 0.6,
+      source: 'personal_motive', sourceNpcId: null,
+      gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
+  registerMemoryTextBuilder('DEBT_PRESSURE', () => `Goods are scarce and my purse is thin. The squeeze is real — I must find a way to get by.`);
+
+  // Belief phrasing (P6 audit SHOULD-FIX): gossipable economy wrongdoing (FRAUD/SMUGGLING are transferable) needs
+  // domain phrasing for the prompt's belief lines — otherwise it renders via the crime module's generic fallback.
+  // Returns null for non-economy types so other registered phrasings handle them.
+  registerBeliefPhrasing(({ eventType, who, target }) => {
+    switch (eventType) {
+      case 'FRAUD':         return target != null ? `${who} cheated ${target} in a crooked deal` : `${who} swindled someone`;
+      case 'SMUGGLING':     return `${who} ran goods on the black market`;
+      case 'DEBT_PRESSURE': return `${who} is squeezed by scarcity and debt`;
+      default:              return null;
+    }
+  });
+
   // ── Mood (INV-06: applied via addMoodModifier in handlers) ──
-  registerEventMoodShifts({ TRADE_COMPLETED: 0.1, SMUGGLING: -0.05 });
-  registerGoalMoodBoost({ buy: 0.05, sell: 0.1, produce: 0.08, smuggle: 0.05 });
+  registerEventMoodShifts({ TRADE_COMPLETED: 0.1, SMUGGLING: -0.05, FRAUD: -0.05 });
+  registerGoalMoodBoost({ buy: 0.05, sell: 0.1, produce: 0.08, smuggle: 0.05, defraud: 0.05 });
 
   // ── Step handlers (move real gold via E2 transferAttribute + inventory via add/removeItems) ──
   registerEconomyStepHandlers();
