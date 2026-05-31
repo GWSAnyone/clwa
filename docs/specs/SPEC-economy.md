@@ -1,0 +1,152 @@
+# SPEC: Economy / Trade — the second genre module (validates the universal-engine thesis)
+
+> **Milestone**: M7 (Economy & Trade). Follows M6 (NPC Brain). Second content module on the genre-neutral engine.
+> **Status**: 📐 PLANNED — design complete, implementation not started. Branch (planned): `feature/economy`.
+> **Goal**: prove "same engine, different data" by building a full economic genre as **module content + registry data**,
+>   with the crime-justice game untouched as the regression oracle.
+> **Depends on**: M5 (scalar attributes B1 / inventory B2 / factions B3 / open capabilities / CG attr·faction·has_capability ops /
+>   `registerScoringContributor` channel) — all shipped and tested.
+> **Source of truth**: `docs/workflow/economy-design/2026-05-30-9f1a7253/` (6-agent design workflow: substrate audit,
+>   crime-module pattern, genre requirements + prior gaps → primitive-gap classification, content plan, composition + phasing).
+> **Created**: 2026-05-30
+
+---
+
+## Цель
+
+Доказать тезис CLWA — «один движок поведенческой физики, контент = модули данных» — построив **второй жанр** (экономика/торговля)
+почти без правок движка. Crime-justice остаётся оракулом регрессии: экономика только ДОБАВЛЯет записи в регистры, ничего в crime не
+меняет. Параллельно — обогатить сам crime: кража/контрабанда/мошенничество начинают двигать реальную ценность (золото + товары), долг и
+дефицит толкают NPC к отчаянию и преступлению через кросс-модульные CG-каскады.
+
+## Ключевой вывод дизайна (измерено по исходникам)
+
+**~75–85 % экономики ложится на СУЩЕСТВУЮЩИЕ примитивы M5 с нулём правок движка.** Богатство = `ScalarAttribute` (gold), товары =
+`Inventory` (`transferItem` атомарный), гильдии = факции, профессии = `capabilities`, экономические решения = `registerScoringContributor`
+в `computeUtility`, причинно-следственные каскады = CG-операции `attr`/`faction`/`has_capability`. Это уже доказано вживую в
+`tests/genre-neutrality.test.ts`, который регистрирует не-crime «economy» жанр (TRADE/FRAUD, `isMerchant`, `eco_defraud`, `minCapital`/`atMarket`)
+через те же функции регистрации, что и crime.
+
+Следствие: **экономика — это в основном модульный контент.** Оставшиеся ~15–25 % сводятся к **трём универсальным примитивам движка**
+(E1 дрейф base / E2 overdraft-transfer / E3 INTENT_KIND), и по diamond-решению мы строим их СЕЙЧАС — это genre-neutral способности
+(у каждой есть не-экономический use-case), а не обходные пути. Так движок становится богаче для всех будущих жанров, а не только экономики.
+
+## Существующий субстрат движка (переиспользуем как есть)
+
+| Концепт экономики | Примитив движка | API / ссылка |
+|---|---|---|
+| Богатство / цена / нужда / долг | `ScalarAttribute` + `AttributeModifier` | `attributes.ts`; World `get/set/adjustAttributeBase/addAttributeModifier` |
+| Перенос денег (атомарный, сохраняющий) | `transferAttribute` | `world.ts:699-708` — дебетует BASE, отказ при base<amount, защита от «печати» единиц |
+| Товары + перенос | `Item` + `transferItem` | `inventory.ts`; `world.ts:739-777` (атомарный, conserved) |
+| Гильдии/картели + standing | `factions` + `RelationshipGraph.adjustStanding` | `world.ts:712-734`; `relationships.ts:104-109` |
+| Профессии | open `capabilities` + `hasCapability` | `agent-types.ts:118` |
+| Экономические решения NPC | `registerScoringContributor` → `computeUtility` | `al.ts:438/486` (debt 0.8×0.5 = 0.40, tested) |
+| Гейтинг правил по деньгам/гильдии/роли | CG ops `attr`/`faction`/`has_capability` | `cg-engine.ts:284-303` |
+| Требования affordance (minCapital, atMarket…) | open-bag + `REQUIREMENT_CHECKERS` | `al.ts`; threading proven `genre-neutrality.test.ts:95-112` |
+| Декей по тику | `decayAttribute` каждые 5 game-min | `world.ts:589-591` (только модификаторы, не base — см. P3) |
+| Персистенс | `toJSON`/`loadState` для attributes/factions/inventory | sanitization included |
+
+## Изменения движка
+
+**Решение (diamond):** строим ВСЕ три универсальных примитива в движке СЕЙЧАС, а не обходим module-side. Они генеричны (не
+экономическая лексика, INV-14/15), каждый имеет не-экономический use-case, и так мы навсегда закрываем вопрос вместо обходных путей.
+Каждый — additive (старые миры/сейвы работают без изменений, INV-21), tested в изоляции, crime-флоу остаётся зелёным оракулом.
+
+#### E1 — `ScalarAttribute.drift` + `driftAttribute()` (универсальный дрейф base по тику)
+Сейчас `decayAttribute` (`attributes.ts:55`) двигает только модификаторы, не base — у эволюции величины во времени нет дома.
+- Добавить `drift?: { ratePerMinute: number; toward?: number }` в `ScalarAttribute`.
+- Добавить `driftAttribute(attr, dtMinutes)`, вызываемый РЯДОМ с `decayAttribute` в tick-цикле (`world.ts:~589`). `toward` не задан = линейный
+  unbounded дрейф; задан = экспоненциальное приближение к `toward`. Clamp в `[min,max]`. NaN/Infinity-guard (паттерн DD-04). `dt` прокидывается → INV-19.
+- INV-16: tick-цикл уже bilateral-осознан; player-атрибуты дрейфуют так же (универсально). INV-21: поле опционально, старые сейвы без `drift` не дрейфуют.
+- Не-экономический proof: HP-реген, радиационный распад, остывание. Экономика ставит `drift` на `price:KIND`/`hunger`. **Цена/потребность — module content; дрейф — движок.**
+
+#### E2 — Signed / overdraft transfer + `min<0` (универсальный, разблокирует долг)
+`transferAttribute` (`world.ts:700-708`) отказывает при `base<amount` → нельзя уйти в минус (займы/кредит/перерасход).
+- Разрешить `min<0` атрибуты (проверить, что `createAttribute`/`setAttribute` не форсят `min=0`).
+- Добавить `transferAttribute(..., { allowOverdraft?: boolean })`: при `allowOverdraft` source может уйти ниже нуля вплоть до объявленного `min`,
+  СОХРАНЯЯ conservation (сумма не меняется, единицы не «печатаются» — защита `world.ts:704` остаётся для обычного пути).
+- INV-15: движок только ослабляет clamp, не узнаёт слова «долг». Долговой ИНСТРУМЕНТ (кредитор/должник/срок/дефолт→consequence) = 100% module content.
+- Не-экономический proof: «уйти в минус» по любому ресурсу (репутация ниже нуля, отрицательная стамина).
+
+#### E3 — `INTENT_KIND` registry (универсальный — чинит crime-assumption-leak в IL) + P0-чистка
+Сейчас движок НЕ нейтрален по торговле: `TradeIntent` захардкожен в `il.ts:73,141-154,202,276`, плюс `AgentProfile.shop`/`ShopItem`
+живут в `agent-types.ts:113,123`. Speech-acts/pressure-types/claim-sources УЖЕ module-registered — `trade` единственное исключение (INV-15 smell).
+- Обобщить в `registerIntentKind({ key, schemaFragment, promptHint, correctionFn? })`; динамическая IL-схема + семантическая коррекция итерируют
+  зарегистрированные kinds вместо запечённой `trade`-ветки (удалить trade-специфику из `il.ts`).
+- Вынести `shop`/`ShopItem` → модульные данные (`Map<merchantId,{kind,name,price,desc}[]>`), сидящие реальный inventory + `price:KIND` атрибуты при world-load.
+- Добавить симметричный `TRADE_PROSE` guard в `architecture.test.ts` (зеркало crime-prose guard) — движок «никогда не знает слова trade».
+- Экономика регистрирует `trade` (позже `negotiate`); политика — `endorse`, бой — `challenge`. Crime-тесты зелёные.
+
+**Итог по движку: 3 universal-примитива (E1/E2/E3), все additive + tested + genre-neutral. Crime — оракул на каждом шаге.**
+
+## Контент модуля (всё — регистрации, зеркало crime-justice)
+
+Папка `packages/modules/src/economy/`: `index.ts` (хаб `registerEconomyModule(world)` + ре-экспорт `ECONOMY_CG_RULES`), `affordances.ts`,
+`target-finders.ts`, `cg-rules.ts`, `step-handlers.ts` (+ module-scope `debtLedger` Map, прецедент crime `imprisonmentTimers`),
+`event-handlers.ts`, `topic-sources.ts`, `pricing.ts` (аналог `heat.ts`), `shop.ts` (каталог + buy/bribe + IL trade verbs).
+`registerEconomyModule(world)` вызывается рядом с `registerCrimeJusticeModule()` (`server/index.ts:43`); принимает `World`, чтобы хендлеры
+замкнулись на `transferAttribute`/`transferItem` (их контексты не несут ссылку на World).
+
+- **Affordances** (`AFFORDANCE_REGISTRY.push`, category `economic`, OCEAN+H веса для эмерджентности): `buy`, `sell`, `haggle`, `produce`,
+  `hoard`, `lend`, `collect_debt`, `smuggle`. Жадность = low-H/low-A; отчаяние = scorer на debt/hunger. `registerActionVerbs` для всех 8 (INV-10).
+- **События** (категории + флаги INV-08 + labels): economy[`TRADE_COMPLETED`,`FRAUD`,`PRICE_GOUGING`], market[`PRICE_SPIKE`,`SHORTAGE`,
+  `SURPLUS`,`PRICE_FAVORABLE`], credit[`DEBT_OWED`,`DEBT_DEFAULT`,`LOAN_GRANTED`]. transferable: FRAUD/PRICE_GOUGING/DEBT_DEFAULT.
+  (Crime сейчас владеет `DEBT_PRESSURE` — экономика забирает владение.)
+- **Beliefs/источники** (INV-09): источники `transaction_record`/`ledger`/`market_observation`/`merchant_gossip` + decay/transfer-weights/labels;
+  `registerBeliefPhrasing` FRAUD/PRICE_GOUGING → cheated/overcharged/gouged; пары `registerBeliefCreator`+`registerMemoryTextBuilder`.
+- **Scoring contributor** (центральная проводка): `registerScoringContributor((aff,agent)=> aff.category==='economic' ? f(attrs):0)`:
+  smuggle/buy = debt×0.5 + hunger×0.4; hoard = debt×0.3 (точная механика `attributes.test.ts:218-235`).
+- **Ценообразование (на E1-drift):** `price:KIND` `ScalarAttribute` на синтетическом market-агенте; движок дрейфует base через `driftAttribute`
+  (E1), модуль задаёт ЗАКОН в `pricing.ts` (`heat.ts`-аналог): `registerTickPhaseHandler` (`gameMinute%60`, INV-19) пересчитывает `drift.toward`/`rate`
+  из supply(`Σ countItem`)+demand(buy-goals/hunger); supply<порога → `SHORTAGE`. Clamp/демпфирование против расхождения.
+- **Потребности (на E1-drift):** `hunger` `ScalarAttribute` с `drift` (растёт сам, движок применяет); еда = `removeItems(food,1)`+
+  `adjustAttributeBase(hunger,-1)`; scorer вплетает hunger в утилиту buy. INV-16 bilateral. Полноценный Need-registry отложен.
+- **Долг (на E2-overdraft):** `offer_loan` = `transferAttribute(gold, {allowOverdraft})` — золото должника уходит в минус (или отдельный
+  `debt`-скаляр); проценты/дедлайны через `registerDayAdvanceHandler` + module-scope `debtLedger` (reconstructed-from-events, прецедент crime
+  `imprisonmentTimers`); процент = `addAttributeModifier` category `interest`; пропуск дедлайна → `DEBT_DEFAULT`. First-class contract отложен.
+- **Step handlers**: `buy_goods`/`sell_goods`/`haggle_with`/`craft_goods`/`offer_loan`/`demand_payment`/`collect_payment`. NPC↔NPC перенос
+  товара через engine inventory API (прецедент crime `steal_from`); золото через замкнутый `world.transferAttribute`/`transferItem`. `haggle_with`
+  опц. `classify('price_negotiation')` (façade оборачивает acquire/release, INV-01).
+- **Mood/goals/topics/ticks/handlers**: `registerEventMoodShifts`/`registerGoalMoodBoost`; топики trade/price/debt-gossip; tick-фазы price-drift/
+  need-decay/interest/restock; event-handlers TRADE_COMPLETED→trust+, FRAUD→sentiment−+spread, DEBT_DEFAULT→grudge (INV-18 `adjust*`, не прямая мутация).
+
+## Композиция с crime (три genre-нейтральных шва, без import между модулями)
+1. **Общие World-примитивы ценности** — кража/контрабанда двигают РЕАЛЬНЫЙ inventory+gold.
+2. **Общая шина beliefs/gossip** — FRAUD расходится как crime-слух.
+3. **Общая шина CG-каскадов** — кросс-модульные правила, чей триггер = экономическое событие, а следствие = crime-мотив. Сервер мёржит
+   массивы: `[...CRIME_CG_RULES, ...ECONOMY_CG_RULES]`. Примеры: `SHORTAGE`+hunger>0.6 → `DEBT_PRESSURE`; `GOODS_STOLEN`+faction `merchant-guild`+
+   `isMerchant` → `GUILD_ALARM` (экономика реагирует на crime-событие, ноль общего кода); `DEBT_DEFAULT` → `PERSONAL_GRUDGE`.
+
+## Эмерджентные сценарии + метрики успеха
+**Сценарии:** ценовые войны (демпинг → resentment), хординг перед дефицитом, долговые спирали (заём → процент → дефолт → grudge/преступление),
+контрабандные кольца при дефиците, мошенничество с расходящимся слухом, «голод → кража еды».
+**Метрики «экономика работает»:** (1) цены реально двигаются от supply/demand; (2) NPC принимают экономические решения (buy/sell/hoard/lend
+видны в логах volition, не скриптованы); (3) дефицит возникает органически; (4) долг/процент/дефолт проходят полный цикл; (5) crime-флоу не
+деградировал (оракул зелёный); (6) `architecture.test.ts` TRADE_PROSE guard зелёный (движок не знает «trade»).
+
+## Фазовый план (regression-safe: универсальные примитивы — первыми, контент — вторым)
+- **P0 (E3)** — `INTENT_KIND` registry + чистка `trade`-утечки: обобщить `TradeIntent` в `registerIntentKind`, вынести `shop`/`ShopItem` в
+  модульные данные, добавить `TRADE_PROSE` guard в `architecture.test.ts`. Engine genre-neutral по торговле. Crime-тесты зелёные.
+- **P1 (E1+E2)** — движковые примитивы: `ScalarAttribute.drift` + `driftAttribute()` в tick-цикле; signed/overdraft transfer + `min<0`.
+  Additive, tested в `attributes.test.ts` в изоляции (drift линейный/экспоненциальный/clamp/NaN; overdraft conservation/min-bound). Crime зелёный.
+- **P2** — минимальный скелет модуля: `registerEconomyModule` + `ECONOMY_CG_RULES`, мёрж на сервере; тест boot + neutrality.
+- **P3** — торговые affordances (buy/sell/haggle/…) + scoring contributor → NPC принимают экономические решения. **Чекпоинт: экономика «оживает».**
+- **P4** — динамическое ценообразование + потребности (на **E1 drift**: `price:KIND`/`hunger` дрейфуют движком, module задаёт закон в `pricing.ts`).
+- **P5** — долг/кредит (на **E2 overdraft**: отрицательное золото ИЛИ contract-инструмент) + кросс-модульный CG (debt → crime).
+- **P6** — рынки-как-venues + контрабанда/мошеннические кольца + verify & close (аудитор, ROADMAP/ARCHITECTURE, закрыть спеку).
+
+## Инварианты под особым вниманием
+INV-14 (движок genre-neutral — после P0 + TRADE_PROSE guard), INV-08 (event flags обязательны), INV-09 (belief sources), INV-10 (action verbs),
+INV-01 (LLM-семафор через façade при `classify` в haggle), INV-06 (mood только через addModifier), INV-16 (isPlayer-aware tick), INV-18
+(adjust* не прямая мутация), INV-19 (абсолютный gameMinute в тиках).
+
+## Риски
+- **Border-первым:** добавить экономический контент ДО P0-чистки = усугубить утечку. Строго P0 первым.
+- **Crime — оракул:** экономика только добавляет регистрации; никаких правок crime-данных. Прогонять crime-флоу после каждой фазы.
+- **Ценовая стабильность:** дрейф цены может расходиться (осцилляции/уход в 0/∞) — нужны clamp (min/max атрибута) + демпфирование в `computePrice`.
+- **debtLedger:** module-scope Map должна переживать перезапуск (reconstructed-from-events, как crime `imprisonmentTimers`), иначе долги теряются.
+
+## Отложено (deferred)
+First-class Need registry (v1 = `hunger` скаляр поверх E1-drift — отдельный реестр Need вводим при втором потребителе); first-class
+debt/contract object (v1 = E2-overdraft + module `debtLedger`); политика/интриги = M8 (садится на рыночный субстрат + E1/E2/E3).
+**Три универсальных примитива E1/E2/E3 — НЕ отложены, строятся в P0–P1 (diamond-решение).**
