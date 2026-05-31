@@ -1,10 +1,20 @@
 # SPEC: Economy / Trade — the second genre module (validates the universal-engine thesis)
 
 > **Milestone**: M7 (Economy & Trade). Follows M6 (NPC Brain). Second content module on the genre-neutral engine.
-> **Status**: 🔨 IMPLEMENTING on `feature/economy` — **E1 ✅ E2 ✅ E3 ✅ (3 universal primitives) · P2 ✅ skeleton · P3 ✅ (economy alive)**.
->   tsc 0, bun test 295, crime oracle green. Live: Bess @ market-square passes buy/sell/haggle (→Mark merchant) + produce/hoard;
->   trade moves conserved gold (E2) + inventory; need/debt scoring drives economic decisions. **Next: P4** pricing+needs (E1 drift),
->   P5 debt (E2 overdraft) + cross-module CG (debt→crime), P6 markets + verify, then FINAL clwa-auditor + close (#92).
+> **Status**: 🔨 IMPLEMENTING on `feature/economy` (NOT merged/pushed) — **E1 ✅ E2 ✅ E3 ✅ · P2 ✅ · P3 ✅ · P4 ✅ · P5 ✅**.
+>   tsc 0, **bun test 299**, crime oracle green. Live-verified: trade (buy/sell/haggle→merchant + produce/hoard) moves conserved
+>   gold (E2) + inventory; need/debt scoring drives decisions; dynamic price:KIND + hunger drift (E1); lend→collect debt (E2)
+>   with debt→crime grudge wiring; emergent NPC reflection on a debt observed.
+>   **REMAINING (resume here from a clean context):**
+>   - **P6 (#90)** — (a) **fix the 4 frontend UX bugs** below (most player-visible); (b) markets-as-venues polish + smuggling/fraud
+>     rings; **emit SHORTAGE from the pricing tick** (supply is computed in pricing.ts but SHORTAGE is not yet emitted — TickPhaseContext
+>     has no onEmitEvent, so wire an emit path); add more cross-module CG rules (e.g. SHORTAGE→DEBT_PRESSURE — today only
+>     `debt-default-grudge` exists in cg-rules.ts); (c) re-verify (tsc + 299 tests + live walkthrough). Start with (a).
+>   - **FINAL (#92)** — clwa-auditor over the whole M7 diff → fix MUST/SHOULD → update ROADMAP/ARCHITECTURE → close spec → (user merges).
+>   - **P5 simplifications to revisit** (acceptable v1, noted so they aren't forgotten): debt has no time-based interest/deadline
+>     (collection happens when the creditor acts; a `registerDayAdvanceHandler` for interest+overdue→DEBT_DEFAULT is deferred);
+>     `FOOD_KINDS` in pricing.ts is a hardcoded set (a proper `edible` item property is deferred); DEBT_DEFAULT→grudge is wired +
+>     unit-proven but not yet live-observed (needs a debtor too broke to repay even via overdraft).
 > **Goal**: prove "same engine, different data" by building a full economic genre as **module content + registry data**,
 >   with the crime-justice game untouched as the regression oracle.
 > **Depends on**: M5 (scalar attributes B1 / inventory B2 / factions B3 / open capabilities / CG attr·faction·has_capability ops /
