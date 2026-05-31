@@ -4,7 +4,7 @@ export type { AgentOptions } from './agent';
 export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, MemoryEntry, ScoredMemory, ShopItem, NpcProcessingState } from './agent-types';
 export { DEFAULT_LLM_PERSONALITY, hasCapability } from './agent-types';
 // ─── Scalar Attributes (B1) — universal quantified-state primitive ───
-export { createAttribute, attributeEffective, getAttributeValue, decayAttribute } from './attributes';
+export { createAttribute, attributeEffective, getAttributeValue, decayAttribute, driftAttribute } from './attributes';
 export type { ScalarAttribute, AttributeModifier } from './attributes';
 // ─── Inventory (B2) — conserved, ownable, transferable item instances ───
 export { countItems, addItem, removeItems } from './inventory';

@@ -22,7 +22,7 @@ import type {
   SceneResidue, SceneResidueJSON, MoodModifier, ArrivalEvent,
 } from './world-types';
 import { DEFAULT_WORLD_CONFIG, DEFAULT_MOVEMENT_CONFIG, resolveILConfig, resolveConversationConfig } from './world-types';
-import { createAttribute, attributeEffective, getAttributeValue, decayAttribute } from './attributes';
+import { createAttribute, attributeEffective, getAttributeValue, decayAttribute, driftAttribute } from './attributes';
 import type { AttributeModifier } from './attributes';
 import { countItems, addItem, removeItems } from './inventory';
 import type { ILConfig, ConversationConfig } from './world-types';
@@ -586,9 +586,10 @@ export class World {
         agent.state.mood = Math.max(-1, Math.min(1, (agent.state.baseMood ?? 0.2) + sum));
       }
 
-      // Decay scalar attributes (B1) — real-tick only (NOT in the calibration helper). Same cadence as mood.
+      // Decay + drift scalar attributes (B1) — real-tick only (NOT in the calibration helper). Same cadence as
+      // mood. decayAttribute ticks modifiers; driftAttribute (E1) evolves base (price/need/regen). Both bilateral.
       if (agent.state.attributes) {
-        for (const attr of Object.values(agent.state.attributes)) decayAttribute(attr, 5);
+        for (const attr of Object.values(agent.state.attributes)) { decayAttribute(attr, 5); driftAttribute(attr, 5); }
       }
 
       if (Math.abs(agent.state.mood - oldMood) > 0.0005) {
@@ -697,11 +698,22 @@ export class World {
    *  is on `base` (transferable permanent value), NOT effective — a temporary +modifier inflating effective
    *  must not be transferable as permanent value, else `adjustAttributeBase` would clamp the debit at min
    *  and over-credit the target, creating units from nothing. */
-  transferAttribute(fromId: string, toId: string, key: string, amount: number): boolean {
+  /** Atomic conserved transfer of base value between two agents (e.g. a sale, a theft of gold, a loan).
+   *  Normal path: returns false (no-op) if the source's BASE value is below `amount`. With `allowOverdraft`
+   *  (E2), the source may go negative down to its declared `min` (debt / credit / overspend) — still fully
+   *  conserved: the entire `amount` is debited and credited, so we refuse if the debit would clamp at `min`
+   *  (which would over-credit the target and mint units). The check is on `base` (transferable permanent
+   *  value), NOT effective — a temporary +modifier inflating effective must not be transferable as permanent. */
+  transferAttribute(fromId: string, toId: string, key: string, amount: number, opts?: { allowOverdraft?: boolean }): boolean {
     if (amount <= 0) return false;
     if (!this.agents.has(fromId) || !this.agents.has(toId)) return false;
     const fromAttr = this.agents.get(fromId)!.state.attributes?.[key];
-    if (!fromAttr || fromAttr.base < amount) return false;
+    if (!fromAttr) return false;
+    if (opts?.allowOverdraft) {
+      if (fromAttr.base - amount < fromAttr.min) return false; // would clamp at min → break conservation
+    } else if (fromAttr.base < amount) {
+      return false;
+    }
     this.adjustAttributeBase(fromId, key, -amount);
     this.adjustAttributeBase(toId, key, amount);
     return true;
@@ -1983,6 +1995,10 @@ export class World {
           if (!a || !Number.isFinite(a.base)) continue;
           const attr = createAttribute(a.base, a.min, a.max); // re-clamps base into [min,max]
           attr.modifiers = (a.modifiers ?? []).filter((m) => Number.isFinite(m?.magnitude) && Number.isFinite(m?.remaining));
+          // E1: preserve drift config if present + finite (SL-07 NaN defense — never load a corrupt drift)
+          if (a.drift && Number.isFinite(a.drift.ratePerMinute) && (a.drift.toward === undefined || Number.isFinite(a.drift.toward))) {
+            attr.drift = a.drift.toward === undefined ? { ratePerMinute: a.drift.ratePerMinute } : { ratePerMinute: a.drift.ratePerMinute, toward: a.drift.toward };
+          }
           clean[key] = attr;
         }
         agent.state.attributes = clean;
