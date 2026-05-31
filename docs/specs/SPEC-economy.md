@@ -1,9 +1,10 @@
 # SPEC: Economy / Trade — the second genre module (validates the universal-engine thesis)
 
 > **Milestone**: M7 (Economy & Trade). Follows M6 (NPC Brain). Second content module on the genre-neutral engine.
-> **Status**: 🔨 IMPLEMENTING on `feature/economy` — **E1 ✅ E2 ✅ E3 ✅ (all 3 universal primitives) · P2 ✅ (module skeleton)**.
->   tsc 0, bun test 287, crime oracle green, server boots with the economy module. **Next: P3** (affordances + scoring;
->   wrinkle pre-analyzed in task #87 — step handlers need the World late-bound). Then P4 pricing/needs (E1), P5 debt (E2) + CG, P6 markets + close.
+> **Status**: 🔨 IMPLEMENTING on `feature/economy` — **E1 ✅ E2 ✅ E3 ✅ (3 universal primitives) · P2 ✅ skeleton · P3 ✅ (economy alive)**.
+>   tsc 0, bun test 295, crime oracle green. Live: Bess @ market-square passes buy/sell/haggle (→Mark merchant) + produce/hoard;
+>   trade moves conserved gold (E2) + inventory; need/debt scoring drives economic decisions. **Next: P4** pricing+needs (E1 drift),
+>   P5 debt (E2 overdraft) + cross-module CG (debt→crime), P6 markets + verify, then FINAL clwa-auditor + close (#92).
 > **Goal**: prove "same engine, different data" by building a full economic genre as **module content + registry data**,
 >   with the crime-justice game untouched as the regression oracle.
 > **Depends on**: M5 (scalar attributes B1 / inventory B2 / factions B3 / open capabilities / CG attr·faction·has_capability ops /
