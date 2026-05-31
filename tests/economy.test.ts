@@ -10,7 +10,7 @@ import {
   AFFORDANCE_REGISTRY, REQUIREMENT_CHECKERS, computeUtility, createAttribute,
 } from '@clwa/engine';
 import type { AgentProfile, AffordanceDefinition, AffordanceTarget } from '@clwa/engine';
-import { registerEconomyModule, computePriceTarget } from '@clwa/modules';
+import { registerEconomyModule, computePriceTarget, recordDebt, getDebt, clearDebt, isCreditor, findDebtorOf } from '@clwa/modules';
 
 beforeAll(() => { registerEconomyModule(); }); // idempotent
 
@@ -34,10 +34,10 @@ function makeAgent(id: string, opts?: { gold?: number; hunger?: number; debt?: n
 }
 
 describe('Economy module registration (P3)', () => {
-  test('registers exactly the 6 trade affordances, all category "economic"', () => {
+  test('registers the 8 economic affordances (6 trade + lend/collect_debt), all category "economic"', () => {
     const eco = AFFORDANCE_REGISTRY.filter((a) => a.category === 'economic');
     const ids = eco.map((a) => a.id).sort();
-    expect(ids).toEqual(['buy', 'haggle', 'hoard', 'produce', 'sell', 'smuggle']);
+    expect(ids).toEqual(['buy', 'collect_debt', 'haggle', 'hoard', 'lend', 'produce', 'sell', 'smuggle']);
   });
 
   test('every economy affordance has its actionVerb (INV-10 — needed for LLM constrained decoding)', () => {
@@ -117,5 +117,33 @@ describe('Economy dynamic pricing law (P4 — E1 drift target)', () => {
 
   test('at the reference supply (10) the price target equals the base price (5)', () => {
     expect(computePriceTarget(10)).toBe(5);
+  });
+});
+
+describe('Economy debt ledger (P5 — E2 overdraft substrate)', () => {
+  test('record / query / clear a debt; creditor + debtor lookups', () => {
+    clearDebt('borrower');
+    expect(getDebt('borrower')).toBeUndefined();
+    expect(isCreditor('lender')).toBe(false);
+    recordDebt('borrower', 'lender', 40);
+    expect(getDebt('borrower')).toEqual({ creditorId: 'lender', amount: 40 });
+    expect(isCreditor('lender')).toBe(true);
+    expect(findDebtorOf('lender')).toBe('borrower');
+    clearDebt('borrower');
+    expect(getDebt('borrower')).toBeUndefined();
+    expect(isCreditor('lender')).toBe(false);
+    expect(findDebtorOf('lender')).toBeUndefined();
+  });
+
+  test('isCreditorOf requirement checker reflects the ledger', () => {
+    clearDebt('b2');
+    const check = REQUIREMENT_CHECKERS.get('isCreditorOf');
+    expect(check).toBeDefined();
+    const ctx = {} as never;
+    const lender = makeAgent('cred1');
+    expect(check!(lender, ctx, {} as never)).toBe(false);
+    recordDebt('b2', 'cred1', 25);
+    expect(check!(lender, ctx, {} as never)).toBe(true);
+    clearDebt('b2');
   });
 });

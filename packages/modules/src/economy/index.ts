@@ -15,22 +15,22 @@ import {
   registerIntentKind,
   AFFORDANCE_REGISTRY, REQUIREMENT_CHECKERS, registerScoringContributor, registerActionVerbs,
   registerEventCategory, registerEventTypeFlagsBatch, registerEventLabels,
-  registerEventMoodShifts, registerGoalMoodBoost,
+  registerEventMoodShifts, registerGoalMoodBoost, registerBeliefCreator, registerMemoryTextBuilder,
   hasCapability, getAttributeValue,
 } from '@clwa/engine';
-import type { ConsequenceRule } from '@clwa/engine';
 import { ECONOMY_AFFORDANCES } from './affordances';
 import { registerEconomyTargetFinders } from './target-finders';
 import { registerEconomyStepHandlers } from './step-handlers';
 import { registerEconomyTickHandlers } from './pricing';
+import { ECONOMY_CG_RULES } from './cg-rules';
+import { isCreditor } from './debt';
 
 export { setEconomyWorld } from './step-handlers';
 export { computePriceTarget, getPrice, BASE_PRICE } from './pricing';
+export { recordDebt, getDebt, clearDebt, isCreditor, findDebtorOf } from './debt';
 
-/** Economy consequence-graph rules — consumed by the server (merged with CRIME_CG_RULES into the engine),
- *  NOT self-registered (mirrors crime-justice's CRIME_CG_RULES). Filled in P5 (shortage→pressure,
- *  stock-theft→guild alarm, debt-default→grudge). Empty until then. */
-export const ECONOMY_CG_RULES: ConsequenceRule[] = [];
+/** Economy CG rules (debt → crime) live in cg-rules.ts; the server merges them with CRIME_CG_RULES. Re-exported here. */
+export { ECONOMY_CG_RULES };
 
 let registered = false;
 
@@ -52,6 +52,7 @@ export function registerEconomyModule(): void {
   AFFORDANCE_REGISTRY.push(...ECONOMY_AFFORDANCES);
   registerActionVerbs({
     buy: ['buy'], sell: ['sell'], haggle: ['haggle'], produce: ['produce'], hoard: ['hoard'], smuggle: ['smuggle'],
+    lend: ['lend'], collect: ['collect'],
   });
 
   // ── Target finders (who to trade with) ──
@@ -66,6 +67,7 @@ export function registerEconomyModule(): void {
   REQUIREMENT_CHECKERS.set('hasGoodsToSell', (agent) => (agent.state.inventory ?? []).some((it) => it.quantity > 0));
   REQUIREMENT_CHECKERS.set('hasCapital', (agent, _ctx, params) =>
     (getAttributeValue(agent.state.attributes, 'gold') ?? 0) >= (Number((params as { minCapital?: number })?.minCapital) || 1));
+  REQUIREMENT_CHECKERS.set('isCreditorOf', (agent) => isCreditor(agent.profile.id)); // owed by someone (debtLedger)
 
   // ── Economic decision-making: need/debt pressure raises the utility of economic affordances ──
   // Scoped to category 'economic' so it never touches crime/social scoring. debt drives smuggle/sell (raise
@@ -79,9 +81,24 @@ export function registerEconomyModule(): void {
 
   // ── Events (INV-08 flags) + labels ──
   registerEventCategory('economy', ['TRADE_COMPLETED', 'SMUGGLING']);
-  registerEventTypeFlagsBatch(['TRADE_COMPLETED'], { informationOnly: true }); // info-only: no reactive volition
+  registerEventCategory('credit', ['LOAN_GRANTED', 'DEBT_DEFAULT', 'DEBT_OWED']);
+  registerEventTypeFlagsBatch(['TRADE_COMPLETED', 'LOAN_GRANTED', 'DEBT_DEFAULT', 'DEBT_OWED'], { informationOnly: true }); // CG handles the grudge — no reactive volition
   registerEventTypeFlagsBatch(['SMUGGLING'], { transferable: true });          // gossipable wrongdoing
-  registerEventLabels({ TRADE_COMPLETED: 'a trade', SMUGGLING: 'smuggling' });
+  registerEventLabels({ TRADE_COMPLETED: 'a trade', SMUGGLING: 'smuggling', LOAN_GRANTED: 'a loan', DEBT_DEFAULT: 'a defaulted debt', DEBT_OWED: 'a debt owed' });
+
+  // ── Cross-module (P5): DEBT_DEFAULT → a PERSONAL_GRUDGE motive in the creditor toward the defaulter
+  //    (event.subject). crime's threaten/argue/kill react to PERSONAL_GRUDGE → debt escalates to crime. The
+  //    CG rule (cg-rules.ts) routes DEBT_DEFAULT → DEBT_GRUDGE → this creator. Grudge is private (personal_motive). ──
+  registerBeliefCreator('DEBT_GRUDGE', (agent, event) => {
+    agent.state.beliefs?.addBelief({
+      id: crypto.randomUUID(), eventType: 'PERSONAL_GRUDGE',
+      subject: null, object: event.subject,
+      location: event.location, confidence: 0.7,
+      source: 'personal_motive', sourceNpcId: null,
+      gameDay: event.gameDay, lastUpdated: event.gameDay,
+    });
+  });
+  registerMemoryTextBuilder('DEBT_GRUDGE', () => `They owed me coin and defaulted. A debt unpaid is not forgotten.`);
 
   // ── Mood (INV-06: applied via addMoodModifier in handlers) ──
   registerEventMoodShifts({ TRADE_COMPLETED: 0.1, SMUGGLING: -0.05 });

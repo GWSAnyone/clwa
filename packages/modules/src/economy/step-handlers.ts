@@ -1,6 +1,7 @@
 import { registerStepHandler, addItem, removeItems, countItems, getAttributeValue } from '@clwa/engine';
 import type { StepExecutionContext, GoalActionResult, World } from '@clwa/engine';
 import { getPrice, BASE_PRICE } from './pricing';
+import { recordDebt, getDebt, clearDebt, LOAN_AMOUNT, LOAN_INTEREST, DEBT_FLOOR } from './debt';
 
 /** Black market pays a premium over the (dynamic) market price. Unit prices come from pricing.ts (E1 drift). */
 const BLACK_MARKET_PRICE = 10;
@@ -115,5 +116,58 @@ export function registerEconomyStepHandlers(): void {
     if (ctx.onEmitEvent) await ctx.onEmitEvent({ type: 'SMUGGLING', subject: owner.profile.id, location: owner.state.location, importance: step.importance ?? 4, payload: { kind, price: BLACK_MARKET_PRICE } });
     goal.currentStep++;
     return { ...base, action: 'smuggle_goods', description: `${owner.profile.name} smuggled ${kind} (+${BLACK_MARKET_PRICE} coin)` };
+  });
+
+  // offer_loan: lender (owner) advances LOAN_AMOUNT to a needy borrower (target), records a debt at interest,
+  // and lowers the borrower's gold floor so repayment can overdraft (E2) before defaulting.
+  registerStepHandler('offer_loan', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as EcoStep;
+    const base = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
+    const borrower = step.targetId ? agents.get(step.targetId) : undefined;
+    if (!borrower || !borrower.state.alive || owner.state.location !== borrower.state.location || !economyWorld) {
+      goal.state = 'failed';
+      return { ...base, action: 'offer_loan', description: `${owner.profile.name}: no borrower available` };
+    }
+    if (getDebt(borrower.profile.id)) { goal.currentStep++; return { ...base, action: 'offer_loan', description: `${owner.profile.name}: ${borrower.profile.name} already owes` }; }
+    if (!economyWorld.transferAttribute(owner.profile.id, borrower.profile.id, 'gold', LOAN_AMOUNT)) {
+      goal.state = 'failed';
+      return { ...base, action: 'offer_loan', description: `${owner.profile.name}: not enough coin to lend` };
+    }
+    const g = borrower.state.attributes?.gold; if (g) g.min = DEBT_FLOOR; // E2: may overdraft to repay later
+    const owed = Math.round(LOAN_AMOUNT * LOAN_INTEREST);
+    recordDebt(borrower.profile.id, owner.profile.id, owed);
+    await owner.observe(`I lent ${LOAN_AMOUNT} coin to ${borrower.profile.name}. They owe me ${owed} now.`, step.importance ?? 3);
+    if (ctx.onEmitEvent) await ctx.onEmitEvent({ type: 'LOAN_GRANTED', subject: owner.profile.id, object: borrower.profile.id, location: owner.state.location, importance: step.importance ?? 3, payload: { amount: LOAN_AMOUNT, owed } });
+    goal.currentStep++;
+    return { ...base, action: 'offer_loan', description: `${owner.profile.name} lent ${LOAN_AMOUNT} coin to ${borrower.profile.name} (owes ${owed})` };
+  });
+
+  // demand_payment: creditor (owner) collects from the debtor (target). The debtor pays via the E2 overdraft
+  // transfer — gold may go negative to its floor. If even that can't cover it → DEBT_DEFAULT, which the
+  // cross-module CG (cg-rules.ts) turns into a PERSONAL_GRUDGE motive: debt → crime.
+  registerStepHandler('demand_payment', async (ctx: StepExecutionContext): Promise<GoalActionResult | null> => {
+    const { goal, owner, agents } = ctx;
+    const step = ctx.step as EcoStep;
+    const base = { goalId: goal.id, goalType: goal.type, ownerId: goal.ownerId, ownerName: owner.profile.name };
+    const debtor = step.targetId ? agents.get(step.targetId) : undefined;
+    const debt = step.targetId ? getDebt(step.targetId) : undefined;
+    if (!debtor || !debt || debt.creditorId !== owner.profile.id || owner.state.location !== debtor.state.location || !economyWorld) {
+      goal.state = 'failed';
+      return { ...base, action: 'demand_payment', description: `${owner.profile.name}: no debtor to collect from` };
+    }
+    const owed = Math.round(debt.amount);
+    if (economyWorld.transferAttribute(debtor.profile.id, owner.profile.id, 'gold', owed, { allowOverdraft: true })) {
+      clearDebt(debtor.profile.id);
+      await owner.observe(`${debtor.profile.name} paid back the ${owed} coin they owed me.`, step.importance ?? 3);
+      goal.currentStep++;
+      return { ...base, action: 'demand_payment', description: `${owner.profile.name} collected ${owed} coin from ${debtor.profile.name}` };
+    }
+    // Default: even overdrafting can't cover it → grudge (cross-module CG: DEBT_DEFAULT → DEBT_GRUDGE → PERSONAL_GRUDGE).
+    clearDebt(debtor.profile.id);
+    await owner.observe(`${debtor.profile.name} defaulted on the ${owed} coin they owed me. I won't forget this.`, (step.importance ?? 4) + 1);
+    if (ctx.onEmitEvent) await ctx.onEmitEvent({ type: 'DEBT_DEFAULT', subject: debtor.profile.id, object: owner.profile.id, location: owner.state.location, importance: (step.importance ?? 4) + 1, payload: { affectedTargets: [owner.profile.id], debtorName: debtor.profile.name, creditorName: owner.profile.name } });
+    goal.state = 'failed';
+    return { ...base, action: 'demand_payment', description: `${owner.profile.name}: ${debtor.profile.name} DEFAULTED on ${owed} coin`, emittedEvent: { type: 'DEBT_DEFAULT', targetId: debtor.profile.id, targetName: debtor.profile.name } };
   });
 }
