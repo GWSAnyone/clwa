@@ -852,20 +852,18 @@ export function getPressureHandler(type: string): PressureHandlerFn | undefined 
 // Engine uses flags instead of hardcoded speech act string comparisons.
 interface SpeechActFlags {
   benign?: boolean;      // suppress hallucinated pressure at low intensity
-  trade?: boolean;       // suppress requestedAction and emotionalPressure (trade context)
   accusation?: boolean;  // trigger accusation evaluation for authority NPCs
 }
 
 const SPEECH_ACTS = new Map<string, SpeechActFlags>();
 
-export function registerSpeechActs(defs: Array<{ act: string; benign?: boolean; trade?: boolean; accusation?: boolean }>): void {
-  for (const def of defs) SPEECH_ACTS.set(def.act, { benign: def.benign, trade: def.trade, accusation: def.accusation });
+export function registerSpeechActs(defs: Array<{ act: string; benign?: boolean; accusation?: boolean }>): void {
+  for (const def of defs) SPEECH_ACTS.set(def.act, { benign: def.benign, accusation: def.accusation });
 }
 
 export function getRegisteredSpeechActs(): string[] { return Array.from(SPEECH_ACTS.keys()); }
 export function isValidSpeechAct(act: string): boolean { return SPEECH_ACTS.has(act); }
 export function isBenignSpeechAct(act: string): boolean { return SPEECH_ACTS.get(act)?.benign ?? false; }
-export function isTradeSpeechAct(act: string): boolean { return SPEECH_ACTS.get(act)?.trade ?? false; }
 export function isAccusationSpeechAct(act: string): boolean { return SPEECH_ACTS.get(act)?.accusation ?? false; }
 
 // ─── Claim Source Registry ───
@@ -878,16 +876,49 @@ export function registerClaimSources(sources: string[]): void {
 
 export function getRegisteredClaimSources(): ReadonlySet<string> { return CLAIM_SOURCES; }
 
-// ─── IL Trade Verbs Registry ───
-// Modules register verbs added to IL action enum to prevent hallucination.
-// These are NOT affordances — they're IL-only signals resolved to trade speechAct in validation.
-const IL_TRADE_VERB_SET = new Set<string>();
-
-export function registerILTradeVerbs(verbs: string[]): void {
-  for (const v of verbs) IL_TRADE_VERB_SET.add(v);
+// ─── Intent Kind Registry (universal — generalizes the legacy hardcoded trade-intent; INV-14/15) ───
+// A module registers an "intent kind": a structured sub-intent the player may express (trade, negotiate,
+// endorse, challenge…). It carries the speech act(s) + verbs that SIGNAL the intent, the JSON-schema fragment
+// for its data, and the prompt lines describing it. The engine extracts it generically into
+// DialogueMeaning.intents[key] and uses its presence only as a signal to correct the speech act — the engine
+// never names any specific intent. Verbs are added to the IL action enum to prevent constrained-decoding
+// hallucination (they are NOT affordances — IL-only signals resolved to the intent's speech act in validation).
+export interface IntentKind {
+  /** Stable key, e.g. 'trade'. Extracted data lands at DialogueMeaning.intents[key]. */
+  key: string;
+  /** Speech act(s) that signal this intent. On detection the speech act is corrected to the first of these. */
+  speechActs: string[];
+  /** Verbs that also signal this intent (collision guard: such a verb forces the intent speech act). */
+  verbs: string[];
+  /** JSON-schema properties for this intent's data object (module vocabulary lives here, not in the engine). */
+  schemaProperties: Record<string, unknown>;
+  /** Prompt lines injected into the extraction prompt describing when/how to extract this intent. */
+  promptLines: string[];
 }
 
-export function getILTradeVerbs(): ReadonlySet<string> { return IL_TRADE_VERB_SET; }
+const INTENT_KINDS = new Map<string, IntentKind>();
+
+export function registerIntentKind(kind: IntentKind): void {
+  if (!kind.key || typeof kind.key !== 'string') throw new Error('[IL] registerIntentKind: non-empty key required');
+  INTENT_KINDS.set(kind.key, kind);
+}
+export function getIntentKinds(): IntentKind[] { return Array.from(INTENT_KINDS.values()); }
+/** Union of all registered intent verbs (added to the IL action enum to avoid constrained-decoding hallucination). */
+export function getIntentVerbs(): ReadonlySet<string> {
+  const s = new Set<string>();
+  for (const k of INTENT_KINDS.values()) for (const v of k.verbs) s.add(v);
+  return s;
+}
+/** The intent key whose speechActs include `act`, else undefined (replaces the old isTradeSpeechAct flag check). */
+export function getIntentKeyForSpeechAct(act: string): string | undefined {
+  for (const k of INTENT_KINDS.values()) if (k.speechActs.includes(act)) return k.key;
+  return undefined;
+}
+/** The intent key whose verbs include `verb`, else undefined (collision correction in IL validation). */
+export function getIntentKeyForVerb(verb: string): string | undefined {
+  for (const k of INTENT_KINDS.values()) if (k.verbs.includes(verb)) return k.key;
+  return undefined;
+}
 
 // ─── Question Topic Registry ───
 // Modules register valid question topics for IL schema constrained decoding.

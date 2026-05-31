@@ -1,7 +1,7 @@
 # SPEC: Trait Randomization
 
 > **Milestone**: M1 (Replayable Crime)
-> **Status**: Implemented
+> **Status**: Implemented (v0.11.0)
 > **Depends on**: None
 > **Engine changes**: None. Server-side trait randomizer.
 > **Created**: 2026-04-01

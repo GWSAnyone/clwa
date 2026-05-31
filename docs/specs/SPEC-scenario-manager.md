@@ -1,7 +1,7 @@
 # SPEC: Scenario Manager
 
 > **Milestone**: M1 (Replayable Crime)
-> **Status**: Implemented
+> **Status**: Implemented (v0.11.0)
 > **Depends on**: None
 > **Engine changes**: World.reset(), server /api/new-game endpoint.
 > **Created**: 2026-04-01

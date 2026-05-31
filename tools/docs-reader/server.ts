@@ -491,7 +491,12 @@ const server = Bun.serve({
     const url = new URL(req.url);
     const pathname = url.pathname;
     const method = req.method;
-    const cors = { 'Access-Control-Allow-Origin': '*' };
+    const cors = {
+      'Access-Control-Allow-Origin': '*',
+      // Live dev view — always serve fresh from disk, never let the browser/proxy cache a response
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+    };
 
     // ─── API ───
 
@@ -999,14 +1004,14 @@ const server = Bun.serve({
       if (await file.exists()) {
         const ext = extname(full);
         return new Response(file, {
-          headers: { 'Content-Type': MIME[ext] || 'application/octet-stream' },
+          headers: { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': 'no-store' },
         });
       }
     } catch {}
 
     // SPA fallback
     return new Response(Bun.file(join(PUBLIC_DIR, 'index.html')), {
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
     });
   },
 });

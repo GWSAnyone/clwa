@@ -1,7 +1,7 @@
 # SPEC: Engine Max Generalization (universal capability subsystems)
 
 > **Milestone**: M5 (Engine Generalization) — Phase B (растим движок на нейтрализованной базе)
-> **Status**: **✅ B1+B2+B3 DONE + M5-review hardened** (scalar attributes, inventory, faction+relationship richness —
+> **Status**: **✅ B1+B2+B3 DONE + M5-review hardened (v0.16.0)** (scalar attributes, inventory, faction+relationship richness —
 >   all as clean tested engine primitives). Branch `feature/engine-generalization`. tsc 0, **262/262** tests. Один
 >   follow-up: полная A7b shop→inventory миграция требует economy-модуля (примитив готов). Отложенные enhancement'ы — ниже.
 > **Depends on**: SPEC-engine-neutralization (Phase A) — чистая genre-нейтральная база

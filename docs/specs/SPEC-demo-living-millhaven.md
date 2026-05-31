@@ -1,7 +1,7 @@
 # SPEC: Living Millhaven — demonstrate B1/B2/B3 in the crime game
 
 > **Milestone**: M5 follow-on (capability demonstration, not engine work)
-> **Status**: 🟡 IN PROGRESS — Phase 0
+> **Status**: ✅ COMPLETE (v0.16.0) — P0–P3 отгружены (gold/inventory/factions/standing видимы и играбельны в crime-игре, zero engine edits)
 > **Branch**: `feature/living-millhaven-demo` (off `feature/engine-generalization`)
 > **Depends on**: B1 scalar attributes, B2 inventory, B3 factions+standing (all DONE, engine-side)
 > **Created**: 2026-05-29

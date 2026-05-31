@@ -4,7 +4,7 @@ export type { AgentOptions } from './agent';
 export type { AgentProfile, AgentState, BigFive, Enneagram, LlmPersonality, Memory, MemoryEntry, ScoredMemory, ShopItem, NpcProcessingState } from './agent-types';
 export { DEFAULT_LLM_PERSONALITY, hasCapability } from './agent-types';
 // ─── Scalar Attributes (B1) — universal quantified-state primitive ───
-export { createAttribute, attributeEffective, getAttributeValue, decayAttribute } from './attributes';
+export { createAttribute, attributeEffective, getAttributeValue, decayAttribute, driftAttribute } from './attributes';
 export type { ScalarAttribute, AttributeModifier } from './attributes';
 // ─── Inventory (B2) — conserved, ownable, transferable item instances ───
 export { countItems, addItem, removeItems } from './inventory';
@@ -196,7 +196,7 @@ export type { TopicContext, TopicProposal } from './topic-engine';
 
 // ─── IL (Intent Layer) — Dialogue Meaning Extraction ───
 export { extractDialogueMeaning, applyDialogueMeaning, registerDialogueEffectHandler, getDialogueEffectHandlers } from './il';
-export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, TradeIntent, SpeechAct, ILContext, ILEffectContext, ILEffect, DialogueEffectHandlerFn } from './il';
+export type { DialogueMeaning, Claim, Question, RequestedAction, EmotionalPressure, SpeechAct, ILContext, ILEffectContext, ILEffect, DialogueEffectHandlerFn } from './il';
 
 // ─── Interaction ───
 export { createInteractionRunner } from './interaction';
@@ -264,13 +264,14 @@ export {
   registerSecretEventType, getSecretEventType,
   registerPressureTypes, getRegisteredPressureTypes,
   registerPressureHandler, getPressureHandler,
-  registerSpeechActs, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct,
+  registerSpeechActs, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isAccusationSpeechAct,
   registerClaimSources, getRegisteredClaimSources,
-  registerILTradeVerbs, getILTradeVerbs,
+  registerIntentKind, getIntentKinds, getIntentVerbs, getIntentKeyForSpeechAct, getIntentKeyForVerb,
   registerQuestionTopics, getRegisteredQuestionTopics,
   registerDefaultSpeechAct, getDefaultSpeechAct,
 } from './event-registry';
 export type { TickPhaseContext, TickPhaseHandlerFn } from './event-registry';
+export type { IntentKind } from './event-registry';
 export type { StepExecutionContext, StepHandlerFn, InteractionRunner as StepInteractionRunner } from './event-registry';
 export type { PressureHandlerContext, PressureHandlerFn } from './event-registry';
 export type { EventHandlerContext, EventHandlerFn, SceneResidueTemplate, BeliefCreatorFn, MemoryTextBuilderFn, DayAdvanceHandlerFn, DayAdvanceContext, DiscoveryContext, DiscoveryHandlerFn, MoodModifierCallback } from './event-registry';

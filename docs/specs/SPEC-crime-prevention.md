@@ -1,7 +1,7 @@
 # SPEC: Crime Prevention — Warn, Alert, Confront
 
 > **Milestone**: M2 (Detective Toolkit)
-> **Status**: Implemented
+> **Status**: Implemented (v0.12.0)
 > **Depends on**: IL pipeline (existing)
 > **Engine changes**: IL claim→belief→goal pipeline for prevention actions.
 > **Created**: 2026-04-03

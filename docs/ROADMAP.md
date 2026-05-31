@@ -3,6 +3,16 @@
 > Движок поведенческой физики для эмерджентных миров.
 > Сюжет не программируется — он возникает из взаимодействия систем.
 
+| | |
+|---|---|
+| **Версия** | `v0.18.0-dev` |
+| **Майлстоун** | M7 «Economy & Trade» — 🔨 в разработке (`feature/economy`) |
+| **Отгружено** | M5 Engine Generalization `v0.16.0` · M6 NPC Brain `v0.17.0` |
+| **Качество** | `bun test` 299 / 21 файл · `tsc` 0 · genre-neutrality guard PERFECT |
+| **История** | [docs/Changelog.md](Changelog.md) |
+
+> **Легенда статусов**: ✅ готово · 🔨 в разработке · ⏸️ отложено · 🔜 запланировано
+
 ---
 
 ## Архитектура
@@ -18,7 +28,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
-## Текущее состояние: v0.16.0 — M5 «Engine Generalization» отгружен (+ Living Millhaven demo)
+## Текущее состояние: v0.18.0-dev — M7 «Economy & Trade» в разработке (M5 v0.16.0 + M6 v0.17.0 отгружены)
 
 > **M5 «Engine Generalization»** (две фазы, отдельные ветки):
 > - **Phase A — genre-нейтрализация**: из `packages/engine` слиты ВСЕ crime-justice утечки (строки, имена типов,
@@ -29,9 +39,15 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 > - Демо **Living Millhaven** доказало цель генерализации: экономика + фракции + правосудие добавлены в crime-игру
 >   с **нулём правок движка**.
 >
+> **M6 «NPC Brain»** (v0.17.0, отгружен): слоистый промпт (L1/L2/L3), маршрутизация моделей per-task
+> (Sonnet/Haiku/Qwen), русская локализация, real-time chat-staleness TTL — качество отыгрыша NPC выведено на A-.
+>
+> **M7 «Economy & Trade»** (v0.18.0-dev, текущий фокус): второй жанр доказывает тезис «один движок, контент = данные».
+> 3 универсальных примитива (E1 drift / E2 overdraft / E3 INTENT_KIND) + модуль economy (торговля, цены, нужды,
+> долг/кредит, кросс-модульный CG долг→преступление). E1/E2/E3 + P2–P5 готовы; осталось P6 + финальный аудит.
+>
 > M4 «Complete Session»: arrival-event + position-authoritative movement (v0.15.0), удаление gameSpeed (v0.15.1)
-> отгружены; win/lose + end-of-run summary **сознательно отложены**. Текущий фокус — качество отыгрыша NPC
-> (тюнинг LLM/контекста) + обсервабилити.
+> отгружены; win/lose + end-of-run summary **сознательно отложены**.
 
 ### Завершено
 
@@ -47,7 +63,8 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | Milestone | Описание | Версия | Статус |
 |-----------|---------|--------|--------|
 | **Milestone 2** | Detective Toolkit — accusation, evidence presentation, prevention, journal v2 | v0.12 | Done (backend + Web UI) |
-| **Milestone 6** | NPC Brain — layered prompt (L1 scaffold / L2 persona / L3 volatile), context engineering, model routing (Qwen/Haiku/Sonnet), chat-staleness TTL, all data-driven in World Editor | `feature/npc-brain` | Implemented + verified (tsc 0, 280 tests, auditor); live walkthrough + merge pending |
+| **Milestone 6** | NPC Brain — layered prompt (L1 scaffold / L2 persona / L3 volatile), context engineering, model routing (Qwen/Haiku/Sonnet), chat-staleness TTL, all data-driven in World Editor | v0.17.0 | Done (tsc 0, 280 tests, final auditor: no MUST-FIX, INV-14 PERFECT) |
+| **Milestone 7** | Economy & Trade — второй жанр на универсальном движке: примитивы E1/E2/E3, торговля, динамические цены, нужды, долг/кредит, кросс-модульный CG (долг → преступление) | v0.18.0 | 🔨 В разработке (`feature/economy`): E1/E2/E3 + P2–P5 ✅, осталось P6 + финальный аудит |
 
 ### Engine подсистемы (17 реализовано)
 
@@ -55,9 +72,9 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 |-----------|--------|-----------|
 | AL (Affordance Layer) | v2 | Пространство возможностей. 20+ affordances, declarative steps, instinct builder |
 | PM (Personality Model) | v1 | OCEAN+H + Enneagram → utility scores, instinct prose, stress/growth |
-| CG (Consequence Graph) | v2 | Реактивные каскады. 13 rules → targetMode pipeline, trait/relationship/belief conditions, exclusive groups, trigger index |
+| CG (Consequence Graph) | v2 | Реактивные каскады. targetMode pipeline, trait/relationship/belief conditions, exclusive groups, trigger index. Crime-rules + economy cross-module rule (debt→grudge→crime) |
 | EL (Evidence Layer) | v1 | Structured evidence at locations, discovery, weights |
-| IL (Intent Layer) | v2 | Player speech → structured meaning → engine effects. Dynamic JSON schema |
+| IL (Intent Layer) | v2 + M7 | Player speech → structured meaning → engine effects. Dynamic JSON schema. **M7 E3: open `INTENT_KIND` registry** — модули регистрируют интенты (trade больше не захардкожен в движке) |
 | Beliefs | v1 | Confidence, source dedup, decay, transfer weights |
 | Goals | v1 | Multi-step plans, priority preemption, pursuit, module step handlers |
 | Memory | v2 | Persistent dual storage (_memoryLog + Qdrant), 3-level fallback, multiplayer-ready |
@@ -67,13 +84,17 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 | Clock | v1 | Master Clock, ProcessingQueue (7 task types), NPC state machine (6 states) |
 | Journal | v2 | Structured evidence fields, suspect tracking, case summary scoring |
 | Dialogue | v1 | Structured JSON (speech+gesture), TopicEngine v3.1 (16 sources: 13 social + 3 crime) |
-| Attributes (Scalar) | v1 | Universal numeric state: base + clamped [min,max] + decaying modifiers (MoodModifier-модель). Атомарный conserved `transferAttribute`. CG `attr` op, `registerScoringContributor`. Backs gold/HP/standing/needs |
+| Attributes (Scalar) | v1 + M7 | Universal numeric state: base + clamped [min,max] + decaying modifiers (MoodModifier-модель). Атомарный conserved `transferAttribute` (+ **M7 E2 overdraft**). **M7 E1 drift**: base дрейфует к цели (цены/нужды). CG `attr` op, `registerScoringContributor`. Backs gold/HP/standing/needs |
 | Inventory | v1 | Item-инстансы {id, kind, quantity, state?}. Атомарный conserved `transferItem` — реальная кража/торговля/лут двигают state. Per-agent inventory |
 | Factions | v1 | Open-key membership на AgentState. CG `faction` op, join/leave/isMember. Per-faction standing через scalar-атрибут |
 
 ---
 
 ## Milestone Roadmap (Game — GDD_DETECTIVE.md)
+
+> Это майлстоуны **детективной игры** (GDD) — отдельный трек от инженерных майлстоунов выше
+> (M5 Engine Generalization `v0.16.0` / M6 NPC Brain `v0.17.0` / M7 Economy `v0.18.0-dev`). Игровые M4/M5
+> (win/lose, polish & demo) сознательно отложены в пользу расширения движка под мульти-жанровость.
 
 | # | Milestone | Версия | Описание | Статус |
 |---|-----------|--------|----------|--------|
@@ -152,14 +173,41 @@ A5b StepTemplate combat-поля, instinct RESISTANCE/TEXTURE registry-ифик�
 
 ---
 
+## M7 — Economy & Trade (🔨 в разработке, v0.18.0-dev)
+
+Второй жанр на универсальном движке — доказательство тезиса «один движок, контент = данные». Почти весь жанр —
+контент модуля + 3 универсальных примитива движка. Crime-игра не тронута (регрессионный оракул). Ветка `feature/economy`.
+
+**Универсальные примитивы движка** (genre-neutral, НЕ economy-специфичны):
+
+| Примитив | Где | Суть |
+|----------|-----|------|
+| **E1 — drift скалярных атрибутов** | `attributes.ts` | `ScalarAttribute.drift {ratePerMinute, toward?}`; `driftAttribute()` двигает `base` к цели (линейно/экспоненциально). Основа цен и нужд |
+| **E2 — overdraft transfer** | `world.ts` | `transferAttribute(..., {allowOverdraft})` уводит источник в минус до `min` (долги), сохраняя консервацию |
+| **E3 — INTENT_KIND registry** | `il.ts` / `event-registry.ts` | Намерения игрока — данные модуля (`registerIntentKind`); «торговая» утечка снята из IL движка |
+
+**Модуль economy** (`packages/modules/src/economy/`, zero engine imports):
+- **8 аффордансов** (category `economic`): buy / sell / haggle / produce / hoard / smuggle / lend / collect_debt.
+- Экономические решения: `registerScoringContributor` поднимает полезность экономических действий под давлением нужды/долга.
+- Динамические цены (на E1): `price:KIND` дрейфует к supply/demand-цели (дефицит → дороже).
+- Нужды: `hunger` растёт (E1), еда сбрасывает; bilateral (игрок тоже голодает).
+- Долг/кредит (на E2): заём → запись в реестр → взыскание overdraft-переводом; дефолт уходит в пол.
+- Кросс-модуль economy→crime: `DEBT_DEFAULT` → CG `debt-default-grudge` → `PERSONAL_GRUDGE` у кредитора → crime threaten/argue/kill реагируют. Нулевой общий код — только CG-шина.
+
+**Статус**: E1/E2/E3 + P2–P5 ✅ (tsc 0, 299 тестов). Осталось **P6** (полировка фронта, рынки-venues,
+контрабанда/мошенничество, эмиссия `SHORTAGE`, доп. кросс-модульный CG) + **финальный аудит** → мерж.
+
+---
+
 ## Phase 3: World Expansion
 
 ### Новые подсистемы движка
 
 Четыре подсистемы разблокируют модули Economy, Politics, Social, Survival. Каждая = engine-level код (пустые регистры), конкретное содержание = module data.
 
-> **Статус (M5 Phase B):** Inventory ✅ (B2), Factions ✅ (B3), плюс scalar-attribute слой (B1) как общая
-> числовая основа (gold/HP/standing/needs). **Trauma Layer** и **Needs/Resources** — ещё впереди (Needs строится поверх B1).
+> **Статус:** Inventory ✅ (B2, M5), Factions ✅ (B3, M5), scalar-attribute слой ✅ (B1, M5 — gold/HP/standing/needs).
+> **Needs/Resources** 🔨 частично запущены в M7 (`hunger` drift поверх B1 + eat-loop; полноценный `NEED_DEFINITIONS`-реестр впереди).
+> **Trauma Layer** 🔜 ещё впереди.
 
 #### Trauma Layer — необратимые изменения личности (впереди)
 
@@ -198,7 +246,7 @@ Transfer(item, from, to) → CG event
 
 **Разблокирует:** Economy module, physical evidence, crafting, trade.
 
-#### Needs / Resources — потребности и давление (впереди, поверх B1)
+#### Needs / Resources — потребности и давление (🔨 частично в M7, поверх B1)
 
 **Что:** Числовые потребности (0=удовлетворена, 1=критическая). Растут со временем, удовлетворяются через affordances.
 
@@ -246,7 +294,7 @@ Registry: FACTION_TYPES — modules define roles/structures
 
 | Module | Affordances | CG Rules | Dependencies |
 |--------|------------|----------|-------------|
-| **Economy & Trade** | buy, sell, craft, smuggle, invest, barter | trade→price_change, smuggle→if_caught→wanted | Inventory, Needs |
+| **Economy & Trade** 🔨 M7 | buy, sell, haggle, produce, hoard, smuggle, lend, collect_debt | DEBT_DEFAULT→grudge→crime (cross-module) | Attributes (B1), Inventory (B2) |
 | **Social & Culture** | befriend, court, mentor, celebrate, mourn | marriage→family_bonds, death→grief_cascade | Factions (family), Trauma |
 | **Politics & Governance** | propose_law, vote, rebel, campaign, bribe, ally | law_passed→restrictions, rebellion→faction_war | Factions, Reputation |
 | **Combat & Warfare** | attack, defend, ambush, duel, siege, retreat | attack→damage, siege→territory_change | Factions (army units) |

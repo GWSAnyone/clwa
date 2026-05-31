@@ -8,7 +8,7 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import {
   Agent, VectorMemory, BeliefManager, RelationshipGraph, World, ConsequenceEngine, InMemoryEventStore,
-  createAttribute, attributeEffective, decayAttribute, getAttributeValue,
+  createAttribute, attributeEffective, decayAttribute, driftAttribute, getAttributeValue,
   registerScoringContributor, clearScoringContributors, computeUtility,
 } from '@clwa/engine';
 import type { AgentProfile, AffordanceDefinition, AffordanceTarget, ConsequenceRule, WorldEvent, WorldContext } from '@clwa/engine';
@@ -61,6 +61,41 @@ describe('Scalar attribute math (pure)', () => {
     decayAttribute(hp, 5);                              // remaining 5 -> 0, modifier dropped
     expect(hp.modifiers.length).toBe(0);
     expect(attributeEffective(hp)).toBe(100);
+  });
+
+  test('driftAttribute (E1): linear drift moves base by rate*dt, clamped to [min,max]', () => {
+    const price = createAttribute(50, 0, 100);
+    price.drift = { ratePerMinute: 2 };   // +2/min, no target → linear
+    driftAttribute(price, 5);             // +10
+    expect(price.base).toBe(60);
+    driftAttribute(price, 100);           // +200 → clamps at max 100
+    expect(price.base).toBe(100);
+    price.drift = { ratePerMinute: -3 };
+    driftAttribute(price, 5);             // -15
+    expect(price.base).toBe(85);
+  });
+
+  test('driftAttribute (E1): exponential approach moves base toward target, never overshoots', () => {
+    const hunger = createAttribute(0, 0, 1);
+    hunger.drift = { ratePerMinute: 0.05, toward: 1 };
+    driftAttribute(hunger, 10);
+    expect(hunger.base).toBeGreaterThan(0);
+    expect(hunger.base).toBeLessThan(1);          // never overshoots the target
+    for (let i = 0; i < 1000; i++) driftAttribute(hunger, 10);
+    expect(hunger.base).toBeLessThanOrEqual(1);   // clamped ≤ max
+    expect(hunger.base).toBeCloseTo(1, 2);        // asymptotically approaches
+  });
+
+  test('driftAttribute (E1): no-op without config, on non-positive dt, and on non-finite rate/target (DD-04)', () => {
+    const a = createAttribute(50, 0, 100);
+    driftAttribute(a, 5); expect(a.base).toBe(50);   // no drift config
+    a.drift = { ratePerMinute: 2 };
+    driftAttribute(a, 0); expect(a.base).toBe(50);   // dt 0
+    driftAttribute(a, -5); expect(a.base).toBe(50);  // negative dt
+    a.drift = { ratePerMinute: NaN };
+    driftAttribute(a, 5); expect(a.base).toBe(50);   // NaN rate rejected
+    a.drift = { ratePerMinute: 1, toward: Infinity };
+    driftAttribute(a, 5); expect(a.base).toBe(50);   // non-finite target rejected
   });
 
   test('getAttributeValue returns undefined for undeclared keys', () => {
@@ -152,6 +187,29 @@ describe('World attribute API', () => {
     expect(richGold.base).toBe(0);
     expect(world.getAttribute('rich', 'gold')).toBe(30); // base 0 + buff 30 (buff not transferred)
     expect(world.agents.get('poor')!.state.attributes!.gold.base).toBe(50);
+  });
+
+  test('transferAttribute allowOverdraft (E2): source goes negative down to min (loan), value conserved', () => {
+    const lender = makeAgent('lender');
+    const borrower = makeAgent('borrower');
+    const world = makeWorld(new Map([['lender', lender], ['borrower', borrower]]));
+    world.setAttribute('lender', 'gold', 100, -1000, 9999);
+    world.setAttribute('borrower', 'gold', 0, -1000, 9999); // min < 0 → may owe
+    expect(world.transferAttribute('borrower', 'lender', 'gold', 40, { allowOverdraft: true })).toBe(true);
+    expect(world.getAttribute('borrower', 'gold')).toBe(-40); // went negative
+    expect(world.getAttribute('lender', 'gold')).toBe(140);   // 100 total conserved
+  });
+
+  test('transferAttribute (E2): overdraft refuses if the debit would clamp at min (conservation guard)', () => {
+    const a = makeAgent('a');
+    const b = makeAgent('b');
+    const world = makeWorld(new Map([['a', a], ['b', b]]));
+    world.setAttribute('a', 'gold', 30, 0, 9999); // min 0 → cannot go below zero
+    world.setAttribute('b', 'gold', 0, 0, 9999);
+    expect(world.transferAttribute('a', 'b', 'gold', 50)).toBe(false);                        // normal: insufficient
+    expect(world.transferAttribute('a', 'b', 'gold', 50, { allowOverdraft: true })).toBe(false); // would clamp at min 0 → refused
+    expect(world.getAttribute('a', 'gold')).toBe(30); // untouched
+    expect(world.getAttribute('b', 'gold')).toBe(0);
   });
 });
 

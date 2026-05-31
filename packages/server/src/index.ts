@@ -7,8 +7,8 @@ import { InMemoryEventStore } from '@clwa/engine';
 import { World, findPath } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
-import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES, PlayerJournal } from '@clwa/modules';
-import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerILTradeVerbs, registerQuestionTopics, registerDefaultSpeechAct } from '@clwa/engine';
+import { registerCrimeJusticeModule, registerSocialModule, registerEconomyModule, setEconomyWorld, CRIME_CG_RULES, ECONOMY_CG_RULES, PlayerJournal } from '@clwa/modules';
+import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerQuestionTopics, registerDefaultSpeechAct } from '@clwa/engine';
 import {
   registerLlmProvider,
   registerLlmTask,
@@ -41,6 +41,7 @@ import { join, dirname } from 'path';
 // ─── Register World Modules ───
 registerSocialModule();          // universal social topic sources
 registerCrimeJusticeModule();    // crime & justice affordances, CG rules, topic sources
+registerEconomyModule();         // economy/trade: trade intent + (P3+) affordances, pricing, debt, CG rules
 registerEventCategory('player_action', [PLAYER_ACTION_EVENT]);
 
 // ─── Memory consolidation tick handler (Stage 7a) ───
@@ -145,11 +146,11 @@ registerSpeechActs([
   { act: 'insult' },
   { act: 'bribe' },
   { act: 'confide',   benign: true },
-  { act: 'trade',     benign: true, trade: true },
+  { act: 'trade',     benign: true },
   { act: 'smalltalk', benign: true },
 ]);
 registerClaimSources(['witnessed', 'heard', 'suspects', 'deduced']);
-registerILTradeVerbs(['buy', 'sell', 'browse', 'trade']);
+// 'trade' intent kind now lives in the economy module (registerEconomyModule above) — it owns trade vocabulary.
 registerQuestionTopics(['whereabouts', 'opinion', 'knowledge', 'relationship', 'secret']);
 registerDefaultSpeechAct('smalltalk');
 
@@ -740,6 +741,10 @@ async function createGameContext(
   const seededFactions = new Set(Object.values(worldData.factionMemberships).flat());
   console.log(`  [+] Demo state: gold on ${seededGold + 1} agents, factions {${[...seededFactions].join(', ')}}, inventory on ${Object.keys(worldData.startingInventory).length + 1}`);
 
+  // M7 E3/P3: late-bind the World into the economy module so its step handlers can move gold via the
+  // conserved E2 transferAttribute (StepExecutionContext carries no World ref).
+  setEconomyWorld(world);
+
   // Stage 5: wire active agents/world для ClaudeCodeProvider.onBeforeCall snapshot
   _setActiveCtxForLlmProvider(agents, world);
 
@@ -773,7 +778,7 @@ async function main() {
   // Pre-allocate context — fields filled by Object.assign(ctx, initial) below.
   // Must exist before CG engine creation (callback captures ctx reference).
   const ctx = { resetting: false } as GameContext;
-  const cgEngine = new ConsequenceEngine(CRIME_CG_RULES, {
+  const cgEngine = new ConsequenceEngine([...CRIME_CG_RULES, ...ECONOMY_CG_RULES], {
     onEvent: (event) => {
       ctx.eventStore.append(event);
       broadcast({ type: 'event', data: event });
@@ -782,7 +787,7 @@ async function main() {
       // Calling it here would double-process events AND violate INV-02 (unawaited async).
     },
   });
-  console.log(`  [+] Consequence engine — ${CRIME_CG_RULES.length} rules`);
+  console.log(`  [+] Consequence engine — ${CRIME_CG_RULES.length + ECONOMY_CG_RULES.length} rules (crime + economy)`);
 
   // ─── First game context ───
   const initial = await createGameContext(worldPath, initialSeed, cgEngine, locationGraph);

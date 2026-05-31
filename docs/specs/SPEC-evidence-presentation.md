@@ -1,7 +1,7 @@
 # SPEC: Evidence Presentation — Show Evidence to NPC
 
 > **Milestone**: M2 (Detective Toolkit)
-> **Status**: Implemented
+> **Status**: Implemented (v0.12.0)
 > **Depends on**: SPEC-journal-v2 (done)
 > **Engine changes**: EvidenceLayer, structured JournalEntry fields, IL evidence handling.
 > **Created**: 2026-04-03

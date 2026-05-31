@@ -1,0 +1,107 @@
+import { registerTickPhaseHandler, createAttribute, getAttributeValue, removeItems, hasCapability } from '@clwa/engine';
+import type { Agent } from '@clwa/engine';
+
+/**
+ * Dynamic pricing + needs (M7 P4) — both ride the E1 attribute-drift primitive: the engine's per-tick
+ * driftAttribute() moves `base` toward a target, this module only sets the target/rate. Pure module content.
+ *   - price:KIND attribute per merchant — drift.toward = supply-driven market price (scarcer → pricier).
+ *   - hunger attribute per agent — drifts UP toward 1 (need pressure); eating food resets it.
+ */
+
+export const BASE_PRICE = 5;
+/** Module-defined edible kinds (v1 — a proper `edible` item property is deferred). Eating one satisfies hunger. */
+const FOOD_KINDS = new Set(['bread', 'herb_calm', 'tea_fortune', 'potion_heal', 'antidote', 'potion_minor', 'spice_valdris']);
+const HUNGER_RATE = 0.0005;   // exp approach toward 1 — reaches ~0.5 over a game-day (1440 min)
+const HUNGER_EAT_DROP = 0.6;  // eating drops hunger by this
+const EAT_THRESHOLD = 0.5;    // eat once hunger crosses this
+const PRICE_RATE = 0.02;      // price approaches its supply target over a few hours
+const PRICE_TICK_MIN = 30;    // recompute supply→price every 30 game-min
+const SHORTAGE_THRESHOLD = 3; // total supply of a food kind ≤ this across all merchants → SHORTAGE
+const SHORTAGE_CLEAR = 6;     // re-arm the SHORTAGE trigger only after supply recovers above this (hysteresis)
+const SHORTAGE_BROKE_GOLD = 10; // an agent is "broke" (feels the shortage) below this gold
+const SHORTAGE_HUNGRY = 0.4;  // …and "hungry" at/above this hunger need
+
+/** Food kinds currently in shortage — module-scope throttle so SHORTAGE fires once per episode, not every tick. */
+const inShortage = new Set<string>();
+
+/** Supply-driven market price target: scarcer = pricier. supply 0 → ~3× base; supply ≥ ~33 → 0.6× base floor. */
+export function computePriceTarget(supply: number): number {
+  const factor = Math.max(0.6, Math.min(3, 1 + (10 - supply) * 0.12));
+  return +(BASE_PRICE * factor).toFixed(2);
+}
+
+/** Current unit price a seller charges for a kind — its drifting price:KIND attribute, else the base price. */
+export function getPrice(seller: Agent, kind: string): number {
+  const v = getAttributeValue(seller.state.attributes, `price:${kind}`);
+  return v !== undefined && v > 0 ? Math.round(v) : BASE_PRICE;
+}
+
+export function registerEconomyTickHandlers(): void {
+  registerTickPhaseHandler(async (ctx) => {
+    // ── Needs: hunger drifts UP via E1 (set drift once; the engine tick moves base). Eat when hungry + has
+    //    food. INV-16 bilateral — applies to every agent (player gets hungry too). ──
+    for (const [, agent] of ctx.agents) {
+      if (!agent.state.alive) continue;
+      if (!agent.state.attributes) agent.state.attributes = {};
+      let hunger = agent.state.attributes['hunger'];
+      if (!hunger) { hunger = createAttribute(0, 0, 1); agent.state.attributes['hunger'] = hunger; }
+      if (!hunger.drift) hunger.drift = { ratePerMinute: HUNGER_RATE, toward: 1 };
+      if (hunger.base >= EAT_THRESHOLD && agent.state.inventory) {
+        const food = agent.state.inventory.find((it) => it.quantity > 0 && FOOD_KINDS.has(it.kind));
+        if (food && removeItems(agent.state.inventory, food.kind, 1)) {
+          hunger.base = Math.max(0, hunger.base - HUNGER_EAT_DROP);
+        }
+      }
+    }
+
+    // ── Dynamic pricing: every PRICE_TICK_MIN recompute supply per kind → set each merchant's price:KIND
+    //    drift target. The engine's driftAttribute then evolves the base smoothly toward it (E1). ──
+    if (ctx.gameMinute % PRICE_TICK_MIN !== 0) return; // INV-19 absolute gameMinute
+    const supply = new Map<string, number>();
+    const merchants: Agent[] = [];
+    for (const [, agent] of ctx.agents) {
+      if (!agent.state.alive || !hasCapability(agent.profile, 'isMerchant')) continue;
+      merchants.push(agent);
+      for (const it of agent.state.inventory ?? []) supply.set(it.kind, (supply.get(it.kind) ?? 0) + it.quantity);
+    }
+    for (const m of merchants) {
+      if (!m.state.attributes) m.state.attributes = {};
+      for (const it of m.state.inventory ?? []) {
+        const key = `price:${it.kind}`;
+        const target = computePriceTarget(supply.get(it.kind) ?? 0);
+        let p = m.state.attributes[key];
+        if (!p) { p = createAttribute(BASE_PRICE, 1, 999); m.state.attributes[key] = p; }
+        p.drift = { ratePerMinute: PRICE_RATE, toward: target };
+      }
+    }
+
+    // ── Shortage detection (P6): when a food kind runs critically low across ALL merchants, emit a SHORTAGE
+    //    event through the CG bus (ctx.processEvent) so consequences can fire (economy → debt pressure, see
+    //    cg-rules.ts). Throttled per-kind via `inShortage`: fires once on entering shortage, re-arms only after
+    //    supply recovers above SHORTAGE_CLEAR (hysteresis avoids per-tick spam). ──
+    const market = merchants.find((m) => (m.state.location ?? '').includes('market')) ?? merchants[0];
+    for (const kind of FOOD_KINDS) {
+      const have = supply.get(kind) ?? 0;
+      if (have <= SHORTAGE_THRESHOLD && !inShortage.has(kind)) {
+        inShortage.add(kind);
+        if (!market) continue;
+        // Affected = agents who are both broke and hungry — scarcity bites them first (targetMode 'affected').
+        const affectedTargets: string[] = [];
+        for (const [id, a] of ctx.agents) {
+          if (!a.state.alive) continue;
+          const gold = getAttributeValue(a.state.attributes, 'gold') ?? 0;
+          const hunger = getAttributeValue(a.state.attributes, 'hunger') ?? 0;
+          if (gold < SHORTAGE_BROKE_GOLD && hunger >= SHORTAGE_HUNGRY) affectedTargets.push(id);
+        }
+        const where = market.state.location ?? 'market';
+        await ctx.processEvent({
+          id: crypto.randomUUID(), type: 'SHORTAGE',
+          subject: where, location: where, gameDay: ctx.currentDay,
+          importance: 4, payload: { kind, supply: have, affectedTargets },
+        });
+      } else if (have > SHORTAGE_CLEAR) {
+        inShortage.delete(kind);
+      }
+    }
+  });
+}

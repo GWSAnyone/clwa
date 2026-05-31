@@ -28,6 +28,11 @@ export interface ScalarAttribute {
   min: number;
   max: number;
   modifiers: AttributeModifier[];
+  /** Optional per-tick drift of `base` (universal — price evolution, HP-regen, need growth, cooldown recovery).
+   *  `toward` unset → `base` moves linearly by `ratePerMinute` units/min; `toward` set → `base` approaches it
+   *  exponentially at rate `ratePerMinute` (1 - e^(-rate·dt)). Applied by `driftAttribute()` in the tick, then
+   *  clamped to [min,max]. Absent = no drift (INV-21: old saves/worlds without it simply don't drift). */
+  drift?: { ratePerMinute: number; toward?: number };
 }
 
 function modifierEffective(m: AttributeModifier): number {
@@ -61,6 +66,28 @@ export function decayAttribute(attr: ScalarAttribute, dtMinutes: number): void {
       if (m.remaining <= 0) attr.modifiers.splice(i, 1);
     }
   }
+}
+
+/** Universal per-tick drift of an attribute's BASE value (genre-neutral: price evolution, HP regen, hunger
+ *  growth, cooldown recovery, radiation decay). Mutates `attr.base` by/toward `attr.drift` over `dtMinutes`,
+ *  then clamps to [min,max]. No drift config or non-positive dt = no-op. Non-finite rate/toward/result is
+ *  rejected (DD-04 NaN defense — never corrupt base). Decoupled from `decayAttribute` (which only ticks
+ *  modifiers): callers run both in the tick loop. */
+export function driftAttribute(attr: ScalarAttribute, dtMinutes: number): void {
+  const d = attr.drift;
+  if (!d || dtMinutes <= 0) return;
+  const rate = d.ratePerMinute;
+  if (!Number.isFinite(rate) || rate === 0) return;
+  let next: number;
+  if (d.toward === undefined) {
+    next = attr.base + rate * dtMinutes; // linear, unbounded until clamp
+  } else {
+    if (!Number.isFinite(d.toward)) return;
+    const frac = 1 - Math.exp(-Math.abs(rate) * dtMinutes); // exponential approach, fraction in [0,1)
+    next = attr.base + (d.toward - attr.base) * frac;
+  }
+  if (!Number.isFinite(next)) return;
+  attr.base = clamp(next, attr.min, attr.max);
 }
 
 /** Read the effective value of an attribute from a map, or undefined if not declared. */
