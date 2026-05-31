@@ -28,12 +28,12 @@ import {
   getRegisteredSpeechActs,
   getRegisteredClaimSources,
   getRegisteredPressureTypes,
-  getILTradeVerbs,
+  getIntentVerbs,
   // Registration functions for server-level setup
   registerEventCategory,
   registerSpeechActs,
   registerClaimSources,
-  registerILTradeVerbs,
+  registerIntentKind,
   registerPressureTypes,
 } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule } from '@clwa/modules';
@@ -75,11 +75,11 @@ beforeAll(() => {
     { act: 'compliment', benign: true }, { act: 'deny' },
     { act: 'agree', benign: true }, { act: 'disagree' },
     { act: 'greet', benign: true }, { act: 'farewell', benign: true },
-    { act: 'buy', trade: true }, { act: 'sell', trade: true },
-    { act: 'browse', trade: true },
+    { act: 'buy' }, { act: 'sell' },
+    { act: 'browse' },
   ]);
   registerClaimSources(['witnessed', 'heard', 'suspects', 'deduced']);
-  registerILTradeVerbs(['buy', 'sell', 'browse', 'trade']);
+  registerIntentKind({ key: 'trade', speechActs: ['buy', 'sell', 'browse'], verbs: ['buy', 'sell', 'browse', 'trade'], schemaProperties: { category: { type: 'string' } }, promptLines: ['buy/sell/browse goods'] });
   registerPressureTypes(['threat', 'bribe', 'flattery', 'guilt', 'intimidation']);
 
   registered = true;
@@ -131,7 +131,7 @@ describe('Registries Populated', () => {
   });
 
   test('trade verbs registered', () => {
-    expect(getILTradeVerbs().size).toBeGreaterThan(0);
+    expect(getIntentVerbs().size).toBeGreaterThan(0);
   });
 
   test('TICK_PHASE_HANDLERS has entries', () => {

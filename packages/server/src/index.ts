@@ -8,7 +8,7 @@ import { World, findPath } from '@clwa/engine';
 import type { AgentProfile, AgentState, RelationType } from '@clwa/engine';
 import type { LocationDef, LocationGraph, ScheduleEntry, NpcHome } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES, PlayerJournal } from '@clwa/modules';
-import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerILTradeVerbs, registerQuestionTopics, registerDefaultSpeechAct } from '@clwa/engine';
+import { registerRoleTopicPool, registerSecretDirectiveBuilder, registerEventCategory, registerPressureTypes, registerPressureHandler, registerSpeechActs, registerClaimSources, registerIntentKind, registerQuestionTopics, registerDefaultSpeechAct } from '@clwa/engine';
 import {
   registerLlmProvider,
   registerLlmTask,
@@ -145,11 +145,19 @@ registerSpeechActs([
   { act: 'insult' },
   { act: 'bribe' },
   { act: 'confide',   benign: true },
-  { act: 'trade',     benign: true, trade: true },
+  { act: 'trade',     benign: true },
   { act: 'smalltalk', benign: true },
 ]);
 registerClaimSources(['witnessed', 'heard', 'suspects', 'deduced']);
-registerILTradeVerbs(['buy', 'sell', 'browse', 'trade']);
+// 'trade' intent kind (IntentKind registry) — carries the trade vocabulary as DATA, not engine code (INV-14).
+// Temporary home: server bootstrap. Moves into the economy module when it owns the trade affordances (M7 P2).
+registerIntentKind({
+  key: 'trade',
+  speechActs: ['trade'],
+  verbs: ['buy', 'sell', 'browse', 'trade'],
+  schemaProperties: { category: { type: 'string' }, itemName: { type: 'string' } },
+  promptLines: ['player wants to buy, sell, or browse goods / ask about prices. category: weapon, armor, potion, food, general; itemName: specific item if named.'],
+});
 registerQuestionTopics(['whereabouts', 'opinion', 'knowledge', 'relationship', 'secret']);
 registerDefaultSpeechAct('smalltalk');
 

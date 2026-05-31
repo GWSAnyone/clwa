@@ -17,7 +17,7 @@
 import type { Agent } from './agent';
 import { hasCapability } from './agent-types';
 import type { IEventStore } from './event-types';
-import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isTradeSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getILTradeVerbs, getRegisteredQuestionTopics, getDefaultSpeechAct, phraseBelief } from './event-registry';
+import { getEventLabel, getEventLabelSafe, BELIEF_SOURCE, isTransferable, getAffordanceIdsForVerb, getRegisteredPressureTypes, getPressureHandler, getRegisteredSpeechActs, isValidSpeechAct, isBenignSpeechAct, isAccusationSpeechAct, getRegisteredClaimSources, getIntentKinds, getIntentVerbs, getIntentKeyForSpeechAct, getIntentKeyForVerb, getRegisteredQuestionTopics, getDefaultSpeechAct, phraseBelief } from './event-registry';
 import type { PressureHandlerContext } from './event-registry';
 import type { ILConfig } from './world-types';
 import { DEFAULT_IL_CONFIG } from './world-types';
@@ -38,7 +38,7 @@ function buildILSchema(ctx: ILContext): LlmJsonSchema {
   const speechActs = getRegisteredSpeechActs().sort();
   const claimSources = Array.from(getRegisteredClaimSources()).sort();
   const pressureTypes = Array.from(getRegisteredPressureTypes()).sort();
-  const actionVerbs = [...new Set([...getILTradeVerbs(), ...ctx.availableActions])].sort();
+  const actionVerbs = [...new Set([...getIntentVerbs(), ...ctx.availableActions])].sort();
 
   return {
     // NOT strict: strict mode forces EVERY property to be present, so the model fills emotionalPressure/
@@ -70,10 +70,8 @@ function buildILSchema(ctx: ILContext): LlmJsonSchema {
           type: { type: 'string', enum: pressureTypes },
           intensity: { type: 'number' },
         }, required: ['type', 'intensity'], additionalProperties: false },
-        tradeIntent: { type: 'object', properties: {
-          category: { type: 'string' },
-          itemName: { type: 'string' },
-        }, additionalProperties: false },
+        // Generic intent slots — one property per registered IntentKind (e.g. 'trade'). Engine names none.
+        intents: { type: 'object', additionalProperties: false, properties: Object.fromEntries(getIntentKinds().map((k) => [k.key, { type: 'object', additionalProperties: false, properties: k.schemaProperties }])) },
         extractionConfidence: { type: 'number' },
       },
       required: ['speechAct', 'extractionConfidence'],
@@ -138,20 +136,16 @@ export interface EmotionalPressure {
   intensity: number; // 0-1
 }
 
-export interface TradeIntent {
-  /** What category: weapon, armor, potion, food, general */
-  category?: string;
-  /** Specific item name if mentioned */
-  itemName?: string;
-}
-
 export interface DialogueMeaning {
   speechAct: SpeechAct;
   claims?: Claim[];
   questions?: Question[];
   requestedAction?: RequestedAction;
   emotionalPressure?: EmotionalPressure;
-  tradeIntent?: TradeIntent;
+  /** Structured sub-intents, one per registered IntentKind, keyed by intent key (e.g. 'trade'). The engine
+   *  stores whatever the module's schema fragment produced and never reads a specific key — the presence of
+   *  an intent only signals the speech-act correction in validateAndResolve (INV-14/15). */
+  intents?: Record<string, Record<string, unknown>>;
   /** LLM self-assessed confidence in the extraction (0-1) */
   extractionConfidence: number;
   /** Internal: reason for fallback extraction (empty_response, extraction_error) */
@@ -187,6 +181,12 @@ export async function extractDialogueMeaning(
   playerMessage: string,
   ctx: ILContext,
 ): Promise<DialogueMeaning> {
+  // Per-intent prompt guidance from each registered IntentKind (engine names no specific intent — INV-14/15).
+  const intentKinds = getIntentKinds();
+  const intentFieldLines = intentKinds.length > 0
+    ? [`6. intents: structured sub-intents. Include a key ONLY on clear, explicit evidence; OMIT otherwise. Never use "null"/"none" strings.`,
+       ...intentKinds.map((k) => `   - intents.${k.key}: ${k.promptLines.join(' ')}`)]
+    : [];
   const prompt = [
     `Extract structured meaning from what the player said to ${ctx.targetNpcName}.`,
     ``,
@@ -199,7 +199,6 @@ export async function extractDialogueMeaning(
     `Extract ALL of the following that apply:`,
     ``,
     `1. speechAct: one of: ${getRegisteredSpeechActs().join(', ')}`,
-    `   IMPORTANT: "trade" = player wants to buy, sell, browse goods, or ask about prices. Use speechAct "trade" + tradeIntent, NOT requestedAction.`,
     ``,
     `2. claims: array of factual claims the player is making (if any). Each claim:`,
     `   - eventType: event type if claiming something happened (use known event types, or null)`,
@@ -213,8 +212,8 @@ export async function extractDialogueMeaning(
     `   - about: who/what is being asked about (NPC name or topic)`,
     `   - topic: ${getRegisteredQuestionTopics().sort().join(', ')} (or null)`,
     ``,
-    `4. requestedAction: ONLY if the player explicitly asks the NPC to DO a specific action (NOT buy/sell — that is trade). OMIT this field entirely for greetings, questions, small talk.`,
-    `   - action: use one of these verbs: ${[...getILTradeVerbs(), ...ctx.availableActions].join(', ')}`,
+    `4. requestedAction: ONLY if the player explicitly asks the NPC to DO a specific action. OMIT this field for greetings, questions, small talk, or a registered intent (see "intents" below).`,
+    `   - action: use one of these verbs: ${[...getIntentVerbs(), ...ctx.availableActions].join(', ')}`,
     `   - target: target NPC or location (or null)`,
     `   - urgency: 0-1`,
     ``,
@@ -222,13 +221,11 @@ export async function extractDialogueMeaning(
     `   - type: ${Array.from(getRegisteredPressureTypes()).join(', ')}`,
     `   - intensity: 0-1`,
     ``,
-    `6. tradeIntent: ONLY if the player actually wants to buy/sell/browse goods. OMIT entirely otherwise. Never use the string "null" as a value — just omit the field.`,
-    `   - category: weapon, armor, potion, food, general`,
-    `   - itemName: specific item mentioned`,
+    ...intentFieldLines,
     ``,
     `7. extractionConfidence: 0-1 your overall confidence in this extraction`,
     ``,
-    `MOST messages are plain conversation: just a speechAct (+ maybe questions/claims). requestedAction, emotionalPressure, and tradeIntent are RARE — include them only on clear, explicit evidence, never by default.`,
+    `MOST messages are plain conversation: just a speechAct (+ maybe questions/claims). requestedAction, emotionalPressure, and intents are RARE — include them only on clear, explicit evidence, never by default.`,
     ``,
     `Examples (these calibrate WHEN to omit the optional fields — names below are placeholders):`,
     `• "Good morning, how are you?" → {"speechAct":"smalltalk","extractionConfidence":0.9} and NOTHING else (no claims, no questions, no pressure, no requestedAction).`,
@@ -273,32 +270,45 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
     console.warn(`  [IL] Missing/invalid extractionConfidence '${raw.extractionConfidence}' — defaulting to 0.5`);
   }
 
-  // Semantic correction: tradeIntent presence overrides speechAct to trade.
-  // Root cause: constrained decoding forces requestedAction.action into affordance verbs,
-  // so "show me your wares" → model picks 'steal' (nearest verb). With enums, we need
-  // explicit signal priority: tradeIntent > requestedAction when both present.
   let speechAct: SpeechAct = isValidSpeechAct(raw.speechAct as string)
     ? raw.speechAct as string
     : getDefaultSpeechAct();
-  // Detect trade intent from multiple signals — IL trade verbs registered dynamically.
+
   // isReal guards against the model emitting literal "null"/"none"/"" strings (truthy but meaningless).
   const isReal = (v: unknown): boolean => typeof v === 'string' && !['', 'null', 'none', 'n/a'].includes(v.trim().toLowerCase());
-  const tradeIntentObj = raw.tradeIntent && typeof raw.tradeIntent === 'object' ? raw.tradeIntent as Record<string, unknown> : null;
-  const hasTradeContent = !!tradeIntentObj && (isReal(tradeIntentObj.category) || isReal(tradeIntentObj.itemName));
-  const raObj = raw.requestedAction && typeof raw.requestedAction === 'object' ? raw.requestedAction as Record<string, unknown> : null;
-  const actionIsTrade = raObj && getILTradeVerbs().has(String(raObj.action));
 
-  if ((hasTradeContent || actionIsTrade) && !isTradeSpeechAct(speechAct)) {
-    console.warn(`  [IL] Trade signals detected (tradeIntent: ${!!hasTradeContent}, action: ${raObj?.action}) but speechAct='${speechAct}' — correcting to trade`);
-    // Find the first registered trade speech act
-    const tradeAct = getRegisteredSpeechActs().find(a => isTradeSpeechAct(a));
-    if (tradeAct) speechAct = tradeAct;
+  // Extract each registered intent kind's object from raw.intents[key]; keep only real (non-placeholder) fields.
+  // Engine names no specific intent — generalizes the old hardcoded trade-intent extraction.
+  const rawIntents = raw.intents && typeof raw.intents === 'object' ? raw.intents as Record<string, unknown> : {};
+  const presentIntents: Record<string, Record<string, unknown>> = {};
+  for (const kind of getIntentKinds()) {
+    const obj = rawIntents[kind.key] && typeof rawIntents[kind.key] === 'object' ? rawIntents[kind.key] as Record<string, unknown> : null;
+    if (!obj) continue;
+    const real: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) if (isReal(v) || (typeof v === 'number' && Number.isFinite(v))) real[k] = v;
+    if (Object.keys(real).length > 0) presentIntents[kind.key] = real;
   }
 
-  // When trade detected, requestedAction and emotionalPressure are noise
-  const isTradeCtx = isTradeSpeechAct(speechAct);
-  if (isTradeCtx && raw.requestedAction) console.warn(`  [IL] Discarding requestedAction (trade context)`);
-  if (isTradeCtx && raw.emotionalPressure) console.warn(`  [IL] Discarding emotionalPressure (trade context)`);
+  // Semantic correction: an intent signal (extracted intent content OR an intent-verb in requestedAction)
+  // overrides the speech act to that intent's speech act. Generalizes the old tradeIntent>requestedAction
+  // priority — constrained decoding forces requestedAction.action into affordance verbs ("show me your wares"
+  // → 'steal'), so an explicit intent signal must win.
+  const raObj = raw.requestedAction && typeof raw.requestedAction === 'object' ? raw.requestedAction as Record<string, unknown> : null;
+  const verbIntentKey = raObj ? getIntentKeyForVerb(String(raObj.action)) : undefined;
+  const signalledKey = Object.keys(presentIntents)[0] ?? verbIntentKey;
+  if (signalledKey && getIntentKeyForSpeechAct(speechAct) === undefined) {
+    const targetAct = getIntentKinds().find((k) => k.key === signalledKey)?.speechActs[0];
+    if (targetAct) {
+      console.warn(`  [IL] Intent '${signalledKey}' signalled (content: ${!!presentIntents[signalledKey]}, verb: ${raObj?.action}) but speechAct='${speechAct}' — correcting to '${targetAct}'`);
+      speechAct = targetAct;
+    }
+  }
+
+  // When an intent speech act is active, requestedAction and emotionalPressure are enum-forced noise.
+  const intentKey = getIntentKeyForSpeechAct(speechAct);
+  const isIntentCtx = intentKey !== undefined;
+  if (isIntentCtx && raw.requestedAction) console.warn(`  [IL] Discarding requestedAction (intent '${intentKey}' context)`);
+  if (isIntentCtx && raw.emotionalPressure) console.warn(`  [IL] Discarding emotionalPressure (intent '${intentKey}' context)`);
 
   const result: DialogueMeaning = {
     speechAct,
@@ -324,8 +334,8 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
     if (result.questions.length === 0) delete result.questions;
   }
 
-  // Resolve requested action (skip if trade — enum-forced hallucination)
-  if (!isTradeCtx && raw.requestedAction && typeof raw.requestedAction === 'object') {
+  // Resolve requested action (skip if intent ctx — enum-forced hallucination)
+  if (!isIntentCtx && raw.requestedAction && typeof raw.requestedAction === 'object') {
     const ra = raw.requestedAction as Record<string, unknown>;
     if (ra.action) {
       let resolvedTarget: string | undefined;
@@ -345,10 +355,9 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
     }
   }
 
-  // Resolve emotional pressure
-  // Skip if trade (hallucinated). For benign speechActs, require high intensity (>0.5) —
-  // 9B model hallucinates low-intensity threat/intimidation on innocent phrases.
-  if (!isTradeCtx && raw.emotionalPressure && typeof raw.emotionalPressure === 'object') {
+  // Resolve emotional pressure (skip if intent ctx — hallucinated). For benign speechActs, require high
+  // intensity (>0.5) — 9B model hallucinates low-intensity threat/intimidation on innocent phrases.
+  if (!isIntentCtx && raw.emotionalPressure && typeof raw.emotionalPressure === 'object') {
     const ep = raw.emotionalPressure as Record<string, unknown>;
     const epIntensity = clamp(Number(ep.intensity) || 0.5);
     if (getRegisteredPressureTypes().has(String(ep.type))) {
@@ -365,12 +374,9 @@ function validateAndResolve(raw: Record<string, unknown>, ctx: ILContext): Dialo
     }
   }
 
-  // Resolve trade intent — only when it carries real content (ignore "null"/"none" placeholders).
-  if (isTradeCtx && tradeIntentObj && (isReal(tradeIntentObj.category) || isReal(tradeIntentObj.itemName))) {
-    result.tradeIntent = {
-      category: isReal(tradeIntentObj.category) ? String(tradeIntentObj.category) : undefined,
-      itemName: isReal(tradeIntentObj.itemName) ? String(tradeIntentObj.itemName) : undefined,
-    };
+  // Resolve intents — keep the active intent's real content (only when an intent context is active).
+  if (isIntentCtx && intentKey && presentIntents[intentKey]) {
+    result.intents = { [intentKey]: presentIntents[intentKey] };
   }
 
   return result;

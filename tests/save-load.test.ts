@@ -19,7 +19,7 @@ import {
   registerEventCategory,
   registerSpeechActs,
   registerClaimSources,
-  registerILTradeVerbs,
+  registerIntentKind,
   registerPressureTypes,
 } from '@clwa/engine';
 import { registerCrimeJusticeModule, registerSocialModule, CRIME_CG_RULES } from '@clwa/modules';
@@ -38,7 +38,7 @@ beforeAll(() => {
     { act: 'threaten' }, { act: 'greet', benign: true },
   ]);
   registerClaimSources(['witnessed', 'heard']);
-  registerILTradeVerbs(['buy', 'sell']);
+  registerIntentKind({ key: 'trade', speechActs: ['trade'], verbs: ['buy', 'sell'], schemaProperties: {}, promptLines: ['trade goods'] });
   registerPressureTypes(['threat', 'bribe']);
   registered = true;
 });

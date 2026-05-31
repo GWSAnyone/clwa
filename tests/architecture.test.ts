@@ -157,6 +157,31 @@ describe('Engine Semantic Neutrality (INV-14)', () => {
     expect(CRIME_PROSE.test('the courtier professed affection to the heir')).toBe(false);
   });
 
+  // M7 P0/E3: the IL extraction path is genre-neutral re: trade — the hardcoded trade-intent prose + the
+  // tradeIntent type/schema block were generalized into the universal INTENT_KIND registry. Guard il.ts code
+  // string literals (comments are stripped by codeLines) against reintroducing trade vocabulary. AgentProfile
+  // .shop/ShopItem migrate into the economy module in M7 P2 — they live in agent-types.ts, outside this guard.
+  const TRADE_PROSE = /\btradeIntent\b|\b(buy|sell|browse|wares)\b/i;
+  test('no hardcoded trade vocabulary in the IL extraction path (il.ts)', () => {
+    const ilFile = neutralEngineFiles.find((f) => /[\\/]il\.ts$/.test(f));
+    expect(ilFile).toBeDefined();
+    const violations: string[] = [];
+    for (const { lineNum, code } of codeLines(ilFile!)) {
+      for (const lit of stringLiterals(code)) {
+        if (TRADE_PROSE.test(lit)) violations.push(`il.ts:${lineNum}: "${lit.slice(0, 60)}"`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test('TRADE_PROSE regex fires on trade prose and spares neutral prose', () => {
+    expect(TRADE_PROSE.test('the player wants to buy goods')).toBe(true);
+    expect(TRADE_PROSE.test('use a tradeIntent field')).toBe(true);
+    expect(TRADE_PROSE.test('show me your wares')).toBe(true);
+    expect(TRADE_PROSE.test('the courtier endorsed the heir')).toBe(false);
+    expect(TRADE_PROSE.test('the guard noticed the duke')).toBe(false);
+  });
+
   // Concept-level guard (the gap the prose-literal + enumerated-symbol scans both miss): a partial crime
   // re-import expressed as an IDENTIFIER. A10+A4b moved the investigation/journal/accusation subsystem
   // entirely into crime-justice; these identifiers must never reappear as engine code.
