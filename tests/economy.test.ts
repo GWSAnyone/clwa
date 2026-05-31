@@ -10,7 +10,7 @@ import {
   AFFORDANCE_REGISTRY, REQUIREMENT_CHECKERS, computeUtility, createAttribute,
 } from '@clwa/engine';
 import type { AgentProfile, AffordanceDefinition, AffordanceTarget } from '@clwa/engine';
-import { registerEconomyModule } from '@clwa/modules';
+import { registerEconomyModule, computePriceTarget } from '@clwa/modules';
 
 beforeAll(() => { registerEconomyModule(); }); // idempotent
 
@@ -101,5 +101,21 @@ describe('Economy decision-making — scoring contributor (P3)', () => {
     const sated = makeAgent('s2', { gold: 50, hunger: 0.0, debt: 0.0 });
     // same score regardless of need — economy's contributor is scoped to category 'economic'
     expect(computeUtility(social, hungry, target)).toBeCloseTo(computeUtility(social, sated, target), 5);
+  });
+});
+
+describe('Economy dynamic pricing law (P4 — E1 drift target)', () => {
+  test('price target falls as supply rises (scarce → pricier), clamped to [0.6×, 3×] base', () => {
+    const scarce = computePriceTarget(0);
+    const normal = computePriceTarget(10);
+    const glut = computePriceTarget(50);
+    expect(scarce).toBeGreaterThan(normal);
+    expect(normal).toBeGreaterThan(glut);
+    expect(glut).toBeGreaterThanOrEqual(3);   // floor 0.6× base
+    expect(scarce).toBeLessThanOrEqual(15);   // cap 3× base
+  });
+
+  test('at the reference supply (10) the price target equals the base price (5)', () => {
+    expect(computePriceTarget(10)).toBe(5);
   });
 });

@@ -22,8 +22,10 @@ import type { ConsequenceRule } from '@clwa/engine';
 import { ECONOMY_AFFORDANCES } from './affordances';
 import { registerEconomyTargetFinders } from './target-finders';
 import { registerEconomyStepHandlers } from './step-handlers';
+import { registerEconomyTickHandlers } from './pricing';
 
 export { setEconomyWorld } from './step-handlers';
+export { computePriceTarget, getPrice, BASE_PRICE } from './pricing';
 
 /** Economy consequence-graph rules — consumed by the server (merged with CRIME_CG_RULES into the engine),
  *  NOT self-registered (mirrors crime-justice's CRIME_CG_RULES). Filled in P5 (shortage→pressure,
@@ -88,5 +90,8 @@ export function registerEconomyModule(): void {
   // ── Step handlers (move real gold via E2 transferAttribute + inventory via add/removeItems) ──
   registerEconomyStepHandlers();
 
-  console.log(`[Economy] Registered ${ECONOMY_AFFORDANCES.length} affordances + trade intent + ${ECONOMY_CG_RULES.length} CG rules`);
+  // ── Tick handlers (P4): hunger drift (E1) + eat loop; dynamic price:KIND drift (E1) from supply/demand ──
+  registerEconomyTickHandlers();
+
+  console.log(`[Economy] Registered ${ECONOMY_AFFORDANCES.length} affordances + trade intent + pricing/needs + ${ECONOMY_CG_RULES.length} CG rules`);
 }

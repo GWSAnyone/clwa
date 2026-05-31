@@ -1,8 +1,8 @@
 import { registerStepHandler, addItem, removeItems, countItems, getAttributeValue } from '@clwa/engine';
 import type { StepExecutionContext, GoalActionResult, World } from '@clwa/engine';
+import { getPrice, BASE_PRICE } from './pricing';
 
-/** Flat base price per unit until P4 introduces dynamic price:KIND drift. Black market pays a premium. */
-const BASE_PRICE = 5;
+/** Black market pays a premium over the (dynamic) market price. Unit prices come from pricing.ts (E1 drift). */
 const BLACK_MARKET_PRICE = 10;
 
 /** Late-bound World — step handlers register at module init (before the World exists), and
@@ -25,7 +25,7 @@ export function registerEconomyStepHandlers(): void {
       return { ...base, action: 'buy_goods', description: `${owner.profile.name}: no seller available — buy failed` };
     }
     const kind = (seller.state.inventory ?? []).find((it) => it.quantity > 0)?.kind;
-    const price = BASE_PRICE;
+    const price = kind ? getPrice(seller, kind) : BASE_PRICE; // dynamic market price (E1 drift)
     if (!kind || (getAttributeValue(owner.state.attributes, 'gold') ?? 0) < price || !economyWorld) {
       goal.state = 'failed';
       return { ...base, action: 'buy_goods', description: `${owner.profile.name}: cannot afford or nothing to buy` };
@@ -52,7 +52,7 @@ export function registerEconomyStepHandlers(): void {
       return { ...base, action: 'sell_goods', description: `${owner.profile.name}: no buyer available — sell failed` };
     }
     const kind = (owner.state.inventory ?? []).find((it) => it.quantity > 0)?.kind;
-    const price = BASE_PRICE;
+    const price = kind ? getPrice(owner, kind) : BASE_PRICE; // seller's dynamic price (E1 drift)
     if (!kind || (getAttributeValue(buyer.state.attributes, 'gold') ?? 0) < price || !economyWorld) {
       goal.state = 'failed';
       return { ...base, action: 'sell_goods', description: `${owner.profile.name}: nothing to sell or buyer broke` };
