@@ -1,7 +1,9 @@
 # SPEC: Economy / Trade — the second genre module (validates the universal-engine thesis)
 
 > **Milestone**: M7 (Economy & Trade). Follows M6 (NPC Brain). Second content module on the genre-neutral engine.
-> **Status**: 📐 PLANNED — design complete, implementation not started. Branch (planned): `feature/economy`.
+> **Status**: 🔨 IMPLEMENTING on `feature/economy` — **E1 ✅ E2 ✅ E3 ✅ (all 3 universal primitives) · P2 ✅ (module skeleton)**.
+>   tsc 0, bun test 287, crime oracle green, server boots with the economy module. **Next: P3** (affordances + scoring;
+>   wrinkle pre-analyzed in task #87 — step handlers need the World late-bound). Then P4 pricing/needs (E1), P5 debt (E2) + CG, P6 markets + close.
 > **Goal**: prove "same engine, different data" by building a full economic genre as **module content + registry data**,
 >   with the crime-justice game untouched as the regression oracle.
 > **Depends on**: M5 (scalar attributes B1 / inventory B2 / factions B3 / open capabilities / CG attr·faction·has_capability ops /
