@@ -1,7 +1,7 @@
 # SPEC: Ambient Mood Pressure — Loneliness Decay
 
 > **Milestone**: M3 (Living Opposition)
-> **Status**: Implemented
+> **Status**: Implemented (v0.13.0)
 > **Depends on**: SPEC-mood-modifiers (done)
 > **Engine changes**: None. Mood tick handler additions.
 > **Created**: 2026-04-03

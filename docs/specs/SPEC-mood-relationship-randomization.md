@@ -1,7 +1,7 @@
 # SPEC: Mood & Relationship Randomization
 
 > **Milestone**: M1 (Replayable Crime)
-> **Status**: Implemented
+> **Status**: Implemented (v0.11.0)
 > **Depends on**: SPEC-trait-randomization (done)
 > **Engine changes**: None. Server-side mood/relationship randomizer.
 > **Created**: 2026-04-01

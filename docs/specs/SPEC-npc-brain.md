@@ -1,7 +1,7 @@
 # SPEC: NPC Brain — maximize roleplay quality via layered prompts + context engineering + model routing
 
 > **Milestone**: M6 (NPC Brain — roleplay quality; LLM + context tuning). Follows M5 (Engine Generalization).
-> **Status**: ✅ **CLOSED (2026-05-30)** — **P0–P5 all ✅** on `feature/npc-brain` (tsc 0, bun test 280, final clwa-auditor:
+> **Status**: ✅ **CLOSED (2026-05-30, v0.17.0)** — **P0–P5 all ✅** on `feature/npc-brain` (tsc 0, bun test 280, final clwa-auditor:
 >   no MUST-FIX, INV-14 PERFECT, quality A-). Both auditor SHOULD/NICE fixes applied (history-summary task registered;
 >   dup JSDoc removed). Harness final (JUDGE_RUNS=3): layered dialogue uplift **mean +2.0**, grounding n→Y in 5/6 cells,
 >   Qwen meta-deflect 1.0→5.0; report `docs/workflow/npc-brain-final/2026-05-30/`. Pending: live walkthrough + merge to master.

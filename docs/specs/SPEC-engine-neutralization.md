@@ -1,7 +1,7 @@
 # SPEC: Engine Genre-Neutralization (drain all crime-justice leaks)
 
 > **Milestone**: M5 (Engine Generalization) — Phase A (cleanliness, prerequisite for Phase B)
-> **Status**: **✅ Phase A FULLY COMPLETE** (A1–A10 + A4a+A4b drained & verified — investigation/accusation/journal
+> **Status**: **✅ Phase A FULLY COMPLETE (v0.16.0)** (A1–A10 + A4a+A4b drained & verified — investigation/accusation/journal
 >   fully extracted; engine genre-neutral with ZERO deferred files). Branch `feature/engine-neutralization`.
 >   tsc 0, **230/230** tests (was 210; +genre-neutrality guard + Economy Module Test + investigation tests).
 >   `clwa-auditor`: import boundary PERFECT, INV-08/09/10/12/17 intact; genre-neutrality guard passes the WHOLE engine (0 exclusions).

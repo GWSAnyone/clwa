@@ -4,6 +4,16 @@
 > Убийство = данные в модуле. Торговля = данные в модуле. Один движок, разные данные.
 > Видение: [VISION.md](VISION.md) | Roadmap: [ROADMAP.md](../ROADMAP.md) | Инварианты: [CLAUDE.md](../CLAUDE.md)
 
+| | |
+|---|---|
+| **Версия** | `v0.18.0-dev` |
+| **Майлстоун** | M7 «Economy & Trade» — 🔨 в разработке (`feature/economy`) |
+| **Отгружено** | M5 Engine Generalization `v0.16.0` · M6 NPC Brain `v0.17.0` |
+| **Качество** | `bun test` 299 / 21 файл · `tsc` 0 · genre-neutrality guard PERFECT |
+| **История** | [docs/Changelog.md](Changelog.md) |
+
+> **Легенда статусов**: ✅ готово · 🔨 в разработке · ⏸️ отложено · 🔜 запланировано
+
 ---
 
 ## Core Loop
@@ -37,7 +47,9 @@ State (mood, beliefs, relationships, location)
 
 **Volition:** structured output (DO/WHY). Dynamic action enum from registries. Beliefs in user prompt (not system — avoids "lost middle"). "talk" → TopicEngine handles conversation.
 
-**23 affordances** in crime-justice module (steal, kill, investigate, arrest, evaluate_case, surveillance, etc.). Each with declarative step templates, target finders, requirement checkers. All via registries.
+**22 affordances** in the crime-justice module (steal, kill, investigate, arrest, evaluate_case, surveillance, …) + **8** in the economy module (M7: buy/sell/haggle/produce/hoard/smuggle/lend/collect_debt). Each is a declarative record — step templates, target finder, requirement checkers — all via registries.
+
+**Pluggable scoring (`registerScoringContributor`):** modules add scoring channels to `computeUtility` keyed by affordance category — e.g. economy raises `economic`-category utility under debt/hunger pressure (`debt×0.5 + hunger×0.4`), without the engine knowing any economy vocabulary.
 
 ### PM — Personality Model (v1)
 
@@ -57,7 +69,7 @@ Reactive cascade: event → conditions → consequence event → recurse (maxCha
 
 **v2 architecture:** Target selection pipeline (resolveTargets → gate/filter conditions), NPC-state condition ops (trait, relationship, belief), exclusive groups with priority (friendship > honesty), O(1) trigger index Map.
 
-**16 rules** in crime-justice module: 6 witness rules, 2 guard cascades, 3 gossip spread, 2 escalation precursors (argument/threat witnessed), 2 emergent personality-driven (grief-revenge, guard-warning), + `merchant-guild-alarm` (op:`faction` — Living Millhaven demo). Plus `witness_reaction` exclusive group (cover-up vs eager-report).
+**16 rules** in crime-justice module: 6 witness rules, 2 guard cascades, 3 gossip spread, 2 escalation precursors (argument/threat witnessed), 2 emergent personality-driven (grief-revenge, guard-warning), + `merchant-guild-alarm` (op:`faction` — Living Millhaven demo). Plus `witness_reaction` exclusive group (cover-up vs eager-report). The **economy module (M7)** registers its own `ECONOMY_CG_RULES` (`debt-default-grudge`: `DEBT_DEFAULT` → `DEBT_GRUDGE` → a `PERSONAL_GRUDGE` motive), merged into the same CG bus by the server — economy spills into crime with zero shared code.
 
 ### EL — Evidence Layer (v1)
 
@@ -67,7 +79,7 @@ Event → structured evidence at location (category, subjectId, weight, descript
 
 Player speech → `extractDialogueMeaning()` (LLM, dynamic JSON schema) → `applyDialogueMeaning()` → engine effects.
 
-**11 speechActs:** inform, question, request, accuse, threaten, compliment, insult, bribe, confide, trade, smalltalk.
+**Speech acts + intent kinds (open, M7 E3):** the base speech acts (inform, question, request, accuse, threaten, compliment, insult, bribe, confide, smalltalk) are no longer a closed list — modules register richer player intents via **`registerIntentKind`** (`{key, speechActs, verbs, schemaProperties, promptLines}`). The IL schema + prompt are assembled from `INTENT_KINDS` at runtime, so e.g. the economy module owns the `trade` intent (buy/sell/browse) as data. `DialogueMeaning.intents: Record<string, …>` replaced the old typed `tradeIntent` — the engine is no longer coupled to any genre's vocabulary.
 
 **Effects (bilateral with NPC-NPC):** claims → addBelief (conf × trust), questions → NPC beliefs context, requests → createGoalFromRequest (trust gate), pressure → mood/relationship shifts.
 
@@ -111,7 +123,7 @@ Location-based. `canSee()`, `canHear()`, `canInteract()`, `getCoPresent()`, `get
 
 ### Clock-Driven Architecture (v1)
 
-**Master Clock:** single `setInterval(1000/gameSpeed)`. `gameMinute` = absolute, grows infinitely. `minuteOfDay = gameMinute % 1440`.
+**Master Clock:** single `setInterval` at a **fixed cadence — 1 game-minute / real second** (the `gameSpeed` multiplier was removed in v0.15.1; run/stop only via autoTick `start/stopMasterClock`). `gameMinute` = absolute, grows infinitely. `minuteOfDay = gameMinute % 1440`.
 
 **ProcessingQueue:** 7 task types (DAY_ADVANCE P0 → PHASE_HANDLERS P3). Dedup per-NPC. Async consumer with `setTimeout(0)` yield. Clock never blocked.
 
@@ -119,7 +131,7 @@ Location-based. `canSee()`, `canHear()`, `canInteract()`, `getCoPresent()`, `get
 
 **Cooldowns (game minutes):** decision=60, affordance=180, pair=240. Configurable via WorldConfig. Persisted in save.
 
-**Transit:** `duration = hops × minutesPerHop` (default 30). Master Clock advances progress. NPC in transit excluded from conversations/discovery.
+**Movement (position-authoritative, v0.15.0):** the server walks each NPC along A* waypoints (~80 px/game-min); arrival = physical entry into the zone polygon (`pointInPolygon`), not a timer — `advancePositions` → `handleArrivals` runs each game-minute, with intermediate-zone location updates en route. The old timer-transit (`transitProgress`/`transitDuration`) is gone. NPC in transit is excluded from conversations/discovery; save/load mid-transit resumes to arrival without freezing.
 
 ### TopicEngine (v3.1)
 
@@ -147,11 +159,13 @@ Universal numeric-state primitive. `ScalarAttribute {base, min, max, modifiers[]
 
 **World API:** `getAttribute` / `setAttribute` / `adjustAttributeBase` (clamped) / `addAttributeModifier` / **`transferAttribute`** (atomic conserved move — the basis for economy/theft). Decay ticks on the same cadence as mood. **CG `RuleCondition` op `attr`** (`field` + comparator + `value`) gates rules on quantified state (`gold < 10`). Pluggable **`registerScoringContributor`** channel in `computeUtility` — affordances can be scored on resource drivers (debt → smuggle). Serialized to `WorldSaveAgentData`. **One primitive backs Economy gold / Combat HP / Politics standing / Survival needs.**
 
+**M7 E1 — drift:** an attribute may carry `drift {ratePerMinute, toward?}`; the engine's per-tick `driftAttribute()` moves `base` toward the target — linear when `toward` is unset, else an exponential approach (`1−e^(−rate·dt)`), clamped, NaN-guarded. Powers price evolution + need growth: the module sets the target/rate, the engine moves the value. **M7 E2 — overdraft:** `transferAttribute(from, to, key, amount, {allowOverdraft})` lets the source go negative down to its `min` (loans/debt) while staying conserved — it refuses if the debit would clamp at `min`. **Tick-phase registry:** modules hook the master-clock tick via `registerTickPhaseHandler` (economy uses it for price/needs drift).
+
 ### Inventory (v1 — M5 B2)
 
 Item-instance layer. `Item {id, kind (free string), quantity, state?}` + pure `addItem` (stack fungible / push unique-state) / `removeItems` (conserved) / `countItems`. `AgentState.inventory?: Item[]`, saved/loaded.
 
-**World API:** `getInventory` / `countItem` / `hasItem` / `giveItem` / `removeItem` / **`transferItem`** (atomic conserved move). Makes theft/trade/loot move **real state** (previously `steal_from` only emitted an event). Legacy `AgentProfile.shop`/`ShopItem` + IL `TradeIntent` remain pending full migration to an economy module (the primitive is ready).
+**World API:** `getInventory` / `countItem` / `hasItem` / `giveItem` / `removeItem` / **`transferItem`** (atomic conserved move). Makes theft/trade/loot move **real state** (previously `steal_from` only emitted an event). The economy module (M7) now drives trade through the `trade` intent + economic affordances + step handlers that move conserved gold (`transferAttribute`) and items. Remaining legacy: the static `AgentProfile.shop` price on the **player** shop route — P6 switches it to the module's dynamic `getPrice(merchant, kind)`.
 
 ### Factions (v1 — M5 B3)
 
@@ -159,7 +173,7 @@ Collective-membership primitive. `AgentState.factions?: string[]` (open keys). *
 
 ### Genre-Neutral Hooks (M5 Phase A)
 
-The engine's own prose/typed-content is sourced from modules via registries (semantic INV-14 «zero module-specific strings» now PERFECT). Beyond `SECRET_DIRECTIVE_BUILDERS`: **`registerRoleDirectiveBuilder`** (role-section prose), **`registerBeliefPhrasing`** (per-event-type NL phrasing; neutral fallback in engine), **`registerDialogueEffectHandler`** + opaque `playerState` + `onPlayerObserve` (player-journal/accusation moved to the crime module), **`REQUIREMENT_CHECKERS` / `POST_TARGET_REQUIREMENT_CHECKERS` / `registerTargetEnricher`** (affordance requirements), open `capabilities: Record<string,boolean>` + `hasCapability()` (was typed crime flags), `BELIEF_SOURCE.GOSSIP` (was hardcoded `'rumor'`). `CrimeScene` → genre-neutral **`SceneResidue`** (crimeType→sceneType, perpetratorId→actorId, victimId→affectedId, processKill→processAgentDeath).
+The engine's own prose/typed-content is sourced from modules via registries (semantic INV-14 «zero module-specific strings» now PERFECT). Beyond `SECRET_DIRECTIVE_BUILDERS`: **`registerRoleDirectiveBuilder`** (role-section prose), **`registerBeliefPhrasing`** (per-event-type NL phrasing; neutral fallback in engine), **`registerDialogueEffectHandler`** + opaque `playerState` + `onPlayerObserve` (player-journal/accusation moved to the crime module), **`REQUIREMENT_CHECKERS` / `POST_TARGET_REQUIREMENT_CHECKERS` / `registerTargetEnricher`** (affordance requirements), open `capabilities: Record<string,boolean>` + `hasCapability()` (was typed crime flags), `BELIEF_SOURCE.GOSSIP` (was hardcoded `'rumor'`). `CrimeScene` → genre-neutral **`SceneResidue`** (crimeType→sceneType, perpetratorId→actorId, victimId→affectedId, processKill→processAgentDeath) + `registerSceneResidueTemplate`. Beyond these, the engine exposes ~46 registration functions in `event-registry.ts` — among them `registerDayAdvanceHandler`, `registerPressureHandler`, `registerConsequencePostHandler`, `registerDiscoveryHandler`, `registerMemoryTextBuilder`, `registerRoleTopicPool`, `registerClaimSources`, `registerQuestionTopics`, `registerSpeechActs`, plus the M7 additions `registerIntentKind` / `registerScoringContributor` / `registerTickPhaseHandler` — every one an empty hook the engine ships with and modules fill.
 
 ### Layered Prompt & Model Routing (M6 — NPC Brain)
 
@@ -172,11 +186,26 @@ NPC roleplay quality is engineered through a **3-layer prompt** + **context engi
 
 **Context engineering:** unified belief ranking (`getTopBeliefs`, confidence×recency) feeds both prompt + memory; memory recall via `compositeScore` with a degenerate-query guard; reflection output sanitized; few-shot voice examples (`AgentProfile.fewShotExamples`, authored per-world-language) sampled one-per-turn into L3 so the prefix stays stable and lines can't be copied verbatim.
 
-**Model routing** (`WorldConfig.llm`, fully replaces the default router): per-task provider/model/maxTokens/sampling + `warm` (reuse claude session, skips cold-spawn) + `schemaInPrompt` (inject schema vs native `--json-schema`) + `fallback`. Millhaven live: volition/il/embeddings/npc-dialogue → local Qwen; dialogue → haiku (Qwen fallback); reflection/verdict → sonnet. **No paid Anthropic API** — claude-code subscription CLI + local LM Studio only.
+**Model routing** (`WorldConfig.llm`, fully replaces the default router): per-task provider/model/maxTokens/sampling + `warm` (reuse claude session, skips cold-spawn) + `schemaInPrompt` (inject schema vs native `--json-schema`) + `fallback`. Millhaven live: player dialogue + verdict → **Claude Sonnet**; volition / il / npc-dialogue / reflection / embeddings → local **Qwen**. **No paid Anthropic API** — claude-code subscription CLI + local LM Studio only.
 
 **Chat-staleness TTL:** player short-term chat (`_chatHistory` + rolling summary + warm claude session) resets only after a real-time gap > `WorldConfig.chatStaleMs` (default 5 min) since the last turn with that NPC — a brief glance away keeps continuity, a real absence starts fresh. Long-term vector memory is untouched. Engine + provider session reset together (`clearChatHistory` → `resetAgentSessions`) or they desync.
 
 **Harness** (`tools/npc-brain/`): same fixtures × 3 models (Qwen / Haiku / Sonnet), LLM-as-judge scoring + objective tokens/latency/cost/schema-pass → routing decisions made on data, not by eye.
+
+### Economy & Trade Module (M7 — second genre, 🔨 in progress)
+
+Proof of the «one engine, content = data» thesis: a full economic genre built as **module content + 3 universal engine primitives** (E1 attribute drift, E2 overdraft transfer, E3 INTENT_KIND — all genre-neutral, described above), with the crime game untouched as the regression oracle.
+
+**Module content** (`packages/modules/src/economy/`, zero engine imports — INV-14):
+- **8 affordances** (category `economic`): buy / sell / haggle / produce / hoard / smuggle / lend / collect_debt — with target finders (co-located merchant/buyer/debtor + self) and 7 requirement checkers (notGuard / isMerchant / canProduce / atMarket / hasGoodsToSell / hasCapital / isCreditorOf).
+- **Economic decision-making:** a `registerScoringContributor` raises `economic`-category utility under need/debt pressure (debt → sell/smuggle, hunger → buy).
+- **Dynamic pricing** (`pricing.ts`, rides E1 drift via `registerTickPhaseHandler`): each merchant's `price:KIND` attribute drifts toward a supply/demand target (scarcer → pricier); `getPrice` / `computePriceTarget` / `BASE_PRICE`.
+- **Needs:** `hunger` drifts up over time (E1) and is reset by eating food — bilateral, the player gets hungry too.
+- **Debt / credit** (`debt.ts` ledger + E2 overdraft): a loan records a debt; collection settles via an overdraft transfer (the debtor's gold may go negative to `DEBT_FLOOR` before defaulting). `recordDebt` / `getDebt` / `clearDebt` / `isCreditor` / `findDebtorOf`.
+- **Step handlers** move conserved gold (`transferAttribute`) + items (`add/removeItems`); the World is late-bound via `setEconomyWorld` (handlers register before World exists).
+- **Cross-module CG (economy → crime):** `DEBT_DEFAULT` → CG rule `debt-default-grudge` → a `PERSONAL_GRUDGE` motive in the creditor (via `registerBeliefCreator('DEBT_GRUDGE')`) → crime's threaten/argue/kill react. Zero shared code between modules — only the CG bus.
+
+**Status:** E1/E2/E3 + P2–P5 ✅ (tsc 0, 299 tests). Remaining (P6): frontend polish (hide merchant gold, player inventory panel, stop NPC↔NPC chat leak, player shop → dynamic price), markets-as-venues, smuggling/fraud rings, `SHORTAGE` emission, more cross-module CG → final audit → merge.
 
 ---
 
@@ -232,20 +261,24 @@ Silver Flagon Tavern, Town Square (hub), Town Gate, Market Square, Blacksmith, T
 
 ```
 packages/
-  engine/src/     — subsystems, 40+ empty registries, ZERO module content (genre-neutral, INV-14 PERFECT)
-                    + attributes.ts (B1), inventory.ts (B2), scene-residue.ts (was crime-scene.ts)
+  engine/src/     — subsystems, ~46 empty registries, ZERO module content (genre-neutral, INV-14 PERFECT)
+                    + attributes.ts (B1 + M7 E1 drift / E2 overdraft transfer), inventory.ts (B2),
+                    scene-residue.ts (was crime-scene.ts), INTENT_KIND registry (M7 E3)
                     journal.ts REMOVED — player-journal/accusation extracted to the crime module
   modules/src/
     social/       — 13 topic sources + socialize affordance
-    crime-justice/ — 23 affordances, CG rules, step handlers, target finders,
+    crime-justice/ — 22 affordances, CG rules, step handlers, target finders,
                      investigation.ts (PlayerJournal + accusation + evidence-presentation)
+    economy/      — 8 affordances (M7), pricing.ts (dynamic prices + needs on E1 drift),
+                     debt.ts (loan/debt ledger on E2 overdraft), trade INTENT_KIND (E3),
+                     cg-rules.ts (cross-module debt → crime grudge)
   server/
     src/          — HTTP/WS, world-loader (JSON validation + attributes/inventory/factions/standing seed),
                     bootstrap, position manager, llm-usage-tracker, logger (timestamped)
     public/       — game.html Web UI (Canvas2D; legacy index.html dropped — root serves the game)
 worlds/millhaven/ — JSON world data (NPC profiles + gold/inventory/factions, locations, relationships+standing, motives, secrets, topics)
 tools/world-editor/ — standalone world JSON editor (port 3001, registry-driven; edits attributes/inventory/factions/standing + LLM routing + L1 scaffold/language/chat-TTL + per-NPC few-shot)
-tests/            — 19 test files, 262+ tests (architecture, boot-smoke, save-load, cg-v2, heat, m3-systems, cg-integration, regression, world-data, attributes, inventory, relationships-factions, living-millhaven, genre-neutrality guard)
+tests/            — 21 test files, 299 tests (architecture, boot-smoke, save-load, cg-v2, heat, m3-systems, cg-integration, regression, world-data, attributes, inventory, relationships-factions, living-millhaven, genre-neutrality guard, economy)
 ```
 
 Dependencies: `modules → engine`, `server → engine + modules`. Engine **never** imports modules.
@@ -267,7 +300,7 @@ Dependencies: `modules → engine`, `server → engine + modules`. Engine **neve
 | Conversation impact | No | Deterministic from TopicProposal fields |
 | Goal step execution | No | Mechanical state changes (move, announce, wait) |
 
-**Routing** (server-domain control panel — `server/src/llm-defaults.ts`, per-world override via `world.json` → `config.llm`): each task maps to a provider+model+sampling route. Hot/high-volume (volition, il, embeddings) → local **Qwen** (LM Studio, ~$0). Interactive/rare (dialogue, verdict, reflection) → **Claude Code** (subscription CLI; warm persistent session skips cold-spawn; `schemaInPrompt` injects the JSON schema as free text for structured calls). Every route is editable in the World Editor (provider/model/maxTokens/temp/warm/schema/fallback), registry-driven.
+**Routing** (server-domain control panel — `server/src/llm-defaults.ts`, per-world override via `world.json` → `config.llm`): each task maps to a provider+model+sampling route. Hot/high-volume (volition, il, embeddings) → local **Qwen** (LM Studio, ~$0). Interactive (player dialogue, verdict) → **Claude Code** Sonnet (subscription CLI; warm persistent session skips cold-spawn; `schemaInPrompt` injects the JSON schema as free text for structured calls); reflection runs on local Qwen. Every route is editable in the World Editor (provider/model/maxTokens/temp/warm/schema/fallback), registry-driven.
 
 **Observability:** every call → `LlmUsageEvent` (task, provider, model, tokens, cost, latency) persisted to `data/llm-usage.jsonl` + a per-call console line; NPC reply text (player↔NPC and NPC↔NPC) is logged; all logs carry an `[HH:MM:SS]` timestamp.
 
@@ -284,4 +317,4 @@ Two pipelines: **structural** (IL → beliefs/goals/mood) and **free-form** (NPC
 
 ---
 
-*Last updated: May 2026 — M5 (Engine Generalization: genre-neutral engine + scalar attributes / inventory / factions) + Living Millhaven demo*
+*Last updated: June 2026 — M7 (Economy & Trade): E1 drift / E2 overdraft / E3 INTENT_KIND engine primitives + economy module (trade, dynamic pricing, needs, debt/credit, cross-module CG). Built on M5 (genre-neutral engine + B1/B2/B3) and M6 (NPC Brain).*
