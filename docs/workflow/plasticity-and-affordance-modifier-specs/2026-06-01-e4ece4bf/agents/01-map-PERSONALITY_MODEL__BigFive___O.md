@@ -1,0 +1,38 @@
+## Map: Personality Model (BigFive/OCEAN+H + Enneagram) — engine state and all read-sites
+
+**TL;DR:** `bigFive` is a flat, 6-field, immutable struct living on `AgentProfile` (static world-data), read directly as plain numbers at ~17 sites. It is NEVER serialized — `World.toJSON()` saves only `agent.state`, so the profile is re-sourced from world JSON every boot. Mood, by contrast, already uses the deformation machinery (`baseMood + Σ modifiers`) the spec wants to unify with. Enneagram stress/growth is a temporary, prose-only mood->directive map that mutates no state.
+
+**Architecture:**
+- `BigFive` interface — `agent-types.ts:1-8`: 6 fields (O,C,E,A,N + honesty/H). Lives on `AgentProfile.bigFive` (`agent-types.ts:92`). Profile = static, immutable world-data.
+- `Enneagram` interface — `agent-types.ts:72-80`: type/wing/coreFear/coreDesire/stressType/growthType. Drives WHY-prose, not utility math.
+- `OceanHTrait` union + `AffordanceWeight` — `al.ts:30-38`: closed 6-letter trait code; affordance weights reference it.
+- `ScalarAttribute` + `driftAttribute` — `attributes.ts:26-91`: the REUSE target. base + clamp(min,max) + decaying modifiers + optional base-drift. Already generalizes the MoodModifier pattern. baseMood + moodModifiers (`world.ts:547-550`) is the same physics for mood.
+
+**Data flow (trait -> behavior):**
+1. Boot: world JSON `personality.{O,C,E,A,N,H}` -> `profile.bigFive` (`world-loader.ts:223-236`). Optionally perturbed once by `trait-randomizer.ts:86` (`profile.bigFive[prop] = ...`).
+2. Decision: `computeUtility` (`al.ts:447`) loops `aff.weights`, reads `agent.profile.bigFive[TRAIT_MAP[w.trait]]` (`al.ts:451`, TRAIT_MAP `al.ts:391-394`), `effective = direction==='high' ? v : 1-v`. moodCurve takes `bigFive.honesty` to shift crime zones (`al.ts:457`, curve `al.ts:403-417`).
+3. Prose: `bigFiveToDescription` (`personality-prose.ts:4-19`, 6 hardcoded thresholds) -> volition system prompt (`volition.ts:389`), reflection (`agent.ts:269`), descriptions (`agent.ts:408/524`).
+4. Instinct resistance: `getResistanceVoice` (`instinct-builder.ts:197-223`) reads `bigFive[rt.trait]` by full key, driven by `resistTraits` from affordance (`volition.ts:465` -> `instinct-builder.ts:268-270`).
+5. Stress/growth (TEMPORARY): `getStressGrowthDirective(mood, enn)` (`personality-prose.ts:46-50`) — `mood<-0.5 -> STRESS_DESC[stressType]`, `mood>0.3 -> GROWTH_DESC[growthType]`. Pure string; mutates nothing; consumed in `volition.ts:401`.
+6. Derivations: baseMood from N/E (`world.ts:1988` load fallback; formula in `agent-types.ts:149`); social-stress drift target from N/A/H (`world.ts:537`); loneliness rate from E (`world.ts:578`).
+7. CG / module / UI reads: `cg-engine.checkTrait` (`cg-engine.ts:344`, casts to `Record<string,number>`, indexes by arbitrary string); il.ts:626-627; crime-justice many sites; `routes.ts:118/801/819` -> client `game.js:1919`.
+
+**Key decisions / patterns:**
+1. Profile is static, state is dynamic — only `agent.state` is in `toJSON()` (`world.ts:1882-1902`); `profile`/`bigFive` excluded (`world.ts:89-114` `WorldSaveAgentData` has no profile fields). Trait values are re-derived from world JSON each boot. (`world-loader.ts:223-236`)
+2. Mood already IS the deformation model the spec describes — `effectiveMood = baseMood + Σ modifierEffective(m)`, never directly mutated (INV-06). `ScalarAttribute` (`attributes.ts`) is the explicit generalization (base + clamp + decaying modifiers + base-drift). Unifying personality means: traits become per-axis ScalarAttribute-like state ON AgentState, read via an effective() accessor. (`attributes.ts:26-91`, `world.ts:547-550`)
+3. Trait axis set is closed in FOUR places that must all open together: `BigFive` (`agent-types.ts:1-8`), `OceanHTrait`+`TRAIT_MAP` (`al.ts:30,391-394`), `BigFiveTraits` (`instinct-builder.ts:38-45`), `AffordanceWeight.trait`/`resistTraits` unions (`al.ts:33,134`).
+4. Enneagram stress/growth is the existing TEMPORARY behavioral shift — elastic, prose-only, gated on mood band. It is orthogonal to plasticity (permanent baseline set): plasticity would change baseMood / an axis, which then changes which Enneagram band mood lands in — a seam, not the same mechanism. (`personality-prose.ts:46-50`)
+
+**What EXACTLY breaks if traits become mutable + axis set opens:**
+- **Save/load silently loses every shift.** `bigFive` is on profile, not serialized (`world.ts:1882-1902`); reload resets to world-JSON (`world-loader.ts:223-236`). Any runtime mutation of `profile.bigFive` is wiped each boot. Plastic state MUST live on `AgentState` (like baseMood/attributes, which ARE saved at `world.ts:1890-1892`) to satisfy INV-21. Mutating profile directly = data loss.
+- **Split-brain reads.** ~17 sites read `agent.profile.bigFive.X` as a flat number directly (al.ts:451, instinct-builder.ts:205, cg-engine.ts:344, world.ts:537/578/1988, topic-engine.ts:238-239, scheduler.ts:133-134, social/topic-sources.ts:664, + all crime-justice/il module sites). Converting to base+modifiers means every site must call an effective() accessor; any site left on the raw base reads the un-deformed value while others read the deformed one.
+- **Closed unions reject new axes.** A module axis (e.g. stability/wound) is unreachable by `computeUtility` weights and `resistTraits` until `OceanHTrait`/`AffordanceWeight.trait`/`BigFiveTraits`/`resistTraits` become open string keys. `bigFiveToDescription` (`personality-prose.ts:4-19`) hardcodes exactly 6 trait prose blocks — new axes produce no prose unless registry-driven.
+- **Only `cg-engine.ts:344` survives unchanged** — it already casts to `Record<string,number>` and returns false for unknown traits (line 345). It is the de-facto open reader today (and a latent typing smell worth noting, not fixing).
+- **Derived couplings won't auto-update.** baseMood (`world.ts:1988`) and social-stress target (`world.ts:537`) read trait base at fixed moments; if N/E/A/H deform, these need explicit re-derivation paths, not passive reads. baseMood is itself a deformable scalar, so plastic-N -> baseMood-shift is a chained deformation needing a recompute hook.
+- **Client contract shifts.** `routes.ts:118/801/819` ship `agent.profile.bigFive` verbatim; `game.js:1919/1971` render `data.bigFive`. An open/mutable axis set changes the serialized shape the frontend consumes.
+
+**Referenced answers:**
+- Q: Where + how are Enneagram stress/growth shifts applied? / A: `personality-prose.ts:46-50` `getStressGrowthDirective(mood, enn)` — mood<-0.5 emits `STRESS_DESC[enn.stressType]`, mood>0.3 emits `GROWTH_DESC[enn.growthType]` (tables `personality-prose.ts:21-43`). Output is a directive STRING appended to the volition system prompt (`volition.ts:401`). It mutates no state and does not touch utility scores — purely temporary, mood-band-gated, elastic.
+- Q: Every bigFive read-site? / A: engine: al.ts:451,457; instinct-builder.ts:205; personality-prose.ts:4-19; volition.ts:385-389; cg-engine.ts:344; world.ts:536-537,578,1988; topic-engine.ts:238-239; scheduler.ts:133-134; agent.ts:267-269. modules: social/topic-sources.ts:664; crime-justice/index.ts:672-691,853,1189-1190,1283-1284; investigation.ts:243-244; step-handlers.ts:91,112,178; il.ts:626-627. server/UI: world-loader.ts:229; trait-randomizer.ts:86,106-162,308; routes.ts:118,654,801,819; index.ts:301,519; game.js:1919,1971.
+
+**Not explored:** trait-randomizer constraint-clamp logic beyond the mutation point; full crime-justice scoring formulas (mapped as read-sites only, not traced); affordance-space modifier / SPEC-2 surface (out of this slice's PM focus).
