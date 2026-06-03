@@ -50,14 +50,14 @@ async function buildDocTree(dir: string, basePath: string = ''): Promise<DocEntr
   let items: string[];
   try { items = await readdir(dir); } catch { return entries; }
 
-  // Sort: directories first (alphabetical), then files by git creation date (oldest first = chronological).
-  const dirs: string[] = [];
+  // Sort: directories first (by modification date, newest first), then files by Created date (newest first).
+  const dirs: Array<{ name: string; mtime: number }> = [];
   const files: Array<{ name: string; created: number }> = [];
   for (const item of items) {
-    if (item.startsWith('.') || item.startsWith('_')) continue;
+    if (item.startsWith('.') || item === '_archive') continue;
     const fullPath = join(dir, item);
     const s = await stat(fullPath);
-    if (s.isDirectory()) dirs.push(item);
+    if (s.isDirectory()) dirs.push({ name: item, mtime: s.mtimeMs });
     else if (extname(item) === '.md') {
       // Parse Created date from file header: > **Created**: 2026-04-03
       let created = s.mtimeMs;
@@ -69,14 +69,14 @@ async function buildDocTree(dir: string, basePath: string = ''): Promise<DocEntr
       files.push({ name: item, created });
     }
   }
-  dirs.sort();
-  files.sort((a, b) => b.created - a.created); // newest first
+  dirs.sort((a, b) => b.mtime - a.mtime);      // directories by modification date, newest first
+  files.sort((a, b) => b.created - a.created); // files by Created date, newest first
 
   for (const d of dirs) {
-    const relPath = basePath ? `${basePath}/${d}` : d;
-    const children = await buildDocTree(join(dir, d), relPath);
+    const relPath = basePath ? `${basePath}/${d.name}` : d.name;
+    const children = await buildDocTree(join(dir, d.name), relPath);
     if (children.length > 0) {
-      entries.push({ name: d, path: relPath, type: 'directory', children });
+      entries.push({ name: d.name, path: relPath, type: 'directory', children });
     }
   }
   for (const f of files) {
@@ -598,7 +598,7 @@ const server = Bun.serve({
         let items: string[];
         try { items = await readdir(dir); } catch { return; }
         for (const item of items) {
-          if (item.startsWith('.') || item.startsWith('_')) continue;
+          if (item.startsWith('.') || item === '_archive') continue;
           const fullPath = join(dir, item);
           const s = await stat(fullPath);
           if (s.isDirectory()) {

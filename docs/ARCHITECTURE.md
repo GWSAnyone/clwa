@@ -6,10 +6,10 @@
 
 | | |
 |---|---|
-| **Версия** | `v0.18.0-dev` |
-| **Майлстоун** | M7 «Economy & Trade» — 🔨 в разработке (`feature/economy`) |
-| **Отгружено** | M5 Engine Generalization `v0.16.0` · M6 NPC Brain `v0.17.0` |
-| **Качество** | `bun test` 299 / 21 файл · `tsc` 0 · genre-neutrality guard PERFECT |
+| **Версия** | `v0.18.0` (M7 отгружен) · M8/M9 спеки готовы |
+| **Майлстоун** | M8 «Personality Plasticity» — 📋 спека готова, реализация впереди (proposed `v0.19.0`) |
+| **Отгружено** | M5 Engine Generalization `v0.16.0` · M6 NPC Brain `v0.17.0` · M7 Economy & Trade `v0.18.0` |
+| **Качество** | `bun test` 303 / 21 файл · `tsc` 0 · genre-neutrality guard PERFECT |
 | **История** | [docs/Changelog.md](Changelog.md) |
 
 > **Легенда статусов**: ✅ готово · 🔨 в разработке · ⏸️ отложено · 🔜 запланировано

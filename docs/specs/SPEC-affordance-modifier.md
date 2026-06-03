@@ -1,20 +1,10 @@
 # SPEC: Affordance-Space Modifier (универсальный override множества возможных действий)
 
-> **Milestone**: M9 «Affordance-Space Modifier» — 📋 **предложено** (sequenced ПОСЛЕ M8 Personality Plasticity,
->   как зафиксировано в locked-scope: Тип I зависит от plasticity-seam «применение силы стоит куска себя»).
-> **Status**: ✅ **SPEC ГОТОВА к реализации** (proposed v0.20.0) — clwa-auditor: **READY-AFTER-FIXES** (2 MUST + SHOULD внесены) + **cold-start fidelity 84/100 → доострено** (consequential-step предикат в эмиссии, worked-example player-gate, типизация zoneOverridesFor, permit-scope, греп-тест). 43/43 код-якорей верифицированы, чисто по всем 9 архитектурным проверкам. 2026-06-01.
-> **Depends on**: **Personality Plasticity (M8)** — для seam «ability-use → plasticity cost» (Тип I);
->   **AL pipeline** (`al.ts`: `checkRequirements` / `checkRequirementsReactive` / `validatePlayerAction` /
->   `computeUtility` / `registerScoringContributor`); **perception** (`getCoPresent`); **locations/zones**
->   (`world-types.LocationDef`); **ScalarAttribute** (B1, `attributes.ts`) для атрибутов зоны;
->   **beliefs** (`getMaxConfidenceFor`) и **relationships** (`getRelationship().sentiment`) для strength-scaling.
-> **Engine changes**: новый файл `affordance-modifier.ts`; carrier-поля на `AgentState` + новый `ZoneState`
->   store на `World`; одна общая pre-target gate-функция `isAffordanceForbidden`, вызываемая ОБОИМИ
->   путями (NPC + player); `ScoringContributorFn` расширяется target-аргументом (additive); save/load.
+> **Milestone**: M9 (Affordance-Space Modifier) — *proposed*. Sequenced ПОСЛЕ M8 Personality Plasticity (locked-scope: Тип I зависит от plasticity-seam «применение силы стоит куска себя»; реализация — после M8).
+> **Status**: ✅ SPEC ГОТОВА к реализации (proposed v0.20.0) — clwa-auditor: **READY-AFTER-FIXES** (2 MUST + SHOULD внесены) + **cold-start fidelity 84/100 → доострено** (consequential-step предикат, worked-example player-gate, типизация zoneOverridesFor, permit-scope, греп-тест). 43/43 код-якорей верифицированы, чисто по всем 9 архитектурным проверкам. 2026-06-01.
+> **Depends on**: M8 Personality Plasticity (seam «ability-use → plasticity cost»); AL pipeline (`al.ts`: `checkRequirements` / `checkRequirementsReactive` / `validatePlayerAction` / `computeUtility` / `registerScoringContributor`); perception (`getCoPresent`); locations/zones (`world-types.LocationDef`); ScalarAttribute (B1, `attributes.ts`); beliefs (`getMaxConfidenceFor`) + relationships (`getRelationship().sentiment`) — для strength-scaling.
 > **Created**: 2026-06-01
-> **Source of truth**: этот design-workflow (canonical design + 5 adversarial lenses) +
->   `docs/CONCEPT_Negation.md` секции 6.4 / 7.3 как **breadth-компас** (НЕ требования: «Отрицание» не
->   протекает в движок). Все line-anchors ниже сверены с реальным кодом `packages/engine/src`.
+> **Source of truth**: this design workflow (canonical design + 5 adversarial lenses) + `docs/CONCEPT_Negation.md` §6.4/7.3 as the *breadth compass* (a brainstorm that bounds the design space — **NOT a build target**; the engine must never contain the words Negation/trauma/wound/debt). Line-anchors verified against `packages/engine/src`.
 
 ---
 

@@ -223,6 +223,7 @@ button { font-family: inherit; }
 .tree-folder,
 .tree-file {
   display: flex;
+  position: relative;
   align-items: center;
   gap: var(--sp-sm);
   padding: 5px var(--sp-md) 5px var(--sp-lg);
@@ -291,18 +292,28 @@ button { font-family: inherit; }
 .tree-children {
   overflow: hidden;
   transition: max-height 0.25s ease;
+  margin-left: 14px;                                              /* each nesting level steps right (recursive — any depth) */
+  border-left: 1px solid var(--border, rgba(128, 128, 128, 0.35)); /* vertical depth-guide line (full height, VS Code-style) */
 }
 .tree-children.collapsed {
   max-height: 0;
 }
-/* Indent nested levels */
-.tree-children .tree-file,
-.tree-children .tree-folder {
-  padding-left: calc(var(--sp-lg) + 16px);
+/* Nested rows: small left padding so the icon seats just after the connector tick (overrides the root --sp-lg indent).
+   Folders are wrapped in .tree-node; files sit directly in .tree-children — both handled. */
+.tree-children > .tree-node > .tree-folder,
+.tree-children > .tree-file {
+  padding-left: 12px;
 }
-.tree-children .tree-children .tree-file,
-.tree-children .tree-children .tree-folder {
-  padding-left: calc(var(--sp-lg) + 32px);
+/* Horizontal connector tick (├──) from the vertical depth line to each nested row */
+.tree-children > .tree-node > .tree-folder::before,
+.tree-children > .tree-file::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 8px;
+  height: 1px;
+  background: var(--border, rgba(128, 128, 128, 0.35));
 }
 
 /* --- Sidebar footer --- */
