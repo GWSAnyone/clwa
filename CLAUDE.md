@@ -60,7 +60,8 @@ bun test    # run test suite
 Engine  (packages/engine/)  — universal subsystems, 40+ empty registries, ZERO module-specific content
 Modules (packages/modules/) — world content via registration functions
   ├── social/              — topic sources + socialize affordance
-  └── crime-justice/       — affordances, CG rules, step handlers
+  ├── crime-justice/       — affordances, CG rules, step handlers, heat
+  └── economy/             — trade affordances, dynamic pricing, debt/credit, ECONOMY_CG_RULES (M7, 2nd genre)
 Server  (packages/server/)  — HTTP/WS, world-loader, bootstrap
 Worlds  (worlds/millhaven/) — JSON world data (NPC profiles, locations, relationships)
 Tools   (tools/)           — docs-reader, world-editor, kill-port

@@ -5,13 +5,16 @@
 
 | | |
 |---|---|
-| **Версия** | `v0.18.0-dev` |
-| **Майлстоун** | M7 «Economy & Trade» — 🔨 в разработке (`feature/economy`) |
-| **Отгружено** | M5 Engine Generalization `v0.16.0` · M6 NPC Brain `v0.17.0` |
+| **Версия** | `v0.18.0` (M7 отгружен) · M8/M9 спеки готовы |
+| **Майлстоун** | M8 «Personality Plasticity» — 📋 спека готова, реализация впереди (proposed `v0.19.0`) |
+| **Отгружено** | M5 Engine Generalization `v0.16.0` · M6 NPC Brain `v0.17.0` · M7 Economy & Trade `v0.18.0` |
 | **Качество** | `bun test` 299 / 21 файл · `tsc` 0 · genre-neutrality guard PERFECT |
 | **История** | [docs/Changelog.md](Changelog.md) |
 
 > **Легенда статусов**: ✅ готово · 🔨 в разработке · ⏸️ отложено · 🔜 запланировано
+
+> **Развитие вселенной** (мир «Отрицание / Relict», лор — не движок):
+> мастер-план слоёв и статусы → [docs/world/_Universe-Roadmap.md](world/_Universe-Roadmap.md).
 
 ---
 
@@ -28,7 +31,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 
 ---
 
-## Текущее состояние: v0.18.0-dev — M7 «Economy & Trade» в разработке (M5 v0.16.0 + M6 v0.17.0 отгружены)
+## Текущее состояние: M7 «Economy & Trade» (v0.18.0) отгружен; M8/M9 спеки готовы, реализация впереди
 
 > **M5 «Engine Generalization»** (две фазы, отдельные ветки):
 > - **Phase A — genre-нейтрализация**: из `packages/engine` слиты ВСЕ crime-justice утечки (строки, имена типов,
@@ -42,7 +45,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 > **M6 «NPC Brain»** (v0.17.0, отгружен): слоистый промпт (L1/L2/L3), маршрутизация моделей per-task
 > (Sonnet/Haiku/Qwen), русская локализация, real-time chat-staleness TTL — качество отыгрыша NPC выведено на A-.
 >
-> **M7 «Economy & Trade»** (v0.18.0-dev, текущий фокус): второй жанр доказывает тезис «один движок, контент = данные».
+> **M7 «Economy & Trade»** (v0.18.0, отгружён, смержен в master): второй жанр доказывает тезис «один движок, контент = данные».
 > 3 универсальных примитива (E1 drift / E2 overdraft / E3 INTENT_KIND) + модуль economy (торговля, цены, нужды,
 > долг/кредит, кросс-модульный CG долг→преступление). E1/E2/E3 + P2–P5 готовы; осталось P6 + финальный аудит.
 >
@@ -64,7 +67,9 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 |-----------|---------|--------|--------|
 | **Milestone 2** | Detective Toolkit — accusation, evidence presentation, prevention, journal v2 | v0.12 | Done (backend + Web UI) |
 | **Milestone 6** | NPC Brain — layered prompt (L1 scaffold / L2 persona / L3 volatile), context engineering, model routing (Qwen/Haiku/Sonnet), chat-staleness TTL, all data-driven in World Editor | v0.17.0 | Done (tsc 0, 280 tests, final auditor: no MUST-FIX, INV-14 PERFECT) |
-| **Milestone 7** | Economy & Trade — второй жанр на универсальном движке: примитивы E1/E2/E3, торговля, динамические цены, нужды, долг/кредит, кросс-модульный CG (долг → преступление) | v0.18.0 | 🔨 В разработке (`feature/economy`): E1/E2/E3 + P2–P5 ✅, осталось P6 + финальный аудит |
+| **Milestone 7** | Economy & Trade — второй жанр на универсальном движке: примитивы E1/E2/E3, торговля, динамические цены, нужды, долг/кредит, кросс-модульный CG (долг → преступление), fraud + кольцо контрабандистов | v0.18.0 | ✅ Done (2026-06-01): E1/E2/E3 + P2–P6 ✅, аудит пройден, смержено в master, 303 теста |
+| **Milestone 8** | Personality Plasticity — необратимый сдвиг личности от опыта (упругое настроение / пластическая личность, открытый реестр осей) | v0.19.0 | 📋 Спека готова (аудит + cold-start fidelity), реализация впереди |
+| **Milestone 9** | Affordance-Space Modifier — агент/зона меняет множество возможных действий цели (self/other/zone) | v0.20.0 | 📋 Спека готова, после M8 |
 
 ### Engine подсистемы (17 реализовано)
 
@@ -93,7 +98,7 @@ Engine       AL | PM | CG | EL | IL | Beliefs | Goals | Memory
 ## Milestone Roadmap (Game — GDD_DETECTIVE.md)
 
 > Это майлстоуны **детективной игры** (GDD) — отдельный трек от инженерных майлстоунов выше
-> (M5 Engine Generalization `v0.16.0` / M6 NPC Brain `v0.17.0` / M7 Economy `v0.18.0-dev`). Игровые M4/M5
+> (M5 Engine Generalization `v0.16.0` / M6 NPC Brain `v0.17.0` / M7 Economy `v0.18.0`). Игровые M4/M5
 > (win/lose, polish & demo) сознательно отложены в пользу расширения движка под мульти-жанровость.
 
 | # | Milestone | Версия | Описание | Статус |
@@ -173,7 +178,7 @@ A5b StepTemplate combat-поля, instinct RESISTANCE/TEXTURE registry-ифик�
 
 ---
 
-## M7 — Economy & Trade (🔨 в разработке, v0.18.0-dev)
+## M7 — Economy & Trade (✅ отгружен, v0.18.0)
 
 Второй жанр на универсальном движке — доказательство тезиса «один движок, контент = данные». Почти весь жанр —
 контент модуля + 3 универсальных примитива движка. Crime-игра не тронута (регрессионный оракул). Ветка `feature/economy`.
