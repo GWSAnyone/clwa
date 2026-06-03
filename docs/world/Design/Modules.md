@@ -24,9 +24,11 @@ conceal, relocate (двигать обитателя/себя), intervene, enfor
 
 ## M-B. Operations — тянет directed-модификатор (M9)
 Объект применяет дары к делу. Вызов Mara к раненому = подвес; вызов Orin = вскрыть
-правду; вызов Halden = заглушить. Каждое **осознанное** применение = Trauma на
-носителе. Узел — диспетчер S-02 Illa. Honestly мотивирует **directed/zone
-outcome-space modifier** (CONCEPT §6.4): Vector — directed, Recluse — zone.
+правду; вызов Wren = заглушить (зона немоты). Halden directed-инструментом быть **не
+может** (Recluse-self, не наводится) — только пассивный «несокрушимый» расходник. Каждое
+**осознанное** применение = Trauma на носителе. Узел — диспетчер S-02 Illa. Honestly
+мотивирует **directed/zone outcome-space modifier** (CONCEPT §6.4): форма ортогональна
+классу — Vector бывает directed/ambient/гибрид, Recluse — self/zone.
 
 ## M-C. Research / Threat — дальний горизонт
 Скрытая правда: **почему вообще появляются Отрицания**. «Внешняя угроза, ради которой
@@ -36,5 +38,6 @@ outcome-space modifier** (CONCEPT §6.4): Vector — directed, Recluse — zone.
 
 ## Что НЕ хардкодим
 «Отрицание», «Recluse», «Relict», designations — **контент-строки** (INV-14). Движок
-видит только negationType/negatedLaw из реестров. Любой Layer-1 примитив проектируется
+видит только **effectLocus/negatedLaw** из реестров (класс Recluse/Vector деривируется
+из locus, не хранится строкой). Любой Layer-1 примитив проектируется
 genre-neutral: «агент меняет пространство возможных исходов другого агента / в зоне».

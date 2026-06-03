@@ -141,7 +141,7 @@ R-V-01 сломалась не на «смерть — зло» (она была
 
 ### Negation as data (направление, не финал API)
 ```
-negationType:  "vector"
+effectLocus:   "other"   // класс (Vector) ДЕРИВИРУЕТСЯ из locus, не хранится строкой (INV-14)
 negatedLaw:    "cessation"
 designation:   "DEFINIS"          // контент-строка; та же, что у R-R-01 — каталог слеп
 effect:        outcome-space modifier — OTHER-locus, AMBIENT (zone)
@@ -149,7 +149,7 @@ effect:        outcome-space modifier — OTHER-locus, AMBIENT (zone)
                  physical processes (wound-resolve, illness-resolve, death)
 scaling:       belief (вера носителя); пространственный охват по co-location (getCoPresent)
 control_cost:  ambient/непроизвольно — always-on, нельзя пощадить (хронический вес);
-               Trauma при «нажиме» (тянет зону плотнее). НЕ бесплатно в покое.
+               Trauma (acute) при «нажиме» (тянет зону плотнее). НЕ бесплатно в покое.
 derogat:       watchedLaw=cessation; рост индекса → ШИРЕ радиус зоны + глубже стопор (известно)
 ```
 > NB: Vector с **ambient**-формой эффекта (не directed на одну цель). Класс задаётся

@@ -109,7 +109,7 @@ Wren соединяла голоса через провод годами — п
   донесётся, выплакать неуслышанным. Она — исповедальня, что глотает каждое слово.
 - **Зеркало с R-V-02 (Orin):** он силой **вытягивает каждое слово наружу**, она
   **глушит любое**. Две зоны как два полюса оси «сказанного» (T-03).
-- **Self-name vs system:** в журнале «Vector R-V-03», улица звала бы «стоячая»; она
+- **Self-name vs system:** в журнале «Vector R-V-03», улица звала бы «порченая»/«течь» (Vector-регистр); она
   зовёт себя **Relict.**
 
 ---
@@ -131,7 +131,7 @@ Wren соединяла голоса через провод годами — п
 
 ### Negation as data (направление, не финал API)
 ```
-negationType:  "vector"
+effectLocus:   "other"   // класс (Vector) ДЕРИВИРУЕТСЯ из locus, не хранится строкой (INV-14)
 negatedLaw:    "sound"
 designation:   "DESONUS"          // контент-строка (локализация)
 effect:        outcome-space modifier — OTHER-locus, AMBIENT (zone)
@@ -139,7 +139,7 @@ effect:        outcome-space modifier — OTHER-locus, AMBIENT (zone)
                  (disables verbal-dependent affordances for co-located agents)
 scaling:       belief (вера носителя); пространственный охват по co-location
 control_cost:  ambient/непроизвольно — always-on зона немоты (хронический вес);
-               Trauma при «нажиме» (стянуть тишину / протолкнуть звук).
+               Trauma (acute) при «нажиме» (стянуть тишину / протолкнуть звук).
 derogat:       watchedLaw=sound; рост → ШИРЕ радиус немоты (известно); глубже/быстрее — НЕИЗВЕСТНО (пробел карты)
 ```
 > NB: ambient-Vector (как Mara) — закон гаснет в зоне у других, форма ambient.

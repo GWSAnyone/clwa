@@ -38,6 +38,13 @@ updated: 2026-06-02
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
+> **NB (редкий гибрид формы):** Orin — необычный Vector: несёт **обе формы** сразу —
+> **ambient-фон** (скрытое всплывает само у со-присутствующих) **+ directed-наводку**
+> (его можно прицельно навести на тайну цели). Гибрид формы — **реальное, но редкое и
+> более опасное** явление (двойная угроза: фонит постоянно И бьёт прицельно);
+> зарезервированный «зазор» оси формы (CONCEPT §2). Не путать с гибридом *класса*
+> (игрок-апекс §4.5).
+
 ---
 
 ## 1. IDENTITY
@@ -144,7 +151,7 @@ shift (see ENGINE PROFILE).
 
 ### Negation as data (направление, не финал API)
 ```
-negationType:  "vector"
+effectLocus:   "other"   // класс (Vector) ДЕРИВИРУЕТСЯ из locus, не хранится строкой (INV-14)
 negatedLaw:    "concealment"
 designation:   "DELATERE"        // контент-строка (локализация)
 effect:        outcome-space modifier — DIRECTED + AMBIENT (zone)
@@ -155,10 +162,10 @@ control_cost:  гибрид — ambient baseline (хронический: скр
                directed-наводка волевая → Trauma за каждое применение (acute).
 derogat:       watchedLaw=concealment; рост → шире ambient-радиус всплытия + directed достаёт глубже/старше тайны
 ```
-> NB для Claude Code: Vector — **directed-вариант** того же примитива, что и
-> ambient Recluse (Mara). Здесь модификатор гасит КЛАСС исходов «сокрытие» у
-> co-located/targeted агентов. Прямо мотивирует directed outcome-space modifier
-> (см. §6.4 концепта). Кормит «экономику секретов» Containment-петли.
+> NB для Claude Code: Orin — **редкий гибрид формы** того же примитива: ambient-фон
+> (как у Vector'а Mara) + directed-наводка. Модификатор гасит КЛАСС исходов «сокрытие»
+> у co-located (ambient) и у targeted (directed) агентов. Прямо мотивирует directed
+> outcome-space modifier (см. §6.4 концепта). Кормит «экономику секретов» Containment-петли.
 
 ---
 

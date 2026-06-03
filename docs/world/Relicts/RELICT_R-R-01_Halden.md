@@ -141,7 +141,7 @@ Halden отпел тысячи — а когда настал **его** пор�
 
 ### Negation as data (направление, не финал API)
 ```
-negationType:  "recluse"
+effectLocus:   "self"    // класс (Recluse) ДЕРИВИРУЕТСЯ из locus, не хранится строкой (INV-14)
 negatedLaw:    "cessation"
 designation:   "DEFINIS"          // контент-строка; та же, что у R-V-01 — каталог слеп
 effect:        outcome-space modifier — SELF-locus (passive, always-on)
@@ -149,7 +149,7 @@ effect:        outcome-space modifier — SELF-locus (passive, always-on)
                  (his wounds/illness/death stall; he cannot end)
 scaling:       none salient (constant, self); belief может чуть смещать порог
 control_cost:  self/непроизвольно — always-on (не может завершиться, хронический вес);
-               Trauma при попытке-кончиться (давит против собственного закона).
+               Trauma (acute) при попытке-кончиться (давит против собственного закона).
 derogat:       watchedLaw=cessation; индекс пиннован у потолка (он не может завершиться = near-max на себе);
                как проявляется «рост» — читается плохо (пробел: науке трудно мерить maxed self-Recluse)
 ```
