@@ -1,0 +1,133 @@
+{
+  "summary": "Short verify pass: confirm the 13 diamond-pass fixes landed and introduced no new contradictions",
+  "agentCount": 4,
+  "logs": [
+    "Verify собран: новых проблем 0"
+  ],
+  "result": {
+    "result": {
+      "reportMd": "## Verify-пасс «Отрицание / Relict» — итог\n\nСверил **все 13 правок** (2 blocker + 3 major + 8 minor из `Top actions` отчёта `docs/workflow/negation-lore-diamond-pass/2026-06-04-61f2f316/`) с фактическим содержимым волта `docs/world`. Читал целевые файлы по первоисточнику + прогнал регрессионный grep по утечкам.\n\n### 1. Применение 13 правок — все APPLIED\n\n**Blockers (2/2):**\n1. **Halden ≠ «заглушить»** — `Design/Modules.md:27`: теперь «вызов **Wren** = заглушить (зона немоты)»; стр.27-28 явно «Halden directed-инструментом быть **не может** (Recluse-self) — только пассивный несокрушимый расходник». ✅\n2. **Schema-патч genre-neutral** (`negationType` убран в 7 местах, класс деривируется из `effectLocus`, `form`=Set) — `Terminology §7:115-118`, `Modules:42`, и все 5 досье (`Halden:144`, `Wren:134`, `Mara:144`, `Orin:154`, `Senna:158`). Эталон `CONCEPT §6.4:569`. ✅\n\n**Majors (3/3):**\n3. **Wren ярлык** — `Wren:112`: «стоячая» (Recluse-регистр) → «\"порченая\"/\"течь\" (Vector-регистр)». ✅\n4. **NB отстройки от Arknights** — двойное применение: `CONCEPT §5:498-513` (блок «Отстройка от Arknights» с 5 срезами: Operations/Quies/фарма-фронт/contagion/масштаб) + `_Canon-Core:46-53` «Чем НЕ являемся» расширен. ✅\n5. **«Удержание» → глагол** — `Core Loop:49-51` + `CONCEPT:364-373`: привязан к `sit_vigil`/`share_dose`/вмешаться/объяснить, дрейф к центру ценой времени/риска/соучастия. ✅\n\n**Minors (8/8):**\n6. Счёт каста ~8 — `CONCEPT:11,262,684,695` + `_Canon-Core:18,43` (старые «~8-15»/«~4-6» убраны). ✅\n7. Senna швейная рябь — `Senna:128-131` (новый hook «Швейный тэлл»). ✅\n8. Оговорка масштаба сети — `_The-Authority:32` («намёк-горизонт, не атлас») + дубли `_Relict-Culture:34`, `_History:65`. ✅\n9. Регистр культуры — `_Relict-Culture:143,151` («фолк-метафизика»/«народное поверье»; «эсхатология»/«культовая вера» убраны). ✅\n10. controlCost гибрида — `CONCEPT §6.4:574`, `Terminology §7:118`, `Orin:161`. ✅\n11. attention=спойлер-тир — `Terminology §7:117`, `CONCEPT:570,583`. ✅\n12. Календарь AK — `_History:85` (инверсия «R-0 = счёт от стирания» vs «AK год-ноль = находка-обещание»; «прямая рифма» убрана). ✅\n13. NB contagion vs Oripathy — `Terminology §2:60-62` + `CONCEPT §5:510-511` + `_Canon-Core:52`. ✅\n\n### 2. Новые противоречия — НЕТ\nРегрессионный grep по волту:\n- `negationType` — **0 совпадений** (утечка 7-в-1 вычищена полностью).\n- «стоячая/стоячий/стоячие» — 5 совпадений, **все корректно = Recluse** (Terminology-дефиниция, Halden=Recluse, _Setting, _World). Vector-мис-атрибуция Wren устранена.\n- «заглушить» — только Wren (Modules.md:27, верно: DESONUS) + generic operation-глагол в списке `CONCEPT:443` (не привязан к Halden). Мис-атрибуция Halden устранена.\n\nНесущая архитектура (3 оси, locus→класс, лестница модулей, кристаллизация, отстройка от UU) не тронута — правки били по краям исполнения, как и планировалось.\n\n### 3. Вердикт: **diamond**\nВсе 13 правок применены точно по `Top actions`; новых blocker/major/minor не внесено; регрессия чистая. Оба blocker'а, державшие мир в near-diamond, закрыты.\n\n### 4. Residual\n- Сознательный non-fix (вне этого пасса, помечен в синтезе раздел 5): `_Relict-Culture:71-75` «острые поневоле» (Mara/Halden vs определение «острого») — консистентно by design, правки не требует.\n- Косметика вне рубрики diamond: рассинхрон frontmatter `updated:` (часть файлов `2026-06-02`, `_Canon-Core` — `2026-06-04`). Не противоречие.\n- Лор-блок закоммичен в master (`03fb2b8`), но **не запушен** — это статус, не дефект.",
+      "verdict": "diamond",
+      "fixesConfirmed": "Все 13/13 применены. Blockers (2): Halden≠«заглушить» (Modules.md:27, теперь Wren); negationType убран в 7 местах, класс из effectLocus, form=Set (Terminology §7, Modules:42, 5 досье). Majors (3): Wren ярлык «стоячая»→«порченая/течь» (Wren:112); NB отстройки от AK (CONCEPT §5:498-513 + _Canon-Core:46-53); «Удержание»→глаголы sit_vigil/share_dose/вмешаться (Core Loop:49-51 + CONCEPT:364-373). Minors (8): счёт каста ~8 (CONCEPT:11/262/684/695, _Canon-Core); Senna швейная рябь (Senna:128-131); оговорка сети (The-Authority:32 + _Relict-Culture:34 + _History:65); регистр культуры→«фолк-метафизика/народное поверье» (_Relict-Culture:143/151); controlCost гибрида (CONCEPT:574, Terminology:118, Orin:161); attention=спойлер-тир (Terminology:117, CONCEPT:570/583); календарь AK→инверсия (_History:85); NB contagion≠Oripathy (Terminology §2:60-62 + CONCEPT:510 + _Canon-Core:52).",
+      "residual": [
+        "Сознательный non-fix (вне пасса, синтез разд.5): _Relict-Culture:71-75 «острые поневоле» Mara/Halden — консистентно by design, правки не требует",
+        "Косметика вне рубрики diamond: рассинхрон frontmatter updated: (часть файлов 2026-06-02, _Canon-Core 2026-06-04) — не противоречие",
+        "Лор-блок закоммичен в master (03fb2b8), но не запушен — статус, не дефект"
+      ]
+    },
+    "perTask": [
+      {
+        "task": "blockers-majors",
+        "reportMd": "## Verify-пасс: 13 файлов мира «Отрицание / Relict»\n\nКороткий контроль факта применения 7 правок (2 blocker + 5 major) после diamond-пасса. Прочитаны все 13 файлов целиком + точечные grep-проверки. **Все 7 — PASS. Новых противоречий не найдено.**\n\n### B1 — Modules.md §M-B: directed-разметка вызовов\n**PASS.** §M-B (строки 25–31): «вызов Mara к раненому = подвес; вызов Orin = вскрыть правду; вызов Wren = заглушить (зона немоты)». Строка 28–29: «**Halden** directed-инструментом быть **не может** (Recluse-self, не наводится) — только пассивный «несокрушимый» расходник». Grep по «заглушить» в Modules.md даёт ровно одно вхождение — Wren; «Halden = заглушить» отсутствует. Согласовано с досье Halden §3 «Operational value: почти нулевая… изредка как «несокрушимый»».\n\n### B2 — поле `negationType` убрано, класс деривируется, `form` = Set\n**PASS.** Grep `negationType` по всему `docs/world` — **0 вхождений** (убрано везде). Класс деривируется из locus во всех точках:\n- Terminology §7 (стр. 115): `effectLocus: \"self\"|\"other\"  // НЕСУЩЕЕ: класс ДЕРИВИРУЕТСЯ отсюда, не хранится строкой`; (стр. 116) `effectForm: Set<\"ambient\"|\"directed\">  // НАБОР (не enum): Orin = {ambient, directed}`.\n- Modules «Что НЕ хардкодим» (стр. 42–43): «класс Recluse/Vector деривируется из locus, не хранится строкой».\n- CONCEPT §6.4 (стр. 568–569): `locus … класс деривируется отсюда`; `form: Set<\"ambient\"|\"directed\"> … Orin = {ambient,directed}`.\n- 5 досье ENGINE PROFILE: каждое несёт `effectLocus … класс ДЕРИВИРУЕТСЯ из locus` (Mara 144, Orin 154, Wren 134, Halden 144, Senna 158). Гибрид Orin выражен через `DIRECTED + AMBIENT` (стр. 159), в тексте «несёт обе формы».\n\n### M3 — Wren §4: уличный ярлык в Vector-регистре\n**PASS.** Wren §4 (стр. 113): «улица звала бы «**порченая**»/«**течь**» (Vector-регистр)». Grep «стоячая/стоячий» по файлу Wren — **0 вхождений**. Согласовано с Terminology §4 (Vector: «течь»/«порченые»; Recluse: «тихие»/«стоячие»). Контрольно: «стоячий» корректно остался у Halden §4 (стр. 123, Recluse) — то есть метки не перепутаны между классами.\n\n### M4 — отстройка от Arknights\n**PASS.** Блок в CONCEPT §5 «Отстройка от Arknights» (стр. 498–513) покрывает все 5 осей: Operations-контракт ≠ оператор RI; Quies ≠ Originium; фарма-фронт ≠ Rhodes Island; Contagion ≠ Oripathy; камерно ≠ гача-масштаб. Пункт в _Canon-Core «Чем НЕ являемся» расширен (стр. 50–53): перечислены Operations/Quies/фарма-фронт/«зараза»-метафора + «без расы-зверолюдей, континента наций, мировых войн. Камерно, не гача-масштаб». Термины Originium/Oripathy/Rhodes встречаются только в этих отстроечных блоках, в лор-текст не протекли.\n\n### M5 — end-state «Удержание» привязан к глаголам\n**PASS.** CONCEPT §4.5 (стр. 371–373): «**Механически** опирается на активные глаголы заботы/вовлечения (из 2.2: `sit_vigil` / `share_dose` / `use_name`; из петель: вмешаться, объяснить, разделить ношу) — каждый тянет дрейф OCEAN+H к центру, но платит». Design/Core Loop §4 (стр. 49–51): «Удержание — активный баланс по лезвию… Механически — на глаголах заботы/вовлечения (`sit_vigil` / `share_dose` / вмешаться / объяснить)». Оба места согласованы.\n\n### Сводный контроль на новые противоречия\n- Lore-файлы (_History, _The-Authority, _Relict-Culture) сверены: терминология Quies/DEROGAT единая, никаких остаточных `negationType`/`effectForm`-полей; Originium/Oripathy/Rhodes в лор-тексте нет.\n- `_Relict-Culture` §71: «Quies не берёт DEFINIS-носителей (Mara/Halden)» согласовано с _Setting стр. 96 — конфликта нет.\n- Гибрид формы Orin (Set) и гибрид класса игрока (§4.5) разведены явным NB (CONCEPT стр. 139–143) — модель не трещит.\n\nНовых проблем не выявлено.",
+        "checks": [
+          {
+            "item": "B1 — Modules §M-B: «вызов Wren = заглушить» есть; «Halden = заглушить» НЕТ; Halden помечен как не-directed (пассивный расходник)",
+            "status": "pass",
+            "evidence": "Modules.md стр. 27 «вызов Wren = заглушить (зона немоты)»; стр. 28-29 «Halden directed-инструментом быть не может (Recluse-self, не наводится) — только пассивный «несокрушимый» расходник». Grep «заглушить» → 1 вхождение (Wren), «Halden=заглушить» отсутствует."
+          },
+          {
+            "item": "B2 — поле negationType убрано везде; класс деривируется из effectLocus; form = Set (вмещает Orin-гибрид) в CONCEPT §6.4 и Terminology §7",
+            "status": "pass",
+            "evidence": "Grep negationType по docs/world → 0 вхождений. Terminology §7 стр.115-116: effectLocus «класс ДЕРИВИРУЕТСЯ», effectForm: Set<…> Orin={ambient,directed}. CONCEPT §6.4 стр.568-569 идентично. Modules стр.42-43 «класс деривируется из locus». Все 5 досье ENGINE PROFILE несут effectLocus с деривацией (Mara144/Orin154/Wren134/Halden144/Senna158)."
+          },
+          {
+            "item": "M3 — Wren §4: уличный ярлык в Vector-регистре («порченая»/«течь»), НЕ «стоячая»",
+            "status": "pass",
+            "evidence": "Wren §4 стр.113 «улица звала бы «порченая»/«течь» (Vector-регистр)». Grep «стоячая/стоячий» по файлу Wren → 0. «Стоячий» корректно остался у Halden §4 стр.123 (Recluse)."
+          },
+          {
+            "item": "M4 — отстройка от Arknights: блок в CONCEPT §5 (Operations/Quies/фарма-фронт/contagion/масштаб) + расширенный пункт в _Canon-Core «Чем НЕ являемся»",
+            "status": "pass",
+            "evidence": "CONCEPT §5 стр.498-513 «Отстройка от Arknights» — все 5 осей (Operations≠RI, Quies≠Originium, фарма-фронт≠Rhodes, Contagion≠Oripathy, камерно≠гача). _Canon-Core стр.50-53 пункт расширен теми же осями + «без расы-зверолюдей, континента наций, мировых войн. Камерно, не гача-масштаб»."
+          },
+          {
+            "item": "M5 — end-state «Удержание» привязан к конкретным глаголам (sit_vigil/share_dose/use_name/вмешаться) в CONCEPT §4.5 И Design/Core Loop",
+            "status": "pass",
+            "evidence": "CONCEPT §4.5 стр.371-373: «Механически опирается на активные глаголы… (sit_vigil / share_dose / use_name; … вмешаться, объяснить, разделить ношу)». Core Loop §4 стр.49-51: «на глаголах заботы/вовлечения (sit_vigil / share_dose / вмешаться / объяснить)». Оба согласованы."
+          }
+        ],
+        "newIssues": []
+      },
+      {
+        "task": "minors",
+        "reportMd": "## Verify-пасс: 13 minor-правок diamond-пасса — РЕЗУЛЬТАТ\n\n**Итог: все 13 правок применены (PASS). Новых противоречий не обнаружено.**\n\nПрочитаны все 13 файлов через Read (полные пути). Проверял факт применения + отсутствие НОВЫХ противоречий, refuted-споры не переоткрывал.\n\n### Подтверждения по правкам\n\n**m6 — счёт каста (PASS).** CONCEPT §11/шапка, стр. 11: «Камерный масштаб: один Объект, **~8 агентов** (как Millhaven)» — варианта «~8-15» нет. §8 «Решено», стр. 684: «Масштаб: камерный, **~8 агентов: 5 Relict + 2 staff + игрок**»; стр. 696: «Каст — камерный **~8**: 3 Vector + 2 Recluse + игрок + 1–2 staff» — варианта «~4-6» нет. Согласовано со стр. 262 («~8 агентов всего») и §9 (5 Relict + 2 staff + игрок).\n\n**m7 — Senna швейный тэлл (PASS).** Senna §4, стр. 128-131: «**Швейный тэлл (отпечаток в рябь):** растворение читается как **расходящаяся, распускающаяся ткань** одежды и манеры; удержать её в форме = почти буквально «**сшить обратно**» (жест `sit_vigil`, см. [[_Relict-Culture]])». Связано с §1 (бывшая швея) и с sit_vigil в _Relict-Culture (Hooks: `sit_vigil // keep a dissolving bearer in-form (Senna)`).\n\n**m8 — масштаб-оговорка к «сети Объектов» (PASS, во всех трёх).** _The-Authority §«Как правит», стр. 32: «**Сеть Объектов** по миру... (*сеть = намёк-горизонт, не атлас: сцена всегда один Объект*)». _Relict-Culture §«Откуда культура», стр. 33-34: «рассеяны по **сети Объектов (намёк-горизонт, не игровая карта)**». _History Эпоха III, стр. 65: «сеть Объектов по миру (**горизонт, не атлас**)».\n\n**m9 — регистр «народное поверье» (PASS).** _Relict-Culture: TL;DR стр. 21 «**Народное поверье**: ... смерть = единственное чистое лечение»; §«Смерть и фолк-метафизика» стр. 152-154 «мрачное **народное поверье** крыла». Терминов «эсхатология»/«культовая вера крыла» в файле нет (Grep по тексту — отсутствуют).\n\n**m10 — controlCost гибрида = объединение профилей (PASS).** CONCEPT §6.4 блок NegationEffect, стр. 574-575: «гибрид (Orin) → **объединение профилей**: хронический ambient-вес + acute-Trauma за directed». Terminology §7 controlCost, стр. 118: «**гибрид=объединение профилей**». Senna ENGINE PROFILE даёт сам профиль чистого ambient/self (стр. 168-169) — непротиворечиво.\n\n**m11 — attention помечен спойлер-тиром (PASS, во всех трёх местах).** CONCEPT §2 «Три оси», стр. 113: «attention ... **спойлер-тир: носитель = DEESSE/R-0, writer/engine-only; раскрытие — Research-каскад**». §6.4, стр. 570 «attention — спойлер-тир: DEESSE», стр. 583 «attention — новый источник (DEESSE...)». Terminology §7, стр. 117: «attention — **спойлер-тир, носитель=DEESSE**».\n\n**m12 — летоисчисление: инверсия, прямое называние AK убрано (PASS).** _History §«Летоисчисление», стр. 84-86: «*(**Инверсия приёма-вдохновителя**: там год-ноль = находка-обещание; у нас R-0 = первая Запись-дыра, счёт от **стирания**, не обретения. **Атрибуция вдохновителя — writer-only**.)*». Прямого «AK»/«Arknights» в лор-тексте _History нет — заменено на «приём-вдохновитель» + writer-only пометку.\n\n**m13 — contagion≠Oripathy NB (PASS).** Terminology §2 (рядом с Vector), стр. 60-62: «**NB (отстройка от Arknights):** эпид-оттенок «Vector» — **метафора**. ... **ничего не передаётся**, дар умирает с носителем ... Это **НЕ Oripathy** (буквальная заразная болезнь-вещество). См. CONCEPT §5». CONCEPT §5, стр. 510-511: «**Contagion ≠ Oripathy.** «Vector»-заразность — **метафора** ... дар умирает с носителем — §2 правило смерти. НЕ буквальная болезнь-вещество». Перекрёстные ссылки (Terminology→CONCEPT §5, CONCEPT §2 правило смерти) консистентны.\n\n### Перекрёстная проверка на новые противоречия\n- Счёт каста един во всех точках CONCEPT (~8 = 5 Relict + 2 staff + игрок). Числа сходятся.\n- «Сеть = намёк-горизонт» теперь однообразно сформулирована в 3 лор-файлах — рассинхрона нет.\n- attention-спойлер согласован между CONCEPT §2/§6.4 и Terminology §7; Senna (sentiment-scaled) не задевает attention-тир.\n- m12-инверсия в _History не конфликтует с §5 CONCEPT (отстройка от AK), где AK называется открыто в концепт-доке (это допустимо: концепт = writer-facing «Источники вдохновения», _History = лор-текст).\n\nНовых проблем нет.",
+        "checks": [
+          {
+            "item": "m6 — счёт каста: CONCEPT §11 «~8 агентов» (не ~8-15); §8 «Решено» «~8 (5 Relict+2 staff+игрок)» (не ~4-6)",
+            "status": "pass",
+            "evidence": "CONCEPT стр.11 «Камерный масштаб: один Объект, ~8 агентов (как Millhaven)»; §8 стр.684 «Масштаб: камерный, ~8 агентов: 5 Relict + 2 staff + игрок»; стр.696 «Каст — камерный ~8: 3 Vector + 2 Recluse + игрок + 1–2 staff». Вариантов ~8-15 / ~4-6 нет."
+          },
+          {
+            "item": "m7 — Senna §4: добавлен «швейный тэлл» (распускающаяся ткань / «сшить обратно» = sit_vigil) в рябь",
+            "status": "pass",
+            "evidence": "Senna §4 стр.128-131: «Швейный тэлл (отпечаток в рябь): растворение читается как расходящаяся, распускающаяся ткань ... удержать её в форме = почти буквально „сшить обратно\" (жест sit_vigil, см. [[_Relict-Culture]])»."
+          },
+          {
+            "item": "m8 — масштаб-оговорка к «сети Объектов»: _The-Authority §«Как правит», _Relict-Culture (Откуда культура), _History (Эпоха III)",
+            "status": "pass",
+            "evidence": "_The-Authority стр.32 «сеть = намёк-горизонт, не атлас: сцена всегда один Объект»; _Relict-Culture стр.33-34 «рассеяны по сети Объектов (намёк-горизонт, не игровая карта)»; _History стр.65 «сеть Объектов по миру (горизонт, не атлас)»."
+          },
+          {
+            "item": "m9 — _Relict-Culture: «эсхатология/культовая вера крыла» → регистр «народное поверье»",
+            "status": "pass",
+            "evidence": "_Relict-Culture TL;DR стр.21 «Народное поверье: ... смерть = единственное чистое лечение»; §«Смерть и фолк-метафизика» стр.152-154 «мрачное народное поверье крыла». Терминов «эсхатология»/«культовая вера» в файле нет."
+          },
+          {
+            "item": "m10 — CONCEPT §6.4: controlCost гибрида = объединение профилей (хроника+acute)",
+            "status": "pass",
+            "evidence": "CONCEPT §6.4 стр.574-575 «гибрид (Orin) → объединение профилей: хронический ambient-вес + acute-Trauma за directed»; Terminology §7 стр.118 «гибрид=объединение профилей»."
+          },
+          {
+            "item": "m11 — attention помечен как спойлер-тир (CONCEPT §2 «Три оси», §6.4, Terminology §7)",
+            "status": "pass",
+            "evidence": "CONCEPT §2 стр.113 «attention ... спойлер-тир: носитель = DEESSE/R-0, writer/engine-only»; §6.4 стр.570/583; Terminology §7 стр.117 «attention — спойлер-тир, носитель=DEESSE»."
+          },
+          {
+            "item": "m12 — _History летоисчисление: «прямая рифма с AK» → инверсия / прямое называние AK убрано из лор-текста",
+            "status": "pass",
+            "evidence": "_History стр.84-86 «Инверсия приёма-вдохновителя: там год-ноль = находка-обещание; у нас R-0 = первая Запись-дыра ... Атрибуция вдохновителя — writer-only». Прямого «AK»/«Arknights» в _History нет."
+          },
+          {
+            "item": "m13 — contagion≠Oripathy NB: Terminology §2 (рядом с Vector) + CONCEPT §5",
+            "status": "pass",
+            "evidence": "Terminology §2 стр.60-62 «NB (отстройка от Arknights): эпид-оттенок „Vector\" — метафора ... ничего не передаётся ... НЕ Oripathy ... См. CONCEPT §5»; CONCEPT §5 стр.510-511 «Contagion ≠ Oripathy ... НЕ буквальная болезнь-вещество»."
+          }
+        ],
+        "newIssues": []
+      },
+      {
+        "task": "regression",
+        "reportMd": "## Verify-пасс: 13 правок diamond-пасса (мир «Отрицание / Relict»)\n\n**Вердикт: ЧИСТО.** Адверсариальная сверка не выявила НОВЫХ противоречий. Все 13 файлов прочитаны полностью; кросс-чек подтверждён двумя грепами (negationType, глаголы удержания) и тремя целевыми (Orin-гибрид, locus/form, AK-блок, масштаб/вики-ссылки). Один nit (не блокер).\n\n### (1) Удаление `negationType` — ПОЛНОЕ\nГреп `negationType|negationDirection|negation_type` по всему `docs/world` → **0 совпадений**. Везде locus-производный класс: все 5 досье несут `effectLocus: \"self\"|\"other\"` с комментарием «класс ДЕРИВИРУЕТСЯ из locus, не хранится строкой (INV-14)» (Mara/Orin/Wren=other→Vector; Halden/Senna=self→Recluse). Form-набор согласован: Terminology §7 и CONCEPT §6.4 оба несут `Set<\"ambient\"|\"directed\">` (НАБОР, не enum). Осиротевших ссылок нет.\n\n### (2) AK-блок (§5) vs UU-блок и канон — СОГЛАСОВАН\n- **Quies**: §5 «не источник и не лекарство, belief-заглушка-поводок» = _Canon-Core «глушит belief-компоненту, не рану» = _Setting «дельта-блокатор». DEFINIS-исключение (Quies не берёт Mara/Halden) согласовано _Relict-Culture §2 ↔ _Setting.\n- **Operations**: §5 «охота на своих за условия, никогда не свободу» = _Canon-Core = _Setting.\n- **Contagion**: §5 «метафора, ничего не передаётся, не Oripathy» = Terminology §2 NB = _Canon-Core. Спойлерная «заразность сомнения» (_Metaplot, writer-only) — иной метафизический слой, не противоречит player-facing «contagion ≠ буквальная болезнь-вещество».\n\n### (3) Orin-гибрид формы — СОГЛАСОВАН ВЕЗДЕ (8 точек)\nCONCEPT §2 (стр.100-101, NB 139-142), §6.2 (542), §6.4 (569,574), §9 (765); Terminology §2 (51), §7 (116); досье Orin (TL;DR, NB 41-45, ENGINE PROFILE 158-163: DIRECTED+AMBIENT, controlCost=гибрид). Нигде нет «Orin=directed» без оговорки гибрида. Гибрид формы корректно отделён от гибрида класса (игрок-апекс §4.5).\n\n### (4) Глаголы удержания — РЕАЛЬНО СУЩЕСТВУЮТ в Hooks 2.2\n`_Relict-Culture` `social_affordances` (стр.250-256) определяет: `show_wrist`, `read_wrist`, `use_name`, `use_designation`, `offer_dose / share_dose / refuse_dose`, `sit_vigil`, `close_number`. Ссылки из CONCEPT §4.5 (`sit_vigil`/`share_dose`/`use_name`) и Core Loop §4 (`sit_vigil`/`share_dose`) указывают на существующие глаголы. Досье Senna ссылается на `sit_vigil` корректно. Висячих глаголов нет.\n\n### (5) Масштаб-оговорки и вики-ссылки — ЦЕЛЫ\n«Один Объект, ~8 агентов» (5 Relict + 2 staff + игрок) идентичен в CONCEPT §1/§4/§5/§9 и _Canon-Core. «Сеть Объектов» всегда с оговоркой «намёк-горизонт, не атлас» (_The-Authority, _History, _Relict-Culture). Регистр-правки не сломали `[[...]]`-ссылки. Расширения в Терру-масштаб нет.\n\n### Nit (не блокер)\nДосье Mara, ENGINE PROFILE стр.158: NB «Directed-Vector — см. R-V-02 (Orin)». Orin — гибрид (ambient+directed), реально несёт directed-компонент, поэтому ссылка как «пример directed-формы» фактически верна, но формулировка «Directed-Vector» чуть упрощает (Orin — не чистый directed, а гибрид). Смысла/канона не ломает; точнее было бы «directed-несущий — см. Orin (гибрид формы)». Старая refuted-проблема НЕ переоткрывается — это микро-формулировка в перекрёстной ссылке.",
+        "checks": [
+          {
+            "item": "(1) negationType удалён, досье/Terminology §7/§6.4 на locus-деривации + form-набор, нет осиротевших ссылок",
+            "status": "pass",
+            "evidence": "Греп negationType|negationDirection → 0 совпадений во всём docs/world. Все 5 досье: effectLocus self/other + 'класс ДЕРИВИРУЕТСЯ из locus'. Terminology §7 (стр.115-116) и CONCEPT §6.4 (стр.568-569) оба: effectLocus self|other, effectForm Set<ambient|directed>."
+          },
+          {
+            "item": "(2) AK-блок §5 не противоречит UU-блоку и канону (Quies/Operations/contagion)",
+            "status": "pass",
+            "evidence": "§5 стр.501-512 ↔ _Canon-Core стр.49-52 ↔ _Setting/Terminology §2 NB: Quies=belief-поводок-не-Originium, Operations=охота-на-своих, contagion=метафора-не-Oripathy — формулировки совпадают. Спойлерная 'заразность сомнения' — иной writer-only слой, не конфликт."
+          },
+          {
+            "item": "(3) Orin-гибрид согласован везде (CONCEPT §2/§6.2/§6.4/§9, Terminology, досье Orin)",
+            "status": "pass",
+            "evidence": "8 точек: CONCEPT стр.100-101/139-142/542/569/574/765, Terminology стр.51/116, досье Orin TL;DR+NB(41-45)+ENGINE PROFILE(158-163, DIRECTED+AMBIENT). Нет 'Orin=directed' без оговорки гибрида. Гибрид формы ≠ гибрид класса явно разделены."
+          },
+          {
+            "item": "(4) Глаголы удержания sit_vigil/share_dose/use_name существуют в Hooks 2.2 (_Relict-Culture)",
+            "status": "pass",
+            "evidence": "_Relict-Culture social_affordances стр.250-256: show_wrist, read_wrist, use_name, offer_dose/share_dose/refuse_dose, sit_vigil, close_number. Ссылки CONCEPT §4.5 (стр.371) и Core Loop §4 (стр.50) указывают на реально определённые глаголы."
+          },
+          {
+            "item": "(5) Масштаб-оговорки и регистр-правки не сломали смысл/вики-ссылки",
+            "status": "pass",
+            "evidence": "'Один Объект ~8 агентов' идентичен в CONCEPT §1/§4/§5/§9 + _Canon-Core. 'Сеть Объектов' всегда с 'намёк-горизонт, не атлас' (_The-Authority стр.32, _History стр.65, _Relict-Culture стр.34). [[...]]-ссылки в _Relict-Culture (frontmatter+Related) целы."
+          }
+        ],
+        "newIssues": []
+      }
+    ],
+    "totalNewIssues": 0
+  }
+}
