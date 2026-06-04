@@ -17,6 +17,7 @@
 - [[Lore/_The-Authority]] — безликая инстанция: фарма-фасад + невидимая верхушка
 - [[Lore/_Discovery-Capture]] — обнаружение→захват: дорога в Объект, протоколы, Quies, Relict-охотники
 - [[Lore/_Relict-Culture]] — культура крыла: ровность, имя↔номер, этикет ладони, сленг, вживание новичка
+- [[Lore/_Negation-Taxonomy]] — таксономия + каталог: страты×магнитуда, кладбище закрытых номеров, DEMEMOR/DEPONDUS/DEVINCIRE
 - [[Locations/_Object-Layout]] — планировка Объекта (протокол = геометрия)
 - [[Tensions/_Tensions]] — pressure points (T-01…T-08)
 - *измерение интенсивности → CONCEPT §6.6 (DEROGAT); метасюжет → spoiler-файл*
