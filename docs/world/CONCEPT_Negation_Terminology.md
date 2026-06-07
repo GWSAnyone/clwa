@@ -114,7 +114,7 @@ NPC из обслуги Объекта говорит «Vector» (часть с�
 negatedLaw:   string  (из реестра)           // напр. "cessation"
 effectLocus:  "self" | "other"               // НЕСУЩЕЕ: класс (Recluse/Vector) ДЕРИВИРУЕТСЯ отсюда, не хранится строкой
 effectForm:   Set<"ambient" | "directed">    // НАБОР (не enum): Orin = {ambient, directed} (редкий гибрид формы)
-scaling:      "belief" | "sentiment" | "attention"   // сила; ОТДЕЛЬНО от формы (attention — спойлер-тир, носитель=DEESSE)
+scaling:      "belief" | "sentiment" | "attention"   // сила; ОТДЕЛЬНО от формы (attention — спойлер-тир, носитель=DEXISTERE)
 controlCost:  directed=волевое/Trauma-за-применение · ambient|self=непроизвольное/always-on/хронический+Trauma-при-нажиме · гибрид=объединение профилей
 ```
 Лор-термины (Recluse / Vector / Relict / designation / каталог-номер) — **контент-данные**
