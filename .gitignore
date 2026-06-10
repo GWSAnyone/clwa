@@ -5,10 +5,17 @@ bun.lock
 .env
 packages/server/data/
 .serena/
-godot/.godot/
 unsloth_compiled_cache/
 training/dataset/output/
 training/output/
 test-run.jsonl
 data/
-godot/assets/tinyswords/
+
+# Godot project — whole folder, not needed in repo
+godot/
+
+# Canvas2D sprite assets (Tiny Swords) — not needed in repo
+packages/server/public/assets/tinyswords/
+
+# OS junk
+.DS_Store
