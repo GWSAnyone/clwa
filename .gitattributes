@@ -1,0 +1,20 @@
+# Normalize line endings: LF in the repo AND in the working tree.
+# Fixes CRLF churn after the Windows -> Linux migration and prevents recurrence.
+* text=auto eol=lf
+
+# Binary assets — never touch line endings.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.pdf   binary
+*.zip   binary
+*.wav   binary
+*.mp3   binary
+*.ogg   binary
